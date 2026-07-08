@@ -1,0 +1,6 @@
+[submodule "references/pi"]
+	path = references/pi
+	url = https://github.com/earendil-works/pi
+[submodule "references/langgraph"]
+	path = references/langgraph
+	url = https://github.com/langchain-ai/langgraph

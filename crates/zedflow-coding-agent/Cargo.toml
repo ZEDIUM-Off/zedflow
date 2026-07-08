@@ -1,0 +1,14 @@
+[package]
+name = "zedflow-coding-agent"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+zedflow-agent = { path = "../zedflow-agent" }
+zedflow-orchestrator = { path = "../zedflow-orchestrator" }
+zedflow-tui = { path = "../zedflow-tui" }
