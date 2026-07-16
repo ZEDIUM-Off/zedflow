@@ -249,9 +249,21 @@ fn faux_provider_handles_basic_text_prompt() {
 
 #[test]
 fn faux_provider_executes_tools_and_tracks_pending_tool_calls() {
+    let tool_call_response = tool_call_response();
+    let tool_call_id = match &tool_call_response {
+        FauxResponseStep::Message(message) => message
+            .content
+            .iter()
+            .find_map(|block| match block {
+                AssistantContentBlock::ToolCall(call) => Some(call.id.clone()),
+                _ => None,
+            })
+            .expect("faux response should contain a tool call"),
+        _ => unreachable!("tool_call_response always returns a message"),
+    };
     let agent = Arc::new(faux_agent(
         vec![
-            tool_call_response(),
+            tool_call_response,
             FauxResponseStep::Message(faux_assistant_message("The result is 56088.")),
         ],
         vec![calculate_tool()],
@@ -298,7 +310,7 @@ fn faux_provider_executes_tools_and_tracks_pending_tool_calls() {
             .lock()
             .expect("pending capture lock poisoned"),
         vec![
-            ("tool_execution_start", vec!["calc-1".to_string()]),
+            ("tool_execution_start", vec![tool_call_id]),
             ("tool_execution_end", Vec::new()),
         ]
     );
