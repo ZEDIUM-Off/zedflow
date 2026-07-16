@@ -1,8 +1,12 @@
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
+> [!CAUTION]
+> **Migration status: SUPERSEDED / HISTORICAL.** Do not use this file as the current execution tracker. See `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md`.
+
 # Zedflow AI placeholder compatibility inventory
 
-Plan unit: U1  
-Generated: 2026-07-08  
-Source placeholder scan: `grep -R -n "PORT PLACEHOLDER" crates/zedflow-ai/src crates/zedflow-ai/tests` found 424 lines.  
+Plan unit: U1
+Generated: 2026-07-08
+Source placeholder scan: `grep -R -n "PORT PLACEHOLDER" crates/zedflow-ai/src crates/zedflow-ai/tests` found 424 lines.
 Required docs read: rust-skills; genai API reference fetched from GitHub to `/tmp/zedflow-genai-docs/api-reference-for-llm.md` because the local clone path was absent.
 
 ## Replacement rules from review flags

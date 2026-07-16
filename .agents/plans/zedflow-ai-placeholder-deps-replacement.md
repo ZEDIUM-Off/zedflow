@@ -1,3 +1,7 @@
+<!-- migration-document-status: SUPERSEDED -->
+> [!CAUTION]
+> **Migration status: SUPERSEDED.** Historical plan only. Use `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md` and `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md` for current work.
+
 # Zedflow AI Placeholder Dependency Replacement
 
 <a id="how-to-use"></a>

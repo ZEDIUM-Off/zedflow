@@ -1,3 +1,7 @@
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
+> [!CAUTION]
+> **Migration status: SUPERSEDED / HISTORICAL.** Do not use this file as the current execution tracker. See `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md`.
+
 # Zedflow AI Placeholder Replacement Orchestration
 
 Plan: `.agents/plans/zedflow-ai-placeholder-deps-replacement.md`
@@ -15,9 +19,9 @@ Started: 2026-07-08
 | U5 | done | 0cf5e362-5d14-4319-a1d5-9cdf08f77463[2] | Implementation complete; validation partly blocked by cross-wave compile/root issues |
 | U6 | done | 0cf5e362-5d14-4319-a1d5-9cdf08f77463[3] | Implementation complete; validation partly blocked by cross-wave compile/root issues |
 | U7 | done | 0cf5e362-5d14-4319-a1d5-9cdf08f77463[4] | Implementation complete; validation partly blocked by cross-wave compile/root issues |
-| U9 | in_progress | a1073eca-1328-4074-a235-d6c6bb185987[0] | Wave 4 lazy/compat/provider registry |
-| U10 | in_progress | a1073eca-1328-4074-a235-d6c6bb185987[1] | Wave 4 OAuth/auth |
-| U11 | blocked | | Final only |
+| U9 | done | a1073eca-1328-4074-a235-d6c6bb185987[0] | Static lazy API dispatch, compat registry/faux wiring, and provider catalog factories implemented; fmt/check/targeted tests pass with warnings |
+| U10 | done | a1073eca-1328-4074-a235-d6c6bb185987[1] | OAuth/auth placeholders replaced with reqwest token/device helpers; deterministic OAuth tests pass; fmt check blocked by non-U10 provider formatting |
+| U11 | done | 277a5622-f820-48bb-84ca-7815145cb361 | Final audit passed: fmt/check/deterministic tests green; residual ledger written to .agents/state/zedflow-ai-placeholder-residuals.md |
 
 ## Waves
 

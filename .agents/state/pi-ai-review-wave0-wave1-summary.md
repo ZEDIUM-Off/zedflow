@@ -1,3 +1,7 @@
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
+> [!CAUTION]
+> **Migration status: SUPERSEDED / HISTORICAL.** Do not use this file as the current execution tracker. See `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md`.
+
 # pi-ai / zedflow-ai review — wave 0/1 start
 
 ## Started
