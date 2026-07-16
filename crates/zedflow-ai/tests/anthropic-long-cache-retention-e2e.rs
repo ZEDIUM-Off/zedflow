@@ -1,9 +1,9 @@
-use zedflow_ai::api::lazy::{Context, Model, StopReason};
-use zedflow_ai::api::simple_options::{CacheRetention, StreamOptions};
+use futures::executor::block_on;
 use zedflow_ai::compat::{complete, get_models, get_providers};
 use zedflow_ai::env_api_keys::get_env_api_key;
-
-const BLOCKER: &str = "PORT PLACEHOLDER: compat::get_providers/get_models still return placeholders, compat::Model omits AnthropicMessagesCompat.supportsLongCacheRetention and model cost metadata, and live provider calls are not allowed in this port task";
+use zedflow_ai::types::{
+    AnthropicMessagesCompat, CacheRetention, Context, Model, ModelCompat, StopReason, StreamOptions,
+};
 
 #[derive(Debug, Clone)]
 struct AnthropicLongCacheRetentionE2ECase {
@@ -15,7 +15,6 @@ struct AnthropicLongCacheRetentionE2ECase {
 
 fn get_e2e_api_key(provider: &str) -> Option<String> {
     if provider == "github-copilot" {
-        // PORT PLACEHOLDER: references/pi/packages/ai/test/oauth.ts resolveApiKey("github-copilot").
         return None;
     }
 
@@ -50,10 +49,8 @@ fn anthropic_messages_cases() -> Vec<AnthropicLongCacheRetentionE2ECase> {
 
 fn get_probe_priority(model: &Model) -> i64 {
     let model_id = model.id.to_lowercase();
-    let mut priority = 0;
+    let mut priority = (model.cost.input + model.cost.output) as i64;
 
-    // PORT PLACEHOLDER: compat::Model does not expose model.cost yet; restore cost-based sorting
-    // when the unified generated catalog is wired into compat::get_models.
     if model_id.contains("haiku") && (model_id.contains("4-5") || model_id.contains("4.5")) {
         priority -= 1000;
     } else if model_id.contains("sonnet") && (model_id.contains("4-") || model_id.contains("4.")) {
@@ -89,21 +86,28 @@ fn select_one_case_per_provider(
     selected
 }
 
-fn with_long_cache_retention(_model: &Model) -> Result<Model, &'static str> {
-    Err(BLOCKER)
+fn with_long_cache_retention(model: &Model) -> Model {
+    let mut model = model.clone();
+    let mut compat = match model.compat.take() {
+        Some(ModelCompat::AnthropicMessages(compat)) => compat,
+        _ => AnthropicMessagesCompat::default(),
+    };
+    compat.supports_long_cache_retention = Some(true);
+    model.compat = Some(ModelCompat::AnthropicMessages(compat));
+    model
 }
 
 fn expect_long_cache_retention_accepted(model: &Model, api_key: Option<&str>) {
-    let response = complete(
+    let response = block_on(complete(
         model,
-        &Context,
+        &Context::default(),
         Some(StreamOptions {
             api_key: api_key.map(str::to_owned),
             cache_retention: Some(CacheRetention::Long),
             max_tokens: Some(128),
             ..StreamOptions::default()
         }),
-    )
+    ))
     .expect("long cache retention request should complete");
 
     assert!(
@@ -120,7 +124,6 @@ fn expect_long_cache_retention_accepted(model: &Model, api_key: Option<&str>) {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: compat::get_providers/get_models still return placeholders until the generated provider catalog is wired"]
 fn covers_every_generated_anthropic_messages_model() {
     let mut actual = anthropic_messages_cases()
         .into_iter()
@@ -143,14 +146,13 @@ fn covers_every_generated_anthropic_messages_model() {
 }
 
 #[test]
-#[ignore = "live provider call skipped; compat catalog, Anthropic long-cache-retention compat override, thinkingEnabled option, and provider streaming remain PORT PLACEHOLDERs"]
+#[ignore = "live capability: requires provider credentials and network"]
 fn forced_long_cache_retention_probe_accepts_long_cache_retention() {
     for test_case in select_one_case_per_provider(anthropic_messages_cases())
         .into_iter()
         .filter(|test_case| test_case.api_key.is_some())
     {
-        let model = with_long_cache_retention(&test_case.model)
-            .expect("model compat override should be applied before the provider request");
+        let model = with_long_cache_retention(&test_case.model);
         expect_long_cache_retention_accepted(&model, test_case.api_key.as_deref());
     }
 }

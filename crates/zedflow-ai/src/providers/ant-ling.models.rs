@@ -10,16 +10,19 @@ pub fn ant_ling_models() -> Vec<Model> {
             provider: "ant-ling".into(),
             id: "Ling-2.6-1T".into(),
             api: "openai-completions".into(),
+            ..Model::default()
         }, // Ling 2.6 1T
         Model {
             provider: "ant-ling".into(),
             id: "Ling-2.6-flash".into(),
             api: "openai-completions".into(),
+            ..Model::default()
         }, // Ling 2.6 Flash
         Model {
             provider: "ant-ling".into(),
             id: "Ring-2.6-1T".into(),
             api: "openai-completions".into(),
+            ..Model::default()
         }, // Ring 2.6 1T
     ]
 }

@@ -1,8 +1,9 @@
 //! Port of Pi `packages/ai/test/images.test.ts`.
 //!
 //! The source Vitest suite is an OpenRouter live-provider E2E test gated by
-//! `OPENROUTER_API_KEY`. Keep these parity tests ignored until the Rust OpenRouter image
-//! transport placeholder is replaced and live credentials are supplied intentionally.
+//! OpenRouter credentials. These cases use the shared live-capability gate.
+
+mod common;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use zedflow_ai::api::openrouter_images::{
@@ -12,12 +13,13 @@ use zedflow_ai::api::openrouter_images::{
 use zedflow_ai::image_models::{KnownImagesProvider, get_image_model};
 use zedflow_ai::image_models_generated::{ImageModel, ImageModelContent};
 
-const BLOCKER: &str = "requires OPENROUTER_API_KEY and Rust OpenRouter image transport; current source is a request-capture blocker for the OpenAI Chat Completions client";
 const OPENROUTER_GEMINI_FLASH_IMAGE: &str = "google/gemini-2.5-flash-image";
 
 #[test]
-#[ignore = "live OpenRouter image parity test; see BLOCKER"]
 fn openrouter_images_generates_basic_image_live_parity() {
+    if !openrouter_images_live_ready() {
+        return;
+    }
     let catalog_model = source_catalog_model();
     let model = api_model(catalog_model);
     let context = ImagesContext {
@@ -45,8 +47,10 @@ fn openrouter_images_generates_basic_image_live_parity() {
 }
 
 #[test]
-#[ignore = "live OpenRouter image parity test; see BLOCKER"]
 fn openrouter_images_handles_text_plus_image_output_live_parity() {
+    if !openrouter_images_live_ready() {
+        return;
+    }
     let catalog_model = source_catalog_model();
     if !catalog_model.output.contains(&ImageModelContent::Text) {
         return;
@@ -80,8 +84,10 @@ fn openrouter_images_handles_text_plus_image_output_live_parity() {
 }
 
 #[test]
-#[ignore = "live OpenRouter image parity test; see BLOCKER"]
 fn openrouter_images_handles_image_input_live_parity() {
+    if !openrouter_images_live_ready() {
+        return;
+    }
     let catalog_model = source_catalog_model();
     if !catalog_model.input.contains(&ImageModelContent::Image) {
         return;
@@ -150,9 +156,17 @@ fn api_model(model: &ImageModel) -> ApiImagesModel {
     }
 }
 
+fn openrouter_images_live_ready() -> bool {
+    if let Some(message) = common::live_credentials::openrouter().skip_message() {
+        eprintln!("{message}");
+        return false;
+    }
+    true
+}
+
 fn run_live_image_generation(model: &ApiImagesModel, context: ImagesContext) -> AssistantImages {
-    let api_key = std::env::var("OPENROUTER_API_KEY")
-        .unwrap_or_else(|_| panic!("{BLOCKER}; source Vitest skips without OPENROUTER_API_KEY"));
+    let api_key = common::live_credentials::api_key("openrouter")
+        .unwrap_or_else(|| panic!("missing OpenRouter credential after capability check"));
     let options = ImagesOptions {
         api_key: Some(api_key),
         ..ImagesOptions::default()

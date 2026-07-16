@@ -1,11 +1,14 @@
+mod common;
+
+use common::http_capture::CapturedRequest;
 use serde_json::{Value, json};
+use zedflow_ai::api::anthropic_messages::{AnthropicOptions, build_request_payload};
 use zedflow_ai::types::{
     AnthropicMessagesCompat, AssistantContentBlock, AssistantMessage, AssistantMessageRole,
-    Context, Message, Model, ModelCompat, ModelCost, ModelInput, StopReason, ThinkingContent,
-    ThinkingContentType, Usage, UsageCost, UserMessage, UserMessageContent, UserMessageRole,
+    Context, Message, Model, ModelCompat, ModelCost, ModelInput, StopReason, StreamOptions,
+    ThinkingContent, ThinkingContentType, Usage, UsageCost, UserMessage, UserMessageContent,
+    UserMessageRole,
 };
-
-const BLOCKER: &str = "PORT PLACEHOLDER: anthropic-messages request-payload construction and compat::stream_simple on_payload capture are not ported yet; keep ignored until the real payload path exists.";
 
 fn make_model(allow_empty_signature: Option<bool>) -> Model {
     Model {
@@ -94,8 +97,19 @@ fn make_context(thinking_signature: &str) -> Context {
     }
 }
 
-fn capture_payload(_model: Model, _context: Context) -> Value {
-    panic!("{BLOCKER}");
+fn capture_payload(model: Model, context: Context) -> Value {
+    let options = AnthropicOptions {
+        stream: StreamOptions {
+            api_key: Some("fake-key".to_owned()),
+            ..StreamOptions::default()
+        },
+        ..AnthropicOptions::default()
+    };
+    let payload = build_request_payload(&model, &context, false, Some(&options));
+    CapturedRequest::new("POST", "http://127.0.0.1:9/anthropic/v1/messages")
+        .json_body(&payload)
+        .body_json()
+        .expect("captured Anthropic payload should be JSON")
 }
 
 fn assistant_content(payload: &Value) -> Option<Value> {
@@ -109,7 +123,6 @@ fn assistant_content(payload: &Value) -> Option<Value> {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: anthropic payload construction/on_payload capture is not ported"]
 fn converts_empty_signature_thinking_to_text_by_default() {
     let payload = capture_payload(make_model(None), make_context(""));
     let assistant = assistant_content(&payload);
@@ -121,7 +134,6 @@ fn converts_empty_signature_thinking_to_text_by_default() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: anthropic payload construction/on_payload capture is not ported"]
 fn preserves_empty_signature_thinking_when_allow_empty_signature_is_enabled() {
     let payload = capture_payload(make_model(Some(true)), make_context(" "));
     let assistant = assistant_content(&payload);

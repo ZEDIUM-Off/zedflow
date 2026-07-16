@@ -121,11 +121,19 @@ fn build_prefilled_messages() -> PrefilledMessages {
 }
 
 #[test]
-fn tool_call_id_normalization_live_provider_parity_is_blocked() {
-    assert_current_get_model_blocker("github-copilot", "gpt-5.2-codex");
-    assert_current_get_model_blocker("openrouter", "openai/gpt-5.2-codex");
-    assert_current_get_model_blocker("openai-codex", "gpt-5.5");
-    assert!(!BLOCKER.is_empty());
+fn tool_call_id_normalization_models_are_registered() {
+    for (provider, model) in [
+        ("github-copilot", "gpt-5.2-codex"),
+        ("openrouter", "openai/gpt-5.2-codex"),
+        ("openai-codex", "gpt-5.5"),
+    ] {
+        assert_eq!(
+            compat::get_model(provider, model)
+                .expect("builtin model should be registered")
+                .provider,
+            provider
+        );
+    }
     assert_eq!(echo_tool()["name"], "echo");
 }
 

@@ -24,7 +24,6 @@ static SESSION_RESOURCE_CLEANUPS: LazyLock<Mutex<Vec<Option<SessionResourceClean
 /// Registering the same [`Arc`] callback more than once keeps one registry entry, matching
 /// JavaScript `Set` semantics in the Pi implementation. Calling the returned function removes
 /// the callback from future cleanup runs.
-#[must_use]
 pub fn register_session_resource_cleanup(
     cleanup: SessionResourceCleanup,
 ) -> impl FnOnce() + Send + 'static {

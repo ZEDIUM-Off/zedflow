@@ -1,6 +1,8 @@
 //! Provider HTTP error body normalization ported from Pi's `packages/ai/src/utils/error-body.ts`.
 
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 use serde_json::Value;
 
@@ -102,8 +104,56 @@ impl ProviderHttpErrorParts {
 pub struct NormalizedProviderHttpError {
     /// Pi-compatible normalized error display fields.
     pub normalized: NormalizedProviderError,
-    /// HTTP response headers, when present.
+    /// HTTP response headers and provider metadata, when present.
     pub headers: HashMap<String, String>,
+}
+
+/// Canonical provider service failure used behind provider-specific transports.
+///
+/// The public shape contains only Zedflow-owned data while the private source
+/// retains the concrete HTTP/SDK error for Rust error-chain diagnostics.
+#[derive(Debug)]
+pub struct ProviderServiceError {
+    /// Normalized status, message, body, and response metadata.
+    pub http: NormalizedProviderHttpError,
+    source: Option<Box<dyn Error + Send + Sync>>,
+}
+
+impl ProviderServiceError {
+    /// Creates a service error from provider-owned HTTP parts.
+    #[must_use]
+    pub fn new(parts: ProviderHttpErrorParts) -> Self {
+        Self {
+            http: normalize_provider_http_error(parts),
+            source: None,
+        }
+    }
+
+    /// Creates a service error while retaining its concrete source.
+    #[must_use]
+    pub fn with_source(
+        parts: ProviderHttpErrorParts,
+        source: impl Error + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            http: normalize_provider_http_error(parts),
+            source: Some(Box::new(source)),
+        }
+    }
+}
+
+impl fmt::Display for ProviderServiceError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&format_provider_error(&self.http.normalized, None))
+    }
+}
+
+impl Error for ProviderServiceError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn Error + 'static))
+    }
 }
 
 /// Normalizes Rust HTTP client errors while preserving status/body/header data.

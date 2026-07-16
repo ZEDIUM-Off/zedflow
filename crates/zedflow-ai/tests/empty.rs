@@ -4,7 +4,7 @@
 //! Keep these parity tests ignored until the Rust provider catalog, transports, credential
 //! resolution, and OAuth token loading are implemented.
 
-use zedflow_ai::api::lazy::{AssistantMessage, StopReason};
+use zedflow_ai::types::{AssistantMessage, AssistantMessageRole, StopReason};
 
 const BLOCKER: &str = "requires live provider transports, compat::get_model catalog parity, compat::complete dispatch, credentials, and OAuth token loading";
 
@@ -246,7 +246,7 @@ fn provider_empty_assistant_message_in_conversation_live_parity() {
 }
 
 fn assert_empty_user_response(response: AssistantMessage) {
-    assert_eq!(response.role, "assistant");
+    assert_eq!(response.role, AssistantMessageRole::Assistant);
     if response.stop_reason == StopReason::Error {
         assert!(response.error_message.is_some());
     } else {
@@ -255,7 +255,7 @@ fn assert_empty_user_response(response: AssistantMessage) {
 }
 
 fn assert_empty_assistant_response(response: AssistantMessage) {
-    assert_eq!(response.role, "assistant");
+    assert_eq!(response.role, AssistantMessageRole::Assistant);
     if response.stop_reason == StopReason::Error {
         assert!(response.error_message.is_some());
     } else {

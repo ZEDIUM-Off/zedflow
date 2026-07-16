@@ -120,13 +120,8 @@ pub trait AuthContext: Send + Sync {
     fn file_exists<'a>(&'a self, path: &'a str) -> AuthFuture<'a, bool>;
 }
 
-/// PORT PLACEHOLDER:
-/// Original dependency: DOM `AbortSignal`.
-/// Reason: no Rust cancellation-token type has been selected for ported auth callbacks yet.
-/// Required behavior: allow login flows and individual prompts to observe cancellation.
-/// Replacement decision needed before production use.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct AuthAbortSignal;
+/// Cancellation signal used by auth callbacks.
+pub type AuthAbortSignal = crate::utils::abort_signals::AbortSignal;
 
 /// Prompt shown to the user during login.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -340,4 +335,13 @@ pub struct ProviderAuth {
     pub api_key: Option<std::sync::Arc<dyn ApiKeyAuth>>,
     /// OAuth auth handler.
     pub oauth: Option<std::sync::Arc<dyn OAuthAuth>>,
+}
+
+/// Provider descriptor used by auth resolution.
+#[derive(Clone)]
+pub struct AuthProvider {
+    /// Provider identifier.
+    pub id: String,
+    /// Provider auth handlers.
+    pub auth: ProviderAuth,
 }

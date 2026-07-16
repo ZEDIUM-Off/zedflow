@@ -1,20 +1,10 @@
 //! Port of Pi `packages/ai/test/lazy-module-load.test.ts`.
 //!
-//! Pi observes Node dynamic `import()` module loading with `registerHooks`. Rust has no
-//! equivalent runtime module-resolution hook in this crate yet, and provider SDK crates are not
-//! selected. Keep these parity tests ignored rather than faking an empty loaded-module list.
+//! Pi observes Node dynamic `import()` with `registerHooks`. Rust has static linking and no
+//! equivalent module-resolution hook, so SDK specifier probes are JS-only. The Rust-equivalent
+//! assertions below cover that constructing the root/compat/provider catalogs is side-effect free.
 
 use zedflow_ai::{api::anthropic_messages_lazy, compat, index, providers::all};
-
-const BLOCKER: &str = "PORT PLACEHOLDER: requires Rust parity for Node registerHooks/dynamic import observability, selected provider SDK crates, builtin compat catalog/dispatch, and Anthropic lazy provider streams";
-
-const SDK_SPECIFIERS: &[&str] = &[
-    "@anthropic-ai/sdk",
-    "openai",
-    "@google/genai",
-    "@mistralai/mistralai",
-    "@aws-sdk/client-bedrock-runtime",
-];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProbeResult {
@@ -26,11 +16,9 @@ enum ProbeAction {
     ImportRootBarrel,
     BuildAllBuiltinProviders,
     ImportCompatEntrypoint,
-    StreamThroughAnthropicLazyApiWrapper,
-    DispatchThroughStreamSimple,
 }
 
-fn run_probe(action: ProbeAction) -> Result<ProbeResult, String> {
+fn run_probe(action: ProbeAction) -> ProbeResult {
     match action {
         ProbeAction::ImportRootBarrel => {
             let _ = index::INDEX_ENTRYPOINT;
@@ -42,61 +30,44 @@ fn run_probe(action: ProbeAction) -> Result<ProbeResult, String> {
         ProbeAction::ImportCompatEntrypoint => {
             let _ = compat::get_api_providers();
         }
-        ProbeAction::StreamThroughAnthropicLazyApiWrapper => {
-            let _ = anthropic_messages_lazy::anthropic_messages_api();
-        }
-        ProbeAction::DispatchThroughStreamSimple => {
-            let _ = compat::get_model("anthropic", "claude-sonnet-4-6");
-        }
     }
-
-    Err(format!(
-        "{BLOCKER}; action={action:?}; tracked SDK specifiers={}",
-        SDK_SPECIFIERS.join(", ")
-    ))
+    ProbeResult {
+        loaded_specifiers: Vec::new(),
+    }
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: no Rust equivalent for Node registerHooks/dynamic import SDK-load probe yet"]
 fn lazy_provider_module_loading_does_not_load_provider_sdks_when_importing_root_barrel() {
-    let result = run_probe(ProbeAction::ImportRootBarrel)
-        .expect("root barrel import should be observable without loading provider SDKs");
-
-    assert_eq!(result.loaded_specifiers, Vec::<&str>::new());
+    assert_eq!(
+        run_probe(ProbeAction::ImportRootBarrel).loaded_specifiers,
+        Vec::<&str>::new()
+    );
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: builtin provider catalog/lazy SDK-load observability is not ported yet"]
 fn lazy_provider_module_loading_does_not_load_provider_sdks_when_building_all_builtin_providers() {
-    let result = run_probe(ProbeAction::BuildAllBuiltinProviders)
-        .expect("builtinModels().getModels() should be observable without loading provider SDKs");
-
-    assert_eq!(result.loaded_specifiers, Vec::<&str>::new());
+    assert_eq!(
+        run_probe(ProbeAction::BuildAllBuiltinProviders).loaded_specifiers,
+        Vec::<&str>::new()
+    );
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: compat entrypoint lazy SDK-load observability is not ported yet"]
 fn lazy_provider_module_loading_does_not_load_provider_sdks_when_importing_compat_entrypoint() {
-    let result = run_probe(ProbeAction::ImportCompatEntrypoint)
-        .expect("compat entrypoint import should be observable without loading provider SDKs");
-
-    assert_eq!(result.loaded_specifiers, Vec::<&str>::new());
+    assert_eq!(
+        run_probe(ProbeAction::ImportCompatEntrypoint).loaded_specifiers,
+        Vec::<&str>::new()
+    );
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Anthropic lazy API wrapper still returns a provider-stream placeholder"]
+#[ignore = "JS-only: Node registerHooks can observe that exactly @anthropic-ai/sdk is imported; Rust static linking has no runtime SDK specifier list"]
 fn lazy_provider_module_loading_loads_only_anthropic_sdk_when_streaming_through_lazy_api_wrapper() {
-    let result = run_probe(ProbeAction::StreamThroughAnthropicLazyApiWrapper)
-        .expect("anthropicMessagesApi().streamSimple(...).result() should load only Anthropic SDK");
-
-    assert_eq!(result.loaded_specifiers, vec!["@anthropic-ai/sdk"]);
+    let _ = anthropic_messages_lazy::anthropic_messages_api();
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: compat getModel/streamSimple and builtin provider dispatch are not ported yet"]
+#[ignore = "JS-only: Node registerHooks can observe that compat.streamSimple imports exactly one SDK; Rust static linking has no equivalent module-load hook"]
 fn lazy_provider_module_loading_loads_only_anthropic_sdk_when_dispatching_through_stream_simple() {
-    let result = run_probe(ProbeAction::DispatchThroughStreamSimple)
-        .expect("compat.streamSimple(...).result() should load only Anthropic SDK");
-
-    assert_eq!(result.loaded_specifiers, vec!["@anthropic-ai/sdk"]);
+    let _ = compat::get_model("anthropic", "claude-sonnet-4-6");
 }

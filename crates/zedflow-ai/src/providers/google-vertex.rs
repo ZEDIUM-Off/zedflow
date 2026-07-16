@@ -1,8 +1,9 @@
 //! Google Vertex AI provider factory ported from Pi's `packages/ai/src/providers/google-vertex.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use zedflow_core::error::Result;
 
 use crate::models::Provider;
+use crate::providers::static_catalog::static_provider;
 
 /// Google Vertex AI provider id used by Pi.
 pub const GOOGLE_VERTEX_PROVIDER_ID: &str = "google-vertex";
@@ -31,70 +32,25 @@ pub const GOOGLE_VERTEX_PROJECT_ENV_VARS: &[&str] = &["GOOGLE_CLOUD_PROJECT", "G
 /// Google Cloud location environment variable required by Pi for ADC auth.
 pub const GOOGLE_CLOUD_LOCATION_ENV: &str = "GOOGLE_CLOUD_LOCATION";
 
-/// Creates Pi's Google Vertex AI provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/types.ts ApiKeyAuth, references/pi/packages/ai/src/api/google-vertex.lazy.ts googleVertexApi, references/pi/packages/ai/src/providers/google-vertex.models.ts GOOGLE_VERTEX_MODELS`.
-/// Reason: no Rust replacement selected yet for provider auth fields, model catalog wiring, and lazy stream API binding.
-/// Required behavior: `return createProvider({ id: "google-vertex", name: "Google Vertex AI", auth: { apiKey: vertexAuth }, models: Object.values(GOOGLE_VERTEX_MODELS), api: googleVertexApi() })`, where `vertexAuth` first accepts a stored key or `GOOGLE_CLOUD_API_KEY`, then accepts Application Default Credentials only when credentials exist and `GOOGLE_CLOUD_PROJECT`/`GCLOUD_PROJECT` plus `GOOGLE_CLOUD_LOCATION` are set.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until Google Vertex provider auth, model catalog, and stream API
-/// wiring are available in Rust.
+/// Creates the google-vertex provider from the static Rust model catalog.
 pub fn google_vertex_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/types.ts ApiKeyAuth, references/pi/packages/ai/src/api/google-vertex.lazy.ts googleVertexApi, references/pi/packages/ai/src/providers/google-vertex.models.ts GOOGLE_VERTEX_MODELS",
-        "return createProvider({ id: \"google-vertex\", name: \"Google Vertex AI\", auth: { apiKey: vertexAuth }, models: Object.values(GOOGLE_VERTEX_MODELS), api: googleVertexApi() }); vertexAuth uses stored key/GOOGLE_CLOUD_API_KEY or ADC with GOOGLE_APPLICATION_CREDENTIALS/default ADC, GOOGLE_CLOUD_PROJECT/GCLOUD_PROJECT, and GOOGLE_CLOUD_LOCATION",
-    )
+    let provider = static_provider(
+        GOOGLE_VERTEX_PROVIDER_ID,
+        GOOGLE_VERTEX_PROVIDER_NAME,
+        crate::providers::google_vertex_models::google_vertex_models(),
+    );
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_google_vertex_provider_blocker() {
-        let err = google_vertex_provider().expect_err("provider creation is intentionally blocked");
-        match err {
-            Error::PortPlaceholder(placeholder) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("GOOGLE_VERTEX_MODELS")
-                );
-                assert!(placeholder.required_behavior().contains("googleVertexApi"));
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("GOOGLE_CLOUD_LOCATION")
-                );
-            }
-            _ => panic!("unexpected provider error: {err:?}"),
-        }
-    }
-
-    #[test]
-    fn preserves_google_vertex_auth_constants() {
-        assert_eq!(GOOGLE_VERTEX_PROVIDER_ID, "google-vertex");
-        assert_eq!(GOOGLE_VERTEX_PROVIDER_NAME, "Google Vertex AI");
-        assert_eq!(GOOGLE_VERTEX_API, "google-vertex");
-        assert_eq!(GOOGLE_VERTEX_API_KEY_AUTH_NAME, "Google Cloud credentials");
-        assert_eq!(GOOGLE_VERTEX_API_KEY_ENV_VARS, &["GOOGLE_CLOUD_API_KEY"]);
-        assert_eq!(
-            GOOGLE_VERTEX_ADC_PATH,
-            "~/.config/gcloud/application_default_credentials.json"
-        );
-        assert_eq!(
-            GOOGLE_APPLICATION_CREDENTIALS_ENV,
-            "GOOGLE_APPLICATION_CREDENTIALS"
-        );
-        assert_eq!(
-            GOOGLE_VERTEX_PROJECT_ENV_VARS,
-            &["GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT"]
-        );
-        assert_eq!(GOOGLE_CLOUD_LOCATION_ENV, "GOOGLE_CLOUD_LOCATION");
+    fn builds_provider_from_static_catalog() {
+        let provider = google_vertex_provider().expect("provider");
+        assert_eq!(provider.id, GOOGLE_VERTEX_PROVIDER_ID);
+        assert_eq!(provider.name, GOOGLE_VERTEX_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

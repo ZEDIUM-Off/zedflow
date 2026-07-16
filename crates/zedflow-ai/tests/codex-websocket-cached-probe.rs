@@ -1,3 +1,5 @@
+mod common;
+
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -5,12 +7,11 @@ use serde_json::{Value, json};
 use zedflow_ai::api::openai_codex_responses::{
     Context, Model, OpenAICodexResponsesOptions, ReasoningEffort, Tool, Transport,
     close_openai_codex_websocket_sessions, get_openai_codex_websocket_debug_stats,
-    reset_openai_codex_websocket_debug_stats, stream,
+    reset_openai_codex_websocket_debug_stats, stream_live,
 };
 
 const DEFAULT_TURNS: usize = 20;
 const DEFAULT_MAX_TOKENS: u32 = 64;
-const BLOCKER: &str = "live OpenAI Codex Responses websocket-cached probe skipped; coding-agent AuthStorage, compat::get_model(openai-codex/gpt-5.5), and the Codex WebSocket/SSE transport remain PORT PLACEHOLDERs, and P1.T2 forbids live provider calls";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ThinkingLevel {
@@ -221,10 +222,6 @@ fn percentile(values: &[u64], p: u64) -> u64 {
     sorted[index.saturating_sub(1).min(sorted.len() - 1)]
 }
 
-fn fake_account_token() -> String {
-    "eyJhbGciOiJub25lIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjdF90ZXN0In19.signature".to_owned()
-}
-
 fn codex_probe_model(max_tokens: u32) -> Model {
     Model {
         id: "gpt-5.5".to_owned(),
@@ -327,8 +324,11 @@ fn codex_websocket_cached_probe_timing_helpers_match_pi() {
 }
 
 #[test]
-#[ignore = "live provider/AuthStorage/websocket-cached transport parity is blocked; see BLOCKER"]
-fn codex_websocket_cached_probe_live_loop_is_represented_as_ignored() {
+fn codex_websocket_cached_probe_live_loop_is_capability_gated() {
+    if let Some(message) = common::live_credentials::openai_codex().skip_message() {
+        eprintln!("{message}");
+        return;
+    }
     let args = parse_args(&[
         "--turns",
         "1",
@@ -342,36 +342,42 @@ fn codex_websocket_cached_probe_live_loop_is_represented_as_ignored() {
         "pi-ai-codex-ws-cached-probe-rust",
     ])
     .expect("probe args should parse");
-    let mut context = Context {
-        system_prompt: Some(
-            "You are participating in a benchmark. For each benchmark turn, call deterministic_probe exactly once before the final answer. Keep final answers minimal."
-                .to_owned(),
-        ),
-        tools: vec![deterministic_probe_tool()],
-        input: Vec::new(),
+    let context = Context {
+        system_prompt: Some("You are a helpful assistant. Reply exactly as requested.".to_owned()),
+        tools: Vec::new(),
+        input: vec![json!({
+            "role": "user",
+            "content": [{ "type": "input_text", "text": "Reply exactly: websocket cached probe success" }]
+        })],
     };
-    context
-        .input
-        .push(json!({ "role": "user", "content": build_prompt(1) }));
 
     reset_openai_codex_websocket_debug_stats(Some(&args.session_id));
     assert!(get_openai_codex_websocket_debug_stats(&args.session_id).is_none());
 
-    let error = stream(
+    let api_key = common::live_credentials::api_key("openai-codex")
+        .expect("capability helper reported Codex credentials");
+    let stream = stream_live(
         &codex_probe_model(args.max_tokens),
         &context,
         Some(&OpenAICodexResponsesOptions {
-            api_key: Some(fake_account_token()),
+            api_key: Some(api_key),
             session_id: Some(args.session_id.clone()),
             transport: Some(args.transport),
             reasoning_effort: Some(args.reasoning.into()),
             max_tokens: Some(args.max_tokens),
+            timeout_ms: Some(15_000),
+            websocket_connect_timeout_ms: Some(15_000),
             ..OpenAICodexResponsesOptions::default()
         }),
     )
-    .expect_err(BLOCKER)
-    .to_string();
+    .expect("Codex websocket-cached stream should start");
 
-    assert!(error.contains("port placeholder for fetch/WebSocket/OpenAI Responses event stream"));
+    let message = futures::executor::block_on(stream.result());
+    assert_ne!(
+        message.stop_reason,
+        zedflow_ai::types::StopReason::Error,
+        "{:?}",
+        message.error_message
+    );
     close_openai_codex_websocket_sessions(Some(&args.session_id));
 }

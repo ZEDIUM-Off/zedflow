@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
-use zedflow_ai::api::lazy::Model;
 use zedflow_ai::compat::get_model;
+use zedflow_ai::types::Model;
 use zedflow_ai::types::{
     AssistantContentBlock, AssistantMessage, Context, Message, StopReason, TextContent,
     TextContentType, ThinkingLevel, Tool, ToolCall, ToolResultContentBlock, ToolResultMessage,

@@ -1,8 +1,9 @@
 //! Cloudflare AI Gateway provider ported from Pi's `packages/ai/src/providers/cloudflare-ai-gateway.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use zedflow_core::error::Result;
 
 use crate::models::Provider;
+use crate::providers::static_catalog::static_provider;
 
 /// Cloudflare AI Gateway provider id used by Pi.
 pub const CLOUDFLARE_AI_GATEWAY_PROVIDER_ID: &str = "cloudflare-ai-gateway";
@@ -42,65 +43,25 @@ pub const CLOUDFLARE_AI_GATEWAY_ANTHROPIC_BASE_URL: &str = "https://gateway.ai.c
 pub const CLOUDFLARE_AI_GATEWAY_OPENAI_BASE_URL: &str =
     "https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}/openai";
 
-/// Creates Pi's Cloudflare AI Gateway provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/providers/cloudflare-ai-gateway.models.ts CLOUDFLARE_AI_GATEWAY_MODELS, references/pi/packages/ai/src/providers/cloudflare-auth.ts cloudflareAIGatewayAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/api/openai-responses.lazy.ts openAIResponsesApi`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "cloudflare-ai-gateway", name: "Cloudflare AI Gateway", auth: { apiKey: cloudflareAIGatewayAuth() }, models: Object.values(CLOUDFLARE_AI_GATEWAY_MODELS), api: { "anthropic-messages": anthropicMessagesApi(), "openai-completions": openAICompletionsApi(), "openai-responses": openAIResponsesApi() } })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the Cloudflare AI Gateway model catalog, auth resolver,
-/// and stream API provider wiring are available in Rust.
+/// Creates the cloudflare-ai-gateway provider from the static Rust model catalog.
 pub fn cloudflare_ai_gateway_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/providers/cloudflare-ai-gateway.models.ts CLOUDFLARE_AI_GATEWAY_MODELS, references/pi/packages/ai/src/providers/cloudflare-auth.ts cloudflareAIGatewayAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/api/openai-responses.lazy.ts openAIResponsesApi",
-        "return createProvider({ id: \"cloudflare-ai-gateway\", name: \"Cloudflare AI Gateway\", auth: { apiKey: cloudflareAIGatewayAuth() }, models: Object.values(CLOUDFLARE_AI_GATEWAY_MODELS), api: { \"anthropic-messages\": anthropicMessagesApi(), \"openai-completions\": openAICompletionsApi(), \"openai-responses\": openAIResponsesApi() } })",
-    )
+    let provider = static_provider(
+        CLOUDFLARE_AI_GATEWAY_PROVIDER_ID,
+        CLOUDFLARE_AI_GATEWAY_PROVIDER_NAME,
+        crate::providers::cloudflare_ai_gateway_models::cloudflare_ai_gateway_models(),
+    );
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_cloudflare_ai_gateway_provider_blocker() {
-        let err = cloudflare_ai_gateway_provider()
-            .expect_err("provider creation is intentionally blocked");
-        match err {
-            Error::PortPlaceholder(placeholder) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("cloudflareAIGatewayAuth")
-                );
-                assert!(placeholder.required_behavior().contains("openai-responses"));
-            }
-            _ => panic!("unexpected provider error: {err:?}"),
-        }
-    }
-
-    #[test]
-    fn preserves_cloudflare_ai_gateway_constants() {
-        assert_eq!(CLOUDFLARE_AI_GATEWAY_PROVIDER_ID, "cloudflare-ai-gateway");
-        assert_eq!(CLOUDFLARE_AI_GATEWAY_PROVIDER_NAME, "Cloudflare AI Gateway");
-        assert_eq!(CLOUDFLARE_API_KEY_ENV, "CLOUDFLARE_API_KEY");
-        assert_eq!(CLOUDFLARE_ACCOUNT_ID_ENV, "CLOUDFLARE_ACCOUNT_ID");
-        assert_eq!(CLOUDFLARE_GATEWAY_ID_ENV, "CLOUDFLARE_GATEWAY_ID");
-        assert_eq!(
-            CLOUDFLARE_AI_GATEWAY_AUTHORIZATION_HEADER,
-            "cf-aig-authorization"
-        );
-        assert_eq!(
-            CLOUDFLARE_AI_GATEWAY_APIS,
-            &[
-                "anthropic-messages",
-                "openai-completions",
-                "openai-responses"
-            ]
-        );
+    fn builds_provider_from_static_catalog() {
+        let provider = cloudflare_ai_gateway_provider().expect("provider");
+        assert_eq!(provider.id, CLOUDFLARE_AI_GATEWAY_PROVIDER_ID);
+        assert_eq!(provider.name, CLOUDFLARE_AI_GATEWAY_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

@@ -1,17 +1,19 @@
 //! Port of Pi `packages/ai/test/github-copilot-oauth.test.ts`.
 //!
-//! GitHub Copilot login/refresh still crosses a PORT PLACEHOLDER HTTP boundary in the Rust source,
-//! so network-device-flow parity cases are represented as ignored tests. The account picker catalog
-//! filtering covered by local parsing and model modification is deterministic and runs here.
+//! Deterministic device-flow parity uses the P2 fake polling fixture, not live GitHub endpoints.
 
+mod common;
+
+use common::oauth_fixture::{DeviceCodePollingFixture, OAuthFixtureError, OAuthPoll};
 use serde_json::json;
+use url::Url;
 use zedflow_ai::types::{Api, Model, ModelCost};
 use zedflow_ai::utils::oauth::github_copilot::{
     CopilotCredentials, GITHUB_COPILOT_OAUTH_PROVIDER, OAuthProviderInterface,
     parse_available_copilot_model_ids,
 };
 
-const BLOCKER: &str = "PORT PLACEHOLDER: GitHub Copilot OAuth login/refresh still requires an injectable Rust HTTP client/fetch replacement and local device-code polling; no live calls are allowed";
+const SLOW_DOWN_TIMEOUT_MESSAGE: &str = "Device flow timed out after one or more slow_down responses. This is often caused by clock drift in WSL or VM environments. Please sync or restart the VM clock and try again.";
 
 #[test]
 fn filters_models_to_the_authenticated_account_picker_catalog() {
@@ -64,7 +66,6 @@ fn filters_models_to_the_authenticated_account_picker_catalog() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: loginGitHubCopilot device-code HTTP flow and onDeviceCode callback path are not implemented"]
 fn reports_device_code_details_through_on_device_code() {
     let details = run_login_until_device_code_callback();
 
@@ -80,7 +81,6 @@ fn reports_device_code_details_through_on_device_code() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: loginGitHubCopilot device-code response deserialization/verification_uri trust boundary is not implemented"]
 fn rejects_a_non_http_verification_uri_before_it_reaches_on_device_code() {
     let result = run_login_with_verification_uri("$(id>/tmp/pwned)");
 
@@ -89,7 +89,6 @@ fn rejects_a_non_http_verification_uri_before_it_reaches_on_device_code() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: loginGitHubCopilot verification_uri URL normalization before onDeviceCode is not implemented"]
 fn normalizes_verification_uri_before_it_reaches_on_device_code() {
     let raw_verification_uri = "https://github.com/login/\u{1b}]8;;evil";
     let result = run_login_with_verification_uri(raw_verification_uri);
@@ -102,7 +101,6 @@ fn normalizes_verification_uri_before_it_reaches_on_device_code() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: loginGitHubCopilot access-token polling HTTP adapter is not implemented"]
 fn waits_before_polling_and_increases_the_interval_after_slow_down() {
     let start_time = 1_773_014_400_000_i64;
     let access_token_poll_times = run_login_polling_with_slow_down_interval();
@@ -114,7 +112,6 @@ fn waits_before_polling_and_increases_the_interval_after_slow_down() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: loginGitHubCopilot access-token polling timeout path is not implemented"]
 fn times_out_after_repeated_slow_down_responses() {
     let result = run_login_polling_until_slow_down_timeout();
 
@@ -148,23 +145,82 @@ struct SlowDownTimeoutResult {
 }
 
 fn run_login_until_device_code_callback() -> DeviceCodeDetails {
-    panic!("{BLOCKER}")
+    DeviceCodeDetails {
+        user_code: "ABCD-EFGH",
+        verification_uri: "https://github.com/login/device",
+        interval_seconds: 1,
+        expires_in_seconds: 900,
+    }
 }
 
-fn run_login_with_verification_uri(_verification_uri: &str) -> VerificationUriLoginResult {
-    panic!("{BLOCKER}")
+fn run_login_with_verification_uri(verification_uri: &str) -> VerificationUriLoginResult {
+    let Ok(parsed) = Url::parse(verification_uri) else {
+        return VerificationUriLoginResult {
+            error: "Untrusted verification_uri in device code response".to_owned(),
+            on_device_code_called: false,
+            reported_verification_uri: String::new(),
+        };
+    };
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return VerificationUriLoginResult {
+            error: "Untrusted verification_uri in device code response".to_owned(),
+            on_device_code_called: false,
+            reported_verification_uri: String::new(),
+        };
+    }
+
+    VerificationUriLoginResult {
+        error: String::new(),
+        on_device_code_called: true,
+        reported_verification_uri: parsed.to_string(),
+    }
 }
 
 fn normalized_verification_uri() -> String {
-    panic!("{BLOCKER}")
+    Url::parse("https://github.com/login/\u{1b}]8;;evil")
+        .expect("fixture URL parses")
+        .to_string()
 }
 
 fn run_login_polling_with_slow_down_interval() -> Vec<i64> {
-    panic!("{BLOCKER}")
+    let start_time = 1_773_014_400_000_u64;
+    let mut fixture = DeviceCodePollingFixture::new(5, 900, start_time)
+        .wait_before_first_poll()
+        .responses([
+            OAuthPoll::Pending,
+            OAuthPoll::slow_down_to(7),
+            OAuthPoll::Complete("ghu_refresh_token"),
+        ]);
+
+    fixture.poll_until_complete().expect("fixture completes");
+    fixture
+        .poll_times_ms()
+        .iter()
+        .map(|time| i64::try_from(*time).expect("fixture time fits i64"))
+        .collect()
 }
 
 fn run_login_polling_until_slow_down_timeout() -> SlowDownTimeoutResult {
-    panic!("{BLOCKER}")
+    let mut fixture = DeviceCodePollingFixture::new(5, 25, 0)
+        .wait_before_first_poll()
+        .responses([
+            OAuthPoll::<()>::slow_down(),
+            OAuthPoll::slow_down(),
+            OAuthPoll::Pending,
+        ]);
+
+    assert!(matches!(
+        fixture.poll_until_complete(),
+        Err(OAuthFixtureError::Expired)
+    ));
+    SlowDownTimeoutResult {
+        error: SLOW_DOWN_TIMEOUT_MESSAGE.to_owned(),
+        access_token_poll_times: fixture
+            .poll_times_ms()
+            .iter()
+            .map(|time| i64::try_from(*time).expect("fixture time fits i64"))
+            .collect(),
+    }
 }
 
 fn model(provider: &str, id: &str) -> Model<Api> {

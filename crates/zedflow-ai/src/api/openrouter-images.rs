@@ -1,12 +1,22 @@
 //! OpenRouter image-generation API ported from Pi.
 
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::BTreeMap;
+use std::fmt;
+use std::sync::Arc;
 
+use futures::future::BoxFuture;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::utils::error_body::{
+    ProviderHttpErrorParts, format_provider_error, normalize_provider_http_error,
+};
 
 /// HTTP headers supplied by a model or request options; `None` mirrors Pi's `null` value.
-pub type ProviderHeaders = HashMap<String, Option<String>>;
+pub type ProviderHeaders = BTreeMap<String, Option<String>>;
 
 /// Output modalities requested from OpenRouter image models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -78,19 +88,69 @@ pub struct ImagesContext {
     pub input: Vec<ImagesContent>,
 }
 
+/// Callback that can inspect or replace the OpenRouter payload before send.
+pub type ImagesPayloadHook = Arc<
+    dyn Fn(
+            Value,
+            &ImagesModel,
+        ) -> BoxFuture<'static, Result<Option<Value>, crate::types::ProviderHookError>>
+        + Send
+        + Sync,
+>;
+
+/// Callback invoked after a successful HTTP response is received.
+pub type ImagesResponseHook = Arc<
+    dyn Fn(
+            OpenRouterImagesResponseMeta,
+            &ImagesModel,
+        ) -> BoxFuture<'static, Result<(), crate::types::ProviderHookError>>
+        + Send
+        + Sync,
+>;
+
 /// Options accepted by [`generate_images`].
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default)]
 pub struct ImagesOptions {
     /// API key for OpenRouter.
     pub api_key: Option<String>,
     /// Optional request headers overriding model headers.
     pub headers: ProviderHeaders,
+    /// Optional callback for inspecting or replacing provider payloads before sending.
+    pub on_payload: Option<ImagesPayloadHook>,
+    /// Optional callback invoked after an HTTP response is received.
+    pub on_response: Option<ImagesResponseHook>,
     /// HTTP timeout in milliseconds for clients that support it.
     pub timeout_ms: Option<u64>,
     /// Maximum client-side retries for clients that support it.
     pub max_retries: Option<u32>,
-    /// Whether the caller's abort signal is already aborted.
-    pub aborted: bool,
+    /// Request cancellation signal.
+    pub signal: Option<crate::types::AbortSignal>,
+}
+
+impl fmt::Debug for ImagesOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ImagesOptions")
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("headers", &redacted_provider_headers(&self.headers))
+            .field("on_payload", &self.on_payload.as_ref().map(|_| "<hook>"))
+            .field("on_response", &self.on_response.as_ref().map(|_| "<hook>"))
+            .field("timeout_ms", &self.timeout_ms)
+            .field("max_retries", &self.max_retries)
+            .field("signal", &self.signal)
+            .finish()
+    }
+}
+
+impl PartialEq for ImagesOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.api_key == other.api_key
+            && self.headers == other.headers
+            && self.on_payload.is_some() == other.on_payload.is_some()
+            && self.on_response.is_some() == other.on_response.is_some()
+            && self.timeout_ms == other.timeout_ms
+            && self.max_retries == other.max_retries
+            && self.signal == other.signal
+    }
 }
 
 /// Image API stop reason.
@@ -211,6 +271,8 @@ pub struct ChatCompletionImageUrl {
 pub struct OpenRouterImagesRequest {
     /// Provider base URL used by the OpenAI-compatible endpoint.
     pub base_url: String,
+    /// API key used to construct the OpenAI-compatible client.
+    pub api_key: Option<String>,
     /// Headers sent with the request, after default and explicit header merge.
     pub headers: ProviderHeaders,
     /// JSON body sent to `/chat/completions`.
@@ -219,6 +281,15 @@ pub struct OpenRouterImagesRequest {
     pub timeout_ms: Option<u64>,
     /// Maximum retry attempts; Pi defaults this to zero.
     pub max_retries: u32,
+}
+
+/// HTTP response metadata exposed to `on_response`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OpenRouterImagesResponseMeta {
+    /// HTTP status code.
+    pub status: u16,
+    /// HTTP response headers.
+    pub headers: BTreeMap<String, String>,
 }
 
 /// Builds the HTTP request envelope used by the OpenRouter image fallback.
@@ -234,6 +305,7 @@ pub fn build_request(
     }
     OpenRouterImagesRequest {
         base_url: model.base_url.clone(),
+        api_key: options.and_then(|options| options.api_key.clone()),
         headers,
         body: build_params(model, context),
         timeout_ms: options.and_then(|options| options.timeout_ms),
@@ -244,8 +316,7 @@ pub fn build_request(
 /// Generates images using OpenRouter's image API.
 ///
 /// This mirrors Pi's non-throwing image function contract: request failures are encoded in the
-/// returned [`AssistantImages`] value. The request is prepared with raw body/header parity because
-/// Pi exposes `onPayload`, `onResponse`, and provider error bodies.
+/// returned [`AssistantImages`] value.
 pub async fn generate_images(
     model: &ImagesModel,
     context: &ImagesContext,
@@ -263,6 +334,11 @@ pub async fn generate_images(
         timestamp: now_millis(),
     };
 
+    if is_aborted(options) {
+        fail_output(&mut output, options, "Request aborted".to_string());
+        return output;
+    }
+
     if options
         .and_then(|options| options.api_key.as_deref())
         .is_none()
@@ -275,15 +351,10 @@ pub async fn generate_images(
         return output;
     }
 
-    let request = build_request(model, context, options);
-    fail_output(
-        &mut output,
-        options,
-        format!(
-            "OpenRouter image request prepared for {} with maxRetries={}; provider response body required to produce images",
-            request.base_url, request.max_retries
-        ),
-    );
+    match execute_request(model, context, options).await {
+        Ok(response) => apply_response(&mut output, response, model),
+        Err(error) => fail_output(&mut output, options, error),
+    }
     output
 }
 
@@ -292,12 +363,197 @@ fn fail_output(
     options: Option<&ImagesOptions>,
     error_message: String,
 ) {
-    output.stop_reason = if options.is_some_and(|options| options.aborted) {
+    output.stop_reason = if is_aborted(options) {
         ImagesStopReason::Aborted
     } else {
         ImagesStopReason::Error
     };
     output.error_message = Some(error_message);
+}
+
+async fn execute_request(
+    model: &ImagesModel,
+    context: &ImagesContext,
+    options: Option<&ImagesOptions>,
+) -> Result<OpenRouterImageGenerationResponse, String> {
+    let request = build_request(model, context, options);
+    let url = format!(
+        "{}/chat/completions",
+        request.base_url.trim_end_matches('/')
+    );
+    let body = serde_json::to_value(&request.body).map_err(|error| {
+        format!("failed to serialize OpenRouter image request with headers redacted: {error}")
+    })?;
+    let body = apply_payload_hook(body, model, options).await?;
+
+    let client = build_client(request.timeout_ms)?;
+    let headers = build_header_map(&request.headers)?;
+    let attempts = request.max_retries.saturating_add(1);
+    let mut last_error = None;
+
+    for _ in 0..attempts {
+        if is_aborted(options) {
+            return Err("Request aborted".to_string());
+        }
+        match send_once(&client, &url, &request, headers.clone(), &body) {
+            Ok((meta, response)) => {
+                if is_aborted(options) {
+                    return Err("Request aborted".to_string());
+                }
+                if let Some(hook) = options.and_then(|options| options.on_response.as_ref()) {
+                    hook(meta, model).await.map_err(|error| error.to_string())?;
+                }
+                return Ok(response);
+            }
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| "OpenRouter image request failed".to_string()))
+}
+
+async fn apply_payload_hook(
+    body: Value,
+    model: &ImagesModel,
+    options: Option<&ImagesOptions>,
+) -> Result<Value, String> {
+    if let Some(hook) = options.and_then(|options| options.on_payload.as_ref())
+        && let Some(next_body) = hook(body.clone(), model)
+            .await
+            .map_err(|error| error.to_string())?
+    {
+        return Ok(next_body);
+    }
+    Ok(body)
+}
+
+fn is_aborted(options: Option<&ImagesOptions>) -> bool {
+    options
+        .and_then(|options| options.signal.as_ref())
+        .is_some_and(crate::types::AbortSignal::aborted)
+}
+
+fn build_client(timeout_ms: Option<u64>) -> Result<reqwest::blocking::Client, String> {
+    let mut builder = reqwest::blocking::Client::builder();
+    if let Some(timeout_ms) = timeout_ms {
+        builder = builder.timeout(Duration::from_millis(timeout_ms));
+    }
+    builder.build().map_err(|error| {
+        format!("failed to build OpenRouter HTTP client with headers redacted: {error}")
+    })
+}
+
+fn send_once(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    request: &OpenRouterImagesRequest,
+    headers: HeaderMap,
+    body: &Value,
+) -> Result<
+    (
+        OpenRouterImagesResponseMeta,
+        OpenRouterImageGenerationResponse,
+    ),
+    String,
+> {
+    let api_key = request.api_key.as_deref().unwrap_or_default();
+    let response = client
+        .post(url)
+        .bearer_auth(api_key)
+        .headers(headers)
+        .json(body)
+        .send()
+        .map_err(|error| {
+            format!("OpenRouter image request failed with headers redacted: {error}")
+        })?;
+    let status = response.status();
+    let headers = response_headers(response.headers());
+    let body_text = response.text().map_err(|error| {
+        format!("OpenRouter image response read failed with headers redacted: {error}")
+    })?;
+
+    if !status.is_success() {
+        let normalized = normalize_provider_http_error(
+            ProviderHttpErrorParts::new(format!("{} status code (no body)", status.as_u16()))
+                .with_status(status.as_u16())
+                .with_body(body_text)
+                .with_headers(
+                    headers
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                ),
+        );
+        return Err(format_provider_error(&normalized.normalized, None));
+    }
+
+    let parsed = serde_json::from_str(&body_text).map_err(|error| {
+        format!("OpenRouter image response parse failed with headers redacted: {error}")
+    })?;
+    Ok((
+        OpenRouterImagesResponseMeta {
+            status: status.as_u16(),
+            headers,
+        },
+        parsed,
+    ))
+}
+
+fn build_header_map(headers: &ProviderHeaders) -> Result<HeaderMap, String> {
+    let mut result = HeaderMap::new();
+    for (name, value) in headers {
+        let Some(value) = value else {
+            continue;
+        };
+        let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|_| {
+            format!("invalid OpenRouter request header name with value redacted: {name}")
+        })?;
+        let header_value = HeaderValue::from_str(value).map_err(|_| {
+            format!("invalid OpenRouter request header value for {name} (redacted)")
+        })?;
+        result.insert(header_name, header_value);
+    }
+    Ok(result)
+}
+
+fn response_headers(headers: &HeaderMap) -> BTreeMap<String, String> {
+    headers
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.as_str().to_string(), value.to_string()))
+        })
+        .collect()
+}
+
+fn redacted_provider_headers(headers: &ProviderHeaders) -> ProviderHeaders {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            let value = if is_secret_header(name) {
+                value.as_ref().map(|_| "<redacted>".to_string())
+            } else {
+                value.clone()
+            };
+            (name.clone(), value)
+        })
+        .collect()
+}
+
+fn is_secret_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "authorization"
+            | "proxy-authorization"
+            | "cookie"
+            | "set-cookie"
+            | "x-api-key"
+            | "api-key"
+            | "openai-api-key"
+            | "x-stainless-api-key"
+    )
 }
 
 fn build_params(model: &ImagesModel, context: &ImagesContext) -> OpenRouterImagesCreateParams {
@@ -496,6 +752,13 @@ fn now_millis() -> u64 {
 mod tests {
     use super::*;
 
+    fn aborted_signal() -> crate::types::AbortSignal {
+        let controller = crate::utils::abort_signals::AbortController::new();
+        let signal = controller.signal();
+        controller.abort();
+        signal
+    }
+
     fn model() -> ImagesModel {
         ImagesModel {
             id: "google/gemini-2.5-flash-image-preview".to_string(),
@@ -633,7 +896,7 @@ mod tests {
         let mut output = assistant_output_for_test(&model);
         let options = ImagesOptions {
             api_key: Some("test".to_string()),
-            aborted: true,
+            signal: Some(aborted_signal()),
             ..ImagesOptions::default()
         };
 
@@ -667,8 +930,55 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "parity blocker: Rust options only record aborted state and cannot pass through an AbortSignal until the OpenAI transport placeholder is replaced"]
-    fn generate_images_passes_through_abort_signal_and_returns_aborted_result_parity_blocked() {
+    fn openrouter_images_payload_hook_can_replace_body() {
+        let model = openrouter_images_test_model(
+            "black-forest-labs/flux.2-pro",
+            vec![ImagesOutputModality::Image],
+        );
+        let options = ImagesOptions {
+            api_key: Some("test".to_string()),
+            on_payload: Some(Arc::new(|mut payload, _model| {
+                payload["model"] = serde_json::json!("patched-model");
+                Box::pin(async move { Ok(Some(payload)) })
+            })),
+
+            ..ImagesOptions::default()
+        };
+        let body = serde_json::to_value(build_params(&model, &ImagesContext::default()))
+            .expect("params should serialize");
+
+        let body = futures::executor::block_on(apply_payload_hook(body, &model, Some(&options)))
+            .expect("hook succeeds");
+
+        assert_eq!(body["model"], serde_json::json!("patched-model"));
+    }
+
+    #[test]
+    fn openrouter_images_debug_and_header_errors_redact_secrets() {
+        let mut headers = ProviderHeaders::new();
+        headers.insert(
+            "Authorization".to_string(),
+            Some("Bearer secret".to_string()),
+        );
+        headers.insert("X-Test".to_string(), Some("bad\nvalue".to_string()));
+        let options = ImagesOptions {
+            api_key: Some("secret-key".to_string()),
+            headers: headers.clone(),
+            ..ImagesOptions::default()
+        };
+
+        let debug = format!("{options:?}");
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("secret-key"));
+        assert!(!debug.contains("Bearer secret"));
+
+        let error = build_header_map(&headers).expect_err("invalid header value should fail");
+        assert!(error.contains("redacted"));
+        assert!(!error.contains("bad\nvalue"));
+    }
+
+    #[test]
+    fn generate_images_passes_through_abort_signal_and_returns_aborted_result() {
         let model = openrouter_images_test_model(
             "black-forest-labs/flux.2-pro",
             vec![ImagesOutputModality::Image],
@@ -680,7 +990,7 @@ mod tests {
         };
         let options = ImagesOptions {
             api_key: Some("test".to_string()),
-            aborted: true,
+            signal: Some(aborted_signal()),
             ..ImagesOptions::default()
         };
 

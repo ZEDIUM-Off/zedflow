@@ -1,8 +1,11 @@
 //! Mistral provider factory ported from Pi's `packages/ai/src/providers/mistral.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use std::sync::Arc;
 
-use crate::models::Provider;
+use zedflow_core::error::Result;
+
+use crate::models::{Provider, ProviderApi};
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
 
 /// Mistral provider id used by Pi.
 pub const MISTRAL_PROVIDER_ID: &str = "mistral";
@@ -22,54 +25,77 @@ pub const MISTRAL_API_KEY_ENV_VARS: &[&str] = &["MISTRAL_API_KEY"];
 /// Mistral stream API id used by Pi models.
 pub const MISTRAL_API: &str = "mistral-conversations";
 
-/// Creates Pi's Mistral provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/mistral-conversations.lazy.ts mistralConversationsApi, references/pi/packages/ai/src/providers/mistral.models.ts MISTRAL_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "mistral", name: "Mistral", baseUrl: "https://api.mistral.ai", auth: { apiKey: envApiKeyAuth("Mistral API key", ["MISTRAL_API_KEY"]) }, models: Object.values(MISTRAL_MODELS), api: mistralConversationsApi() })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract
-/// and Mistral model catalog are available in Rust.
-#[must_use]
+/// Creates the mistral provider from the static Rust model catalog.
 pub fn mistral_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/mistral-conversations.lazy.ts mistralConversationsApi, references/pi/packages/ai/src/providers/mistral.models.ts MISTRAL_MODELS",
-        "return createProvider({ id: \"mistral\", name: \"Mistral\", baseUrl: \"https://api.mistral.ai\", auth: { apiKey: envApiKeyAuth(\"Mistral API key\", [\"MISTRAL_API_KEY\"]) }, models: Object.values(MISTRAL_MODELS), api: mistralConversationsApi() })",
-    )
+    let mut provider = static_provider(
+        MISTRAL_PROVIDER_ID,
+        MISTRAL_PROVIDER_NAME,
+        models_from_catalog(crate::providers::mistral_models::MISTRAL_MODELS),
+    );
+    provider.auth.api_key = Some(Arc::new(MistralApiKeyAuth));
+    provider.api =
+        ProviderApi::Single(crate::api::mistral_conversations_lazy::mistral_conversations_api());
+    Ok(provider)
+}
+
+#[derive(Debug)]
+struct MistralApiKeyAuth;
+
+impl crate::auth::types::ApiKeyAuth for MistralApiKeyAuth {
+    fn name(&self) -> &str {
+        MISTRAL_API_KEY_AUTH_NAME
+    }
+
+    fn resolve<'a>(
+        &'a self,
+        input: crate::auth::types::ApiKeyResolveInput<'a>,
+    ) -> crate::auth::types::AuthFuture<
+        'a,
+        crate::auth::types::AuthResult<Option<crate::auth::types::ResolvedAuth>>,
+    > {
+        Box::pin(async move {
+            if let Some(key) = input
+                .credential
+                .and_then(|credential| credential.key.as_deref())
+                .filter(|key| !key.is_empty())
+            {
+                return Ok(Some(crate::auth::types::ResolvedAuth {
+                    auth: crate::auth::types::ModelAuth {
+                        api_key: Some(key.to_owned()),
+                        ..crate::auth::types::ModelAuth::default()
+                    },
+                    env: input
+                        .credential
+                        .and_then(|credential| credential.env.clone()),
+                    source: Some("stored credential".to_owned()),
+                }));
+            }
+            for name in MISTRAL_API_KEY_ENV_VARS {
+                if let Some(key) = input.ctx.env(name).await.filter(|key| !key.is_empty()) {
+                    return Ok(Some(crate::auth::types::ResolvedAuth {
+                        auth: crate::auth::types::ModelAuth {
+                            api_key: Some(key),
+                            ..crate::auth::types::ModelAuth::default()
+                        },
+                        env: None,
+                        source: Some((*name).to_owned()),
+                    }));
+                }
+            }
+            Ok(None)
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_mistral_provider_blocker() {
-        match mistral_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(placeholder.original_dependency().contains("MISTRAL_MODELS"));
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("mistralConversationsApi")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_mistral_provider_constants() {
-        assert_eq!(MISTRAL_PROVIDER_ID, "mistral");
-        assert_eq!(MISTRAL_PROVIDER_NAME, "Mistral");
-        assert_eq!(MISTRAL_BASE_URL, "https://api.mistral.ai");
-        assert_eq!(MISTRAL_API_KEY_AUTH_NAME, "Mistral API key");
-        assert_eq!(MISTRAL_API_KEY_ENV_VARS, &["MISTRAL_API_KEY"]);
-        assert_eq!(MISTRAL_API, "mistral-conversations");
+    fn builds_provider_from_static_catalog() {
+        let provider = mistral_provider().expect("provider");
+        assert_eq!(provider.id, MISTRAL_PROVIDER_ID);
+        assert_eq!(provider.name, MISTRAL_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

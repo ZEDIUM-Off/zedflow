@@ -4,7 +4,7 @@
 //! Azure OpenAI, xAI, Groq, Cerebras, Cloudflare, Hugging Face, Together, NVIDIA, OpenRouter,
 //! Vercel AI Gateway, zAI, Mistral, MiniMax, Kimi, Xiaomi, Ant Ling, Bedrock, OAuth-backed
 //! providers, OpenAI Codex transports, and a local Ollama server. P1.T2 forbids live provider
-//! calls, and the Rust compat catalog/provider dispatch is still a documented `PORT PLACEHOLDER`,
+//! calls, and the Rust compat catalog/provider dispatch is still a documented parity blocker,
 //! so the parity suite is represented as ignored until those blockers are removed.
 
 use zedflow_ai::compat::get_model;
@@ -291,6 +291,10 @@ struct Usage {
     output: u64,
 }
 
+#[allow(
+    dead_code,
+    reason = "constructed only by capability-gated provider responses"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ContentBlock {
     Text(String),
@@ -376,7 +380,7 @@ fn assert_tool_call(case: ProviderCase) {
 
 fn assert_streaming(case: ProviderCase) {
     let response = run_live_stream_case(case, Scenario::Streaming);
-    assert!(text(&response).len() > 0);
+    assert!(!text(&response).is_empty());
     assert!(
         response
             .content
@@ -447,16 +451,12 @@ fn assert_scenario(case: ProviderCase, scenario: Scenario) {
 }
 
 #[test]
-fn stream_e2e_source_is_blocked_by_compat_catalog_placeholder() {
-    let error = get_model("google", "gemini-2.5-flash")
-        .expect_err("compat::get_model should still be a documented port placeholder")
-        .to_string();
+fn stream_e2e_source_uses_registered_compat_catalog() {
+    let model = get_model("google", "gemini-2.5-flash")
+        .expect("compat::get_model should read the registered builtin catalog");
 
-    assert!(error.contains("port placeholder"), "{error}");
-    assert!(
-        error.contains("providers/all.ts getBuiltinModel"),
-        "{error}"
-    );
+    assert_eq!(model.provider, "google");
+    assert_eq!(model.api, "google-generative-ai");
 }
 
 #[test]

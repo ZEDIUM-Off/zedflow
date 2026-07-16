@@ -1,33 +1,24 @@
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::thread;
 
-use zedflow_ai::api::github_copilot_headers::{
-    CopilotDynamicHeadersParams, Message as CopilotMessage, UserMessageContent,
-    build_copilot_dynamic_headers,
-};
+use futures::executor::block_on;
+use serde_json::{Value, json};
+use zedflow_ai::providers::github_copilot::github_copilot_provider;
 use zedflow_ai::providers::github_copilot_models::{GITHUB_COPILOT_MODELS, GithubCopilotModel};
+use zedflow_ai::types::{
+    Context, Message, Model, StopReason, StreamOptions, UserMessage, UserMessageContent,
+    UserMessageRole,
+};
 
-const BLOCKER: &str = "PORT PLACEHOLDER: anthropic_messages::stream is not ported far enough to create an Anthropic client or capture Messages request payloads without live provider I/O.";
 const EXTENDED_THINKING_LEVELS: &[&str] = &["off", "minimal", "low", "medium", "high", "xhigh"];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AnthropicConstructorOptions {
-    api_key: Option<String>,
-    auth_token: Option<String>,
-    default_headers: HashMap<String, String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AnthropicCreateParams {
-    model: String,
-    stream: bool,
-    max_tokens: u32,
-    messages: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CapturedAnthropicRequest {
-    constructor_opts: AnthropicConstructorOptions,
-    create_params: AnthropicCreateParams,
+#[derive(Debug)]
+struct CapturedRequest {
+    path: String,
+    headers: HashMap<String, String>,
+    body: Value,
 }
 
 fn get_github_copilot_model(id: &str) -> &'static GithubCopilotModel {
@@ -66,13 +57,97 @@ fn supported_thinking_levels(model: &GithubCopilotModel) -> Vec<&'static str> {
         .collect()
 }
 
-fn capture_copilot_anthropic_request(
-    _model: &GithubCopilotModel,
-    _messages: &[CopilotMessage],
-    _api_key: &str,
-    _interleaved_thinking: bool,
-) -> CapturedAnthropicRequest {
-    panic!("{BLOCKER}");
+fn context() -> Context {
+    Context {
+        system_prompt: Some("You are a helpful assistant.".to_owned()),
+        messages: vec![Message::User(UserMessage {
+            role: UserMessageRole::User,
+            content: UserMessageContent::Text("Hello".to_owned()),
+            timestamp: 0,
+        })],
+        tools: None,
+    }
+}
+
+fn runtime_model(id: &str) -> Model {
+    github_copilot_provider()
+        .expect("Copilot provider")
+        .get_models()
+        .into_iter()
+        .find(|model| model.id == id)
+        .expect("Copilot runtime model")
+}
+
+fn capture_registered_request(interleaved_thinking: bool) -> CapturedRequest {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind capture server");
+    let address = listener.local_addr().expect("capture address");
+    let server = thread::spawn(move || {
+        let (mut socket, _) = listener.accept().expect("accept request");
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let read = socket.read(&mut buffer).expect("read request");
+            request.extend_from_slice(&buffer[..read]);
+            let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            if request.len() >= header_end + 4 + content_length {
+                break;
+            }
+        }
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+            .expect("write response");
+        request
+    });
+
+    let provider = github_copilot_provider().expect("Copilot provider");
+    let mut model = runtime_model("claude-sonnet-4.6");
+    model.base_url = format!("http://{address}");
+    assert_eq!(model.api, "anthropic-messages");
+    let mut options = StreamOptions {
+        api_key: Some("tid_copilot_session_test_token".to_owned()),
+        max_tokens: Some(u32::try_from(model.max_tokens).expect("max tokens fit")),
+        ..StreamOptions::default()
+    };
+    options.extra.insert(
+        "interleavedThinking".to_owned(),
+        Value::Bool(interleaved_thinking),
+    );
+    let stream = provider.stream(&model, &context(), Some(&options));
+    assert_eq!(block_on(stream.result()).stop_reason, StopReason::Stop);
+
+    let raw = String::from_utf8(server.join().expect("capture server")).expect("request UTF-8");
+    let (head, body) = raw.split_once("\r\n\r\n").expect("HTTP request");
+    let mut lines = head.lines();
+    let request_line = lines.next().expect("request line");
+    let path = request_line
+        .split_whitespace()
+        .nth(1)
+        .expect("request path")
+        .to_owned();
+    let headers = lines
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            Some((name.to_ascii_lowercase(), value.trim().to_owned()))
+        })
+        .collect();
+    CapturedRequest {
+        path,
+        headers,
+        body: serde_json::from_str(body).expect("Anthropic JSON body"),
+    }
 }
 
 #[test]
@@ -89,78 +164,57 @@ fn applies_copilot_specific_adaptive_thinking_effort_overrides() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Anthropic Messages stream/client construction is not ported, so Bearer auth and request payload capture cannot run deterministically yet"]
-fn uses_bearer_auth_copilot_headers_and_valid_anthropic_messages_payload() {
-    let model = get_github_copilot_model("claude-sonnet-4.6");
-    assert_eq!(model.api, "anthropic-messages");
-
-    let messages = vec![CopilotMessage::User {
-        content: UserMessageContent::Text("Hello".to_owned()),
-    }];
-    let dynamic_headers = build_copilot_dynamic_headers(CopilotDynamicHeadersParams {
-        messages: &messages,
-        has_images: false,
-    });
+fn registered_dispatch_uses_bearer_headers_and_anthropic_payload() {
+    let request = capture_registered_request(true);
+    assert_eq!(request.path, "/v1/messages");
     assert_eq!(
-        dynamic_headers.get("X-Initiator").map(String::as_str),
-        Some("user")
+        request.headers.get("authorization").map(String::as_str),
+        Some("Bearer tid_copilot_session_test_token")
     );
-    assert_eq!(
-        dynamic_headers.get("Openai-Intent").map(String::as_str),
-        Some("conversation-edits")
-    );
-
-    let captured =
-        capture_copilot_anthropic_request(model, &messages, "tid_copilot_session_test_token", true);
-
-    assert_eq!(captured.constructor_opts.api_key, None);
-    assert_eq!(
-        captured.constructor_opts.auth_token.as_deref(),
-        Some("tid_copilot_session_test_token")
-    );
-    let headers = &captured.constructor_opts.default_headers;
-
+    assert!(!request.headers.contains_key("x-api-key"));
     assert!(
-        headers
-            .get("User-Agent")
+        request
+            .headers
+            .get("user-agent")
             .is_some_and(|value| value.contains("GitHubCopilotChat"))
     );
     assert_eq!(
-        headers.get("Copilot-Integration-Id").map(String::as_str),
+        request
+            .headers
+            .get("copilot-integration-id")
+            .map(String::as_str),
         Some("vscode-chat")
     );
-    assert_eq!(headers.get("X-Initiator").map(String::as_str), Some("user"));
     assert_eq!(
-        headers.get("Openai-Intent").map(String::as_str),
+        request.headers.get("x-initiator").map(String::as_str),
+        Some("user")
+    );
+    assert_eq!(
+        request.headers.get("openai-intent").map(String::as_str),
         Some("conversation-edits")
     );
     assert!(
-        !headers
+        !request
+            .headers
             .get("anthropic-beta")
             .is_some_and(|value| value.contains("fine-grained-tool-streaming"))
     );
-
-    let params = &captured.create_params;
-    assert_eq!(params.model, "claude-sonnet-4.6");
-    assert!(params.stream);
-    assert_eq!(params.max_tokens, model.max_tokens);
-    assert!(!params.messages.is_empty());
+    assert_eq!(request.body["model"], json!("claude-sonnet-4.6"));
+    assert_eq!(request.body["stream"], json!(true));
+    assert_eq!(request.body["max_tokens"], json!(32_000));
+    assert!(
+        request.body["messages"]
+            .as_array()
+            .is_some_and(|messages| !messages.is_empty())
+    );
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Anthropic Messages stream/client construction is not ported, so beta header capture cannot run deterministically yet"]
 fn omits_interleaved_thinking_beta_for_adaptive_thinking_models() {
-    let model = get_github_copilot_model("claude-sonnet-4.6");
-    let messages = vec![CopilotMessage::User {
-        content: UserMessageContent::Text("Hello".to_owned()),
-    }];
-
-    let captured =
-        capture_copilot_anthropic_request(model, &messages, "tid_copilot_session_test_token", true);
-
-    let headers = &captured.constructor_opts.default_headers;
+    let request = capture_registered_request(true);
     assert!(
-        !headers
+        !request
+            .headers
             .get("anthropic-beta")
             .is_some_and(|value| value.contains("interleaved-thinking-2025-05-14"))
     );

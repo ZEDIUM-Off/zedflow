@@ -124,13 +124,16 @@ pub struct ConvertResponsesToolsOptions {
     pub strict: Option<bool>,
 }
 
+/// Service-tier resolver used while finalizing a response stream.
+pub type ServiceTierResolver = fn(Option<&str>, Option<&str>) -> Option<ServiceTier>;
+
 /// Options used when finalizing an OpenAI Responses stream.
 #[derive(Clone, Default)]
 pub struct OpenAIResponsesStreamOptions {
     /// Requested service tier.
     pub service_tier: Option<ServiceTier>,
     /// Resolves the response/request service tier used for pricing.
-    pub resolve_service_tier: Option<fn(Option<&str>, Option<&str>) -> Option<ServiceTier>>,
+    pub resolve_service_tier: Option<ServiceTierResolver>,
     /// Applies service-tier-specific pricing to usage.
     pub apply_service_tier_pricing: Option<fn(&mut Usage, Option<&str>)>,
 }
@@ -329,8 +332,10 @@ pub struct UsageCost {
 /// Assistant stop reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum StopReason {
     /// Normal stop.
+    #[default]
     Stop,
     /// Output length limit.
     Length,
@@ -340,12 +345,6 @@ pub enum StopReason {
     Error,
     /// Aborted request.
     Aborted,
-}
-
-impl Default for StopReason {
-    fn default() -> Self {
-        Self::Stop
-    }
 }
 
 /// Stream events emitted while processing an assistant message.
@@ -699,12 +698,11 @@ fn encode_text_signature_v1(id: &str, phase: Option<TextSignaturePhase>) -> Stri
 
 fn parse_text_signature(signature: Option<&str>) -> Option<(String, Option<TextSignaturePhase>)> {
     let signature = signature?;
-    if signature.starts_with('{') {
-        if let Ok(parsed) = serde_json::from_str::<TextSignatureV1>(signature) {
-            if parsed.v == 1 {
-                return Some((parsed.id, parsed.phase));
-            }
-        }
+    if signature.starts_with('{')
+        && let Ok(parsed) = serde_json::from_str::<TextSignatureV1>(signature)
+        && parsed.v == 1
+    {
+        return Some((parsed.id, parsed.phase));
     }
     Some((signature.to_owned(), None))
 }
@@ -831,13 +829,13 @@ fn transform_messages(
         match msg {
             Message::User(user) => {
                 let mut user = user.clone();
-                if !has_image_input(model) {
-                    if let UserContent::Parts(parts) = &user.content {
-                        user.content = UserContent::Parts(replace_images_with_placeholder(
-                            parts,
-                            NON_VISION_USER_IMAGE_PLACEHOLDER,
-                        ));
-                    }
+                if !has_image_input(model)
+                    && let UserContent::Parts(parts) = &user.content
+                {
+                    user.content = UserContent::Parts(replace_images_with_placeholder(
+                        parts,
+                        NON_VISION_USER_IMAGE_PLACEHOLDER,
+                    ));
                 }
                 transformed.push(Message::User(user));
             }
@@ -1034,20 +1032,18 @@ pub fn convert_responses_messages(
     let include_system_prompt = options
         .and_then(|options| options.include_system_prompt)
         .unwrap_or(true);
-    if include_system_prompt {
-        if let Some(system_prompt) = &context.system_prompt {
-            let supports_developer_role = model
-                .compat
-                .as_ref()
-                .and_then(|compat| compat.supports_developer_role)
-                .unwrap_or(true);
-            let role = if model.reasoning && supports_developer_role {
-                "developer"
-            } else {
-                "system"
-            };
-            messages.push(json!({ "role": role, "content": sanitize_surrogates(system_prompt) }));
-        }
+    if include_system_prompt && let Some(system_prompt) = &context.system_prompt {
+        let supports_developer_role = model
+            .compat
+            .as_ref()
+            .and_then(|compat| compat.supports_developer_role)
+            .unwrap_or(true);
+        let role = if model.reasoning && supports_developer_role {
+            "developer"
+        } else {
+            "system"
+        };
+        messages.push(json!({ "role": role, "content": sanitize_surrogates(system_prompt) }));
     }
 
     for (msg_index, msg) in transformed_messages.iter().enumerate() {
@@ -1104,10 +1100,10 @@ fn convert_assistant_message(
     for block in &assistant.content {
         match block {
             AssistantContent::Thinking(thinking) => {
-                if let Some(signature) = &thinking.thinking_signature {
-                    if let Ok(value) = serde_json::from_str(signature) {
-                        output.push(value);
-                    }
+                if let Some(signature) = &thinking.thinking_signature
+                    && let Ok(value) = serde_json::from_str(signature)
+                {
+                    output.push(value);
                 }
             }
             AssistantContent::Text(text) => {
@@ -1231,27 +1227,27 @@ pub fn convert_responses_tools(
         .collect()
 }
 
-/// Processes OpenAI Responses stream events into a Pi assistant message and event stream.
+/// Stateful single-pass processor for OpenAI Responses stream events.
 ///
-/// # Errors
-///
-/// Returns an error when the provider emits an error/failure event, an unknown response status is
-/// encountered, or the event iterator ends before a terminal response event.
-pub fn process_responses_stream<I>(
-    openai_stream: I,
-    output: &mut AssistantMessage,
-    stream: &mut AssistantMessageEventStream,
-    model: &Model,
-    options: Option<&OpenAIResponsesStreamOptions>,
-) -> Result<()>
-where
-    I: IntoIterator<Item = ResponseStreamEvent>,
-{
-    let mut saw_terminal_response_event = false;
-    let mut output_slots: HashMap<usize, ResponsesOutputSlot> = HashMap::new();
-    let mut streaming_tool_calls: HashMap<usize, StreamingToolCall> = HashMap::new();
+/// Pi consumes its async iterable once while retaining output-slot and partial tool-call state.
+/// This processor preserves that behavior for transports that decode SSE incrementally.
+#[derive(Debug, Default)]
+pub(crate) struct ResponsesStreamProcessor {
+    saw_terminal_response_event: bool,
+    output_slots: HashMap<usize, ResponsesOutputSlot>,
+    streaming_tool_calls: HashMap<usize, StreamingToolCall>,
+}
 
-    for event in openai_stream {
+impl ResponsesStreamProcessor {
+    /// Processes one provider event and returns whether a terminal response event was seen.
+    pub(crate) fn push(
+        &mut self,
+        event: ResponseStreamEvent,
+        output: &mut AssistantMessage,
+        stream: &mut AssistantMessageEventStream,
+        model: &Model,
+        options: Option<&OpenAIResponsesStreamOptions>,
+    ) -> Result<bool> {
         match event {
             ResponseStreamEvent::ResponseCreated { response } => {
                 output.response_id = response.id;
@@ -1262,8 +1258,8 @@ where
                     &item,
                     output,
                     stream,
-                    &mut output_slots,
-                    &mut streaming_tool_calls,
+                    &mut self.output_slots,
+                    &mut self.streaming_tool_calls,
                 );
             }
             ResponseStreamEvent::ResponseReasoningSummaryTextDelta {
@@ -1274,7 +1270,7 @@ where
                 output_index,
                 delta,
             } => {
-                if let Some(slot) = get_slot(&output_slots, output_index, SlotKind::Thinking) {
+                if let Some(slot) = get_slot(&self.output_slots, output_index, SlotKind::Thinking) {
                     append_thinking(output, slot.content_index, &delta);
                     stream.push(AssistantMessageEvent::ThinkingDelta {
                         content_index: slot.content_index,
@@ -1284,7 +1280,7 @@ where
                 }
             }
             ResponseStreamEvent::ResponseReasoningSummaryPartDone { output_index } => {
-                if let Some(slot) = get_slot(&output_slots, output_index, SlotKind::Thinking) {
+                if let Some(slot) = get_slot(&self.output_slots, output_index, SlotKind::Thinking) {
                     append_thinking(output, slot.content_index, "\n\n");
                     stream.push(AssistantMessageEvent::ThinkingDelta {
                         content_index: slot.content_index,
@@ -1301,7 +1297,7 @@ where
                 output_index,
                 delta,
             } => {
-                if let Some(slot) = get_slot(&output_slots, output_index, SlotKind::Text) {
+                if let Some(slot) = get_slot(&self.output_slots, output_index, SlotKind::Text) {
                     append_text(output, slot.content_index, &delta);
                     stream.push(AssistantMessageEvent::TextDelta {
                         content_index: slot.content_index,
@@ -1314,51 +1310,51 @@ where
                 output_index,
                 delta,
             } => {
-                if let Some(slot) = get_slot(&output_slots, output_index, SlotKind::ToolCall) {
-                    if let Some(call) = streaming_tool_calls.get_mut(&output_index) {
-                        call.partial_json.push_str(&delta);
-                        call.tool_call.arguments = parse_streaming_json(&call.partial_json);
-                        set_tool_call(output, slot.content_index, call.tool_call.clone());
-                        stream.push(AssistantMessageEvent::ToolCallDelta {
-                            content_index: slot.content_index,
-                            delta,
-                            partial: output.clone(),
-                        });
-                    }
+                if let Some(slot) = get_slot(&self.output_slots, output_index, SlotKind::ToolCall)
+                    && let Some(call) = self.streaming_tool_calls.get_mut(&output_index)
+                {
+                    call.partial_json.push_str(&delta);
+                    call.tool_call.arguments = parse_streaming_json(&call.partial_json);
+                    set_tool_call(output, slot.content_index, call.tool_call.clone());
+                    stream.push(AssistantMessageEvent::ToolCallDelta {
+                        content_index: slot.content_index,
+                        delta,
+                        partial: output.clone(),
+                    });
                 }
             }
             ResponseStreamEvent::ResponseFunctionCallArgumentsDone {
                 output_index,
                 arguments,
             } => {
-                if let Some(slot) = get_slot(&output_slots, output_index, SlotKind::ToolCall) {
-                    if let Some(call) = streaming_tool_calls.get_mut(&output_index) {
-                        let previous_partial_json = call.partial_json.clone();
-                        call.partial_json = arguments.clone();
-                        call.tool_call.arguments = parse_streaming_json(&call.partial_json);
-                        set_tool_call(output, slot.content_index, call.tool_call.clone());
-                        if arguments.starts_with(&previous_partial_json) {
-                            let delta = arguments[previous_partial_json.len()..].to_owned();
-                            if !delta.is_empty() {
-                                stream.push(AssistantMessageEvent::ToolCallDelta {
-                                    content_index: slot.content_index,
-                                    delta,
-                                    partial: output.clone(),
-                                });
-                            }
+                if let Some(slot) = get_slot(&self.output_slots, output_index, SlotKind::ToolCall)
+                    && let Some(call) = self.streaming_tool_calls.get_mut(&output_index)
+                {
+                    let previous_partial_json = call.partial_json.clone();
+                    call.partial_json = arguments.clone();
+                    call.tool_call.arguments = parse_streaming_json(&call.partial_json);
+                    set_tool_call(output, slot.content_index, call.tool_call.clone());
+                    if arguments.starts_with(&previous_partial_json) {
+                        let delta = arguments[previous_partial_json.len()..].to_owned();
+                        if !delta.is_empty() {
+                            stream.push(AssistantMessageEvent::ToolCallDelta {
+                                content_index: slot.content_index,
+                                delta,
+                                partial: output.clone(),
+                            });
                         }
                     }
                 }
             }
             ResponseStreamEvent::ResponseOutputItemDone { output_index, item } => {
-                if !output_slots.contains_key(&output_index) {
+                if !self.output_slots.contains_key(&output_index) {
                     create_slot(
                         output_index,
                         &item,
                         output,
                         stream,
-                        &mut output_slots,
-                        &mut streaming_tool_calls,
+                        &mut self.output_slots,
+                        &mut self.streaming_tool_calls,
                     );
                 }
                 finalize_item(
@@ -1366,13 +1362,13 @@ where
                     item,
                     output,
                     stream,
-                    &mut output_slots,
-                    &mut streaming_tool_calls,
+                    &mut self.output_slots,
+                    &mut self.streaming_tool_calls,
                 );
             }
             ResponseStreamEvent::ResponseCompleted { response }
             | ResponseStreamEvent::ResponseIncomplete { response } => {
-                saw_terminal_response_event = true;
+                self.saw_terminal_response_event = true;
                 finalize_response(response, output, model, options)?;
             }
             ResponseStreamEvent::Error { code, message } => {
@@ -1384,12 +1380,39 @@ where
                 });
             }
         }
+        Ok(self.saw_terminal_response_event)
     }
 
-    if !saw_terminal_response_event {
-        return Err(OpenAIResponsesSharedError::MissingTerminalEvent);
+    fn finish(&self) -> Result<()> {
+        if self.saw_terminal_response_event {
+            Ok(())
+        } else {
+            Err(OpenAIResponsesSharedError::MissingTerminalEvent)
+        }
     }
-    Ok(())
+}
+
+/// Processes OpenAI Responses stream events into a Pi assistant message and event stream.
+///
+/// # Errors
+///
+/// Returns an error when the provider emits an error/failure event, an unknown response status is
+/// encountered, or the event iterator ends before a terminal response event.
+pub fn process_responses_stream<I>(
+    openai_stream: I,
+    output: &mut AssistantMessage,
+    stream: &mut AssistantMessageEventStream,
+    model: &Model,
+    options: Option<&OpenAIResponsesStreamOptions>,
+) -> Result<()>
+where
+    I: IntoIterator<Item = ResponseStreamEvent>,
+{
+    let mut processor = ResponsesStreamProcessor::default();
+    for event in openai_stream {
+        processor.push(event, output, stream, model, options)?;
+    }
+    processor.finish()
 }
 
 fn get_slot(
@@ -1608,20 +1631,20 @@ fn finalize_response(
         };
     }
     calculate_cost(model, &mut output.usage);
-    if let Some(options) = options {
-        if let Some(apply) = options.apply_service_tier_pricing {
-            let tier = if let Some(resolve) = options.resolve_service_tier {
-                resolve(
-                    response.service_tier.as_deref(),
-                    options.service_tier.as_deref(),
-                )
-            } else {
-                response
-                    .service_tier
-                    .or_else(|| options.service_tier.clone())
-            };
-            apply(&mut output.usage, tier.as_deref());
-        }
+    if let Some(options) = options
+        && let Some(apply) = options.apply_service_tier_pricing
+    {
+        let tier = if let Some(resolve) = options.resolve_service_tier {
+            resolve(
+                response.service_tier.as_deref(),
+                options.service_tier.as_deref(),
+            )
+        } else {
+            response
+                .service_tier
+                .or_else(|| options.service_tier.clone())
+        };
+        apply(&mut output.usage, tier.as_deref());
     }
     output.stop_reason = map_stop_reason(response.status)?;
     if output
@@ -1711,6 +1734,84 @@ mod tests {
         assert_eq!(response[0]["role"], "developer");
         assert_eq!(response[1]["type"], "function_call_output");
         assert_eq!(response[1]["call_id"], "call");
+    }
+
+    #[test]
+    fn incremental_processor_matches_single_pass_pi_event_processing() {
+        let model = model();
+        let response_item = ResponseOutputItem::Message {
+            id: "msg_1".to_owned(),
+            phase: None,
+            content: Vec::new(),
+        };
+        let events = vec![
+            ResponseStreamEvent::ResponseOutputItemAdded {
+                output_index: 0,
+                item: response_item,
+            },
+            ResponseStreamEvent::ResponseOutputTextDelta {
+                output_index: 0,
+                delta: "hello ".to_owned(),
+            },
+            ResponseStreamEvent::ResponseOutputTextDelta {
+                output_index: 0,
+                delta: "world".to_owned(),
+            },
+            ResponseStreamEvent::ResponseOutputItemDone {
+                output_index: 0,
+                item: ResponseOutputItem::Message {
+                    id: "msg_1".to_owned(),
+                    phase: None,
+                    content: vec![ResponseMessageContent {
+                        r#type: "output_text".to_owned(),
+                        text: Some("hello world".to_owned()),
+                        refusal: None,
+                    }],
+                },
+            },
+            ResponseStreamEvent::ResponseCompleted {
+                response: Response {
+                    id: Some("resp_1".to_owned()),
+                    status: Some(ResponseStatus::Completed),
+                    ..Response::default()
+                },
+            },
+        ];
+        let empty_output = || AssistantMessage {
+            content: Vec::new(),
+            api: model.api.clone(),
+            provider: model.provider.clone(),
+            model: model.id.clone(),
+            response_id: None,
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+        };
+
+        let mut batch_output = empty_output();
+        let mut batch_events = Vec::new();
+        process_responses_stream(
+            events.clone(),
+            &mut batch_output,
+            &mut batch_events,
+            &model,
+            None,
+        )
+        .expect("batch stream should finalize");
+
+        let mut incremental_output = empty_output();
+        let mut incremental_events = Vec::new();
+        let mut processor = ResponsesStreamProcessor::default();
+        for (index, event) in events.into_iter().enumerate() {
+            let mut emitted = Vec::new();
+            let terminal = processor
+                .push(event, &mut incremental_output, &mut emitted, &model, None)
+                .expect("incremental event should process");
+            assert_eq!(terminal, index == 4);
+            incremental_events.extend(emitted);
+        }
+
+        assert_eq!(incremental_output, batch_output);
+        assert_eq!(incremental_events, batch_events);
     }
 
     #[test]

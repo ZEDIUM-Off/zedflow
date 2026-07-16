@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -22,10 +23,26 @@ pub type ProviderHeaders = HashMap<String, Option<String>>;
 pub type RequestMetadata = HashMap<String, Value>;
 
 /// Callback that can inspect or replace provider payloads before sending.
-pub type PayloadHook = Arc<dyn Fn(Value, &Model) -> Option<Value> + Send + Sync + 'static>;
+pub type PayloadHook = Arc<
+    dyn Fn(
+            Value,
+            &Model,
+        ) -> BoxFuture<'static, Result<Option<Value>, crate::types::ProviderHookError>>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 /// Callback invoked after an HTTP response is received.
-pub type ResponseHook = Arc<dyn Fn(&ProviderResponse, &Model) + Send + Sync + 'static>;
+pub type ResponseHook = Arc<
+    dyn Fn(
+            &ProviderResponse,
+            &Model,
+        ) -> BoxFuture<'static, Result<(), crate::types::ProviderHookError>>
+        + Send
+        + Sync
+        + 'static,
+>;
 
 /// Prompt cache retention preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -337,7 +354,7 @@ pub fn clamp_max_tokens_to_context(model: &Model, context: &Context, max_tokens:
     }
 
     let available = model.context_window
-        - i64::try_from(estimate_context_tokens(context).tokens).unwrap_or(i64::MAX)
+        - i64::from(estimate_context_tokens(context).tokens)
         - CONTEXT_SAFETY_TOKENS;
     max_tokens.min(u32::try_from(available.max(i64::from(MIN_MAX_TOKENS))).unwrap_or(u32::MAX))
 }

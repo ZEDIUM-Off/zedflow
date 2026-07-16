@@ -1,8 +1,7 @@
 //! Parity tests for Pi's `test/openai-completions-cache-control-format.test.ts`.
 //!
-//! OpenAI Completions request-payload construction and
-//! provider payload capture are not ported yet. Keep these ignored until the
-//! real `stream`/`buildParams` path exists in `zedflow_ai::api::openai_completions`.
+//! Uses Rust's deterministic request builder as the local equivalent of Pi's
+//! mocked OpenAI client payload capture.
 
 use std::collections::HashMap;
 
@@ -11,8 +10,6 @@ use zedflow_ai::api::openai_completions::{
     CacheControlFormat, CacheRetention, Context, Message, Model, ModelInput,
     OpenAICompletionsCompat, OpenAICompletionsOptions, ProviderHeaders, Tool, UserMessageContent,
 };
-
-const BLOCKER: &str = "OpenAI Completions buildParams/on_payload capture is not ported; stream is still a provider I/O placeholder, so cache-control payload markers cannot be observed locally.";
 
 fn custom_qwen_model() -> Model {
     Model {
@@ -24,6 +21,8 @@ fn custom_qwen_model() -> Model {
         reasoning: true,
         thinking_level_map: HashMap::new(),
         headers: ProviderHeaders::new(),
+        max_tokens: 32_000,
+        context_window: Some(128_000),
         compat: Some(OpenAICompletionsCompat {
             cache_control_format: Some(CacheControlFormat::Anthropic),
             ..OpenAICompletionsCompat::default()
@@ -41,12 +40,14 @@ fn openrouter_anthropic_model() -> Model {
         reasoning: true,
         thinking_level_map: HashMap::new(),
         headers: ProviderHeaders::new(),
+        max_tokens: 32_000,
+        context_window: Some(128_000),
         compat: None,
     }
 }
 
-fn capture_payload(_model: Model, options: Option<OpenAICompletionsOptions>) -> Value {
-    let _context = Context {
+fn capture_payload(model: Model, options: Option<OpenAICompletionsOptions>) -> Value {
+    let context = Context {
         system_prompt: Some("System prompt".to_owned()),
         messages: vec![Message::User {
             content: UserMessageContent::Text("Hello".to_owned()),
@@ -63,12 +64,14 @@ fn capture_payload(_model: Model, options: Option<OpenAICompletionsOptions>) -> 
             }),
         }],
     };
-    let _options = OpenAICompletionsOptions {
+    let options = OpenAICompletionsOptions {
         api_key: Some("test-key".to_owned()),
         ..options.unwrap_or_default()
     };
 
-    panic!("{BLOCKER}");
+    zedflow_ai::api::openai_completions::build_request(&model, &context, Some(&options))
+        .expect("request should build")
+        .body
 }
 
 fn instruction_message(params: &Value) -> Option<&Value> {
@@ -122,7 +125,6 @@ fn expect_anthropic_cache_markers(params: &Value) {
 }
 
 #[test]
-#[ignore = "OpenAI Completions payload construction/on_payload capture is not ported"]
 fn applies_anthropic_style_cache_markers_when_model_compat_enables_them() {
     let params = capture_payload(custom_qwen_model(), None);
 
@@ -130,7 +132,6 @@ fn applies_anthropic_style_cache_markers_when_model_compat_enables_them() {
 }
 
 #[test]
-#[ignore = "OpenAI Completions payload construction/on_payload capture is not ported"]
 fn preserves_anthropic_style_cache_markers_for_openrouter_anthropic_models() {
     let params = capture_payload(openrouter_anthropic_model(), None);
 
@@ -138,7 +139,6 @@ fn preserves_anthropic_style_cache_markers_for_openrouter_anthropic_models() {
 }
 
 #[test]
-#[ignore = "OpenAI Completions payload construction/on_payload capture is not ported"]
 fn omits_anthropic_style_cache_markers_when_cache_retention_is_none() {
     let params = capture_payload(
         custom_qwen_model(),

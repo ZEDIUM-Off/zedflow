@@ -8,7 +8,9 @@ use std::task::{Context, Poll, Waker};
 use futures::Stream;
 use futures::future::poll_fn;
 
-use crate::types::{AssistantMessage, AssistantMessageEvent};
+use crate::types::{
+    AssistantMessage, AssistantMessageEvent, DoneStopReason, ErrorStopReason, StopReason,
+};
 
 /// In-memory async event stream with a separately awaited final result.
 #[derive(Clone)]
@@ -171,9 +173,35 @@ impl AssistantMessageEventStream {
         self.inner.push(event);
     }
 
-    /// Ends the stream and optionally records the final assistant message.
+    /// Ends the stream, translating a final result into its terminal event.
     pub fn end(&self, result: Option<AssistantMessage>) {
-        self.inner.end(result);
+        let Some(message) = result else {
+            self.inner.end(None);
+            return;
+        };
+
+        match message.stop_reason {
+            StopReason::Stop => self.push(AssistantMessageEvent::Done {
+                reason: DoneStopReason::Stop,
+                message,
+            }),
+            StopReason::Length => self.push(AssistantMessageEvent::Done {
+                reason: DoneStopReason::Length,
+                message,
+            }),
+            StopReason::ToolUse => self.push(AssistantMessageEvent::Done {
+                reason: DoneStopReason::ToolUse,
+                message,
+            }),
+            StopReason::Error => self.push(AssistantMessageEvent::Error {
+                reason: ErrorStopReason::Error,
+                error: message,
+            }),
+            StopReason::Aborted => self.push(AssistantMessageEvent::Error {
+                reason: ErrorStopReason::Aborted,
+                error: message,
+            }),
+        }
     }
 
     /// Returns whether the stream is complete.
@@ -260,7 +288,7 @@ mod tests {
     fn waits_for_later_events() {
         let stream = EventStream::new(|event: &&str| *event == "done", |event: &&str| *event);
         let mut consumer = stream.clone();
-        let mut next = consumer.next();
+        let next = consumer.next();
 
         assert!(next.now_or_never().is_none());
         stream.push("later");

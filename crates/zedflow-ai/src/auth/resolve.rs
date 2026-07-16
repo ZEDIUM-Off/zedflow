@@ -5,7 +5,6 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Boxed async future used by auth callbacks.
@@ -54,11 +53,11 @@ impl ModelsErrorCode {
 }
 
 /// Error raised by model/auth resolution.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ModelsError {
     code: ModelsErrorCode,
     message: String,
-    source: Option<BoxError>,
+    source: Option<std::sync::Arc<dyn StdError + Send + Sync + 'static>>,
 }
 
 impl ModelsError {
@@ -82,7 +81,7 @@ impl ModelsError {
         Self {
             code,
             message: message.into(),
-            source: Some(source),
+            source: Some(source.into()),
         }
     }
 
@@ -122,263 +121,8 @@ pub struct AuthResolutionOverrides {
     /// Request-scoped API key override.
     pub api_key: Option<String>,
     /// Request-scoped provider environment overrides.
-    pub env: Option<ProviderEnv>,
+    pub env: Option<crate::auth::types::ProviderEnv>,
 }
-
-/// Model shape auth resolution receives: chat or image-generation models.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AuthModel {
-    /// Provider identifier used for error messages and provider auth lookup.
-    pub provider: String,
-    /// Optional model identifier.
-    pub id: String,
-    /// Optional provider base URL.
-    pub base_url: Option<String>,
-}
-
-/// Request auth for a single model request.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ModelAuth {
-    /// Resolved API key or bearer token.
-    pub api_key: Option<String>,
-    /// Resolved custom HTTP headers.
-    pub headers: Option<ProviderHeaders>,
-    /// Resolved provider base URL.
-    pub base_url: Option<String>,
-}
-
-/// Stored api-key credential.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ApiKeyCredential {
-    /// Stored API key, if any.
-    pub key: Option<String>,
-    /// Stored provider-scoped environment/config values.
-    pub env: Option<ProviderEnv>,
-}
-
-/// Stored OAuth credential.
-#[derive(Debug, Clone, PartialEq)]
-pub struct OAuthCredential {
-    /// Refresh token.
-    pub refresh: String,
-    /// Access token.
-    pub access: String,
-    /// Expiry time in Unix epoch milliseconds.
-    pub expires: u64,
-    /// Provider-specific fields preserved from Pi's open credential shape.
-    pub extra: HashMap<String, serde_json::Value>,
-}
-
-/// One type-tagged credential per provider.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Credential {
-    /// Stored api-key credential.
-    ApiKey(ApiKeyCredential),
-    /// Stored OAuth credential.
-    OAuth(OAuthCredential),
-}
-
-/// Result of resolving auth for a model.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AuthResult {
-    /// Request auth material.
-    pub auth: ModelAuth,
-    /// Provider-scoped environment/config values resolved from credentials and ambient context.
-    pub env: Option<ProviderEnv>,
-    /// Human-readable auth source label for status UI.
-    pub source: Option<String>,
-}
-
-/// Environment and filesystem access for auth resolution.
-#[derive(Clone)]
-pub struct AuthContext {
-    env: Arc<dyn Fn(String) -> BoxFuture<'static, Option<String>> + Send + Sync>,
-    file_exists: Arc<dyn Fn(String) -> BoxFuture<'static, bool> + Send + Sync>,
-}
-
-impl AuthContext {
-    /// Creates an auth context from async callbacks.
-    #[must_use]
-    pub fn new<Env, EnvFuture, FileExists, FileFuture>(env: Env, file_exists: FileExists) -> Self
-    where
-        Env: Fn(String) -> EnvFuture + Send + Sync + 'static,
-        EnvFuture: Future<Output = Option<String>> + Send + 'static,
-        FileExists: Fn(String) -> FileFuture + Send + Sync + 'static,
-        FileFuture: Future<Output = bool> + Send + 'static,
-    {
-        Self {
-            env: Arc::new(move |name| Box::pin(env(name))),
-            file_exists: Arc::new(move |path| Box::pin(file_exists(path))),
-        }
-    }
-
-    /// Reads an environment/config value.
-    pub async fn env(&self, name: &str) -> Option<String> {
-        (self.env)(name.to_owned()).await
-    }
-
-    /// Checks whether a file exists.
-    pub async fn file_exists(&self, path: &str) -> bool {
-        (self.file_exists)(path.to_owned()).await
-    }
-}
-
-/// Input passed to API-key auth resolution.
-#[derive(Clone)]
-pub struct ApiKeyResolveInput {
-    /// Model being authenticated.
-    pub model: AuthModel,
-    /// Auth environment/filesystem context.
-    pub ctx: AuthContext,
-    /// Stored or override credential, if any.
-    pub credential: Option<ApiKeyCredential>,
-}
-
-type ApiKeyResolveFn = dyn Fn(ApiKeyResolveInput) -> BoxFuture<'static, std::result::Result<Option<AuthResult>, BoxError>>
-    + Send
-    + Sync;
-
-/// Api-key auth handler.
-#[derive(Clone)]
-pub struct ApiKeyAuth {
-    /// Display name, e.g. `Anthropic API key`.
-    pub name: String,
-    resolve: Arc<ApiKeyResolveFn>,
-}
-
-impl ApiKeyAuth {
-    /// Creates an API-key auth handler.
-    #[must_use]
-    pub fn new<Resolve, ResolveFuture>(name: impl Into<String>, resolve: Resolve) -> Self
-    where
-        Resolve: Fn(ApiKeyResolveInput) -> ResolveFuture + Send + Sync + 'static,
-        ResolveFuture:
-            Future<Output = std::result::Result<Option<AuthResult>, BoxError>> + Send + 'static,
-    {
-        Self {
-            name: name.into(),
-            resolve: Arc::new(move |input| Box::pin(resolve(input))),
-        }
-    }
-
-    /// Resolves API-key auth.
-    ///
-    /// # Errors
-    ///
-    /// Returns callback errors from the provider auth implementation.
-    pub async fn resolve(
-        &self,
-        input: ApiKeyResolveInput,
-    ) -> std::result::Result<Option<AuthResult>, BoxError> {
-        (self.resolve)(input).await
-    }
-}
-
-type OAuthRefreshFn = dyn Fn(OAuthCredential) -> BoxFuture<'static, std::result::Result<OAuthCredential, BoxError>>
-    + Send
-    + Sync;
-type OAuthToAuthFn = dyn Fn(OAuthCredential) -> BoxFuture<'static, std::result::Result<ModelAuth, BoxError>>
-    + Send
-    + Sync;
-
-/// OAuth auth handler.
-#[derive(Clone)]
-pub struct OAuthAuth {
-    /// Display name, e.g. `Anthropic (Claude Pro/Max)`.
-    pub name: String,
-    refresh: Arc<OAuthRefreshFn>,
-    to_auth: Arc<OAuthToAuthFn>,
-}
-
-impl OAuthAuth {
-    /// Creates an OAuth auth handler.
-    #[must_use]
-    pub fn new<Refresh, RefreshFuture, ToAuth, ToAuthFuture>(
-        name: impl Into<String>,
-        refresh: Refresh,
-        to_auth: ToAuth,
-    ) -> Self
-    where
-        Refresh: Fn(OAuthCredential) -> RefreshFuture + Send + Sync + 'static,
-        RefreshFuture:
-            Future<Output = std::result::Result<OAuthCredential, BoxError>> + Send + 'static,
-        ToAuth: Fn(OAuthCredential) -> ToAuthFuture + Send + Sync + 'static,
-        ToAuthFuture: Future<Output = std::result::Result<ModelAuth, BoxError>> + Send + 'static,
-    {
-        Self {
-            name: name.into(),
-            refresh: Arc::new(move |credential| Box::pin(refresh(credential))),
-            to_auth: Arc::new(move |credential| Box::pin(to_auth(credential))),
-        }
-    }
-
-    /// Refreshes an OAuth credential.
-    ///
-    /// # Errors
-    ///
-    /// Returns callback errors from the provider OAuth implementation.
-    pub async fn refresh(
-        &self,
-        credential: OAuthCredential,
-    ) -> std::result::Result<OAuthCredential, BoxError> {
-        (self.refresh)(credential).await
-    }
-
-    /// Derives request auth from an OAuth credential.
-    ///
-    /// # Errors
-    ///
-    /// Returns callback errors from the provider OAuth implementation.
-    pub async fn to_auth(
-        &self,
-        credential: OAuthCredential,
-    ) -> std::result::Result<ModelAuth, BoxError> {
-        (self.to_auth)(credential).await
-    }
-}
-
-/// Provider auth handlers.
-#[derive(Clone, Default)]
-pub struct ProviderAuth {
-    /// API-key auth handler.
-    pub api_key: Option<ApiKeyAuth>,
-    /// OAuth auth handler.
-    pub oauth: Option<OAuthAuth>,
-}
-
-/// Provider descriptor used by auth resolution.
-#[derive(Clone)]
-pub struct AuthProvider {
-    /// Provider identifier.
-    pub id: String,
-    /// Provider auth handlers.
-    pub auth: ProviderAuth,
-}
-
-/// Serialized credential storage keyed by provider id.
-pub trait CredentialStore {
-    /// Reads the stored credential, possibly expired.
-    fn read<'a>(
-        &'a self,
-        provider_id: &'a str,
-    ) -> BoxFuture<'a, std::result::Result<Option<Credential>, BoxError>>;
-
-    /// Runs a serialized read-modify-write for a provider credential.
-    fn modify<'a>(
-        &'a self,
-        provider_id: &'a str,
-        update: CredentialModify<'a>,
-    ) -> BoxFuture<'a, std::result::Result<Option<Credential>, BoxError>>;
-}
-
-/// Credential-store mutation callback.
-pub type CredentialModify<'a> = Box<
-    dyn FnOnce(
-            Option<Credential>,
-        ) -> BoxFuture<'a, std::result::Result<Option<Credential>, BoxError>>
-        + Send
-        + 'a,
->;
 
 /// Auth resolution shared by the `Models` and `ImagesModels` collections.
 ///
@@ -392,32 +136,33 @@ pub type CredentialModify<'a> = Box<
 /// credential-store failures, or [`ModelsErrorCode::OAuth`] for OAuth refresh
 /// and auth-derivation failures.
 pub async fn resolve_provider_auth(
-    provider: &AuthProvider,
-    model: &AuthModel,
-    credentials: &impl CredentialStore,
-    auth_context: &AuthContext,
+    provider: &crate::auth::types::AuthProvider,
+    model: &crate::auth::types::AuthModel,
+    credentials: &dyn crate::auth::types::CredentialStore,
+    auth_context: &dyn crate::auth::types::AuthContext,
     overrides: Option<&AuthResolutionOverrides>,
-) -> Result<Option<AuthResult>> {
-    let request_auth_context = overrides
-        .and_then(|overrides| overrides.env.as_ref())
-        .map_or_else(
-            || auth_context.clone(),
-            |env| overlay_env_auth_context(auth_context, env),
-        );
+) -> Result<Option<crate::auth::types::ResolvedAuth>> {
+    use crate::auth::types::{ApiKeyCredential, Credential};
 
-    if let (Some(overrides), Some(api_key_auth)) = (overrides, provider.auth.api_key.as_ref()) {
-        if let Some(api_key) = overrides.api_key.as_ref() {
-            return resolve_api_key(
-                &request_auth_context,
-                api_key_auth,
-                model,
-                Some(ApiKeyCredential {
-                    key: Some(api_key.clone()),
-                    env: overrides.env.clone(),
-                }),
-            )
-            .await;
-        }
+    let overlay_env = overrides.and_then(|overrides| overrides.env.as_ref());
+    let request_auth_context = OverlayEnvAuthContext {
+        base: auth_context,
+        env: overlay_env,
+    };
+
+    if let (Some(overrides), Some(api_key_auth)) = (overrides, provider.auth.api_key.as_ref())
+        && let Some(api_key) = overrides.api_key.as_ref()
+    {
+        return resolve_api_key(
+            &request_auth_context,
+            api_key_auth.as_ref(),
+            model,
+            Some(ApiKeyCredential {
+                key: Some(api_key.clone()),
+                env: overrides.env.clone(),
+            }),
+        )
+        .await;
     }
 
     let stored = read_credential(credentials, &provider.id).await?;
@@ -425,20 +170,21 @@ pub async fn resolve_provider_auth(
         match stored {
             Credential::OAuth(stored) => {
                 if let Some(oauth) = provider.auth.oauth.as_ref() {
-                    return resolve_stored_oauth(credentials, &provider.id, oauth, stored).await;
+                    return resolve_stored_oauth(credentials, &provider.id, oauth.clone(), stored)
+                        .await;
                 }
             }
             Credential::ApiKey(mut stored) => {
                 if let Some(api_key_auth) = provider.auth.api_key.as_ref() {
-                    if let Some(env) = overrides.and_then(|overrides| overrides.env.as_ref()) {
+                    if let Some(env) = overlay_env {
                         stored
                             .env
-                            .get_or_insert_with(ProviderEnv::new)
+                            .get_or_insert_with(crate::auth::types::ProviderEnv::new)
                             .extend(env.clone());
                     }
                     return resolve_api_key(
                         &request_auth_context,
-                        api_key_auth,
+                        api_key_auth.as_ref(),
                         model,
                         Some(stored),
                     )
@@ -450,41 +196,45 @@ pub async fn resolve_provider_auth(
     }
 
     if let Some(api_key_auth) = provider.auth.api_key.as_ref() {
-        resolve_api_key(&request_auth_context, api_key_auth, model, None).await
+        resolve_api_key(&request_auth_context, api_key_auth.as_ref(), model, None).await
     } else {
         Ok(None)
     }
 }
 
-fn overlay_env_auth_context(base: &AuthContext, env: &ProviderEnv) -> AuthContext {
-    let base_for_env = base.clone();
-    let base_for_file_exists = base.clone();
-    let env = env.clone();
+struct OverlayEnvAuthContext<'a> {
+    base: &'a dyn crate::auth::types::AuthContext,
+    env: Option<&'a crate::auth::types::ProviderEnv>,
+}
 
-    AuthContext::new(
-        move |name| {
-            let base = base_for_env.clone();
-            let value = env.get(&name).filter(|value| !value.is_empty()).cloned();
-            async move {
-                match value {
-                    Some(value) => Some(value),
-                    None => base.env(&name).await,
-                }
+impl crate::auth::types::AuthContext for OverlayEnvAuthContext<'_> {
+    fn env<'a>(&'a self, name: &'a str) -> crate::auth::types::AuthFuture<'a, Option<String>> {
+        Box::pin(async move {
+            if let Some(value) = self
+                .env
+                .and_then(|env| env.get(name))
+                .filter(|value| !value.is_empty())
+                .cloned()
+            {
+                return Some(value);
             }
-        },
-        move |path| {
-            let base = base_for_file_exists.clone();
-            async move { base.file_exists(&path).await }
-        },
-    )
+            self.base.env(name).await
+        })
+    }
+
+    fn file_exists<'a>(&'a self, path: &'a str) -> crate::auth::types::AuthFuture<'a, bool> {
+        self.base.file_exists(path)
+    }
 }
 
 async fn resolve_stored_oauth(
-    credentials: &impl CredentialStore,
+    credentials: &dyn crate::auth::types::CredentialStore,
     provider_id: &str,
-    oauth: &OAuthAuth,
-    stored: OAuthCredential,
-) -> Result<Option<AuthResult>> {
+    oauth: std::sync::Arc<dyn crate::auth::types::OAuthAuth>,
+    stored: crate::auth::types::OAuthCredential,
+) -> Result<Option<crate::auth::types::ResolvedAuth>> {
+    use crate::auth::types::Credential;
+
     let mut credential = stored;
 
     if now_millis() >= credential.expires {
@@ -502,7 +252,7 @@ async fn resolve_stored_oauth(
                             return Ok(None);
                         }
                         oauth_for_refresh
-                            .refresh(current)
+                            .refresh(&current)
                             .await
                             .map(|credential| Some(Credential::OAuth(credential)))
                             .map_err(|error| {
@@ -510,7 +260,7 @@ async fn resolve_stored_oauth(
                                     ModelsErrorCode::OAuth,
                                     format!("OAuth refresh failed for {provider_id_for_refresh}"),
                                     error,
-                                )) as BoxError
+                                )) as crate::auth::types::BoxError
                             })
                     })
                 }),
@@ -532,10 +282,10 @@ async fn resolve_stored_oauth(
     }
 
     oauth
-        .to_auth(credential)
+        .to_auth(&credential)
         .await
         .map(|auth| {
-            Some(AuthResult {
+            Some(crate::auth::types::ResolvedAuth {
                 auth,
                 env: None,
                 source: Some("OAuth".to_owned()),
@@ -551,16 +301,16 @@ async fn resolve_stored_oauth(
 }
 
 async fn resolve_api_key(
-    auth_context: &AuthContext,
-    api_key: &ApiKeyAuth,
-    model: &AuthModel,
-    credential: Option<ApiKeyCredential>,
-) -> Result<Option<AuthResult>> {
+    auth_context: &dyn crate::auth::types::AuthContext,
+    api_key: &dyn crate::auth::types::ApiKeyAuth,
+    model: &crate::auth::types::AuthModel,
+    credential: Option<crate::auth::types::ApiKeyCredential>,
+) -> Result<Option<crate::auth::types::ResolvedAuth>> {
     api_key
-        .resolve(ApiKeyResolveInput {
-            model: model.clone(),
-            ctx: auth_context.clone(),
-            credential,
+        .resolve(crate::auth::types::ApiKeyResolveInput {
+            model,
+            ctx: auth_context,
+            credential: credential.as_ref(),
         })
         .await
         .map_err(|error| {
@@ -573,9 +323,9 @@ async fn resolve_api_key(
 }
 
 async fn read_credential(
-    credentials: &impl CredentialStore,
+    credentials: &dyn crate::auth::types::CredentialStore,
     provider_id: &str,
-) -> Result<Option<Credential>> {
+) -> Result<Option<crate::auth::types::Credential>> {
     credentials.read(provider_id).await.map_err(|error| {
         ModelsError::with_source(
             ModelsErrorCode::Auth,
@@ -585,10 +335,10 @@ async fn read_credential(
     })
 }
 
-fn now_millis() -> u64 {
+fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| {
-            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+            i64::try_from(duration.as_millis()).unwrap_or(i64::MAX)
         })
 }

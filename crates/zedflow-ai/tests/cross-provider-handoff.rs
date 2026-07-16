@@ -279,6 +279,10 @@ const PROVIDER_MODEL_PAIRS: &[ProviderModelPair] = &[
     },
 ];
 
+#[allow(
+    dead_code,
+    reason = "fields are consumed only by capability-gated handoff dispatch"
+)]
 #[derive(Debug, Clone)]
 struct CachedContext {
     label: &'static str,
@@ -347,9 +351,7 @@ fn has_api_key(pair: &ProviderModelPair) -> bool {
         "cloudflare-workers-ai" => has_cloudflare_workers_ai_credentials(),
         "cloudflare-ai-gateway" => {
             has_cloudflare_ai_gateway_credentials()
-                && pair
-                    .upstream_api_key_env
-                    .is_none_or(|name| has_env_value(name))
+                && pair.upstream_api_key_env.is_none_or(has_env_value)
         }
         provider => get_env_api_key(provider, None).is_some(),
     }

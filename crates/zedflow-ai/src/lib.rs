@@ -118,9 +118,6 @@ pub mod utils {
     /// Event stream helpers ported from Pi's `packages/ai/src/utils/event-stream.ts`.
     #[path = "event-stream.rs"]
     pub mod event_stream;
-    /// Internal genai backend helpers used by provider transports.
-    #[path = "genai-backend.rs"]
-    pub mod genai_backend;
     /// Deterministic short hashing ported from Pi's `packages/ai/src/utils/hash.ts`.
     pub mod hash;
     /// HTTP header conversion helpers ported from Pi's `packages/ai/src/utils/headers.ts`.
@@ -138,6 +135,8 @@ pub mod utils {
     pub mod provider_env;
     /// Retry classification helpers ported from Pi's `packages/ai/src/utils/retry.ts`.
     pub mod retry;
+    /// Crate-private Tokio worker support for synchronous stream entrypoints.
+    pub(crate) mod runtime;
     /// Unicode sanitization helpers ported from Pi's `packages/ai/src/utils/sanitize-unicode.ts`.
     #[path = "sanitize-unicode.rs"]
     pub mod sanitize_unicode;
@@ -337,6 +336,7 @@ pub mod providers {
     #[path = "openrouter.models.rs"]
     /// OpenRouter model catalog ported from Pi's `packages/ai/src/providers/openrouter.models.ts`.
     pub mod openrouter_models;
+    pub(crate) mod static_catalog;
     /// Together provider factory ported from Pi's `packages/ai/src/providers/together.ts`.
     pub mod together;
     #[path = "together.models.rs"]
@@ -388,6 +388,9 @@ pub mod providers {
     /// Z.AI model catalog ported from Pi's `packages/ai/src/providers/zai.models.ts`.
     pub mod zai_models;
 }
+
+/// Pi-compatible root facade exports from `packages/ai/src/index.ts`.
+pub use crate::index::*;
 
 /// Crate identity, useful while the clean workspace skeleton is being filled.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");

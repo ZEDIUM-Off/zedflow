@@ -1,15 +1,28 @@
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::Poll;
 
 use futures::executor::block_on;
-use futures::future::{BoxFuture, FutureExt};
+use futures::future::{BoxFuture, FutureExt, join};
 use zedflow_ai::auth::helpers::{
     ApiKeyCredential, AuthContext, AuthEvent, AuthLoginCallbacks, AuthPrompt, AuthPromptKind,
     AuthResult, env_api_key_auth,
 };
-use zedflow_ai::models::create_models;
+use zedflow_ai::auth::types::{
+    ApiKeyAuth as CanonicalApiKeyAuth, ApiKeyResolveInput, AuthFuture, ModelAuth, ResolvedAuth,
+};
+use zedflow_ai::models::{
+    Context, CreateProviderOptions, Model, ProviderApi, ProviderAuth, create_models,
+    create_models_with_auth_context, create_provider,
+};
 use zedflow_ai::providers::faux::{
     FauxResponseStep, RegisterFauxProviderOptions, faux_assistant_message, faux_provider,
+};
+use zedflow_ai::types::{
+    AssistantContentBlock, AssistantMessageEvent, AssistantMessageRole, DoneStopReason,
+    ProviderStreams, SimpleStreamOptions, StopReason, TextContent, TextContentType, Usage,
+    UsageCost,
 };
 
 #[derive(Default)]
@@ -40,6 +53,53 @@ impl AuthContext for FakeAuthContext {
     }
 }
 
+impl zedflow_ai::auth::types::AuthContext for FakeAuthContext {
+    fn env<'a>(&'a self, name: &'a str) -> zedflow_ai::auth::types::AuthFuture<'a, Option<String>> {
+        Box::pin(async move { self.env.get(name).cloned() })
+    }
+
+    fn file_exists<'a>(&'a self, path: &'a str) -> zedflow_ai::auth::types::AuthFuture<'a, bool> {
+        Box::pin(async move { self.files.iter().any(|file| file == path) })
+    }
+}
+
+#[derive(Debug)]
+struct RequestScopedAuth;
+
+impl CanonicalApiKeyAuth for RequestScopedAuth {
+    fn name(&self) -> &str {
+        "Request scoped test auth"
+    }
+
+    fn resolve<'a>(
+        &'a self,
+        _input: ApiKeyResolveInput<'a>,
+    ) -> AuthFuture<'a, zedflow_ai::auth::types::AuthResult<Option<ResolvedAuth>>> {
+        Box::pin(async {
+            Ok(Some(ResolvedAuth {
+                auth: ModelAuth {
+                    api_key: Some("provider-key".to_owned()),
+                    headers: None,
+                    base_url: Some("https://provider.example".to_owned()),
+                },
+                env: Some(BTreeMap::from([
+                    ("PROVIDER".to_owned(), "provider".to_owned()),
+                    ("SHARED".to_owned(), "provider".to_owned()),
+                ])),
+                source: Some("test".to_owned()),
+            }))
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SeenRequestOptions {
+    base_url: String,
+    api_key: Option<String>,
+    provider: Option<String>,
+    shared: Option<String>,
+}
+
 #[derive(Default)]
 struct CapturingLoginCallbacks {
     prompts: Arc<Mutex<Vec<AuthPrompt>>>,
@@ -60,51 +120,266 @@ impl AuthLoginCallbacks for CapturingLoginCallbacks {
     fn notify(&self, _event: AuthEvent) {}
 }
 
+fn test_model(api: &str, id: &str) -> Model {
+    Model {
+        provider: "mixed".to_owned(),
+        id: id.to_owned(),
+        api: api.to_owned(),
+        ..Model::default()
+    }
+}
+
+fn text_stream(model: &Model, text: String) -> zedflow_ai::models::AssistantMessageEventStream {
+    let stream = zedflow_ai::models::AssistantMessageEventStream::new();
+    stream.push(AssistantMessageEvent::Done {
+        reason: DoneStopReason::Stop,
+        message: zedflow_ai::models::AssistantMessage {
+            role: AssistantMessageRole::Assistant,
+            content: vec![AssistantContentBlock::Text(TextContent {
+                content_type: TextContentType::Text,
+                text,
+                text_signature: None,
+            })],
+            api: model.api.clone(),
+            provider: model.provider.clone(),
+            model: model.id.clone(),
+            response_model: None,
+            response_id: None,
+            diagnostics: None,
+            usage: Usage {
+                cost: UsageCost::default(),
+                ..Usage::default()
+            },
+            stop_reason: StopReason::Stop,
+            error_message: None,
+            timestamp: 0,
+        },
+    });
+    stream
+}
+
+fn provider_streams(prefix: &'static str) -> ProviderStreams {
+    ProviderStreams {
+        stream: Arc::new(move |model, _, _| text_stream(model, format!("{prefix}:{}", model.id))),
+        stream_simple: Arc::new(move |model, _, _: Option<&SimpleStreamOptions>| {
+            text_stream(model, format!("{prefix}:{}", model.id))
+        }),
+    }
+}
+
+fn message_text(message: &zedflow_ai::models::AssistantMessage) -> String {
+    message
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContentBlock::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-#[ignore = "parity blocker: providers/all.rs still has placeholder builtin_providers/get_builtin_models, so Pi's >500 builtin model assertions cannot pass"]
 fn builtin_models_registers_every_builtin_provider_with_models() {
-    parity_blocked(
-        "expected builtinModels providers length to match builtinProviders, contain anthropic, resolve claude-haiku-4-5 as anthropic-messages, expose >500 models, and list owned models per provider",
+    let models = zedflow_ai::providers::all::builtin_models();
+    let provider_ids = zedflow_ai::providers::all::get_builtin_providers();
+    let providers = models.get_providers();
+
+    assert_eq!(providers.len(), provider_ids.len());
+    assert!(providers.iter().any(|provider| provider.id == "anthropic"));
+    assert_eq!(
+        models
+            .get_model("anthropic", "claude-haiku-4-5")
+            .map(|model| model.api),
+        Some("anthropic-messages".to_owned())
+    );
+    assert!(models.get_models(None).len() > 500);
+    assert!(
+        providers
+            .iter()
+            .all(|provider| !provider.get_models().is_empty())
     );
 }
 
 #[test]
-#[ignore = "parity blocker: anthropic_provider is a PORT PLACEHOLDER and Models::get_auth has no provider auth contract yet"]
+fn builtin_models_route_to_their_api_and_return_terminal_transport_errors() {
+    let models = zedflow_ai::providers::all::builtin_models();
+    let model = models.get_model("openai", "gpt-4").expect("builtin model");
+
+    let result = models.complete(&model, &Context::default(), None);
+    assert_eq!(result.stop_reason, StopReason::Error);
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .is_some_and(|message| message.contains(&model.provider)),
+        "expected a terminal error from provider {}, got {:?}",
+        model.provider,
+        result.error_message
+    );
+}
+
+#[test]
 fn resolves_anthropic_auth_from_env_with_oauth_token_precedence() {
-    parity_blocked(
-        "expected ANTHROPIC_OAUTH_TOKEN to win over ANTHROPIC_API_KEY with source ANTHROPIC_OAUTH_TOKEN",
-    );
+    let mut models = create_models_with_auth_context(FakeAuthContext::new([
+        ("ANTHROPIC_API_KEY", "key"),
+        ("ANTHROPIC_OAUTH_TOKEN", "oauth-token"),
+    ]));
+    models.set_provider(zedflow_ai::providers::anthropic::anthropic_provider().expect("provider"));
+    let model = models
+        .get_model("anthropic", "claude-haiku-4-5")
+        .expect("model");
+
+    let result = models
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+    assert_eq!(result.auth.api_key.as_deref(), Some("oauth-token"));
+    assert_eq!(result.source.as_deref(), Some("ANTHROPIC_OAUTH_TOKEN"));
 }
 
 #[test]
-#[ignore = "parity blocker: Models::get_auth currently returns default auth and does not evaluate ambient Bedrock credential env"]
 fn reports_bedrock_as_configured_from_ambient_aws_credentials_without_an_api_key() {
-    parity_blocked(
-        "expected AWS_PROFILE to configure Bedrock with empty auth and unconfigured env to return None",
+    let mut models =
+        create_models_with_auth_context(FakeAuthContext::new([("AWS_PROFILE", "dev")]));
+    models.set_provider(zedflow_ai::providers::amazon_bedrock::amazon_bedrock_provider());
+    let model = models.get_models(Some("amazon-bedrock")).remove(0);
+
+    let result = models
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+    assert_eq!(result.auth, zedflow_ai::auth::types::ModelAuth::default());
+    assert_eq!(result.source.as_deref(), Some("AWS_PROFILE"));
+
+    let mut unconfigured = create_models_with_auth_context(FakeAuthContext::default());
+    unconfigured.set_provider(zedflow_ai::providers::amazon_bedrock::amazon_bedrock_provider());
+    assert!(
+        unconfigured
+            .get_auth(&model)
+            .expect("auth resolves")
+            .is_none()
     );
 }
 
 #[test]
-#[ignore = "parity blocker: Cloudflare Workers AI provider documents missing auth/API fields in the current Rust Provider shape"]
 fn requires_cloudflare_workers_ai_account_config_and_returns_scoped_env() {
-    parity_blocked(
-        "expected CLOUDFLARE_API_KEY plus CLOUDFLARE_ACCOUNT_ID to resolve apiKey/baseUrl and scoped env",
+    let mut missing =
+        create_models_with_auth_context(FakeAuthContext::new([("CLOUDFLARE_API_KEY", "cf-key")]));
+    missing.set_provider(
+        zedflow_ai::providers::cloudflare_workers_ai::cloudflare_workers_ai_provider(),
+    );
+    let model = missing.get_models(Some("cloudflare-workers-ai")).remove(0);
+    assert!(missing.get_auth(&model).expect("auth resolves").is_none());
+
+    let mut configured = create_models_with_auth_context(FakeAuthContext::new([
+        ("CLOUDFLARE_API_KEY", "cf-key"),
+        ("CLOUDFLARE_ACCOUNT_ID", "account-id"),
+    ]));
+    configured.set_provider(
+        zedflow_ai::providers::cloudflare_workers_ai::cloudflare_workers_ai_provider(),
+    );
+    let result = configured
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+    assert_eq!(result.auth.api_key.as_deref(), Some("cf-key"));
+    assert_eq!(
+        result.auth.base_url.as_deref(),
+        Some("https://api.cloudflare.com/client/v4/accounts/account-id/ai/v1")
+    );
+    assert_eq!(
+        result
+            .env
+            .as_ref()
+            .and_then(|env| env.get("CLOUDFLARE_ACCOUNT_ID"))
+            .map(String::as_str),
+        Some("account-id")
     );
 }
 
 #[test]
-#[ignore = "parity blocker: cloudflare_ai_gateway_provider is a PORT PLACEHOLDER until auth resolver and mixed API wiring exist"]
 fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_scoped_env_headers() {
-    parity_blocked(
-        "expected CLOUDFLARE_API_KEY/CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_GATEWAY_ID to resolve gateway headers, baseUrl, and scoped env",
+    let mut missing = create_models_with_auth_context(FakeAuthContext::new([
+        ("CLOUDFLARE_API_KEY", "cf-key"),
+        ("CLOUDFLARE_ACCOUNT_ID", "account-id"),
+    ]));
+    missing.set_provider(
+        zedflow_ai::providers::cloudflare_ai_gateway::cloudflare_ai_gateway_provider()
+            .expect("provider"),
+    );
+    let model = missing.get_models(Some("cloudflare-ai-gateway")).remove(0);
+    assert!(missing.get_auth(&model).expect("auth resolves").is_none());
+
+    let mut configured = create_models_with_auth_context(FakeAuthContext::new([
+        ("CLOUDFLARE_API_KEY", "cf-key"),
+        ("CLOUDFLARE_ACCOUNT_ID", "account-id"),
+        ("CLOUDFLARE_GATEWAY_ID", "gateway-id"),
+    ]));
+    configured.set_provider(
+        zedflow_ai::providers::cloudflare_ai_gateway::cloudflare_ai_gateway_provider()
+            .expect("provider"),
+    );
+    let result = configured
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+    let headers = result.auth.headers.expect("headers");
+    assert_eq!(
+        headers
+            .get("cf-aig-authorization")
+            .and_then(Option::as_deref),
+        Some("Bearer cf-key")
+    );
+    assert_eq!(headers.get("Authorization"), Some(&None));
+    assert_eq!(headers.get("x-api-key"), Some(&None));
+    assert_eq!(
+        result.auth.base_url.as_deref(),
+        Some("https://gateway.ai.cloudflare.com/v1/account-id/gateway-id/anthropic")
     );
 }
 
 #[test]
-#[ignore = "parity blocker: google_vertex_provider is a PORT PLACEHOLDER until ADC/API-key auth and model wiring exist"]
 fn resolves_vertex_via_adc_file_plus_project_and_location() {
-    parity_blocked(
-        "expected ADC plus project/location to resolve empty auth, partial ADC to be unconfigured, and GOOGLE_CLOUD_API_KEY to win",
+    let adc = "~/.config/gcloud/application_default_credentials.json";
+    let mut context = FakeAuthContext::new([
+        ("GOOGLE_CLOUD_PROJECT", "proj"),
+        ("GOOGLE_CLOUD_LOCATION", "us-central1"),
+    ]);
+    context.files.push(adc.to_owned());
+    let mut configured = create_models_with_auth_context(context);
+    configured.set_provider(
+        zedflow_ai::providers::google_vertex::google_vertex_provider().expect("provider"),
+    );
+    let model = configured.get_models(Some("google-vertex")).remove(0);
+    let result = configured
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+    assert_eq!(result.auth, zedflow_ai::auth::types::ModelAuth::default());
+    assert!(
+        result
+            .source
+            .as_deref()
+            .unwrap_or_default()
+            .contains("application default")
+    );
+
+    let mut keyed = create_models_with_auth_context(FakeAuthContext::new([(
+        "GOOGLE_CLOUD_API_KEY",
+        "vertex-key",
+    )]));
+    keyed.set_provider(
+        zedflow_ai::providers::google_vertex::google_vertex_provider().expect("provider"),
+    );
+    assert_eq!(
+        keyed
+            .get_auth(&model)
+            .expect("auth resolves")
+            .expect("configured")
+            .auth
+            .api_key
+            .as_deref(),
+        Some("vertex-key")
     );
 }
 
@@ -157,31 +432,193 @@ fn env_api_key_auth_login_prompts_for_a_secret_and_returns_an_api_key_credential
 }
 
 #[test]
-#[ignore = "parity blocker: create_provider only accepts one stream callback; Pi's per-model API dispatch map is not represented yet"]
 fn create_provider_dispatches_on_model_api_for_mixed_api_providers() {
-    parity_blocked("expected api-a/model-a to call a:model-a and api-b/model-b to call b:model-b");
+    let mut api = BTreeMap::new();
+    api.insert("api-a".to_owned(), provider_streams("a"));
+    api.insert("api-b".to_owned(), provider_streams("b"));
+    let provider = create_provider(CreateProviderOptions {
+        id: "mixed".to_owned(),
+        name: None,
+        base_url: Some("https://provider.example".to_owned()),
+        headers: None,
+        auth: ProviderAuth::default(),
+        models: vec![
+            test_model("api-a", "model-a"),
+            test_model("api-b", "model-b"),
+        ],
+        refresh_models: None,
+        api: ProviderApi::ByApi(api.into_iter().collect()),
+    });
+
+    assert_eq!(
+        provider.base_url.as_deref(),
+        Some("https://provider.example")
+    );
+    assert_eq!(
+        message_text(&block_on(
+            provider
+                .stream(&test_model("api-a", "model-a"), &Context::default(), None)
+                .result()
+        )),
+        "a:model-a"
+    );
+    assert_eq!(
+        message_text(&block_on(
+            provider
+                .stream(&test_model("api-b", "model-b"), &Context::default(), None)
+                .result()
+        )),
+        "b:model-b"
+    );
 }
 
 #[test]
-#[ignore = "parity blocker: Provider auth resolution and request/env merge options are not represented in models.rs StreamOptions yet"]
 fn create_provider_merges_provider_resolved_env_into_stream_options() {
-    parity_blocked(
-        "expected request apiKey to win and provider/request env to merge with request SHARED taking precedence",
+    let seen = Arc::new(Mutex::new(None));
+    let seen_for_stream = Arc::clone(&seen);
+    let provider = create_provider(CreateProviderOptions {
+        id: "scoped".to_owned(),
+        name: None,
+        base_url: None,
+        headers: None,
+        auth: ProviderAuth {
+            api_key: Some(Arc::new(RequestScopedAuth)),
+            oauth: None,
+        },
+        models: vec![Model {
+            provider: "scoped".to_owned(),
+            id: "model-a".to_owned(),
+            api: "test-api".to_owned(),
+            ..Model::default()
+        }],
+        refresh_models: None,
+        api: ProviderApi::Single(ProviderStreams {
+            stream: Arc::new(move |model, _, options| {
+                let options = options.expect("resolved request options");
+                *seen_for_stream.lock().expect("seen lock") = Some(SeenRequestOptions {
+                    base_url: model.base_url.clone(),
+                    api_key: options.api_key.clone(),
+                    provider: options
+                        .env
+                        .as_ref()
+                        .and_then(|env| env.get("PROVIDER"))
+                        .cloned(),
+                    shared: options
+                        .env
+                        .as_ref()
+                        .and_then(|env| env.get("SHARED"))
+                        .cloned(),
+                });
+                text_stream(model, "ok".to_owned())
+            }),
+            stream_simple: Arc::new(|model, _, _| text_stream(model, "ok".to_owned())),
+        }),
+    });
+    let mut models = create_models();
+    models.set_provider(provider);
+    let model = models
+        .get_model("scoped", "model-a")
+        .expect("catalog model");
+    let options = zedflow_ai::models::StreamOptions {
+        api_key: Some("request-key".to_owned()),
+        env: Some(std::collections::HashMap::from([(
+            "SHARED".to_owned(),
+            "request".to_owned(),
+        )])),
+        ..zedflow_ai::models::StreamOptions::default()
+    };
+
+    let result = models.complete(&model, &Context::default(), Some(&options));
+    assert_eq!(message_text(&result), "ok");
+    assert!(model.base_url.is_empty(), "catalog model remains immutable");
+    assert_eq!(
+        seen.lock().expect("seen lock").clone(),
+        Some(SeenRequestOptions {
+            base_url: "https://provider.example".to_owned(),
+            api_key: Some("request-key".to_owned()),
+            provider: Some("provider".to_owned()),
+            shared: Some("request".to_owned()),
+        })
     );
 }
 
 #[test]
-#[ignore = "parity blocker: create_provider has no mixed API map, so missing API implementations cannot synthesize Pi stream errors yet"]
 fn create_provider_produces_a_stream_error_for_a_model_whose_api_has_no_implementation() {
-    parity_blocked("expected stopReason error with message containing 'no API implementation'");
+    let mut api = BTreeMap::new();
+    api.insert("api-a".to_owned(), provider_streams("a"));
+    let provider = create_provider(CreateProviderOptions {
+        id: "mixed".to_owned(),
+        name: None,
+        base_url: None,
+        headers: None,
+        auth: ProviderAuth::default(),
+        models: vec![test_model("api-missing", "model-missing")],
+        refresh_models: None,
+        api: ProviderApi::ByApi(api.into_iter().collect()),
+    });
+
+    let result = block_on(
+        provider
+            .stream(
+                &test_model("api-missing", "model-missing"),
+                &Context::default(),
+                None,
+            )
+            .result(),
+    );
+
+    assert_eq!(result.stop_reason, StopReason::Error);
+    assert!(
+        result
+            .error_message
+            .as_deref()
+            .unwrap_or_default()
+            .contains("no API implementation for \"api-missing\"")
+    );
 }
 
 #[test]
-#[ignore = "parity blocker: refresh_models is synchronous and does not dedupe concurrent in-flight refreshes like Pi's async provider refresh"]
 fn create_provider_supports_dynamic_providers_empty_until_refreshed_in_flight_refreshes_deduped() {
-    parity_blocked(
-        "expected empty model list before refresh, concurrent refresh fetch count 1, listed model after refresh, and later fetch count 2",
-    );
+    let fetches = Arc::new(AtomicUsize::new(0));
+    let fetches_for_provider = Arc::clone(&fetches);
+    let provider = create_provider(CreateProviderOptions {
+        id: "dyn".to_owned(),
+        name: None,
+        base_url: None,
+        headers: None,
+        auth: ProviderAuth::default(),
+        models: Vec::new(),
+        refresh_models: Some(Arc::new(move || {
+            fetches_for_provider.fetch_add(1, Ordering::SeqCst);
+            let mut yielded = false;
+            futures::future::poll_fn(move |cx| {
+                if yielded {
+                    Poll::Ready(Ok(vec![Model {
+                        provider: "dyn".to_owned(),
+                        id: "model-a".to_owned(),
+                        api: "test-api".to_owned(),
+                        ..Model::default()
+                    }]))
+                } else {
+                    yielded = true;
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                }
+            })
+            .boxed()
+        })),
+        api: ProviderApi::Single(provider_streams("dyn")),
+    });
+
+    assert!(provider.get_models().is_empty());
+    let (first, second) = block_on(join(provider.refresh_models(), provider.refresh_models()));
+    first.expect("first refresh");
+    second.expect("second refresh");
+    assert_eq!(fetches.load(Ordering::SeqCst), 1);
+    assert_eq!(provider.get_models()[0].id, "model-a");
+
+    block_on(provider.refresh_models()).expect("later refresh");
+    assert_eq!(fetches.load(Ordering::SeqCst), 2);
 }
 
 #[test]
@@ -199,13 +636,16 @@ fn faux_provider_streams_queued_responses_through_a_models_collection() {
         .into_iter()
         .next()
         .expect("faux model");
-    let result = models.complete(&model, None);
+    let result = models.complete(&model, &Context::default(), None);
+    let text = result
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContentBlock::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
 
-    assert_eq!(result.text, "hello from faux");
+    assert_eq!(text, "hello from faux");
     assert_eq!(faux.state.call_count(), 1);
-}
-
-#[track_caller]
-fn parity_blocked(reason: &str) {
-    panic!("parity blocker: {reason}");
 }

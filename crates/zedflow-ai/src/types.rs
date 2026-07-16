@@ -265,21 +265,58 @@ pub struct ProviderResponse {
     pub headers: HashMap<String, String>,
 }
 
-/// PORT PLACEHOLDER:
-/// Original dependency: `DOM AbortSignal`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `carry cancellation state and wake provider requests exactly like the AbortSignal accepted by packages/ai/src/types.ts stream options`.
-/// Replacement decision needed before production use.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AbortSignalPlaceholder;
+/// Rust abort signal replacing Pi's DOM `AbortSignal` stream option.
+pub type AbortSignal = crate::utils::abort_signals::AbortSignal;
+
+/// Error returned by a provider payload or response hook.
+#[derive(Debug)]
+pub struct ProviderHookError {
+    source: Box<dyn std::error::Error + Send + Sync>,
+}
+
+impl ProviderHookError {
+    /// Wraps a hook failure while retaining its error source.
+    #[must_use]
+    pub fn new(source: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self {
+            source: Box::new(source),
+        }
+    }
+}
+
+impl std::fmt::Display for ProviderHookError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.source.fmt(formatter)
+    }
+}
+
+impl std::error::Error for ProviderHookError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(self.source.as_ref())
+    }
+}
 
 /// Callback that can inspect or replace a provider payload before it is sent.
-pub type PayloadHook<TApi = Api> =
-    Arc<dyn Fn(Value, Model<TApi>) -> BoxFuture<'static, Option<Value>> + Send + Sync>;
+///
+/// # Errors
+///
+/// Returns [`ProviderHookError`] when the hook rejects the request.
+pub type PayloadHook<TApi = Api> = Arc<
+    dyn Fn(Value, Model<TApi>) -> BoxFuture<'static, Result<Option<Value>, ProviderHookError>>
+        + Send
+        + Sync,
+>;
 
 /// Callback invoked after an HTTP response is received.
-pub type ResponseHook<TApi = Api> =
-    Arc<dyn Fn(ProviderResponse, Model<TApi>) -> BoxFuture<'static, ()> + Send + Sync>;
+///
+/// # Errors
+///
+/// Returns [`ProviderHookError`] when the hook rejects the response.
+pub type ResponseHook<TApi = Api> = Arc<
+    dyn Fn(ProviderResponse, Model<TApi>) -> BoxFuture<'static, Result<(), ProviderHookError>>
+        + Send
+        + Sync,
+>;
 
 /// Base options shared by Pi chat providers.
 #[derive(Clone, Default)]
@@ -289,7 +326,7 @@ pub struct StreamOptions<TApi = Api> {
     /// Maximum output tokens.
     pub max_tokens: Option<u32>,
     /// Cancellation signal.
-    pub signal: Option<AbortSignalPlaceholder>,
+    pub signal: Option<AbortSignal>,
     /// API key override.
     pub api_key: Option<String>,
     /// Preferred transport for providers that support multiple transports.
@@ -352,9 +389,8 @@ pub enum ApiStreamOptions {
     Custom(StreamOptions),
 }
 
-/// Placeholder for Pi's `AssistantMessageEventStream` imported from `utils/event-stream.ts`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AssistantMessageEventStream;
+/// Pi assistant-message event stream imported from `utils/event-stream.ts`.
+pub use crate::utils::event_stream::AssistantMessageEventStream;
 
 /// Uniform stream contract of a chat API implementation module.
 #[derive(Clone)]
@@ -373,18 +409,32 @@ pub struct ProviderImages {
 }
 
 /// Callback that can inspect or replace an image provider payload before it is sent.
-pub type ImagesPayloadHook<TApi = ImagesApi> =
-    Arc<dyn Fn(Value, ImagesModel<TApi>) -> BoxFuture<'static, Option<Value>> + Send + Sync>;
+///
+/// # Errors
+///
+/// Returns [`ProviderHookError`] when the hook rejects the request.
+pub type ImagesPayloadHook<TApi = ImagesApi> = Arc<
+    dyn Fn(Value, ImagesModel<TApi>) -> BoxFuture<'static, Result<Option<Value>, ProviderHookError>>
+        + Send
+        + Sync,
+>;
 
 /// Callback invoked after an image API HTTP response is received.
-pub type ImagesResponseHook<TApi = ImagesApi> =
-    Arc<dyn Fn(ProviderResponse, ImagesModel<TApi>) -> BoxFuture<'static, ()> + Send + Sync>;
+///
+/// # Errors
+///
+/// Returns [`ProviderHookError`] when the hook rejects the response.
+pub type ImagesResponseHook<TApi = ImagesApi> = Arc<
+    dyn Fn(ProviderResponse, ImagesModel<TApi>) -> BoxFuture<'static, Result<(), ProviderHookError>>
+        + Send
+        + Sync,
+>;
 
 /// Options shared by Pi image-generation providers.
 #[derive(Clone, Default)]
 pub struct ImagesOptions<TApi = ImagesApi> {
     /// Cancellation signal.
-    pub signal: Option<AbortSignalPlaceholder>,
+    pub signal: Option<AbortSignal>,
     /// API key override.
     pub api_key: Option<String>,
     /// Provider-scoped environment values.
@@ -549,7 +599,7 @@ pub enum ToolCallType {
 }
 
 /// Token usage and cost metadata.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Usage {
     /// Input tokens.
@@ -571,7 +621,7 @@ pub struct Usage {
 }
 
 /// Usage cost breakdown.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageCost {
     /// Input token cost.
@@ -1183,6 +1233,10 @@ pub struct VercelGatewayRouting {
 }
 
 /// Compatibility overrides for model APIs that support them.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "preserve the canonical Pi compatibility shape"
+)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ModelCompat {
     /// OpenAI-compatible chat completions overrides.
@@ -1194,7 +1248,7 @@ pub enum ModelCompat {
 }
 
 /// Model cost metadata in dollars per million tokens.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModelCost {
     /// Input token cost.
     pub input: f64,
@@ -1256,6 +1310,26 @@ pub struct Model<TApi = Api> {
     pub headers: Option<HashMap<String, String>>,
     /// Compatibility overrides.
     pub compat: Option<ModelCompat>,
+}
+
+impl<TApi: Default> Default for Model<TApi> {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            api: TApi::default(),
+            provider: String::new(),
+            base_url: String::new(),
+            reasoning: false,
+            thinking_level_map: None,
+            input: vec![ModelInput::Text],
+            cost: ModelCost::default(),
+            context_window: 0,
+            max_tokens: 0,
+            headers: None,
+            compat: None,
+        }
+    }
 }
 
 /// Image model metadata for the unified model system.

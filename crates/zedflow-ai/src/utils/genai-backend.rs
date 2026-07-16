@@ -247,15 +247,16 @@ pub(crate) fn chat_options(config: &GenAiRequestConfig) -> ChatOptions {
 }
 
 /// Normalized genai/HTTP error data for provider-specific display code.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug)]
 pub(crate) struct GenAiBackendError {
     pub http: NormalizedProviderHttpError,
     pub display: String,
+    source: Box<dyn Error + Send + Sync>,
 }
 
 impl GenAiBackendError {
-    pub(crate) fn from_genai(error: &genai::Error, prefix: Option<&str>) -> Self {
-        let http = match error {
+    pub(crate) fn from_genai(error: genai::Error, prefix: Option<&str>) -> Self {
+        let http = match &error {
             genai::Error::WebAdapterCall { webc_error, .. }
             | genai::Error::WebModelCall { webc_error, .. } => http_error_from_webc(webc_error),
             genai::Error::HttpError { status, body, .. } => normalize_provider_http_error(
@@ -276,17 +277,37 @@ impl GenAiBackendError {
             _ => normalize_provider_http_error(ProviderHttpErrorParts::new(error.to_string())),
         };
         let display = format_provider_error(&http.normalized, prefix);
-        Self { http, display }
+        Self {
+            http,
+            display,
+            source: Box::new(error),
+        }
     }
 
-    pub(crate) fn from_reqwest(error: &reqwest::Error, prefix: Option<&str>) -> Self {
+    pub(crate) fn from_reqwest(error: reqwest::Error, prefix: Option<&str>) -> Self {
         let mut parts = ProviderHttpErrorParts::new(error.to_string());
         if let Some(status) = error.status() {
             parts = parts.with_status(status.as_u16());
         }
         let http = normalize_provider_http_error(parts);
         let display = format_provider_error(&http.normalized, prefix);
-        Self { http, display }
+        Self {
+            http,
+            display,
+            source: Box::new(error),
+        }
+    }
+}
+
+impl fmt::Display for GenAiBackendError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.display)
+    }
+}
+
+impl Error for GenAiBackendError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.source.as_ref())
     }
 }
 
@@ -305,13 +326,12 @@ fn web_config(config: &GenAiClientConfig) -> Result<WebConfig, GenAiBackendConfi
         .proxy_target_url
         .as_deref()
         .or(config.endpoint.as_deref());
-    if let Some(target_url) = target_url {
-        if let Some(proxy) =
+    if let Some(target_url) = target_url
+        && let Some(proxy) =
             resolve_reqwest_proxy_for_target(target_url, config.request.env.as_ref())?
         {
             web_config = web_config.with_proxy(proxy);
         }
-    }
 
     Ok(web_config)
 }
@@ -362,7 +382,13 @@ fn http_error_from_webc(error: &genai::webc::Error) -> NormalizedProviderHttpErr
                 ProviderHttpErrorParts::new(error.to_string()).with_body(body.clone()),
             )
         }
-        genai::webc::Error::Reqwest(error) => GenAiBackendError::from_reqwest(error, None).http,
+        genai::webc::Error::Reqwest(error) => {
+            let mut parts = ProviderHttpErrorParts::new(error.to_string());
+            if let Some(status) = error.status() {
+                parts = parts.with_status(status.as_u16());
+            }
+            normalize_provider_http_error(parts)
+        }
         _ => normalize_provider_http_error(ProviderHttpErrorParts::new(error.to_string())),
     }
 }

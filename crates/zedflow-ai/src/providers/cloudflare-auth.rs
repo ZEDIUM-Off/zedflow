@@ -205,10 +205,24 @@ fn resolve_cloudflare_base_url(
     account_id: &str,
     gateway_id: Option<&str>,
 ) -> String {
-    model
+    let template = model
         .base_url
         .as_deref()
-        .unwrap_or_default()
+        .filter(|base_url| !base_url.is_empty());
+    let fallback;
+    let template = match (template, gateway_id) {
+        (Some(template), _) => template,
+        (None, Some(gateway_id)) => {
+            fallback =
+                format!("https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/anthropic");
+            return fallback;
+        }
+        (None, None) => {
+            fallback = format!("https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1");
+            return fallback;
+        }
+    };
+    template
         .replace(&format!("{{{CLOUDFLARE_ACCOUNT_ID}}}"), account_id)
         .replace(
             &format!("{{{CLOUDFLARE_GATEWAY_ID}}}"),

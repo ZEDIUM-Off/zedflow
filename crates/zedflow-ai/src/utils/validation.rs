@@ -180,15 +180,29 @@ fn coerce_primitive_by_type(value: &Value, schema_type: &str) -> Value {
 }
 
 fn coerce_number(value: &Value, integer_only: bool) -> Value {
+    if integer_only {
+        return match value {
+            Value::Null => Number::from(0).into(),
+            Value::String(text) if !text.trim().is_empty() => text
+                .parse::<i64>()
+                .ok()
+                .map(Number::from)
+                .map_or_else(|| value.clone(), Value::Number),
+            Value::Bool(flag) => Number::from(u8::from(*flag)).into(),
+            _ => value.clone(),
+        };
+    }
+
     match value {
-        Value::Null => Number::from(0).into(),
+        Value::Null => Number::from_f64(0.0).map_or_else(|| value.clone(), Value::Number),
         Value::String(text) if !text.trim().is_empty() => text
             .parse::<f64>()
             .ok()
-            .filter(|number| number.is_finite() && (!integer_only || number.fract() == 0.0))
+            .filter(|number| number.is_finite())
             .and_then(Number::from_f64)
             .map_or_else(|| value.clone(), Value::Number),
-        Value::Bool(flag) => Number::from(u8::from(*flag)).into(),
+        Value::Bool(flag) => Number::from_f64(f64::from(u8::from(*flag)))
+            .map_or_else(|| value.clone(), Value::Number),
         _ => value.clone(),
     }
 }
@@ -324,31 +338,31 @@ fn coerce_with_json_schema(value: Value, schema: &Value) -> Value {
         }
     }
 
-    if schema_types.contains(&"object") {
-        if let Value::Object(object) = &mut next_value {
-            apply_schema_object_coercion(object, schema_object);
-        }
+    if schema_types.contains(&"object")
+        && let Value::Object(object) = &mut next_value
+    {
+        apply_schema_object_coercion(object, schema_object);
     }
 
-    if schema_types.contains(&"array") {
-        if let Value::Array(array) = &mut next_value {
-            apply_schema_array_coercion(array, schema_object);
-        }
+    if schema_types.contains(&"array")
+        && let Value::Array(array) = &mut next_value
+    {
+        apply_schema_array_coercion(array, schema_object);
     }
 
     next_value
 }
 
 fn format_validation_path(error: &jsonschema::ValidationError<'_>) -> String {
-    if let ValidationErrorKind::Required { property } = error.kind() {
-        if let Some(required_property) = property.as_str() {
-            let base_path = location_to_dot_path(&error.instance_path().to_string());
-            return if base_path.is_empty() {
-                required_property.to_string()
-            } else {
-                format!("{base_path}.{required_property}")
-            };
-        }
+    if let ValidationErrorKind::Required { property } = error.kind()
+        && let Some(required_property) = property.as_str()
+    {
+        let base_path = location_to_dot_path(&error.instance_path().to_string());
+        return if base_path.is_empty() {
+            required_property.to_string()
+        } else {
+            format!("{base_path}.{required_property}")
+        };
     }
 
     let path = location_to_dot_path(&error.instance_path().to_string());
@@ -473,7 +487,7 @@ mod tests {
             (json!({ "type": "number" }), json!("42"), json!(42.0)),
             (json!({ "type": "number" }), json!(true), json!(1.0)),
             (json!({ "type": "number" }), Value::Null, json!(0.0)),
-            (json!({ "type": "integer" }), json!("42"), json!(42.0)),
+            (json!({ "type": "integer" }), json!("42"), json!(42)),
             (json!({ "type": "boolean" }), json!("true"), json!(true)),
             (json!({ "type": "boolean" }), json!("false"), json!(false)),
             (json!({ "type": "boolean" }), json!(1), json!(true)),

@@ -3,17 +3,20 @@
 use std::collections::{BTreeMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use url::Url;
-use zedflow_core::placeholders;
 
 use crate::auth::types::{
     AuthAbortSignal, AuthEvent, AuthFuture, AuthLoginCallbacks, AuthPrompt, AuthResult, BoxError,
     ModelAuth, OAuthAuth, OAuthCredential,
 };
 use crate::types::{Api, Model};
+use crate::utils::oauth::device_code::{
+    OAuthDeviceCodePollOptions, OAuthDeviceCodePollResult, poll_oauth_device_code_flow,
+};
 
 /// GitHub Copilot OAuth client id used by Pi.
 pub const CLIENT_ID: &str = "Iv1.b507a08c87ecfe98";
@@ -30,8 +33,7 @@ pub const COPILOT_HEADERS: &[(&str, &str)] = &[
 pub const COPILOT_API_VERSION: &str = "2026-06-01";
 
 const DEFAULT_COPILOT_BASE_URL: &str = "https://api.individual.githubcopilot.com";
-const PLACEHOLDER_DEPENDENCY: &str = "fetch, AbortSignal.timeout, and pollOAuthDeviceCodeFlow from packages/ai/src/utils/oauth/device-code.ts";
-const PLACEHOLDER_BEHAVIOR: &str = "perform GitHub device-code login, poll access-token responses with authorization_pending/slow_down handling, exchange GitHub access tokens for Copilot tokens, fetch selectable Copilot model ids, enable model policies, and honor AbortSignal cancellation without live provider calls in unit tests";
+const TOKEN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// GitHub Copilot OAuth errors produced before the HTTP placeholder boundary.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,6 +42,8 @@ pub enum GitHubCopilotOAuthError {
     InvalidEnterpriseDomain,
     /// The Copilot `/models` response was not the object shape Pi expects.
     InvalidCopilotModelsResponse,
+    /// The provider returned an HTTP or JSON failure.
+    Http(String),
 }
 
 impl fmt::Display for GitHubCopilotOAuthError {
@@ -47,6 +51,7 @@ impl fmt::Display for GitHubCopilotOAuthError {
         match self {
             Self::InvalidEnterpriseDomain => f.write_str("invalid GitHub Enterprise URL/domain"),
             Self::InvalidCopilotModelsResponse => f.write_str("invalid Copilot models response"),
+            Self::Http(message) => f.write_str(message),
         }
     }
 }
@@ -260,25 +265,74 @@ pub fn parse_available_copilot_model_ids(
 }
 
 async fn fetch_available_github_copilot_model_ids(
-    _copilot_token: &str,
-    _enterprise_domain: Option<&str>,
+    copilot_token: &str,
+    enterprise_domain: Option<&str>,
 ) -> AuthResult<Vec<String>> {
-    unsupported_network()
+    let base_url = get_github_copilot_base_url(Some(copilot_token), enterprise_domain);
+    let raw = fetch_json(
+        reqwest::Method::GET,
+        &format!("{base_url}/models"),
+        |request| {
+            request
+                .bearer_auth(copilot_token)
+                .header("X-GitHub-Api-Version", COPILOT_API_VERSION)
+        },
+    )?;
+    parse_available_copilot_model_ids(&raw).map_err(box_error)
 }
 
 async fn start_device_flow(domain: &str) -> AuthResult<DeviceCodeResponse> {
-    let _urls = get_urls(domain);
-    unsupported_network()
+    let urls = get_urls(domain);
+    let raw = fetch_json(reqwest::Method::POST, &urls.device_code_url, |request| {
+        request
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(form_body(&[
+                ("client_id", CLIENT_ID),
+                ("scope", "read:user"),
+            ]))
+    })?;
+    let mut device: DeviceCodeResponse = serde_json::from_value(raw).map_err(|_| {
+        box_error(GitHubCopilotOAuthError::Http(
+            "Invalid device code response fields".to_owned(),
+        ))
+    })?;
+    let parsed_uri = Url::parse(&device.verification_uri).map_err(|_| {
+        box_error(GitHubCopilotOAuthError::Http(
+            "Untrusted verification_uri in device code response".to_owned(),
+        ))
+    })?;
+    if !matches!(parsed_uri.scheme(), "http" | "https") {
+        return Err(box_error(GitHubCopilotOAuthError::Http(
+            "Untrusted verification_uri in device code response".to_owned(),
+        )));
+    }
+    device.verification_uri = parsed_uri.to_string();
+    Ok(device)
 }
 
 async fn poll_for_github_access_token(
     domain: &str,
     device: &DeviceCodeResponse,
-    _signal: Option<AuthAbortSignal>,
+    signal: Option<AuthAbortSignal>,
 ) -> AuthResult<String> {
-    let _urls = get_urls(domain);
-    let _device = device;
-    unsupported_network()
+    let urls = get_urls(domain);
+    let device_code = device.device_code.clone();
+    poll_oauth_device_code_flow(OAuthDeviceCodePollOptions {
+        interval_seconds: device.interval.map(|seconds| seconds as f64),
+        expires_in_seconds: Some(device.expires_in as f64),
+        wait_before_first_poll: true,
+        signal,
+        poll: move || {
+            let access_token_url = urls.access_token_url.clone();
+            let device_code = device_code.clone();
+            async move { poll_github_access_token_once(&access_token_url, &device_code) }
+        },
+    })
+    .await
+    .map_err(box_error)
 }
 
 async fn refresh_github_copilot_access_token(
@@ -286,22 +340,131 @@ async fn refresh_github_copilot_access_token(
     enterprise_domain: Option<&str>,
 ) -> AuthResult<CopilotCredentials> {
     let domain = enterprise_domain.unwrap_or("github.com");
-    let _urls = get_urls(domain);
-    let _refresh_token = refresh_token;
-    unsupported_network()
+    let urls = get_urls(domain);
+    let raw = fetch_json(reqwest::Method::GET, &urls.copilot_token_url, |request| {
+        request.bearer_auth(refresh_token)
+    })?;
+    let token = raw.get("token").and_then(Value::as_str).ok_or_else(|| {
+        box_error(GitHubCopilotOAuthError::Http(
+            "Invalid Copilot token response fields".to_owned(),
+        ))
+    })?;
+    let expires_at = raw
+        .get("expires_at")
+        .and_then(Value::as_i64)
+        .ok_or_else(|| {
+            box_error(GitHubCopilotOAuthError::Http(
+                "Invalid Copilot token response fields".to_owned(),
+            ))
+        })?;
+    Ok(CopilotCredentials {
+        refresh: refresh_token.to_owned(),
+        access: token.to_owned(),
+        expires: expires_at * 1000 - 5 * 60 * 1000,
+        enterprise_url: enterprise_domain.map(ToOwned::to_owned),
+        available_model_ids: None,
+    })
+}
+
+fn poll_github_access_token_once(
+    access_token_url: &str,
+    device_code: &str,
+) -> std::result::Result<OAuthDeviceCodePollResult<String>, GitHubCopilotOAuthError> {
+    let raw = fetch_json(reqwest::Method::POST, access_token_url, |request| {
+        request
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(form_body(&[
+                ("client_id", CLIENT_ID),
+                ("device_code", device_code),
+                ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+            ]))
+    })
+    .map_err(|error| GitHubCopilotOAuthError::Http(error.to_string()))?;
+
+    if let Some(access_token) = raw.get("access_token").and_then(Value::as_str) {
+        return Ok(OAuthDeviceCodePollResult::Complete {
+            value: access_token.to_owned(),
+        });
+    }
+
+    if let Some(error) = raw.get("error").and_then(Value::as_str) {
+        return match error {
+            "authorization_pending" => Ok(OAuthDeviceCodePollResult::Pending),
+            "slow_down" => Ok(OAuthDeviceCodePollResult::SlowDown {
+                interval_seconds: raw.get("interval").and_then(Value::as_f64),
+            }),
+            _ => {
+                let suffix = raw
+                    .get("error_description")
+                    .and_then(Value::as_str)
+                    .map_or(String::new(), |description| format!(": {description}"));
+                Ok(OAuthDeviceCodePollResult::Failed {
+                    message: format!("Device flow failed: {error}{suffix}"),
+                })
+            }
+        };
+    }
+
+    Ok(OAuthDeviceCodePollResult::Failed {
+        message: "Invalid device token response".to_owned(),
+    })
+}
+
+fn form_body(form: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    serializer.extend_pairs(form.iter().copied());
+    serializer.finish()
+}
+
+fn fetch_json<F>(method: reqwest::Method, url: &str, configure: F) -> AuthResult<Value>
+where
+    F: FnOnce(reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder,
+{
+    let client = reqwest::blocking::Client::builder()
+        .timeout(TOKEN_TIMEOUT)
+        .build()
+        .map_err(box_error)?;
+    let request = client
+        .request(method, url)
+        .header(reqwest::header::ACCEPT, "application/json");
+    let response = add_copilot_headers(configure(request))
+        .send()
+        .map_err(box_error)?;
+    let status = response.status();
+    let status_text = status.canonical_reason().unwrap_or("");
+    let body = response.text().map_err(box_error)?;
+    if !status.is_success() {
+        return Err(box_error(GitHubCopilotOAuthError::Http(format!(
+            "{} {}: {}",
+            status.as_u16(),
+            status_text,
+            body
+        ))));
+    }
+    serde_json::from_str(&body).map_err(box_error)
+}
+
+fn add_copilot_headers(
+    mut request: reqwest::blocking::RequestBuilder,
+) -> reqwest::blocking::RequestBuilder {
+    for (name, value) in COPILOT_HEADERS {
+        request = request.header(*name, *value);
+    }
+    request
+}
+
+fn box_error(error: impl StdError + Send + Sync + 'static) -> BoxError {
+    Box::new(error)
 }
 
 /// Refreshes a GitHub Copilot token and account-selectable model list.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: `fetch`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `exchange a GitHub access/refresh token for a Copilot token, subtract five minutes from expires_at, then fetch selectable models from the credential-specific Copilot API base URL`.
-/// Replacement decision needed before production use.
-///
 /// # Errors
 ///
-/// Returns provider refresh failures or a port placeholder until the HTTP client replacement is selected.
+/// Returns provider refresh or model-list failures.
 pub async fn refresh_github_copilot_token(
     refresh_token: &str,
     enterprise_domain: Option<&str>,
@@ -319,21 +482,37 @@ async fn enable_all_github_copilot_models(
     enterprise_domain: Option<&str>,
     callbacks: Option<&dyn OAuthLoginCallbacks>,
 ) {
-    let _ = (token, enterprise_domain, callbacks);
+    let base_url = get_github_copilot_base_url(Some(token), enterprise_domain);
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(TOKEN_TIMEOUT)
+        .build()
+    else {
+        return;
+    };
+
+    for model in crate::providers::github_copilot_models::GITHUB_COPILOT_MODELS {
+        let success = add_copilot_headers(
+            client
+                .post(format!("{base_url}/models/{}/policy", model.id))
+                .bearer_auth(token)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .header("openai-intent", "chat-policy")
+                .header("x-interaction-type", "chat-policy")
+                .json(&json!({ "state": "enabled" })),
+        )
+        .send()
+        .is_ok_and(|response| response.status().is_success());
+        if let Some(callbacks) = callbacks {
+            callbacks.on_progress(&format!("{}: {}", model.id, success));
+        }
+    }
 }
 
 /// Runs GitHub Copilot OAuth login using Pi's device-code flow.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: `fetch`, DOM `AbortSignal`, and `pollOAuthDeviceCodeFlow`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `prompt for an optional GitHub Enterprise domain, start the GitHub device-code flow, notify the user with code and verification URI, poll until authorization completes, exchange for a Copilot token, enable known models, then fetch selectable model ids`.
-/// Replacement decision needed before production use.
-///
 /// # Errors
 ///
-/// Returns invalid enterprise-domain input, prompt failures, cancellation/provider failures, or a port
-/// placeholder until the HTTP/cancellation replacement is selected.
+/// Returns invalid enterprise-domain input, prompt failures, cancellation/provider failures, or HTTP failures.
 pub async fn login_github_copilot(
     callbacks: &dyn OAuthLoginCallbacks,
 ) -> AuthResult<CopilotCredentials> {
@@ -571,13 +750,6 @@ pub static GITHUB_COPILOT_OAUTH: GitHubCopilotOAuth = GitHubCopilotOAuth;
 
 /// Static GitHub Copilot OAuth provider interface.
 pub static GITHUB_COPILOT_OAUTH_PROVIDER: GitHubCopilotOAuthProvider = GitHubCopilotOAuthProvider;
-
-fn unsupported_network<T>() -> AuthResult<T> {
-    Err(Box::new(placeholders::error(
-        PLACEHOLDER_DEPENDENCY,
-        PLACEHOLDER_BEHAVIOR,
-    )))
-}
 
 #[cfg(test)]
 mod tests {

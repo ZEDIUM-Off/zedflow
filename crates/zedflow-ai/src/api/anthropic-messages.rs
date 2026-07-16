@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::types::{
-    Api, AssistantContentBlock, AssistantMessage, AssistantMessageRole, CacheRetention, Context,
-    DoneStopReason, ErrorStopReason, Message, Model, ModelCompat, ProviderEnv, ProviderHeaders,
-    ProviderResponse, StopReason, StreamOptions, TextContent, TextContentType, ThinkingContent,
-    ThinkingContentType, Tool, ToolCall, ToolCallType, ToolResultContentBlock, Usage, UsageCost,
-    UserContentBlock, UserMessageContent,
+    Api, AssistantContentBlock, AssistantMessage, AssistantMessageEvent,
+    AssistantMessageEventStream, AssistantMessageRole, CacheRetention, Context, DoneStopReason,
+    ErrorStopReason, Message, Model, ModelCompat, ModelThinkingLevel, ProviderEnv, ProviderHeaders,
+    ProviderResponse, ProviderStreams, SimpleStreamOptions, StopReason, StreamOptions, TextContent,
+    TextContentType, ThinkingContent, ThinkingContentType, ThinkingLevel, Tool, ToolCall,
+    ToolCallType, ToolResultContentBlock, Usage, UsageCost, UserContentBlock, UserMessageContent,
 };
 use crate::utils::headers::provider_headers_to_record;
 use crate::utils::json_parse::{parse_json_with_repair, parse_streaming_json_value};
@@ -44,12 +45,16 @@ pub enum AnthropicError {
     InvalidHeader(String),
     /// Proxy configuration error.
     Proxy(String),
+    /// The request was cancelled through its abort signal.
+    Aborted,
     /// Provider returned a non-success HTTP status.
     HttpStatus { status: u16, body: String },
     /// Server-sent-event parsing failed.
     Sse(String),
     /// JSON parsing failed.
     Json(String),
+    /// A payload or response hook rejected the request.
+    Hook(crate::types::ProviderHookError),
 }
 
 impl fmt::Display for AnthropicError {
@@ -63,7 +68,9 @@ impl fmt::Display for AnthropicError {
             | Self::Proxy(message)
             | Self::Sse(message)
             | Self::Json(message) => formatter.write_str(message),
+            Self::Aborted => formatter.write_str("Request was aborted"),
             Self::Http(error) => error.fmt(formatter),
+            Self::Hook(error) => error.fmt(formatter),
             Self::HttpStatus { status, body } => write!(
                 formatter,
                 "Anthropic request failed with status {status}: {body}"
@@ -76,6 +83,7 @@ impl StdError for AnthropicError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Http(error) => Some(error),
+            Self::Hook(error) => Some(error),
             _ => None,
         }
     }
@@ -84,6 +92,12 @@ impl StdError for AnthropicError {
 impl From<reqwest::Error> for AnthropicError {
     fn from(value: reqwest::Error) -> Self {
         Self::Http(value)
+    }
+}
+
+impl From<crate::types::ProviderHookError> for AnthropicError {
+    fn from(value: crate::types::ProviderHookError) -> Self {
+        Self::Hook(value)
     }
 }
 
@@ -954,6 +968,12 @@ fn messages_url(base_url: &str) -> String {
     }
 }
 
+async fn wait_for_abort(signal: crate::types::AbortSignal) {
+    while !signal.aborted() {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+}
+
 /// Sends an Anthropic Messages request via raw reqwest and returns the raw SSE body.
 ///
 /// The function has no implicit retries; callers must opt into any retry loop outside this API.
@@ -963,11 +983,18 @@ pub async fn request_raw_sse(
     options: Option<&AnthropicOptions>,
 ) -> Result<String> {
     assert_request_auth(model, options)?;
+    let signal = options.and_then(|options| options.stream.signal.clone());
+    if signal
+        .as_ref()
+        .is_some_and(crate::types::AbortSignal::aborted)
+    {
+        return Err(AnthropicError::Aborted);
+    }
     let api_key = options.and_then(|options| options.stream.api_key.as_deref());
     let is_oauth = api_key.is_some_and(is_oauth_token);
     let mut payload = build_request_payload(model, context, is_oauth, options);
     if let Some(hook) = options.and_then(|options| options.stream.on_payload.as_ref())
-        && let Some(next_payload) = hook(payload.clone(), model.clone()).await
+        && let Some(next_payload) = hook(payload.clone(), model.clone()).await?
     {
         payload = next_payload;
     }
@@ -998,12 +1025,19 @@ pub async fn request_raw_sse(
         builder = builder.proxy(proxy);
     }
     let client = builder.build()?;
-    let response = client
+    let request = client
         .post(messages_url(&model.base_url))
         .headers(provider_headers_to_headermap(&headers)?)
         .body(payload.to_string())
-        .send()
-        .await?;
+        .send();
+    let response = if let Some(signal) = signal.clone() {
+        match futures::future::select(Box::pin(request), Box::pin(wait_for_abort(signal))).await {
+            futures::future::Either::Left((response, _)) => response?,
+            futures::future::Either::Right(((), _)) => return Err(AnthropicError::Aborted),
+        }
+    } else {
+        request.await?
+    };
 
     let status = response.status().as_u16();
     let response_headers = response
@@ -1024,13 +1058,369 @@ pub async fn request_raw_sse(
             },
             model.clone(),
         )
-        .await;
+        .await?;
     }
-    let body = response.text().await?;
+    let response_body = response.text();
+    let body = if let Some(signal) = signal {
+        match futures::future::select(Box::pin(response_body), Box::pin(wait_for_abort(signal)))
+            .await
+        {
+            futures::future::Either::Left((body, _)) => body?,
+            futures::future::Either::Right(((), _)) => return Err(AnthropicError::Aborted),
+        }
+    } else {
+        response_body.await?
+    };
     if !(200..300).contains(&status) {
         return Err(AnthropicError::HttpStatus { status, body });
     }
     Ok(body)
+}
+
+/// Returns canonical registered Anthropic provider streams.
+#[must_use]
+pub fn provider_streams() -> ProviderStreams {
+    ProviderStreams {
+        stream: std::sync::Arc::new(|model, context, options| {
+            stream_registered(model, context, options)
+        }),
+        stream_simple: std::sync::Arc::new(|model, context, options| {
+            stream_simple_registered(model, context, options)
+        }),
+    }
+}
+
+/// Starts the canonical Anthropic stream and returns before HTTP work begins.
+#[must_use]
+pub fn stream_registered(
+    model: &Model,
+    context: &Context,
+    options: Option<&StreamOptions>,
+) -> AssistantMessageEventStream {
+    let stream = AssistantMessageEventStream::new();
+    let worker_stream = stream.clone();
+    let model = model.clone();
+    let context = context.clone();
+    let options = anthropic_options_from_stream(options.cloned().unwrap_or_default());
+    crate::utils::runtime::spawn_worker(async move {
+        run_registered_worker(worker_stream, model, context, options).await;
+    });
+    stream
+}
+
+/// Starts Anthropic through Pi's simple reasoning option mapping.
+#[must_use]
+pub fn stream_simple_registered(
+    model: &Model,
+    context: &Context,
+    options: Option<&SimpleStreamOptions>,
+) -> AssistantMessageEventStream {
+    let mut mapped = options
+        .map(|options| options.stream.clone())
+        .unwrap_or_default();
+    let model_max = u32::try_from(model.max_tokens).unwrap_or(u32::MAX);
+    mapped.max_tokens = Some(mapped.max_tokens.unwrap_or(model_max).min(model_max));
+    let reasoning = options.and_then(|options| options.reasoning);
+    let mut anthropic = AnthropicOptions {
+        stream: mapped.clone(),
+        thinking_enabled: Some(reasoning.is_some()),
+        ..AnthropicOptions::default()
+    };
+
+    if let Some(reasoning) = reasoning {
+        if get_anthropic_compat(model).force_adaptive_thinking == Some(true) {
+            anthropic.effort = Some(map_simple_effort(model, reasoning));
+        } else {
+            let budgets = options.and_then(|options| options.thinking_budgets.as_ref());
+            let mut thinking_budget = match reasoning {
+                ThinkingLevel::Minimal => {
+                    budgets.and_then(|budgets| budgets.minimal).unwrap_or(1024)
+                }
+                ThinkingLevel::Low => budgets.and_then(|budgets| budgets.low).unwrap_or(2048),
+                ThinkingLevel::Medium => budgets.and_then(|budgets| budgets.medium).unwrap_or(8192),
+                ThinkingLevel::High | ThinkingLevel::XHigh => {
+                    budgets.and_then(|budgets| budgets.high).unwrap_or(16_384)
+                }
+            };
+            let max_tokens = options
+                .and_then(|options| options.stream.max_tokens)
+                .map_or(model_max, |base| {
+                    base.saturating_add(thinking_budget).min(model_max)
+                });
+            if max_tokens <= thinking_budget {
+                thinking_budget = max_tokens.saturating_sub(1024);
+            }
+            mapped.max_tokens = Some(max_tokens);
+            anthropic.stream = mapped;
+            anthropic.thinking_budget_tokens =
+                Some(thinking_budget.min(max_tokens.saturating_sub(1024)));
+        }
+    }
+
+    stream_registered_with_options(model, context, anthropic)
+}
+
+fn stream_registered_with_options(
+    model: &Model,
+    context: &Context,
+    options: AnthropicOptions,
+) -> AssistantMessageEventStream {
+    let stream = AssistantMessageEventStream::new();
+    let worker_stream = stream.clone();
+    let model = model.clone();
+    let context = context.clone();
+    crate::utils::runtime::spawn_worker(async move {
+        run_registered_worker(worker_stream, model, context, options).await;
+    });
+    stream
+}
+
+fn anthropic_options_from_stream(stream: StreamOptions) -> AnthropicOptions {
+    let bool_extra = |name: &str| stream.extra.get(name).and_then(Value::as_bool);
+    let effort = stream
+        .extra
+        .get("effort")
+        .and_then(Value::as_str)
+        .and_then(parse_effort);
+    let thinking_display = stream
+        .extra
+        .get("thinkingDisplay")
+        .and_then(Value::as_str)
+        .and_then(|display| match display {
+            "summarized" => Some(AnthropicThinkingDisplay::Summarized),
+            "omitted" => Some(AnthropicThinkingDisplay::Omitted),
+            _ => None,
+        });
+    AnthropicOptions {
+        thinking_enabled: bool_extra("thinkingEnabled"),
+        thinking_budget_tokens: stream
+            .extra
+            .get("thinkingBudgetTokens")
+            .and_then(Value::as_u64)
+            .and_then(|value| u32::try_from(value).ok()),
+        effort,
+        thinking_display,
+        interleaved_thinking: bool_extra("interleavedThinking"),
+        stream,
+        ..AnthropicOptions::default()
+    }
+}
+
+fn parse_effort(effort: &str) -> Option<AnthropicEffort> {
+    match effort {
+        "low" => Some(AnthropicEffort::Low),
+        "medium" => Some(AnthropicEffort::Medium),
+        "high" => Some(AnthropicEffort::High),
+        "xhigh" => Some(AnthropicEffort::XHigh),
+        "max" => Some(AnthropicEffort::Max),
+        _ => None,
+    }
+}
+
+fn map_simple_effort(model: &Model, level: ThinkingLevel) -> AnthropicEffort {
+    let model_level = match level {
+        ThinkingLevel::Minimal => ModelThinkingLevel::Minimal,
+        ThinkingLevel::Low => ModelThinkingLevel::Low,
+        ThinkingLevel::Medium => ModelThinkingLevel::Medium,
+        ThinkingLevel::High => ModelThinkingLevel::High,
+        ThinkingLevel::XHigh => ModelThinkingLevel::XHigh,
+    };
+    model
+        .thinking_level_map
+        .as_ref()
+        .and_then(|map| map.get(&model_level))
+        .and_then(|effort| effort.as_deref())
+        .and_then(parse_effort)
+        .unwrap_or(match level {
+            ThinkingLevel::Minimal | ThinkingLevel::Low => AnthropicEffort::Low,
+            ThinkingLevel::Medium => AnthropicEffort::Medium,
+            ThinkingLevel::High => AnthropicEffort::High,
+            ThinkingLevel::XHigh => AnthropicEffort::XHigh,
+        })
+}
+
+async fn run_registered_worker(
+    stream: AssistantMessageEventStream,
+    model: Model,
+    context: Context,
+    options: AnthropicOptions,
+) {
+    let mut output = empty_assistant_message(&model);
+    match execute_registered_stream(&stream, &model, &context, &options, &mut output).await {
+        Ok(()) if output.stop_reason == StopReason::Error => {
+            if output.error_message.is_none() {
+                output.error_message = Some("An unknown error occurred".to_owned());
+            }
+            stream.push(AssistantMessageEvent::Error {
+                reason: ErrorStopReason::Error,
+                error: output,
+            });
+        }
+        Ok(()) => stream.push(AssistantMessageEvent::Done {
+            reason: done_reason(output.stop_reason).unwrap_or(DoneStopReason::Stop),
+            message: output,
+        }),
+        Err(error) => {
+            let aborted = matches!(error, AnthropicError::Aborted)
+                || options
+                    .stream
+                    .signal
+                    .as_ref()
+                    .is_some_and(crate::types::AbortSignal::aborted);
+            output.stop_reason = if aborted {
+                StopReason::Aborted
+            } else {
+                StopReason::Error
+            };
+            output.error_message = Some(error.to_string());
+            stream.push(AssistantMessageEvent::Error {
+                reason: if aborted {
+                    ErrorStopReason::Aborted
+                } else {
+                    ErrorStopReason::Error
+                },
+                error: output,
+            });
+        }
+    }
+}
+
+async fn execute_registered_stream(
+    stream: &AssistantMessageEventStream,
+    model: &Model,
+    context: &Context,
+    options: &AnthropicOptions,
+    output: &mut AssistantMessage,
+) -> Result<()> {
+    assert_request_auth(model, Some(options))?;
+    let signal = options.stream.signal.clone();
+    if signal
+        .as_ref()
+        .is_some_and(crate::types::AbortSignal::aborted)
+    {
+        return Err(AnthropicError::Aborted);
+    }
+    let api_key = options.stream.api_key.as_deref();
+    let is_oauth = api_key.is_some_and(is_oauth_token);
+    let mut payload = build_request_payload(model, context, is_oauth, Some(options));
+    if let Some(hook) = options.stream.on_payload.as_ref()
+        && let Some(next_payload) = hook(payload.clone(), model.clone()).await?
+    {
+        payload = next_payload;
+    }
+    let use_legacy_beta = context
+        .tools
+        .as_ref()
+        .is_some_and(|tools| !tools.is_empty())
+        && !get_anthropic_compat(model).supports_eager_tool_input_streaming;
+    let headers = build_request_headers(
+        model,
+        api_key,
+        Some(options),
+        is_oauth,
+        use_legacy_beta,
+        None,
+    );
+    let mut builder = reqwest::Client::builder();
+    if let Some(timeout_ms) = options.stream.timeout_ms {
+        builder = builder.timeout(Duration::from_millis(timeout_ms));
+    }
+    if let Some(proxy) =
+        resolve_reqwest_proxy_for_target(&model.base_url, options.stream.env.as_ref())
+            .map_err(|error| AnthropicError::Proxy(error.to_string()))?
+    {
+        builder = builder.proxy(proxy);
+    }
+    let request = builder
+        .build()?
+        .post(messages_url(&model.base_url))
+        .headers(provider_headers_to_headermap(&headers)?)
+        .body(payload.to_string())
+        .send();
+    let mut response = await_or_abort(request, signal.clone()).await??;
+    let status = response.status().as_u16();
+    let response_headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_owned()))
+        })
+        .collect();
+    if let Some(hook) = options.stream.on_response.as_ref() {
+        hook(
+            ProviderResponse {
+                status,
+                headers: response_headers,
+            },
+            model.clone(),
+        )
+        .await?;
+    }
+    if !(200..300).contains(&status) {
+        let mut body = Vec::new();
+        while let Some(chunk) = await_or_abort(response.chunk(), signal.clone()).await?? {
+            body.extend_from_slice(&chunk);
+        }
+        return Err(AnthropicError::HttpStatus {
+            status,
+            body: String::from_utf8_lossy(&body).into_owned(),
+        });
+    }
+
+    abort_if_requested(signal.as_ref())?;
+    stream.push(AssistantMessageEvent::Start {
+        partial: output.clone(),
+    });
+    let mut parser = IncrementalAnthropicSse {
+        signal: signal.clone(),
+        ..IncrementalAnthropicSse::default()
+    };
+    let mut blocks = Vec::new();
+    while let Some(chunk) = await_or_abort(response.chunk(), signal.clone()).await?? {
+        abort_if_requested(signal.as_ref())?;
+        parser.push_chunk(
+            &chunk,
+            model,
+            context,
+            is_oauth,
+            output,
+            &mut blocks,
+            Some(stream),
+        )?;
+    }
+    parser.finish(model, context, is_oauth, output, &mut blocks, Some(stream))?;
+    Ok(())
+}
+
+async fn await_or_abort<F, T>(future: F, signal: Option<crate::types::AbortSignal>) -> Result<T>
+where
+    F: std::future::Future<Output = T>,
+{
+    abort_if_requested(signal.as_ref())?;
+    if let Some(signal) = signal {
+        match futures::future::select(Box::pin(future), Box::pin(wait_for_abort(signal.clone())))
+            .await
+        {
+            futures::future::Either::Left((value, _)) => {
+                abort_if_requested(Some(&signal))?;
+                Ok(value)
+            }
+            futures::future::Either::Right(((), _)) => Err(AnthropicError::Aborted),
+        }
+    } else {
+        Ok(future.await)
+    }
+}
+
+fn abort_if_requested(signal: Option<&crate::types::AbortSignal>) -> Result<()> {
+    if signal.is_some_and(crate::types::AbortSignal::aborted) {
+        Err(AnthropicError::Aborted)
+    } else {
+        Ok(())
+    }
 }
 
 /// Starts an Anthropic Messages stream from an injected raw-SSE fixture.
@@ -1269,6 +1659,411 @@ struct InProgressBlock {
     provider_index: usize,
     content_index: usize,
     partial_json: String,
+}
+
+#[derive(Debug, Default)]
+struct IncrementalAnthropicSse {
+    decoder: SseDecoderState,
+    text: String,
+    pending_utf8: Vec<u8>,
+    saw_message_start: bool,
+    saw_message_stop: bool,
+    signal: Option<crate::types::AbortSignal>,
+}
+
+impl IncrementalAnthropicSse {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "stream parser state is passed explicitly"
+    )]
+    fn push_chunk(
+        &mut self,
+        chunk: &[u8],
+        model: &Model,
+        context: &Context,
+        is_oauth: bool,
+        output: &mut AssistantMessage,
+        blocks: &mut Vec<InProgressBlock>,
+        stream: Option<&AssistantMessageEventStream>,
+    ) -> Result<()> {
+        self.pending_utf8.extend_from_slice(chunk);
+        loop {
+            match std::str::from_utf8(&self.pending_utf8) {
+                Ok(text) => {
+                    let text = text.to_owned();
+                    self.pending_utf8.clear();
+                    self.push_text(&text, model, context, is_oauth, output, blocks, stream)?;
+                    return Ok(());
+                }
+                Err(error) if error.error_len().is_none() => {
+                    let valid = error.valid_up_to();
+                    if valid == 0 {
+                        return Ok(());
+                    }
+                    let text = std::str::from_utf8(&self.pending_utf8[..valid])
+                        .map_err(|error| AnthropicError::Sse(error.to_string()))?
+                        .to_owned();
+                    self.pending_utf8.drain(..valid);
+                    self.push_text(&text, model, context, is_oauth, output, blocks, stream)?;
+                }
+                Err(error) => {
+                    return Err(AnthropicError::Sse(format!(
+                        "Anthropic SSE was not valid UTF-8: {error}"
+                    )));
+                }
+            }
+        }
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "stream parser state is passed explicitly"
+    )]
+    fn push_text(
+        &mut self,
+        text: &str,
+        model: &Model,
+        context: &Context,
+        is_oauth: bool,
+        output: &mut AssistantMessage,
+        blocks: &mut Vec<InProgressBlock>,
+        stream: Option<&AssistantMessageEventStream>,
+    ) -> Result<()> {
+        self.text.push_str(text);
+        while let Some(line_break) = next_line_break_index(&self.text) {
+            let line = self.text[..line_break].to_owned();
+            let mut next = line_break + 1;
+            if self.text.as_bytes()[line_break] == b'\r'
+                && self.text.as_bytes().get(next) == Some(&b'\n')
+            {
+                next += 1;
+            }
+            self.text.drain(..next);
+            if let Some(event) = decode_sse_line(&line, &mut self.decoder) {
+                self.handle_sse(event, model, context, is_oauth, output, blocks, stream)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(
+        &mut self,
+        model: &Model,
+        context: &Context,
+        is_oauth: bool,
+        output: &mut AssistantMessage,
+        blocks: &mut Vec<InProgressBlock>,
+        stream: Option<&AssistantMessageEventStream>,
+    ) -> Result<()> {
+        if !self.pending_utf8.is_empty() {
+            let text = std::str::from_utf8(&self.pending_utf8)
+                .map_err(|error| {
+                    AnthropicError::Sse(format!("Anthropic SSE was not valid UTF-8: {error}"))
+                })?
+                .to_owned();
+            self.pending_utf8.clear();
+            self.push_text(&text, model, context, is_oauth, output, blocks, stream)?;
+        }
+        if !self.text.is_empty() {
+            let line = std::mem::take(&mut self.text);
+            if let Some(event) = decode_sse_line(&line, &mut self.decoder) {
+                self.handle_sse(event, model, context, is_oauth, output, blocks, stream)?;
+            }
+        }
+        if let Some(event) = flush_sse_event(&mut self.decoder) {
+            self.handle_sse(event, model, context, is_oauth, output, blocks, stream)?;
+        }
+        if self.saw_message_start && !self.saw_message_stop {
+            return Err(AnthropicError::Sse(
+                "Anthropic stream ended before message_stop".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "stream parser state is passed explicitly"
+    )]
+    fn handle_sse(
+        &mut self,
+        sse: ServerSentEvent,
+        model: &Model,
+        context: &Context,
+        is_oauth: bool,
+        output: &mut AssistantMessage,
+        blocks: &mut Vec<InProgressBlock>,
+        stream: Option<&AssistantMessageEventStream>,
+    ) -> Result<()> {
+        abort_if_requested(self.signal.as_ref())?;
+        if sse.event.as_deref() == Some("error") {
+            return Err(AnthropicError::Sse(sse.data));
+        }
+        if !ANTHROPIC_MESSAGE_EVENTS.contains(&sse.event.as_deref().unwrap_or_default()) {
+            return Ok(());
+        }
+        let event = parse_json_with_repair::<Value>(&sse.data).map_err(|error| {
+            AnthropicError::Json(format!(
+                "Could not parse Anthropic SSE event {}: {error}; data={}; raw={}",
+                sse.event.as_deref().unwrap_or_default(),
+                sse.data,
+                sse.raw.join("\\n")
+            ))
+        })?;
+        match event.get("type").and_then(Value::as_str) {
+            Some("message_start") => self.saw_message_start = true,
+            Some("message_stop") => self.saw_message_stop = true,
+            _ => {}
+        }
+        apply_anthropic_event(model, context, is_oauth, output, blocks, &event, stream)
+    }
+}
+
+fn apply_anthropic_event(
+    model: &Model,
+    context: &Context,
+    is_oauth: bool,
+    output: &mut AssistantMessage,
+    blocks: &mut Vec<InProgressBlock>,
+    event: &Value,
+    stream: Option<&AssistantMessageEventStream>,
+) -> Result<()> {
+    match event.get("type").and_then(Value::as_str) {
+        Some("message_start") => {
+            output.response_id = event
+                .pointer("/message/id")
+                .and_then(Value::as_str)
+                .map(str::to_owned);
+            update_usage(&mut output.usage, event.pointer("/message/usage"));
+            calculate_cost(model, &mut output.usage);
+        }
+        Some("content_block_start") => {
+            let provider_index =
+                event.pointer("/index").and_then(Value::as_u64).unwrap_or(0) as usize;
+            let content_index = output.content.len();
+            let event_to_push = match event.pointer("/content_block/type").and_then(Value::as_str) {
+                Some("text") => {
+                    output
+                        .content
+                        .push(AssistantContentBlock::Text(TextContent {
+                            content_type: TextContentType::Text,
+                            text: String::new(),
+                            text_signature: None,
+                        }));
+                    Some(AssistantMessageEvent::TextStart {
+                        content_index,
+                        partial: output.clone(),
+                    })
+                }
+                Some("thinking") => {
+                    output
+                        .content
+                        .push(AssistantContentBlock::Thinking(ThinkingContent {
+                            content_type: ThinkingContentType::Thinking,
+                            thinking: String::new(),
+                            thinking_signature: Some(String::new()),
+                            redacted: None,
+                        }));
+                    Some(AssistantMessageEvent::ThinkingStart {
+                        content_index,
+                        partial: output.clone(),
+                    })
+                }
+                Some("redacted_thinking") => {
+                    output
+                        .content
+                        .push(AssistantContentBlock::Thinking(ThinkingContent {
+                            content_type: ThinkingContentType::Thinking,
+                            thinking: "[Reasoning redacted]".to_owned(),
+                            thinking_signature: event
+                                .pointer("/content_block/data")
+                                .and_then(Value::as_str)
+                                .map(str::to_owned),
+                            redacted: Some(true),
+                        }));
+                    Some(AssistantMessageEvent::ThinkingStart {
+                        content_index,
+                        partial: output.clone(),
+                    })
+                }
+                Some("tool_use") => {
+                    let name = event
+                        .pointer("/content_block/name")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    output
+                        .content
+                        .push(AssistantContentBlock::ToolCall(ToolCall {
+                            content_type: ToolCallType::ToolCall,
+                            id: event
+                                .pointer("/content_block/id")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_owned(),
+                            name: if is_oauth {
+                                from_claude_code_tool_name(name, context.tools.as_deref())
+                                    .into_owned()
+                            } else {
+                                name.to_owned()
+                            },
+                            arguments: value_object_to_hashmap(
+                                event
+                                    .pointer("/content_block/input")
+                                    .cloned()
+                                    .unwrap_or_else(|| json!({})),
+                            ),
+                            thought_signature: None,
+                        }));
+                    Some(AssistantMessageEvent::ToolcallStart {
+                        content_index,
+                        partial: output.clone(),
+                    })
+                }
+                _ => None,
+            };
+            if event_to_push.is_some() {
+                blocks.push(InProgressBlock {
+                    provider_index,
+                    content_index,
+                    partial_json: String::new(),
+                });
+            }
+            if let (Some(stream), Some(event)) = (stream, event_to_push) {
+                stream.push(event);
+            }
+        }
+        Some("content_block_delta") => {
+            let provider_index =
+                event.pointer("/index").and_then(Value::as_u64).unwrap_or(0) as usize;
+            let Some(block) = blocks
+                .iter_mut()
+                .find(|block| block.provider_index == provider_index)
+            else {
+                return Ok(());
+            };
+            let event_to_push = match event.pointer("/delta/type").and_then(Value::as_str) {
+                Some("text_delta") => {
+                    let delta = event
+                        .pointer("/delta/text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(AssistantContentBlock::Text(text)) =
+                        output.content.get_mut(block.content_index)
+                    {
+                        text.text.push_str(&delta);
+                    }
+                    Some(AssistantMessageEvent::TextDelta {
+                        content_index: block.content_index,
+                        delta,
+                        partial: output.clone(),
+                    })
+                }
+                Some("thinking_delta") => {
+                    let delta = event
+                        .pointer("/delta/thinking")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    if let Some(AssistantContentBlock::Thinking(thinking)) =
+                        output.content.get_mut(block.content_index)
+                    {
+                        thinking.thinking.push_str(&delta);
+                    }
+                    Some(AssistantMessageEvent::ThinkingDelta {
+                        content_index: block.content_index,
+                        delta,
+                        partial: output.clone(),
+                    })
+                }
+                Some("signature_delta") => {
+                    if let Some(delta) = event.pointer("/delta/signature").and_then(Value::as_str)
+                        && let Some(AssistantContentBlock::Thinking(thinking)) =
+                            output.content.get_mut(block.content_index)
+                    {
+                        thinking
+                            .thinking_signature
+                            .get_or_insert_with(String::new)
+                            .push_str(delta);
+                    }
+                    None
+                }
+                Some("input_json_delta") => {
+                    let delta = event
+                        .pointer("/delta/partial_json")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned();
+                    block.partial_json.push_str(&delta);
+                    if let Some(AssistantContentBlock::ToolCall(tool_call)) =
+                        output.content.get_mut(block.content_index)
+                    {
+                        tool_call.arguments = value_object_to_hashmap(parse_streaming_json_value(
+                            Some(&block.partial_json),
+                        ));
+                    }
+                    Some(AssistantMessageEvent::ToolcallDelta {
+                        content_index: block.content_index,
+                        delta,
+                        partial: output.clone(),
+                    })
+                }
+                _ => None,
+            };
+            if let (Some(stream), Some(event)) = (stream, event_to_push) {
+                stream.push(event);
+            }
+        }
+        Some("content_block_stop") => {
+            let provider_index =
+                event.pointer("/index").and_then(Value::as_u64).unwrap_or(0) as usize;
+            let Some(block) = blocks
+                .iter()
+                .find(|block| block.provider_index == provider_index)
+            else {
+                return Ok(());
+            };
+            let event_to_push = match output.content.get_mut(block.content_index) {
+                Some(AssistantContentBlock::Text(text)) => Some(AssistantMessageEvent::TextEnd {
+                    content_index: block.content_index,
+                    content: text.text.clone(),
+                    partial: output.clone(),
+                }),
+                Some(AssistantContentBlock::Thinking(thinking)) => {
+                    Some(AssistantMessageEvent::ThinkingEnd {
+                        content_index: block.content_index,
+                        content: thinking.thinking.clone(),
+                        partial: output.clone(),
+                    })
+                }
+                Some(AssistantContentBlock::ToolCall(tool_call)) => {
+                    tool_call.arguments = value_object_to_hashmap(parse_streaming_json_value(
+                        Some(&block.partial_json),
+                    ));
+                    Some(AssistantMessageEvent::ToolcallEnd {
+                        content_index: block.content_index,
+                        tool_call: tool_call.clone(),
+                        partial: output.clone(),
+                    })
+                }
+                None => None,
+            };
+            if let (Some(stream), Some(event)) = (stream, event_to_push) {
+                stream.push(event);
+            }
+        }
+        Some("message_delta") => {
+            if let Some(reason) = event.pointer("/delta/stop_reason").and_then(Value::as_str) {
+                let mapped = map_stop_reason(reason, event.pointer("/delta/stop_details"))?;
+                output.stop_reason = mapped.0;
+                output.error_message = mapped.1;
+            }
+            update_usage(&mut output.usage, event.get("usage"));
+            calculate_cost(model, &mut output.usage);
+        }
+        Some("message_stop") | None | Some(_) => {}
+    }
+    Ok(())
 }
 
 fn empty_assistant_message(model: &Model) -> AssistantMessage {

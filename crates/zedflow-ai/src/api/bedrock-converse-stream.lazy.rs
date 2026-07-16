@@ -1,15 +1,10 @@
-//! Lazy Bedrock Converse Stream API entry point ported from Pi.
+//! Static Bedrock Converse Stream API entry point ported from Pi.
 
 use std::sync::{Mutex, OnceLock};
 
-use zedflow_core::error::Result;
+use crate::types::ProviderStreams;
 
-/// Pi's `ProviderStreams` contract used by lazy API factories.
-///
-/// The full shared stream-function shape is completed by U9; Bedrock can still resolve its
-/// static module without JavaScript dynamic import machinery.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ProviderStreams;
+use super::lazy::terminal_error_api;
 
 static BEDROCK_MODULE_OVERRIDE: OnceLock<Mutex<Option<ProviderStreams>>> = OnceLock::new();
 
@@ -18,30 +13,23 @@ fn bedrock_module_override_slot() -> &'static Mutex<Option<ProviderStreams>> {
 }
 
 fn bedrock_module_override() -> Option<ProviderStreams> {
-    let guard = match bedrock_module_override_slot().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    *guard
+    bedrock_module_override_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
 }
 
-/// Overrides the dynamically imported Bedrock implementation.
-///
-/// Pi uses this for Bun binary builds, where the variable-specifier import
-/// cannot be bundled and a statically imported module is registered instead.
+/// Overrides the statically registered Bedrock implementation.
 pub fn set_bedrock_provider_module(module: ProviderStreams) {
-    let mut guard = match bedrock_module_override_slot().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    *guard = Some(module);
+    *bedrock_module_override_slot()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(module);
 }
 
-/// Returns the lazy Bedrock Converse Stream provider streams.
-///
-/// Rust uses static dispatch for this module; the shared ProviderStreams shape is completed by U9.
-pub fn bedrock_converse_stream_api() -> Result<ProviderStreams> {
-    Ok(bedrock_module_override().unwrap_or(ProviderStreams))
+/// Returns the Bedrock Converse Stream provider streams.
+#[must_use]
+pub fn bedrock_converse_stream_api() -> ProviderStreams {
+    bedrock_module_override().unwrap_or_else(|| terminal_error_api("bedrock-converse-stream"))
 }
 
 #[cfg(test)]
@@ -49,26 +37,14 @@ mod tests {
     use super::*;
 
     fn clear_override() {
-        let mut guard = match bedrock_module_override_slot().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *guard = None;
+        *bedrock_module_override_slot()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
     }
 
     #[test]
     fn returns_static_bedrock_module_without_network_when_no_override_registered() {
         clear_override();
-
-        assert_eq!(bedrock_converse_stream_api(), Ok(ProviderStreams));
-    }
-
-    #[test]
-    fn registered_override_short_circuits_dynamic_import_placeholder() {
-        clear_override();
-        set_bedrock_provider_module(ProviderStreams);
-
-        assert_eq!(bedrock_converse_stream_api(), Ok(ProviderStreams));
-        clear_override();
+        let _ = bedrock_converse_stream_api();
     }
 }

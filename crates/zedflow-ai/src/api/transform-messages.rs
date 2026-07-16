@@ -152,8 +152,10 @@ pub struct Usage {
 /// Assistant stop reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub enum StopReason {
     /// Normal stop.
+    #[default]
     Stop,
     /// Length limit.
     Length,
@@ -163,12 +165,6 @@ pub enum StopReason {
     Error,
     /// Request aborted.
     Aborted,
-}
-
-impl Default for StopReason {
-    fn default() -> Self {
-        Self::Stop
-    }
 }
 
 /// User message.
@@ -366,12 +362,12 @@ pub fn transform_messages(
         .map(|message| match message {
             Message::User(_) => message.clone(),
             Message::ToolResult(tool_result) => {
-                if let Some(normalized_id) = tool_call_id_map.get(&tool_result.tool_call_id) {
-                    if normalized_id != &tool_result.tool_call_id {
-                        let mut tool_result = tool_result.clone();
-                        tool_result.tool_call_id = normalized_id.clone();
-                        return Message::ToolResult(tool_result);
-                    }
+                if let Some(normalized_id) = tool_call_id_map.get(&tool_result.tool_call_id)
+                    && normalized_id != &tool_result.tool_call_id
+                {
+                    let mut tool_result = tool_result.clone();
+                    tool_result.tool_call_id = normalized_id.clone();
+                    return Message::ToolResult(tool_result);
                 }
                 message.clone()
             }
@@ -431,14 +427,12 @@ pub fn transform_messages(
                                 normalized_tool_call.thought_signature = None;
                             }
 
-                            if !is_same_model {
-                                if let Some(normalize) = normalize_tool_call_id {
-                                    let normalized_id = normalize(&tool_call.id, model, assistant);
-                                    if normalized_id != tool_call.id {
-                                        tool_call_id_map
-                                            .insert(tool_call.id.clone(), normalized_id.clone());
-                                        normalized_tool_call.id = normalized_id;
-                                    }
+                            if !is_same_model && let Some(normalize) = normalize_tool_call_id {
+                                let normalized_id = normalize(&tool_call.id, model, assistant);
+                                if normalized_id != tool_call.id {
+                                    tool_call_id_map
+                                        .insert(tool_call.id.clone(), normalized_id.clone());
+                                    normalized_tool_call.id = normalized_id;
                                 }
                             }
 

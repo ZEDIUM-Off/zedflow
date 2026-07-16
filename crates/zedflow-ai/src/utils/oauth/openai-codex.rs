@@ -1,23 +1,21 @@
 //! OpenAI Codex (ChatGPT OAuth) flow ported from Pi's `packages/ai/src/utils/oauth/openai-codex.ts`.
 
-#[cfg(test)]
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
 use std::fmt;
-#[cfg(test)]
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(test)]
 use serde::Deserialize;
-#[cfg(test)]
-use serde_json::Value;
-#[cfg(test)]
+use serde_json::{Value, json};
 use url::Url;
-use zedflow_core::{error::Result, placeholders};
 
 use crate::auth::types::{
     AuthEvent, AuthFuture, AuthLoginCallbacks, AuthPrompt, AuthResult, AuthSelectOption, BoxError,
     ModelAuth, OAuthAuth, OAuthCredential,
+};
+use crate::utils::abort_signals::{AbortController, combine_abort_signals};
+use crate::utils::oauth::device_code::{
+    OAuthDeviceCodePollOptions, OAuthDeviceCodePollResult, poll_oauth_device_code_flow,
 };
 
 /// OpenAI Codex OAuth client id used by Pi.
@@ -55,17 +53,14 @@ pub const OPENAI_CODEX_OAUTH_PROVIDER_ID: &str = "openai-codex";
 /// OpenAI Codex OAuth provider display name used by Pi's OAuth registry.
 pub const OPENAI_CODEX_OAUTH_PROVIDER_NAME: &str = "ChatGPT Plus/Pro (Codex Subscription)";
 
-const PLACEHOLDER_DEPENDENCY: &str = "Node.js node:crypto/node:http, Web Crypto PKCE, Fetch API, AbortSignal cancellation, and pollOAuthDeviceCodeFlow";
-const PLACEHOLDER_BEHAVIOR: &str = "run OpenAI Codex browser and device-code OAuth login, start a localhost callback server on the configured callback host and port 1455, generate PKCE and state, poll device auth with pending/slow_down handling, exchange and refresh tokens at https://auth.openai.com/oauth/token, extract accountId from the access-token JWT, and preserve Pi cancellation and prompt behavior";
+const TOKEN_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AuthorizationInput {
     code: Option<String>,
     state: Option<String>,
 }
 
-#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OAuthToken {
     access: String,
@@ -73,14 +68,12 @@ struct OAuthToken {
     expires: i64,
 }
 
-#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct JwtPayload {
     #[serde(rename = "https://api.openai.com/auth")]
     auth: Option<JwtAuthClaim>,
 }
 
-#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct JwtAuthClaim {
     chatgpt_account_id: Option<String>,
@@ -97,6 +90,8 @@ pub enum OpenAiCodexOAuthError {
     UnknownLoginMethod(String),
     /// The token did not contain a ChatGPT account id in Pi's expected JWT claim.
     MissingAccountId,
+    /// The authorization server returned an HTTP or JSON failure.
+    Http(String),
 }
 
 impl fmt::Display for OpenAiCodexOAuthError {
@@ -108,6 +103,7 @@ impl fmt::Display for OpenAiCodexOAuthError {
                 write!(formatter, "Unknown OpenAI Codex login method: {method}")
             }
             Self::MissingAccountId => formatter.write_str("Failed to extract accountId from token"),
+            Self::Http(message) => formatter.write_str(message),
         }
     }
 }
@@ -134,11 +130,7 @@ impl OAuthAuth for OpenAiCodexOAuth {
         &'a self,
         credential: &'a OAuthCredential,
     ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
-        Box::pin(async move {
-            refresh_openai_codex_token(&credential.refresh)
-                .await
-                .map_err(|error| Box::new(error) as BoxError)
-        })
+        Box::pin(async move { refresh_openai_codex_token(&credential.refresh).await })
     }
 
     fn to_auth<'a>(
@@ -191,14 +183,14 @@ impl OpenAiCodexOAuthProvider {
     ///
     /// # Errors
     ///
-    /// Returns a documented port placeholder until a Rust token-exchange HTTP client is selected.
-    pub async fn refresh_token(self, credentials: &OAuthCredential) -> Result<OAuthCredential> {
+    /// Returns token-endpoint, JSON parsing, or account-id extraction failures.
+    pub async fn refresh_token(self, credentials: &OAuthCredential) -> AuthResult<OAuthCredential> {
         refresh_openai_codex_token(&credentials.refresh).await
     }
 
     /// Converts OpenAI Codex OAuth credentials to the API key string Pi passes to requests.
     #[must_use]
-    pub fn get_api_key<'a>(self, credentials: &'a OAuthCredential) -> &'a str {
+    pub fn get_api_key(self, credentials: &OAuthCredential) -> &str {
         &credentials.access
     }
 }
@@ -210,51 +202,370 @@ pub const OPENAI_CODEX_OAUTH_PROVIDER: OpenAiCodexOAuthProvider = OpenAiCodexOAu
 
 /// Login with OpenAI Codex OAuth using the Codex device-code flow.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: Fetch API, AbortSignal cancellation, and `pollOAuthDeviceCodeFlow`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: POST `CLIENT_ID` to `DEVICE_USER_CODE_URL`, notify the user code, poll `DEVICE_TOKEN_URL` with pending/slow_down handling, exchange the authorization code with `DEVICE_REDIRECT_URI`, and return Pi OAuth credentials with `accountId`.
-/// Replacement decision needed before production use.
-///
 /// # Errors
 ///
-/// Always returns a port placeholder until Rust HTTP and cancellation replacements are selected.
+/// Returns device-code endpoint, polling, token-exchange, JSON parsing, or account-id failures.
 pub async fn login_openai_codex_device_code(
-    _callbacks: &dyn AuthLoginCallbacks,
-) -> Result<OAuthCredential> {
-    placeholders::unsupported(PLACEHOLDER_DEPENDENCY, PLACEHOLDER_BEHAVIOR)
+    callbacks: &dyn AuthLoginCallbacks,
+) -> AuthResult<OAuthCredential> {
+    let device = start_openai_codex_device_auth().await?;
+    callbacks.notify(AuthEvent::DeviceCode {
+        user_code: device.user_code.clone(),
+        verification_uri: DEVICE_VERIFICATION_URI.to_owned(),
+        interval_seconds: Some(device.interval_seconds.max(0.0).floor() as u64),
+        expires_in_seconds: Some(DEVICE_CODE_TIMEOUT_SECONDS),
+    });
+    let code = poll_openai_codex_device_auth(&device, callbacks.signal()).await?;
+    exchange_authorization_code_for_credentials(
+        &code.authorization_code,
+        &code.code_verifier,
+        DEVICE_REDIRECT_URI,
+    )
+    .await
 }
 
 /// Login with OpenAI Codex OAuth using Pi's browser/manual-code flow.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: Node.js `node:crypto`/`node:http`, Web Crypto PKCE, Fetch API, callback-page HTML, and prompt cancellation.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: generate state and PKCE, start a localhost server at `/auth/callback`, notify the auth URL, race browser callback with manual code input, validate state, exchange the code with `REDIRECT_URI`, close the server, and return Pi OAuth credentials with `accountId`.
-/// Replacement decision needed before production use.
+/// This Rust port uses the deterministic manual-code path: it emits Pi's browser URL, prompts for
+/// an authorization code or redirect URL, validates state, and exchanges the code with `reqwest`.
+/// Local browser callback automation remains a manual/live concern.
 ///
 /// # Errors
 ///
-/// Always returns a port placeholder until Rust local-server, PKCE, HTTP, and cancellation
-/// replacements are selected.
-pub async fn login_openai_codex(_callbacks: &dyn AuthLoginCallbacks) -> Result<OAuthCredential> {
-    placeholders::unsupported(PLACEHOLDER_DEPENDENCY, PLACEHOLDER_BEHAVIOR)
+/// Returns prompt, PKCE, state validation, token-endpoint, JSON parsing, or account-id failures.
+pub async fn login_openai_codex(callbacks: &dyn AuthLoginCallbacks) -> AuthResult<OAuthCredential> {
+    let flow = create_authorization_flow("pi").await?;
+    callbacks.notify(AuthEvent::AuthUrl {
+        url: flow.url,
+        instructions: Some("A browser window should open. Complete login to finish.".to_owned()),
+    });
+    let prompt_controller = AbortController::new();
+    let mut prompt_signal =
+        combine_abort_signals(&[callbacks.signal(), Some(prompt_controller.signal())]);
+    let input = callbacks
+        .prompt(AuthPrompt::ManualCode {
+            message: "Complete login in your browser, or paste the authorization code / redirect URL here:"
+                .to_owned(),
+            placeholder: Some(REDIRECT_URI.to_owned()),
+            signal: prompt_signal.signal.clone(),
+        })
+        .await;
+    prompt_controller.abort();
+    prompt_signal.cleanup();
+    let input = input?;
+    let parsed = parse_authorization_input(&input);
+    if parsed
+        .state
+        .as_deref()
+        .is_some_and(|state| state != flow.state)
+    {
+        return Err(box_error(OpenAiCodexOAuthError::StateMismatch));
+    }
+    let code = parsed
+        .code
+        .ok_or_else(|| box_error(OpenAiCodexOAuthError::MissingAuthorizationCode))?;
+    exchange_authorization_code_for_credentials(&code, &flow.verifier, REDIRECT_URI).await
 }
 
 /// Refreshes an OpenAI Codex OAuth token.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: Fetch API and OpenAI Codex OAuth token endpoint.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: POST form data `{ grant_type: "refresh_token", refresh_token, client_id }` to `TOKEN_URL`, parse `access_token`, `refresh_token`, and `expires_in`, extract `accountId` from the access-token JWT, and return Pi OAuth credentials.
-/// Replacement decision needed before production use.
-///
 /// # Errors
 ///
-/// Always returns a port placeholder until a Rust HTTP client and timeout policy are selected for
-/// the token endpoint.
-pub async fn refresh_openai_codex_token(_refresh_token: &str) -> Result<OAuthCredential> {
-    placeholders::unsupported(PLACEHOLDER_DEPENDENCY, PLACEHOLDER_BEHAVIOR)
+/// Returns token-endpoint, JSON parsing, or account-id extraction failures.
+pub async fn refresh_openai_codex_token(refresh_token: &str) -> AuthResult<OAuthCredential> {
+    let token = post_openai_token_form(
+        "refresh",
+        &[
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", CLIENT_ID),
+        ],
+    )?;
+    credentials_from_token(token).map_err(box_error)
+}
+
+#[derive(Debug, Clone)]
+struct AuthorizationFlow {
+    verifier: String,
+    state: String,
+    url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DeviceAuthResponse {
+    device_auth_id: String,
+    user_code: String,
+    interval: Value,
+}
+
+#[derive(Debug, Clone)]
+struct DeviceAuthInfo {
+    device_auth_id: String,
+    user_code: String,
+    interval_seconds: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DeviceTokenSuccessResponse {
+    authorization_code: String,
+    code_verifier: String,
+}
+
+#[derive(Debug, Clone)]
+struct DeviceTokenSuccess {
+    authorization_code: String,
+    code_verifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TokenResponse {
+    access_token: String,
+    refresh_token: String,
+    expires_in: i64,
+}
+
+async fn create_authorization_flow(originator: &str) -> AuthResult<AuthorizationFlow> {
+    let pkce = crate::utils::oauth::pkce::generate_pkce()
+        .await
+        .map_err(box_error)?;
+    let state = create_state()?;
+    let mut url = Url::parse(AUTHORIZE_URL).expect("OpenAI Codex authorize URL is valid");
+    url.query_pairs_mut()
+        .append_pair("response_type", "code")
+        .append_pair("client_id", CLIENT_ID)
+        .append_pair("redirect_uri", REDIRECT_URI)
+        .append_pair("scope", SCOPE)
+        .append_pair("code_challenge", &pkce.challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("state", &state)
+        .append_pair("id_token_add_organizations", "true")
+        .append_pair("codex_cli_simplified_flow", "true")
+        .append_pair("originator", originator);
+    Ok(AuthorizationFlow {
+        verifier: pkce.verifier,
+        state,
+        url: url.to_string(),
+    })
+}
+
+fn create_state() -> AuthResult<String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(box_error)?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+async fn start_openai_codex_device_auth() -> AuthResult<DeviceAuthInfo> {
+    let body = post_json(DEVICE_USER_CODE_URL, &json!({ "client_id": CLIENT_ID }))?;
+    let response: DeviceAuthResponse = serde_json::from_str(&body).map_err(|error| {
+        box_error(OpenAiCodexOAuthError::Http(format!(
+            "Invalid OpenAI Codex device code response: {body}; details={error}"
+        )))
+    })?;
+    let interval_seconds = interval_seconds(&response.interval).ok_or_else(|| {
+        box_error(OpenAiCodexOAuthError::Http(format!(
+            "Invalid OpenAI Codex device code response: {body}"
+        )))
+    })?;
+    Ok(DeviceAuthInfo {
+        device_auth_id: response.device_auth_id,
+        user_code: response.user_code,
+        interval_seconds,
+    })
+}
+
+async fn poll_openai_codex_device_auth(
+    device: &DeviceAuthInfo,
+    signal: Option<crate::auth::types::AuthAbortSignal>,
+) -> AuthResult<DeviceTokenSuccess> {
+    let device_auth_id = device.device_auth_id.clone();
+    let user_code = device.user_code.clone();
+    poll_oauth_device_code_flow(OAuthDeviceCodePollOptions {
+        interval_seconds: Some(device.interval_seconds),
+        expires_in_seconds: Some(DEVICE_CODE_TIMEOUT_SECONDS as f64),
+        wait_before_first_poll: false,
+        signal,
+        poll: move || {
+            let device_auth_id = device_auth_id.clone();
+            let user_code = user_code.clone();
+            async move { poll_openai_codex_device_once(&device_auth_id, &user_code) }
+        },
+    })
+    .await
+    .map_err(box_error)
+}
+
+fn poll_openai_codex_device_once(
+    device_auth_id: &str,
+    user_code: &str,
+) -> std::result::Result<OAuthDeviceCodePollResult<DeviceTokenSuccess>, OpenAiCodexOAuthError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(TOKEN_TIMEOUT)
+        .build()
+        .map_err(|error| OpenAiCodexOAuthError::Http(error.to_string()))?;
+    let response = client
+        .post(DEVICE_TOKEN_URL)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .json(&json!({ "device_auth_id": device_auth_id, "user_code": user_code }))
+        .send()
+        .map_err(|error| OpenAiCodexOAuthError::Http(error.to_string()))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .map_err(|error| OpenAiCodexOAuthError::Http(error.to_string()))?;
+    if status.is_success() {
+        let json: DeviceTokenSuccessResponse = serde_json::from_str(&body).map_err(|_| {
+            OpenAiCodexOAuthError::Http(format!(
+                "Invalid OpenAI Codex device auth token response: {body}"
+            ))
+        })?;
+        return Ok(OAuthDeviceCodePollResult::Complete {
+            value: DeviceTokenSuccess {
+                authorization_code: json.authorization_code,
+                code_verifier: json.code_verifier,
+            },
+        });
+    }
+    if status.as_u16() == 403 || status.as_u16() == 404 {
+        return Ok(OAuthDeviceCodePollResult::Pending);
+    }
+    let error_code = serde_json::from_str::<Value>(&body).ok().and_then(|json| {
+        json.get("error").and_then(|error| {
+            error.as_str().map(ToOwned::to_owned).or_else(|| {
+                error
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            })
+        })
+    });
+    match error_code.as_deref() {
+        Some("deviceauth_authorization_pending") => Ok(OAuthDeviceCodePollResult::Pending),
+        Some("slow_down") => Ok(OAuthDeviceCodePollResult::SlowDown {
+            interval_seconds: None,
+        }),
+        _ => Ok(OAuthDeviceCodePollResult::Failed {
+            message: format!(
+                "OpenAI Codex device auth failed with status {}{}",
+                status.as_u16(),
+                if body.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {body}")
+                }
+            ),
+        }),
+    }
+}
+
+async fn exchange_authorization_code_for_credentials(
+    code: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> AuthResult<OAuthCredential> {
+    let token = post_openai_token_form(
+        "exchange",
+        &[
+            ("grant_type", "authorization_code"),
+            ("client_id", CLIENT_ID),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("code_verifier", verifier),
+        ],
+    )?;
+    credentials_from_token(token).map_err(box_error)
+}
+
+fn post_openai_token_form(operation: &str, form: &[(&str, &str)]) -> AuthResult<OAuthToken> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(TOKEN_TIMEOUT)
+        .build()
+        .map_err(box_error)?;
+    let response = client
+        .post(TOKEN_URL)
+        .header(
+            reqwest::header::CONTENT_TYPE,
+            "application/x-www-form-urlencoded",
+        )
+        .body(form_body(form))
+        .send()
+        .map_err(|error| {
+            box_error(OpenAiCodexOAuthError::Http(format!(
+                "OpenAI Codex token {operation} error: {error}"
+            )))
+        })?;
+    read_token_response(response, operation)
+}
+
+fn read_token_response(
+    response: reqwest::blocking::Response,
+    operation: &str,
+) -> AuthResult<OAuthToken> {
+    let status = response.status();
+    let status_text = status.canonical_reason().unwrap_or("");
+    let body = response.text().map_err(box_error)?;
+    if !status.is_success() {
+        return Err(box_error(OpenAiCodexOAuthError::Http(format!(
+            "OpenAI Codex token {operation} failed ({}): {}",
+            status.as_u16(),
+            if body.is_empty() { status_text } else { &body }
+        ))));
+    }
+    let json: TokenResponse = serde_json::from_str(&body).map_err(|_| {
+        box_error(OpenAiCodexOAuthError::Http(format!(
+            "OpenAI Codex token {operation} response missing fields: {body}"
+        )))
+    })?;
+    Ok(OAuthToken {
+        access: json.access_token,
+        refresh: json.refresh_token,
+        expires: now_millis() + json.expires_in * 1000,
+    })
+}
+
+fn post_json(url: &str, body: &Value) -> AuthResult<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(TOKEN_TIMEOUT)
+        .build()
+        .map_err(box_error)?;
+    let response = client
+        .post(url)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .json(body)
+        .send()
+        .map_err(box_error)?;
+    let status = response.status();
+    let text = response.text().map_err(box_error)?;
+    if !status.is_success() {
+        if status.as_u16() == 404 {
+            return Err(box_error(OpenAiCodexOAuthError::Http(
+                "OpenAI Codex device code login is not enabled for this server. Use browser login or verify the server URL."
+                    .to_owned(),
+            )));
+        }
+        return Err(box_error(OpenAiCodexOAuthError::Http(format!(
+            "OpenAI Codex device code request failed with status {}{}",
+            status.as_u16(),
+            if text.is_empty() {
+                String::new()
+            } else {
+                format!(": {text}")
+            }
+        ))));
+    }
+    Ok(text)
+}
+
+fn form_body(form: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    serializer.extend_pairs(form.iter().copied());
+    serializer.finish()
+}
+
+fn interval_seconds(value: &Value) -> Option<f64> {
+    let seconds = value
+        .as_f64()
+        .or_else(|| value.as_str()?.trim().parse::<f64>().ok())?;
+    (seconds.is_finite() && seconds >= 0.0).then_some(seconds)
 }
 
 async fn login_with_auth_callbacks(
@@ -284,18 +595,13 @@ async fn login_with_auth_callbacks(
             callbacks.notify(AuthEvent::Progress {
                 message: "Starting OpenAI Codex device code login".to_owned(),
             });
-            login_openai_codex_device_code(callbacks)
-                .await
-                .map_err(|error| Box::new(error) as BoxError)
+            login_openai_codex_device_code(callbacks).await
         }
-        OPENAI_CODEX_BROWSER_LOGIN_METHOD => login_openai_codex(callbacks)
-            .await
-            .map_err(|error| Box::new(error) as BoxError),
+        OPENAI_CODEX_BROWSER_LOGIN_METHOD => login_openai_codex(callbacks).await,
         _ => Err(Box::new(OpenAiCodexOAuthError::UnknownLoginMethod(method)) as BoxError),
     }
 }
 
-#[cfg(test)]
 fn parse_authorization_input(input: &str) -> AuthorizationInput {
     let value = input.trim();
     if value.is_empty() {
@@ -333,7 +639,6 @@ fn parse_authorization_input(input: &str) -> AuthorizationInput {
     }
 }
 
-#[cfg(test)]
 fn parse_query(query: &str) -> AuthorizationInput {
     let mut parsed = AuthorizationInput {
         code: None,
@@ -351,7 +656,6 @@ fn parse_query(query: &str) -> AuthorizationInput {
     parsed
 }
 
-#[cfg(test)]
 fn get_account_id(access_token: &str) -> Option<String> {
     let mut parts = access_token.split('.');
     let _header = parts.next()?;
@@ -369,7 +673,6 @@ fn get_account_id(access_token: &str) -> Option<String> {
         .filter(|account_id| !account_id.is_empty())
 }
 
-#[cfg(test)]
 fn credentials_from_token(
     token: OAuthToken,
 ) -> std::result::Result<OAuthCredential, OpenAiCodexOAuthError> {
@@ -405,7 +708,6 @@ fn credentials_from_token_response(
     }))
 }
 
-#[cfg(test)]
 fn decode_base64url(input: &str) -> Option<Vec<u8>> {
     let mut bits = 0_u32;
     let mut bit_count = 0_u8;
@@ -462,12 +764,15 @@ fn base64url_no_pad(bytes: &[u8]) -> String {
     out
 }
 
-#[cfg(test)]
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().try_into().unwrap_or(i64::MAX))
         .unwrap_or(0)
+}
+
+fn box_error(error: impl StdError + Send + Sync + 'static) -> BoxError {
+    Box::new(error)
 }
 
 #[cfg(test)]

@@ -1,10 +1,13 @@
 //! Port of Pi `packages/ai/test/bedrock-models.test.ts`.
 
-use zedflow_ai::api::lazy::{AssistantContent, AssistantMessage, Context, Model};
+use futures::executor::block_on;
 use zedflow_ai::compat::complete;
 use zedflow_ai::providers::amazon_bedrock_models::amazon_bedrock_models;
+use zedflow_ai::types::{
+    AssistantContentBlock, AssistantMessage, AssistantMessageRole, Context, Model,
+};
 
-const LIVE_BLOCKER: &str = "live Amazon Bedrock provider calls skipped; compat builtin dispatch and Bedrock transport are still PORT PLACEHOLDERs";
+const LIVE_BLOCKER: &str = "live Amazon Bedrock provider calls skipped: missing AWS Bedrock credentials/network capability or BEDROCK_EXTENSIVE_MODEL_TEST";
 
 fn non_empty_env(name: &str) -> bool {
     std::env::var_os(name).is_some_and(|value| !value.is_empty())
@@ -17,7 +20,7 @@ fn has_bedrock_credentials() -> bool {
 }
 
 fn compat_model(model: &zedflow_ai::models::Model) -> Model {
-    Model::new(&model.id, &model.api, &model.provider)
+    model.clone()
 }
 
 fn text_content(response: &AssistantMessage) -> String {
@@ -25,7 +28,9 @@ fn text_content(response: &AssistantMessage) -> String {
         .content
         .iter()
         .map(|block| match block {
-            AssistantContent::Opaque(text) => text.as_str(),
+            AssistantContentBlock::Text(text) => text.text.as_str(),
+            AssistantContentBlock::Thinking(thinking) => thinking.thinking.as_str(),
+            AssistantContentBlock::ToolCall(tool) => tool.name.as_str(),
         })
         .collect::<String>()
         .trim()
@@ -41,7 +46,7 @@ fn gets_all_available_bedrock_models() {
 }
 
 #[test]
-#[ignore = "live Bedrock provider parity test skipped; see LIVE_BLOCKER"]
+#[ignore = "live Bedrock provider parity test skipped: missing AWS Bedrock credentials/network capability or BEDROCK_EXTENSIVE_MODEL_TEST"]
 fn makes_a_simple_request_with_each_bedrock_model_live_parity() {
     if !(has_bedrock_credentials() && non_empty_env("BEDROCK_EXTENSIVE_MODEL_TEST")) {
         return;
@@ -49,11 +54,11 @@ fn makes_a_simple_request_with_each_bedrock_model_live_parity() {
 
     for model in amazon_bedrock_models() {
         let model = compat_model(&model);
-        let context = Context;
-        let response = complete(&model, &context, None)
+        let context = Context::default();
+        let response = block_on(complete(&model, &context, None))
             .unwrap_or_else(|error| panic!("{LIVE_BLOCKER}: {error}"));
 
-        assert_eq!(response.role, "assistant");
+        assert_eq!(response.role, AssistantMessageRole::Assistant);
         assert!(!response.content.is_empty());
         assert!(response.usage.input + response.usage.cache_read > 0);
         assert!(response.usage.output > 0);

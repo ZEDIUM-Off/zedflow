@@ -1,20 +1,17 @@
 //! Anthropic OAuth flow ported from Pi's `packages/ai/src/utils/oauth/anthropic.ts`.
 
-#[cfg(test)]
 use std::collections::BTreeMap;
 use std::error::Error as StdError;
-#[cfg(test)]
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::fmt;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(test)]
 use serde::Deserialize;
-#[cfg(test)]
-use serde_json::Value;
-use zedflow_core::{error::Result, placeholders};
+use serde_json::{Value, json};
 
 use crate::auth::types::{
     AuthFuture, AuthLoginCallbacks, AuthResult, BoxError, ModelAuth, OAuthAuth, OAuthCredential,
 };
+use crate::utils::abort_signals::{AbortController, combine_abort_signals};
 
 /// Anthropic OAuth client id decoded from Pi's base64 literal.
 pub const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
@@ -37,17 +34,35 @@ pub const ANTHROPIC_OAUTH_PROVIDER_ID: &str = "anthropic";
 /// Anthropic OAuth display name.
 pub const ANTHROPIC_OAUTH_NAME: &str = "Anthropic (Claude Pro/Max)";
 
-const OAUTH_PLACEHOLDER_DEPENDENCY: &str = "Node.js node:http callback server, Fetch API AbortSignal.timeout, and Rust HTTP client for Anthropic OAuth token exchange";
-const OAUTH_PLACEHOLDER_BEHAVIOR: &str = "run Anthropic authorization-code + PKCE login on localhost:53692/callback, accept manual code or redirect URL input, validate OAuth state, exchange authorization codes and refresh tokens at https://platform.claude.com/v1/oauth/token, and return Pi OAuth credentials with expires adjusted by five minutes";
+const TOKEN_TIMEOUT: Duration = Duration::from_secs(30);
 
-#[cfg(test)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnthropicOAuthError {
+    MissingAuthorizationCode,
+    MissingOAuthState,
+    StateMismatch,
+    Http(String),
+}
+
+impl fmt::Display for AnthropicOAuthError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingAuthorizationCode => formatter.write_str("Missing authorization code"),
+            Self::MissingOAuthState => formatter.write_str("Missing OAuth state"),
+            Self::StateMismatch => formatter.write_str("OAuth state mismatch"),
+            Self::Http(message) => formatter.write_str(message),
+        }
+    }
+}
+
+impl StdError for AnthropicOAuthError {}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AuthorizationInput {
     code: Option<String>,
     state: Option<String>,
 }
 
-#[cfg(test)]
 #[derive(Debug, Deserialize)]
 struct TokenResponse {
     access_token: String,
@@ -68,20 +83,16 @@ impl OAuthAuth for AnthropicOAuth {
 
     fn login<'a>(
         &'a self,
-        _callbacks: &'a dyn AuthLoginCallbacks,
+        callbacks: &'a dyn AuthLoginCallbacks,
     ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
-        Box::pin(async { Err(oauth_placeholder_box()) })
+        Box::pin(async move { login_anthropic(callbacks).await })
     }
 
     fn refresh<'a>(
         &'a self,
         credential: &'a OAuthCredential,
     ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
-        Box::pin(async move {
-            refresh_anthropic_token(&credential.refresh)
-                .await
-                .map_err(|error| Box::new(error) as BoxError)
-        })
+        Box::pin(async move { refresh_anthropic_token(&credential.refresh).await })
     }
 
     fn to_auth<'a>(
@@ -124,20 +135,17 @@ impl AnthropicOAuthProvider {
     ///
     /// # Errors
     ///
-    /// Returns a documented port placeholder until Rust replacements are selected for the local
-    /// callback server and token-exchange HTTP client.
+    /// Returns prompt, PKCE, state validation, token-endpoint, or JSON parsing failures.
     pub async fn login(self, callbacks: &dyn AuthLoginCallbacks) -> AuthResult<OAuthCredential> {
-        login_anthropic(callbacks)
-            .await
-            .map_err(|error| Box::new(error) as BoxError)
+        login_anthropic(callbacks).await
     }
 
     /// Refreshes an Anthropic OAuth credential.
     ///
     /// # Errors
     ///
-    /// Returns a documented port placeholder until a Rust token-exchange HTTP client is selected.
-    pub async fn refresh_token(self, credentials: &OAuthCredential) -> Result<OAuthCredential> {
+    /// Returns token-endpoint or JSON parsing failures.
+    pub async fn refresh_token(self, credentials: &OAuthCredential) -> AuthResult<OAuthCredential> {
         refresh_anthropic_token(&credentials.refresh).await
     }
 
@@ -156,37 +164,149 @@ pub const ANTHROPIC_OAUTH_PROVIDER: AnthropicOAuthProvider = AnthropicOAuthProvi
 
 /// Login with Anthropic OAuth using authorization code + PKCE.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: Node.js `node:http`, Web Crypto PKCE, browser/manual prompt race, and HTTP token exchange.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: generate PKCE, start a localhost callback server on `127.0.0.1:53692`, notify the auth URL, accept either callback or manual redirect/code input, validate state, exchange the authorization code, and close the server.
-/// Replacement decision needed before production use.
+/// This Rust port uses the deterministic manual-code path: it emits Pi's browser URL, prompts for
+/// an authorization code or redirect URL, validates state, and exchanges the code with `reqwest`.
+/// Local browser callback automation remains a manual/live concern.
 ///
 /// # Errors
 ///
-/// Always returns a port placeholder until Rust replacements are selected for the local callback
-/// server, PKCE generation, prompt race cancellation, and token exchange.
-pub async fn login_anthropic(_callbacks: &dyn AuthLoginCallbacks) -> Result<OAuthCredential> {
-    placeholders::unsupported(OAUTH_PLACEHOLDER_DEPENDENCY, OAUTH_PLACEHOLDER_BEHAVIOR)
+/// Returns prompt, PKCE, state validation, token-endpoint, or JSON parsing failures.
+pub async fn login_anthropic(callbacks: &dyn AuthLoginCallbacks) -> AuthResult<OAuthCredential> {
+    let pkce = crate::utils::oauth::pkce::generate_pkce()
+        .await
+        .map_err(box_error)?;
+    let auth_url = anthropic_authorize_url(&pkce.challenge, &pkce.verifier);
+    callbacks.notify(crate::auth::types::AuthEvent::AuthUrl {
+        url: auth_url,
+        instructions: Some(
+            "Complete login in your browser. If the browser is on another machine, paste the final redirect URL here."
+                .to_owned(),
+        ),
+    });
+
+    let prompt_controller = AbortController::new();
+    let mut prompt_signal =
+        combine_abort_signals(&[callbacks.signal(), Some(prompt_controller.signal())]);
+    let input = callbacks
+        .prompt(crate::auth::types::AuthPrompt::ManualCode {
+            message: "Complete login in your browser, or paste the authorization code / redirect URL here:"
+                .to_owned(),
+            placeholder: Some(REDIRECT_URI.to_owned()),
+            signal: prompt_signal.signal.clone(),
+        })
+        .await;
+    prompt_controller.abort();
+    prompt_signal.cleanup();
+    let input = input?;
+    let parsed = parse_authorization_input(&input);
+    if parsed
+        .state
+        .as_deref()
+        .is_some_and(|state| state != pkce.verifier)
+    {
+        return Err(box_error(AnthropicOAuthError::StateMismatch));
+    }
+    let code = parsed
+        .code
+        .ok_or_else(|| box_error(AnthropicOAuthError::MissingAuthorizationCode))?;
+    let state = parsed.state.unwrap_or(pkce.verifier.clone());
+
+    callbacks.notify(crate::auth::types::AuthEvent::Progress {
+        message: "Exchanging authorization code for tokens...".to_owned(),
+    });
+    exchange_anthropic_authorization_code(&code, &state, &pkce.verifier, REDIRECT_URI).await
 }
 
 /// Refreshes an Anthropic OAuth token.
 ///
-/// PORT PLACEHOLDER:
-/// Original dependency: Fetch API with `AbortSignal.timeout(30_000)` and Anthropic OAuth token endpoint.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: POST JSON `{ grant_type: "refresh_token", client_id, refresh_token }` to `TOKEN_URL`, parse `access_token`, `refresh_token`, and `expires_in`, and return credentials with expiry five minutes early.
-/// Replacement decision needed before production use.
-///
 /// # Errors
 ///
-/// Always returns a port placeholder until a Rust HTTP client and timeout policy are selected for
-/// the token endpoint.
-pub async fn refresh_anthropic_token(_refresh_token: &str) -> Result<OAuthCredential> {
-    placeholders::unsupported(OAUTH_PLACEHOLDER_DEPENDENCY, OAUTH_PLACEHOLDER_BEHAVIOR)
+/// Returns token-endpoint or JSON parsing failures.
+pub async fn refresh_anthropic_token(refresh_token: &str) -> AuthResult<OAuthCredential> {
+    let body = json!({
+        "grant_type": "refresh_token",
+        "client_id": CLIENT_ID,
+        "refresh_token": refresh_token,
+    });
+    let response_body = post_json(TOKEN_URL, &body).map_err(|error| {
+        box_error(AnthropicOAuthError::Http(format!(
+            "Anthropic token refresh request failed. url={TOKEN_URL}; details={}",
+            format_error_details(error.as_ref())
+        )))
+    })?;
+    credentials_from_token_response(&response_body, now_millis()).map_err(|error| {
+        box_error(AnthropicOAuthError::Http(format!(
+            "Anthropic token refresh returned invalid JSON. url={TOKEN_URL}; body={response_body}; details={}",
+            format_error_details(&error)
+        )))
+    })
 }
 
-#[cfg(test)]
+async fn exchange_anthropic_authorization_code(
+    code: &str,
+    state: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> AuthResult<OAuthCredential> {
+    let body = json!({
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "code": code,
+        "state": state,
+        "redirect_uri": redirect_uri,
+        "code_verifier": verifier,
+    });
+    let response_body = post_json(TOKEN_URL, &body).map_err(|error| {
+        box_error(AnthropicOAuthError::Http(format!(
+            "Token exchange request failed. url={TOKEN_URL}; redirect_uri={redirect_uri}; response_type=authorization_code; details={}",
+            format_error_details(error.as_ref())
+        )))
+    })?;
+    credentials_from_token_response(&response_body, now_millis()).map_err(|error| {
+        box_error(AnthropicOAuthError::Http(format!(
+            "Token exchange returned invalid JSON. url={TOKEN_URL}; body={response_body}; details={}",
+            format_error_details(&error)
+        )))
+    })
+}
+
+fn anthropic_authorize_url(challenge: &str, state: &str) -> String {
+    let mut url = url::Url::parse(AUTHORIZE_URL).expect("Anthropic authorize URL is valid");
+    url.query_pairs_mut()
+        .append_pair("code", "true")
+        .append_pair("client_id", CLIENT_ID)
+        .append_pair("response_type", "code")
+        .append_pair("redirect_uri", REDIRECT_URI)
+        .append_pair("scope", SCOPES)
+        .append_pair("code_challenge", challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("state", state);
+    url.to_string()
+}
+
+fn post_json(url: &str, body: &Value) -> std::result::Result<String, BoxError> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(TOKEN_TIMEOUT)
+        .build()
+        .map_err(box_error)?;
+    let response = client
+        .post(url)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .header(reqwest::header::ACCEPT, "application/json")
+        .json(body)
+        .send()
+        .map_err(box_error)?;
+    let status = response.status();
+    let response_body = response.text().map_err(box_error)?;
+    if !status.is_success() {
+        return Err(box_error(AnthropicOAuthError::Http(format!(
+            "HTTP request failed. status={}; url={url}; body={response_body}",
+            status.as_u16()
+        ))));
+    }
+    Ok(response_body)
+}
+
 fn parse_authorization_input(input: &str) -> AuthorizationInput {
     let value = input.trim();
     if value.is_empty() {
@@ -221,7 +341,6 @@ fn parse_authorization_input(input: &str) -> AuthorizationInput {
     }
 }
 
-#[cfg(test)]
 fn parse_query(query: &str) -> AuthorizationInput {
     let mut parsed = AuthorizationInput {
         code: None,
@@ -240,7 +359,6 @@ fn parse_query(query: &str) -> AuthorizationInput {
     parsed
 }
 
-#[cfg(test)]
 fn percent_decode(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -271,7 +389,6 @@ fn percent_decode(value: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-#[cfg(test)]
 fn credentials_from_token_response(
     response_body: &str,
     now_millis: i64,
@@ -285,7 +402,6 @@ fn credentials_from_token_response(
     })
 }
 
-#[cfg(test)]
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -293,11 +409,17 @@ fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-fn oauth_placeholder_box() -> BoxError {
-    Box::new(placeholders::error(
-        OAUTH_PLACEHOLDER_DEPENDENCY,
-        OAUTH_PLACEHOLDER_BEHAVIOR,
-    )) as Box<dyn StdError + Send + Sync>
+fn format_error_details(error: &(dyn StdError + 'static)) -> String {
+    let mut details = format!("{}: {}", std::any::type_name_of_val(error), error);
+    if let Some(source) = error.source() {
+        details.push_str("; cause=");
+        details.push_str(&format_error_details(source));
+    }
+    details
+}
+
+fn box_error(error: impl StdError + Send + Sync + 'static) -> BoxError {
+    Box::new(error)
 }
 
 #[cfg(test)]

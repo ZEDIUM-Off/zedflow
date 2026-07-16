@@ -1,8 +1,9 @@
 //! OpenCode Zen Go provider factory ported from Pi's `packages/ai/src/providers/opencode-go.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use zedflow_core::error::Result;
 
 use crate::models::Provider;
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
 
 /// OpenCode Zen Go provider id used by Pi.
 pub const OPENCODE_GO_PROVIDER_ID: &str = "opencode-go";
@@ -19,66 +20,25 @@ pub const OPENCODE_GO_API_KEY_ENV_VARS: &[&str] = &["OPENCODE_API_KEY"];
 /// OpenCode Zen Go stream API ids used by Pi models.
 pub const OPENCODE_GO_APIS: &[&str] = &["anthropic-messages", "openai-completions"];
 
-/// Creates Pi's OpenCode Zen Go provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/providers/opencode-go.models.ts OPENCODE_GO_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "opencode-go", name: "OpenCode Zen Go", auth: { apiKey: envApiKeyAuth("OpenCode API key", ["OPENCODE_API_KEY"]) }, models: Object.values(OPENCODE_GO_MODELS), api: { "anthropic-messages": anthropicMessagesApi(), "openai-completions": openAICompletionsApi() } })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/API stream contract and
-/// OpenCode Zen Go model catalog are available in Rust.
-#[must_use]
+/// Creates the opencode-go provider from the static Rust model catalog.
 pub fn opencode_go_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/providers/opencode-go.models.ts OPENCODE_GO_MODELS",
-        "return createProvider({ id: \"opencode-go\", name: \"OpenCode Zen Go\", auth: { apiKey: envApiKeyAuth(\"OpenCode API key\", [\"OPENCODE_API_KEY\"]) }, models: Object.values(OPENCODE_GO_MODELS), api: { \"anthropic-messages\": anthropicMessagesApi(), \"openai-completions\": openAICompletionsApi() } })",
-    )
+    let provider = static_provider(
+        OPENCODE_GO_PROVIDER_ID,
+        OPENCODE_GO_PROVIDER_NAME,
+        models_from_catalog(crate::providers::opencode_go_models::OPENCODE_GO_MODELS),
+    );
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_opencode_go_provider_blocker() {
-        match opencode_go_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("OPENCODE_GO_MODELS")
-                );
-                assert!(placeholder.original_dependency().contains("envApiKeyAuth"));
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("anthropicMessagesApi")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("openAICompletionsApi")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_opencode_go_provider_constants() {
-        assert_eq!(OPENCODE_GO_PROVIDER_ID, "opencode-go");
-        assert_eq!(OPENCODE_GO_PROVIDER_NAME, "OpenCode Zen Go");
-        assert_eq!(OPENCODE_GO_API_KEY_AUTH_NAME, "OpenCode API key");
-        assert_eq!(OPENCODE_GO_API_KEY_ENV_VARS, &["OPENCODE_API_KEY"]);
-        assert_eq!(
-            OPENCODE_GO_APIS,
-            &["anthropic-messages", "openai-completions"]
-        );
+    fn builds_provider_from_static_catalog() {
+        let provider = opencode_go_provider().expect("provider");
+        assert_eq!(provider.id, OPENCODE_GO_PROVIDER_ID);
+        assert_eq!(provider.name, OPENCODE_GO_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

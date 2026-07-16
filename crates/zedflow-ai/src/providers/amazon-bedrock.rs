@@ -1,25 +1,13 @@
 //! Amazon Bedrock provider ported from Pi's `packages/ai/src/providers/amazon-bedrock.ts`.
 
-use std::sync::Arc;
-
-use crate::models::{
-    AssistantMessageEventStream, CreateProviderOptions, Model, Provider, StreamOptions,
-    create_provider,
-};
+use crate::models::Provider;
 use crate::providers::amazon_bedrock_models::amazon_bedrock_models;
+use crate::providers::static_catalog::static_provider;
 
 /// Creates the Amazon Bedrock provider.
 #[must_use]
 pub fn amazon_bedrock_provider() -> Provider {
-    create_provider(CreateProviderOptions {
-        id: "amazon-bedrock".into(),
-        name: Some("Amazon Bedrock".into()),
-        models: amazon_bedrock_models(),
-        refresh_models: None,
-        stream: Arc::new(|_model: &Model, _options: Option<&StreamOptions>| {
-            AssistantMessageEventStream::new()
-        }),
-    })
+    static_provider("amazon-bedrock", "Amazon Bedrock", amazon_bedrock_models())
 }
 
 /// Environment variables that can satisfy Bedrock ambient auth.

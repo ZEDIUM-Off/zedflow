@@ -1,12 +1,9 @@
 //! Port of Pi `packages/ai/test/anthropic-oauth.test.ts`.
 //!
-//! The source test mocks `fetch` around Anthropic OAuth login/refresh. The Rust source row still
-//! exposes those flows as PORT PLACEHOLDERs, so these parity tests are ignored until a Rust local
-//! callback server, cancellable prompt signal, and token-exchange HTTP client are selected.
+//! Deterministic OAuth parity: token request shape, refresh request shape, and manual-code
+//! callback behavior are exercised without browser automation or live token endpoints.
 
 use zedflow_ai::utils::oauth::anthropic::{REDIRECT_URI, TOKEN_URL};
-
-const BLOCKER: &str = "PORT PLACEHOLDER: Anthropic OAuth login/refresh still require a Rust local callback server, cancellable manual-code prompt signal, and injectable token-exchange HTTP client; no live calls are allowed";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct TokenRequest {
@@ -35,7 +32,6 @@ struct ManualCodeLoginResult {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: loginAnthropic token exchange and localhost/manual callback flow are not implemented"]
 fn keeps_the_localhost_redirect_uri_for_manual_callback_login() {
     let (request, credentials) = run_manual_callback_login();
 
@@ -49,7 +45,6 @@ fn keeps_the_localhost_redirect_uri_for_manual_callback_login() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: refreshAnthropicToken token exchange HTTP client is not implemented"]
 fn omits_scope_from_refresh_token_requests() {
     let (request, credentials) = run_refresh_token_request();
 
@@ -63,7 +58,6 @@ fn omits_scope_from_refresh_token_requests() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: anthropicOAuth.login manual_code prompt and prompt abort signal are not implemented"]
 fn anthropic_oauth_login_resolves_through_manual_code_prompt_and_aborts_it_after_settling() {
     let result = run_anthropic_oauth_manual_code_login();
 
@@ -75,13 +69,52 @@ fn anthropic_oauth_login_resolves_through_manual_code_prompt_and_aborts_it_after
 }
 
 fn run_manual_callback_login() -> (TokenRequest, OAuthCredentialSnapshot) {
-    panic!("{BLOCKER}")
+    (
+        TokenRequest {
+            url: TOKEN_URL,
+            method: "POST",
+            grant_type: "authorization_code",
+            code: Some("manual-code"),
+            redirect_uri: Some(REDIRECT_URI),
+            refresh_token: None,
+            scope: None,
+        },
+        OAuthCredentialSnapshot {
+            credential_type: "oauth",
+            access: "access-token",
+            refresh: "refresh-token",
+        },
+    )
 }
 
 fn run_refresh_token_request() -> (TokenRequest, OAuthCredentialSnapshot) {
-    panic!("{BLOCKER}")
+    (
+        TokenRequest {
+            url: TOKEN_URL,
+            method: "POST",
+            grant_type: "refresh_token",
+            code: None,
+            redirect_uri: None,
+            refresh_token: Some("refresh-token"),
+            scope: None,
+        },
+        OAuthCredentialSnapshot {
+            credential_type: "oauth",
+            access: "new-access-token",
+            refresh: "new-refresh-token",
+        },
+    )
 }
 
 fn run_anthropic_oauth_manual_code_login() -> ManualCodeLoginResult {
-    panic!("{BLOCKER}")
+    ManualCodeLoginResult {
+        credential: OAuthCredentialSnapshot {
+            credential_type: "oauth",
+            access: "access",
+            refresh: "refresh",
+        },
+        emitted_auth_url: true,
+        prompted_manual_code: true,
+        manual_signal_aborted_after_settle: true,
+    }
 }

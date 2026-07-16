@@ -1,22 +1,24 @@
-use zedflow_ai::api::lazy::{Context, Model, StopReason};
-use zedflow_ai::api::simple_options::StreamOptions;
-use zedflow_ai::compat::{complete, get_models, get_providers};
+mod common;
+
+use std::io::{Read, Write};
+use std::net::TcpListener;
+use std::thread;
+
+use common::http_capture::{CapturedRequest, normalize_header_name};
+use futures::executor::block_on;
+use serde_json::{Value, json};
+use zedflow_ai::api::anthropic_messages::AnthropicOptions;
+use zedflow_ai::compat::{get_models, get_providers};
 use zedflow_ai::env_api_keys::get_env_api_key;
+use zedflow_ai::providers::anthropic::anthropic_provider;
+use zedflow_ai::types::{
+    AnthropicMessagesCompat, CacheRetention, Context, Message, Model, ModelCompat, ModelCost,
+    ModelInput, StreamOptions, Tool, UserMessage, UserMessageContent, UserMessageRole,
+};
 
 #[derive(Debug, Clone)]
 struct AnthropicEagerE2ECase {
     name: String,
-    model: Model,
-    api_key: Option<String>,
-}
-
-fn get_e2e_api_key(provider: &str) -> Option<String> {
-    if provider == "github-copilot" {
-        // PORT PLACEHOLDER: references/pi/packages/ai/test/oauth.ts resolveApiKey("github-copilot").
-        return None;
-    }
-
-    get_env_api_key(provider, None)
 }
 
 fn anthropic_message_model_names() -> Vec<String> {
@@ -40,53 +42,155 @@ fn anthropic_messages_cases() -> Vec<AnthropicEagerE2ECase> {
         .expect("compat::get_providers should expose generated providers")
         .into_iter()
         .flat_map(|provider| {
-            let api_key = get_e2e_api_key(&provider);
             models
                 .iter()
                 .filter(|model| model.provider == provider && model.api == "anthropic-messages")
                 .map(|model| AnthropicEagerE2ECase {
                     name: format!("{provider}/{}", model.id),
-                    model: model.clone(),
-                    api_key: api_key.clone(),
                 })
                 .collect::<Vec<_>>()
         })
         .collect()
 }
 
-fn expect_tool_enabled_request_accepted(model: &Model, api_key: Option<&str>) {
-    let response = complete(
-        model,
-        &Context,
-        Some(StreamOptions {
-            api_key: api_key.map(str::to_owned),
-            max_tokens: Some(128),
-            ..StreamOptions::default()
-        }),
-    )
-    .expect("tool-enabled request should complete");
-
-    assert!(
-        response.error_message.is_none(),
-        "{:?}",
-        response.error_message
-    );
-    assert_ne!(
-        response.stop_reason,
-        StopReason::Error,
-        "{:?}",
-        response.error_message
-    );
+fn full_model(supports_eager_tool_input_streaming: Option<bool>) -> Model {
+    Model {
+        id: "claude-sonnet-4-5".to_owned(),
+        name: "Claude Sonnet 4.5".to_owned(),
+        api: "anthropic-messages".to_owned(),
+        provider: "anthropic".to_owned(),
+        base_url: "https://api.anthropic.com".to_owned(),
+        reasoning: true,
+        thinking_level_map: None,
+        input: vec![ModelInput::Text],
+        cost: ModelCost {
+            input: 3.0,
+            output: 15.0,
+            cache_read: 0.3,
+            cache_write: 3.75,
+        },
+        context_window: 200_000,
+        max_tokens: 64_000,
+        headers: None,
+        compat: Some(ModelCompat::AnthropicMessages(AnthropicMessagesCompat {
+            supports_eager_tool_input_streaming,
+            supports_cache_control_on_tools: Some(true),
+            ..AnthropicMessagesCompat::default()
+        })),
+    }
 }
 
-fn with_eager_tool_input_streaming(_model: &Model) -> Result<Model, &'static str> {
-    Err(
-        "PORT PLACEHOLDER: compat Model does not expose AnthropicMessagesCompat.supportsEagerToolInputStreaming yet",
-    )
+fn echo_tool() -> Tool {
+    Tool {
+        name: "echo_value".to_owned(),
+        description: "Echo a string value".to_owned(),
+        parameters: json!({
+            "type": "object",
+            "properties": {
+                "value": { "type": "string", "description": "The value to echo" }
+            },
+            "required": ["value"]
+        }),
+    }
+}
+
+fn tool_context() -> Context {
+    Context {
+        system_prompt: Some("You are a concise assistant. Use tools when useful.".to_owned()),
+        messages: vec![Message::User(UserMessage {
+            role: UserMessageRole::User,
+            content: UserMessageContent::Text(
+                "Call echo_value with value set to eager-input-streaming-compat.".to_owned(),
+            ),
+            timestamp: 0,
+        })],
+        tools: Some(vec![echo_tool()]),
+    }
+}
+
+fn capture_request(model: &Model, options: &AnthropicOptions) -> CapturedRequest {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind capture server");
+    let address = listener.local_addr().expect("capture server address");
+    let server = thread::spawn(move || {
+        let (mut socket, _) = listener.accept().expect("accept request");
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 4096];
+        loop {
+            let read = socket.read(&mut buffer).expect("read request");
+            request.extend_from_slice(&buffer[..read]);
+            let Some(header_end) = request.windows(4).position(|window| window == b"\r\n\r\n")
+            else {
+                continue;
+            };
+            let headers = String::from_utf8_lossy(&request[..header_end]);
+            let length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())
+                        .flatten()
+                })
+                .unwrap_or(0);
+            if request.len() >= header_end + 4 + length {
+                break;
+            }
+        }
+        socket.write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").expect("write response");
+        request
+    });
+    let mut model = model.clone();
+    model.base_url = format!("http://{address}");
+    let provider = anthropic_provider().expect("registered Anthropic provider");
+    let stream = provider.stream(&model, &tool_context(), Some(&options.stream));
+    assert_eq!(
+        block_on(stream.result()).stop_reason,
+        zedflow_ai::types::StopReason::Stop
+    );
+    let raw =
+        String::from_utf8(server.join().expect("capture server")).expect("HTTP request UTF-8");
+    let (head, body) = raw.split_once("\r\n\r\n").expect("HTTP request");
+    let mut lines = head.lines();
+    let request_line = lines.next().expect("request line");
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or_default().to_owned();
+    let path = parts.next().unwrap_or_default();
+    let headers = lines
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            Some((normalize_header_name(name), value.trim().to_owned()))
+        })
+        .collect();
+    CapturedRequest {
+        method,
+        url: format!("http://{address}{path}"),
+        headers,
+        body: Some(body.as_bytes().to_vec()),
+    }
+}
+
+fn options() -> AnthropicOptions {
+    AnthropicOptions {
+        stream: StreamOptions {
+            api_key: Some("fake-key".to_owned()),
+            cache_retention: Some(CacheRetention::Short),
+            max_tokens: Some(128),
+            ..StreamOptions::default()
+        },
+        thinking_enabled: Some(false),
+        ..AnthropicOptions::default()
+    }
+}
+
+fn first_tool(payload: &Value) -> &Value {
+    payload
+        .get("tools")
+        .and_then(Value::as_array)
+        .and_then(|tools| tools.first())
+        .expect("Anthropic payload should include the echo tool")
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: compat::get_providers/get_models still return placeholders until the generated provider catalog is wired"]
 fn covers_every_generated_anthropic_messages_model() {
     let mut actual = anthropic_messages_cases()
         .into_iter()
@@ -101,29 +205,85 @@ fn covers_every_generated_anthropic_messages_model() {
 }
 
 #[test]
-#[ignore = "live provider call skipped; compat catalog, Context tools, and provider streaming remain PORT PLACEHOLDERs"]
-fn generated_compat_settings_accept_configured_tool_streaming() {
-    let Some(test_case) = anthropic_messages_cases()
-        .into_iter()
-        .find(|test_case| test_case.api_key.is_some())
-    else {
-        return;
-    };
+fn configured_eager_tool_streaming_sets_payload_and_headers() {
+    let model = full_model(Some(true));
+    let request = capture_request(&model, &options());
+    let payload = request
+        .body_json()
+        .expect("captured Anthropic request should contain JSON payload");
+    let tool = first_tool(&payload);
 
-    expect_tool_enabled_request_accepted(&test_case.model, test_case.api_key.as_deref());
+    assert_eq!(tool.get("eager_input_streaming"), Some(&json!(true)));
+    assert_eq!(
+        tool.pointer("/input_schema/required"),
+        Some(&json!(["value"]))
+    );
+    assert_eq!(
+        request.headers.get("x-api-key"),
+        Some(&"fake-key".to_owned())
+    );
+    assert_eq!(
+        request.headers.get("anthropic-version"),
+        Some(&"2023-06-01".to_owned())
+    );
+    assert_eq!(
+        request.headers.get("anthropic-beta"),
+        Some(&"interleaved-thinking-2025-05-14".to_owned())
+    );
 }
 
 #[test]
-#[ignore = "live provider call skipped; compat Model eager-tool-input metadata remains a PORT PLACEHOLDER"]
-fn forced_eager_input_streaming_probe_accepts_forced_eager_input_streaming() {
-    let Some(test_case) = anthropic_messages_cases()
-        .into_iter()
-        .find(|test_case| test_case.api_key.is_some())
-    else {
+fn non_eager_tool_streaming_uses_fine_grained_beta_and_tool_cache_control() {
+    let model = full_model(Some(false));
+    let request = capture_request(&model, &options());
+    let payload = request
+        .body_json()
+        .expect("captured Anthropic request should contain JSON payload");
+    let tool = first_tool(&payload);
+
+    assert_eq!(tool.get("eager_input_streaming"), None);
+    assert_eq!(
+        tool.get("cache_control"),
+        Some(&json!({ "type": "ephemeral" }))
+    );
+    assert_eq!(
+        request.headers.get("anthropic-beta"),
+        Some(&"fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14".to_owned())
+    );
+}
+
+fn run_live_probe(force_eager: bool) {
+    let Some(api_key) = get_env_api_key("anthropic", None) else {
         return;
     };
-    let model = with_eager_tool_input_streaming(&test_case.model)
-        .expect("model compat override should be applied before the provider request");
+    let model = full_model(force_eager.then_some(true));
+    let options = AnthropicOptions {
+        stream: StreamOptions {
+            api_key: Some(api_key),
+            cache_retention: Some(CacheRetention::None),
+            max_tokens: Some(128),
+            ..StreamOptions::default()
+        },
+        thinking_enabled: Some(false),
+        ..AnthropicOptions::default()
+    };
+    let provider = anthropic_provider().expect("registered Anthropic provider");
+    let response = block_on(
+        provider
+            .stream(&model, &tool_context(), Some(&options.stream))
+            .result(),
+    );
+    assert_ne!(response.stop_reason, zedflow_ai::types::StopReason::Error);
+}
 
-    expect_tool_enabled_request_accepted(&model, test_case.api_key.as_deref());
+#[test]
+#[ignore = "live capability: requires ANTHROPIC_API_KEY and network"]
+fn generated_compat_settings_accept_configured_tool_streaming() {
+    run_live_probe(false);
+}
+
+#[test]
+#[ignore = "live capability: requires ANTHROPIC_API_KEY and network"]
+fn forced_eager_input_streaming_probe_accepts_forced_eager_input_streaming() {
+    run_live_probe(true);
 }

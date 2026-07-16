@@ -1,17 +1,32 @@
 //! Google Vertex API ported from Pi.
 
+#![allow(
+    clippy::result_large_err,
+    reason = "preserve the structured Pi provider error contract"
+)]
+
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use futures::future::BoxFuture;
 use serde_json::{Value, json};
 
 use crate::api::google_shared::{
     Context as SharedContext, FunctionCallingConfigMode, GenerateContentChunk,
-    GoogleAssistantMessageEventStream, Model as SharedModel, ModelInput, Tool,
-    collect_google_stream, convert_messages, convert_tools, map_tool_choice,
+    GoogleAssistantMessageEventStream, GoogleStreamCollector, GoogleStreamFrame,
+    Model as SharedModel, ModelInput, Tool, collect_google_stream, convert_messages, convert_tools,
+    map_tool_choice,
 };
+use crate::types::{
+    AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream as CanonicalEventStream,
+    Context as CanonicalContext, DoneStopReason, ErrorStopReason, Model as CanonicalModel,
+    ProviderResponse, ProviderStreams, SimpleStreamOptions as CanonicalSimpleOptions,
+    StopReason as CanonicalStopReason, StreamOptions,
+};
+use crate::utils::error_body::{ProviderHttpErrorParts, ProviderServiceError};
 
 const API_VERSION: &str = "v1";
 const GCP_VERTEX_CREDENTIALS_MARKER: &str = "gcp-vertex-credentials";
@@ -20,14 +35,44 @@ const GCP_VERTEX_CREDENTIALS_MARKER: &str = "gcp-vertex-credentials";
 pub type Result<T> = std::result::Result<T, GoogleVertexError>;
 
 /// Errors returned by the Google Vertex port.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum GoogleVertexError {
     /// Vertex project ID was not provided in options or environment.
     MissingProject,
     /// Vertex location was not provided in options or environment.
     MissingLocation,
+    /// A provider hook rejected the request.
+    Hook(crate::types::ProviderHookError),
+    /// The HTTP transport failed.
+    Http(reqwest::Error),
+    /// Vertex returned a normalized provider service failure.
+    Service(ProviderServiceError),
+    /// A request header was invalid.
+    InvalidHeader(String),
+    /// Vertex returned malformed SSE framing or text.
+    InvalidSse(String),
+    /// Vertex returned malformed SSE JSON.
+    InvalidResponse(serde_json::Error),
+    /// Canonical message/event conversion failed.
+    InvalidCanonicalEvent(serde_json::Error),
+    /// Application Default Credentials could not produce an access token.
+    AdcAuth(gcp_auth::Error),
+    /// The request was aborted.
+    Aborted,
 }
+
+impl PartialEq for GoogleVertexError {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::MissingProject, Self::MissingProject)
+                | (Self::MissingLocation, Self::MissingLocation)
+        )
+    }
+}
+
+impl Eq for GoogleVertexError {}
 
 impl fmt::Display for GoogleVertexError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -38,6 +83,17 @@ impl fmt::Display for GoogleVertexError {
             Self::MissingLocation => f.write_str(
                 "Vertex AI requires a location. Set GOOGLE_CLOUD_LOCATION or pass location in options.",
             ),
+            Self::Hook(error) => error.fmt(f),
+            Self::Http(error) => error.fmt(f),
+            Self::Service(error) => error.fmt(f),
+            Self::InvalidHeader(error) => f.write_str(error),
+            Self::InvalidSse(error) => write!(f, "invalid Google Vertex SSE response: {error}"),
+            Self::InvalidResponse(error) => write!(f, "invalid Google Vertex SSE response: {error}"),
+            Self::InvalidCanonicalEvent(error) => {
+                write!(f, "invalid canonical Google Vertex event: {error}")
+            }
+            Self::AdcAuth(error) => write!(f, "Google Vertex ADC authentication failed: {error}"),
+            Self::Aborted => f.write_str("request aborted"),
         }
     }
 }
@@ -45,7 +101,16 @@ impl fmt::Display for GoogleVertexError {
 impl StdError for GoogleVertexError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            Self::MissingProject | Self::MissingLocation => None,
+            Self::Hook(error) => Some(error),
+            Self::Http(error) => Some(error),
+            Self::Service(error) => Some(error),
+            Self::InvalidResponse(error) | Self::InvalidCanonicalEvent(error) => Some(error),
+            Self::AdcAuth(error) => Some(error),
+            Self::MissingProject
+            | Self::MissingLocation
+            | Self::InvalidHeader(_)
+            | Self::InvalidSse(_)
+            | Self::Aborted => None,
         }
     }
 }
@@ -215,7 +280,16 @@ pub struct GoogleThinkingOptions {
 }
 
 /// Callback that can inspect or replace the raw Google payload.
-pub type PayloadHook = Arc<dyn Fn(Value, &Model) -> Option<Value> + Send + Sync>;
+pub type PayloadHook = Arc<
+    dyn Fn(
+            Value,
+            Model,
+        ) -> BoxFuture<
+            'static,
+            std::result::Result<Option<Value>, crate::types::ProviderHookError>,
+        > + Send
+        + Sync,
+>;
 
 /// Options specific to Pi's Google Vertex stream implementation.
 #[derive(Clone, Default)]
@@ -285,7 +359,10 @@ struct ClientConfig {
 }
 
 fn provider_env_value(name: &str, env: &ProviderEnv) -> Option<String> {
-    env.get(name).filter(|value| !value.is_empty()).cloned()
+    env.get(name)
+        .filter(|value| !value.is_empty())
+        .cloned()
+        .or_else(|| std::env::var(name).ok().filter(|value| !value.is_empty()))
 }
 
 fn resolve_custom_base_url(base_url: Option<&str>) -> Option<String> {
@@ -356,7 +433,12 @@ fn is_placeholder_api_key(api_key: &str) -> bool {
 }
 
 fn resolve_api_key(options: Option<&GoogleVertexOptions>) -> Option<String> {
-    let api_key = options?.api_key.as_deref()?.trim();
+    let options = options?;
+    let api_key = options
+        .api_key
+        .clone()
+        .or_else(|| provider_env_value("GOOGLE_CLOUD_API_KEY", &options.env))?;
+    let api_key = api_key.trim();
     if api_key.is_empty()
         || api_key == GCP_VERTEX_CREDENTIALS_MARKER
         || is_placeholder_api_key(api_key)
@@ -582,18 +664,18 @@ fn build_params(model: &Model, context: &Context, options: &GoogleVertexOptions)
     if let Some(tools) = convert_tools(&context.tools, false) {
         config.insert("tools".to_string(), json!(tools));
     }
-    if !context.tools.is_empty() {
-        if let Some(choice) = options.tool_choice {
-            let mode = match map_tool_choice(tool_choice_string(choice)) {
-                FunctionCallingConfigMode::Auto => "AUTO",
-                FunctionCallingConfigMode::None => "NONE",
-                FunctionCallingConfigMode::Any => "ANY",
-            };
-            config.insert(
-                "toolConfig".to_string(),
-                json!({ "functionCallingConfig": { "mode": mode } }),
-            );
-        }
+    if !context.tools.is_empty()
+        && let Some(choice) = options.tool_choice
+    {
+        let mode = match map_tool_choice(tool_choice_string(choice)) {
+            FunctionCallingConfigMode::Auto => "AUTO",
+            FunctionCallingConfigMode::None => "NONE",
+            FunctionCallingConfigMode::Any => "ANY",
+        };
+        config.insert(
+            "toolConfig".to_string(),
+            json!({ "functionCallingConfig": { "mode": mode } }),
+        );
     }
     if let Some(thinking) = thinking_config(model, options) {
         config.insert(
@@ -613,9 +695,22 @@ fn vertex_url(model: &Model, client: &ClientConfig) -> String {
     if let Some(http_options) = &client.http_options
         && let Some(base_url) = &http_options.base_url
     {
+        let api_version = if http_options.api_version.as_deref() == Some("") {
+            ""
+        } else {
+            "/v1"
+        };
         return format!(
-            "{}/publishers/google/models/{}:streamGenerateContent?alt=sse",
+            "{}{}/publishers/google/models/{}:streamGenerateContent?alt=sse",
             base_url.trim_end_matches('/'),
+            api_version,
+            model.id
+        );
+    }
+
+    if client.api_key.is_some() {
+        return format!(
+            "https://aiplatform.googleapis.com/v1/publishers/google/models/{}:streamGenerateContent?alt=sse",
             model.id
         );
     }
@@ -645,7 +740,9 @@ fn build_request(
     }
     let mut payload = build_params(model, context, options);
     if let Some(on_payload) = &options.on_payload
-        && let Some(next_payload) = on_payload(payload.clone(), model)
+        && let Some(next_payload) =
+            futures::executor::block_on(on_payload(payload.clone(), model.clone()))
+                .map_err(GoogleVertexError::Hook)?
     {
         payload = next_payload;
     }
@@ -746,6 +843,762 @@ pub fn stream_simple(
     };
 
     stream(model, context, Some(&stream_options))
+}
+
+/// Returns the canonical Google Vertex request/SSE implementation.
+#[must_use]
+pub fn provider_streams() -> ProviderStreams {
+    ProviderStreams {
+        stream: Arc::new(stream_registered),
+        stream_simple: Arc::new(stream_simple_registered),
+    }
+}
+
+/// Starts a canonical Vertex request and returns immediately.
+#[must_use]
+pub fn stream_registered(
+    model: &CanonicalModel,
+    context: &CanonicalContext,
+    options: Option<&StreamOptions>,
+) -> CanonicalEventStream {
+    let stream = CanonicalEventStream::new();
+    let worker_stream = stream.clone();
+    let model = model.clone();
+    let context = context.clone();
+    let options = options.cloned().unwrap_or_default();
+    crate::utils::runtime::spawn_worker(async move {
+        run_registered_worker(worker_stream, model, context, options).await;
+    });
+    stream
+}
+
+/// Starts Vertex using Pi's simple reasoning option mapping.
+#[must_use]
+pub fn stream_simple_registered(
+    model: &CanonicalModel,
+    context: &CanonicalContext,
+    options: Option<&CanonicalSimpleOptions>,
+) -> CanonicalEventStream {
+    let mut stream_options = options
+        .map(|options| options.stream.clone())
+        .unwrap_or_default();
+    if let Some(reasoning) = options.and_then(|options| options.reasoning) {
+        stream_options.extra.insert(
+            "reasoning".to_owned(),
+            Value::String(
+                match reasoning {
+                    crate::types::ThinkingLevel::Minimal => "minimal",
+                    crate::types::ThinkingLevel::Low => "low",
+                    crate::types::ThinkingLevel::Medium => "medium",
+                    crate::types::ThinkingLevel::High => "high",
+                    crate::types::ThinkingLevel::XHigh => "xhigh",
+                }
+                .to_owned(),
+            ),
+        );
+    }
+    stream_registered(model, context, Some(&stream_options))
+}
+
+async fn run_registered_worker(
+    stream: CanonicalEventStream,
+    model: CanonicalModel,
+    context: CanonicalContext,
+    options: StreamOptions,
+) {
+    match execute_registered(&stream, &model, &context, &options).await {
+        Ok(message) => emit_final_message(&stream, &model, message),
+        Err(error) => emit_terminal_error(
+            &stream,
+            &model,
+            error.to_string(),
+            matches!(error, GoogleVertexError::Aborted),
+        ),
+    }
+}
+
+async fn execute_registered(
+    stream: &CanonicalEventStream,
+    model: &CanonicalModel,
+    context: &CanonicalContext,
+    options: &StreamOptions,
+) -> Result<crate::api::google_shared::GoogleAssistantMessage> {
+    check_abort(options.signal.as_ref())?;
+    let local_model = Model {
+        id: model.id.clone(),
+        provider: model.provider.clone(),
+        base_url: (!model.base_url.is_empty()).then(|| model.base_url.clone()),
+        reasoning: model.reasoning,
+        headers: model.headers.clone().unwrap_or_default(),
+    };
+    let local_context = canonical_context(context)?;
+    let mut local_options = GoogleVertexOptions {
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
+        api_key: options.api_key.clone(),
+        headers: options
+            .headers
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(name, value)| value.map(|value| (name, value)))
+            .collect(),
+        tool_choice: options
+            .extra
+            .get("toolChoice")
+            .and_then(Value::as_str)
+            .map(|choice| match choice {
+                "none" => GoogleToolChoice::None,
+                "any" => GoogleToolChoice::Any,
+                _ => GoogleToolChoice::Auto,
+            }),
+        thinking: registered_thinking(&local_model, options),
+        project: options
+            .extra
+            .get("project")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        location: options
+            .extra
+            .get("location")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        env: options.env.clone().unwrap_or_default(),
+        ..GoogleVertexOptions::default()
+    };
+    let mut payload = build_params(&local_model, &local_context, &local_options);
+    if let Some(hook) = options.on_payload.as_ref()
+        && let Some(next) = hook(payload.clone(), model.clone())
+            .await
+            .map_err(GoogleVertexError::Hook)?
+    {
+        payload = next;
+    }
+    local_options.on_payload = None;
+    let mut request = build_request(&local_model, &local_context, &local_options)?;
+    request.payload = rest_payload_from_sdk(payload);
+    if request.request_uses_adc()
+        && !request
+            .headers
+            .keys()
+            .any(|name| name.eq_ignore_ascii_case("authorization"))
+    {
+        let token = resolve_adc_access_token(&local_options.env).await?;
+        request
+            .headers
+            .insert("authorization".to_owned(), format!("Bearer {token}"));
+    }
+
+    let mut builder = reqwest::Client::builder();
+    if let Some(timeout_ms) = options.timeout_ms {
+        builder = builder.timeout(Duration::from_millis(timeout_ms));
+    }
+    let send = builder
+        .build()
+        .map_err(GoogleVertexError::Http)?
+        .post(&request.url)
+        .headers(to_header_map(&request.headers)?)
+        .body(request.payload.to_string())
+        .send();
+    let mut response = await_or_abort(send, options.signal.clone()).await?;
+    let status = response.status().as_u16();
+    let response_headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_owned()))
+        })
+        .collect::<HashMap<_, _>>();
+    if let Some(hook) = options.on_response.as_ref() {
+        hook(
+            ProviderResponse {
+                status,
+                headers: response_headers.clone(),
+            },
+            model.clone(),
+        )
+        .await
+        .map_err(GoogleVertexError::Hook)?;
+    }
+    if !(200..300).contains(&status) {
+        let body = read_response_body(&mut response, options.signal.clone()).await?;
+        let source = GoogleStatusError {
+            status,
+            body: body.clone(),
+        };
+        return Err(GoogleVertexError::Service(
+            ProviderServiceError::with_source(
+                ProviderHttpErrorParts::new("Google Vertex request failed")
+                    .with_status(status)
+                    .with_headers(response_headers)
+                    .with_body(body),
+                source,
+            ),
+        ));
+    }
+
+    let mut collector = GoogleStreamCollector::new(
+        "google-vertex".to_owned(),
+        model.provider.clone(),
+        model.id.clone(),
+        now_ms(),
+    );
+    emit_frames(
+        stream,
+        model,
+        collector.take_frames(),
+        options.signal.as_ref(),
+    )?;
+    let mut decoder = GoogleSseDecoder::default();
+    loop {
+        check_abort(options.signal.as_ref())?;
+        let Some(chunk) = await_or_abort(response.chunk(), options.signal.clone()).await? else {
+            break;
+        };
+        for decoded in decoder.push(&chunk)? {
+            check_abort(options.signal.as_ref())?;
+            collector.apply_chunk(&decoded);
+            emit_frames(
+                stream,
+                model,
+                collector.take_frames(),
+                options.signal.as_ref(),
+            )?;
+            tokio::task::yield_now().await;
+        }
+    }
+    for decoded in decoder.finish()? {
+        check_abort(options.signal.as_ref())?;
+        collector.apply_chunk(&decoded);
+        emit_frames(
+            stream,
+            model,
+            collector.take_frames(),
+            options.signal.as_ref(),
+        )?;
+    }
+    let (collected, frames) = collector.finish_incremental();
+    emit_frames(stream, model, frames, options.signal.as_ref())?;
+    check_abort(options.signal.as_ref())?;
+    Ok(collected.message)
+}
+
+impl PreparedGoogleVertexRequest {
+    fn request_uses_adc(&self) -> bool {
+        self.client.api_key.is_none()
+    }
+}
+
+async fn resolve_adc_access_token(env: &ProviderEnv) -> Result<String> {
+    use gcp_auth::TokenProvider;
+
+    if let Some(token) = provider_env_value("GOOGLE_OAUTH_ACCESS_TOKEN", env) {
+        return Ok(token);
+    }
+
+    const CLOUD_PLATFORM_SCOPE: &str = "https://www.googleapis.com/auth/cloud-platform";
+    let token = if let Some(path) = env
+        .get("GOOGLE_APPLICATION_CREDENTIALS")
+        .filter(|path| !path.is_empty())
+    {
+        gcp_auth::CustomServiceAccount::from_file(path)
+            .map_err(GoogleVertexError::AdcAuth)?
+            .token(&[CLOUD_PLATFORM_SCOPE])
+            .await
+            .map_err(GoogleVertexError::AdcAuth)?
+    } else {
+        gcp_auth::provider()
+            .await
+            .map_err(GoogleVertexError::AdcAuth)?
+            .token(&[CLOUD_PLATFORM_SCOPE])
+            .await
+            .map_err(GoogleVertexError::AdcAuth)?
+    };
+    Ok(token.as_str().to_owned())
+}
+
+fn rest_payload_from_sdk(payload: Value) -> Value {
+    let contents = payload
+        .get("contents")
+        .cloned()
+        .unwrap_or_else(|| json!([]));
+    let config = payload.get("config").and_then(Value::as_object);
+    let mut body = serde_json::Map::from_iter([("contents".to_owned(), contents)]);
+    if let Some(config) = config {
+        if let Some(system) = config.get("systemInstruction") {
+            body.insert(
+                "systemInstruction".to_owned(),
+                json!({ "parts": [{ "text": system }] }),
+            );
+        }
+        for key in ["tools", "toolConfig"] {
+            if let Some(value) = config.get(key) {
+                body.insert(key.to_owned(), value.clone());
+            }
+        }
+        let generation = config
+            .iter()
+            .filter(|(key, _)| {
+                !matches!(key.as_str(), "systemInstruction" | "tools" | "toolConfig")
+            })
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<serde_json::Map<_, _>>();
+        if !generation.is_empty() {
+            body.insert("generationConfig".to_owned(), Value::Object(generation));
+        }
+    }
+    Value::Object(body)
+}
+
+fn canonical_context(context: &CanonicalContext) -> Result<Context> {
+    let value = serde_json::to_value(context).map_err(GoogleVertexError::InvalidResponse)?;
+    let messages = value["messages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(canonical_message)
+        .collect();
+    let tools = context
+        .tools
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|tool| Tool {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+        })
+        .collect();
+    Ok(Context {
+        system_prompt: context.system_prompt.clone(),
+        messages,
+        tools,
+    })
+}
+
+fn canonical_message(message: &Value) -> Option<crate::api::google_shared::Message> {
+    use crate::api::google_shared::{AssistantContent, Message, UserContent, UserContentPart};
+    let role = message.get("role")?.as_str()?;
+    let user_parts = |value: &Value| {
+        value
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|part| match part.get("type")?.as_str()? {
+                "text" => Some(UserContentPart::Text {
+                    text: part.get("text")?.as_str()?.to_owned(),
+                }),
+                "image" => Some(UserContentPart::Image {
+                    data: part.get("data")?.as_str()?.to_owned(),
+                    mime_type: part.get("mimeType")?.as_str()?.to_owned(),
+                }),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    match role {
+        "user" => Some(Message::User {
+            content: message
+                .get("content")
+                .and_then(Value::as_str)
+                .map(|text| UserContent::Text(text.to_owned()))
+                .unwrap_or_else(|| UserContent::Parts(user_parts(&message["content"]))),
+        }),
+        "assistant" => Some(Message::Assistant {
+            content: message["content"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|part| match part.get("type")?.as_str()? {
+                    "text" => Some(AssistantContent::Text {
+                        text: part.get("text")?.as_str()?.to_owned(),
+                        text_signature: part
+                            .get("textSignature")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                    }),
+                    "thinking" => Some(AssistantContent::Thinking {
+                        thinking: part.get("thinking")?.as_str()?.to_owned(),
+                        thinking_signature: part
+                            .get("thinkingSignature")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                        redacted: part
+                            .get("redacted")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                    }),
+                    "toolCall" => Some(AssistantContent::ToolCall {
+                        id: part.get("id")?.as_str()?.to_owned(),
+                        name: part.get("name")?.as_str()?.to_owned(),
+                        arguments: part.get("arguments").cloned(),
+                        thought_signature: part
+                            .get("thoughtSignature")
+                            .and_then(Value::as_str)
+                            .map(str::to_owned),
+                    }),
+                    _ => None,
+                })
+                .collect(),
+            api: message
+                .get("api")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            provider: message
+                .get("provider")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            model: message
+                .get("model")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            stop_reason: match message.get("stopReason").and_then(Value::as_str) {
+                Some("length") => crate::api::google_shared::StopReason::Length,
+                Some("toolUse") => crate::api::google_shared::StopReason::ToolUse,
+                Some("error") => crate::api::google_shared::StopReason::Error,
+                Some("aborted") => crate::api::google_shared::StopReason::Aborted,
+                _ => crate::api::google_shared::StopReason::Stop,
+            },
+        }),
+        "toolResult" => Some(Message::ToolResult {
+            tool_call_id: message.get("toolCallId")?.as_str()?.to_owned(),
+            tool_name: message.get("toolName")?.as_str()?.to_owned(),
+            content: user_parts(&message["content"]),
+            is_error: message
+                .get("isError")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        }),
+        _ => None,
+    }
+}
+
+fn registered_thinking(model: &Model, options: &StreamOptions) -> Option<GoogleThinkingOptions> {
+    let reasoning = options.extra.get("reasoning").and_then(Value::as_str);
+    if !model.reasoning {
+        return None;
+    }
+    let Some(reasoning) = reasoning else {
+        return Some(GoogleThinkingOptions {
+            enabled: false,
+            budget_tokens: None,
+            level: None,
+        });
+    };
+    let effort = match reasoning {
+        "minimal" => ClampedThinkingLevel::Minimal,
+        "low" => ClampedThinkingLevel::Low,
+        "medium" => ClampedThinkingLevel::Medium,
+        _ => ClampedThinkingLevel::High,
+    };
+    if is_gemini3_pro_model(model) || is_gemini3_flash_model(model) {
+        Some(GoogleThinkingOptions {
+            enabled: true,
+            budget_tokens: None,
+            level: Some(get_gemini3_thinking_level(effort, model)),
+        })
+    } else {
+        Some(GoogleThinkingOptions {
+            enabled: true,
+            budget_tokens: Some(get_google_budget(model, effort, &ThinkingBudgets::new())),
+            level: None,
+        })
+    }
+}
+
+fn to_header_map(headers: &ProviderHeaders) -> Result<reqwest::header::HeaderMap> {
+    let mut map = reqwest::header::HeaderMap::new();
+    for (name, value) in headers {
+        let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|error| GoogleVertexError::InvalidHeader(error.to_string()))?;
+        let value = reqwest::header::HeaderValue::from_str(value)
+            .map_err(|error| GoogleVertexError::InvalidHeader(error.to_string()))?;
+        map.insert(name, value);
+    }
+    map.insert(
+        reqwest::header::CONTENT_TYPE,
+        reqwest::header::HeaderValue::from_static("application/json"),
+    );
+    Ok(map)
+}
+
+async fn await_or_abort<T>(
+    future: impl std::future::Future<Output = std::result::Result<T, reqwest::Error>>,
+    signal: Option<crate::types::AbortSignal>,
+) -> Result<T> {
+    if let Some(signal) = signal {
+        match futures::future::select(Box::pin(future), Box::pin(wait_for_abort(signal))).await {
+            futures::future::Either::Left((result, _)) => result.map_err(GoogleVertexError::Http),
+            futures::future::Either::Right(((), _)) => Err(GoogleVertexError::Aborted),
+        }
+    } else {
+        future.await.map_err(GoogleVertexError::Http)
+    }
+}
+
+async fn wait_for_abort(signal: crate::types::AbortSignal) {
+    while !signal.aborted() {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+}
+
+fn check_abort(signal: Option<&crate::types::AbortSignal>) -> Result<()> {
+    if signal.is_some_and(crate::types::AbortSignal::aborted) {
+        Err(GoogleVertexError::Aborted)
+    } else {
+        Ok(())
+    }
+}
+
+async fn read_response_body(
+    response: &mut reqwest::Response,
+    signal: Option<crate::types::AbortSignal>,
+) -> Result<String> {
+    let mut body = Vec::new();
+    while let Some(chunk) = await_or_abort(response.chunk(), signal.clone()).await? {
+        body.extend_from_slice(&chunk);
+    }
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+#[derive(Debug)]
+struct GoogleStatusError {
+    status: u16,
+    body: String,
+}
+impl fmt::Display for GoogleStatusError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "Google Vertex request failed with status {}: {}",
+            self.status, self.body
+        )
+    }
+}
+impl StdError for GoogleStatusError {}
+
+#[derive(Default)]
+struct GoogleSseDecoder {
+    pending: Vec<u8>,
+}
+impl GoogleSseDecoder {
+    fn push(&mut self, bytes: &[u8]) -> Result<Vec<GenerateContentChunk>> {
+        self.pending.extend_from_slice(bytes);
+        self.decode(false)
+    }
+    fn finish(&mut self) -> Result<Vec<GenerateContentChunk>> {
+        self.decode(true)
+    }
+    fn decode(&mut self, flush: bool) -> Result<Vec<GenerateContentChunk>> {
+        let mut chunks = Vec::new();
+        while let Some((end, delimiter_len)) = find_sse_delimiter(&self.pending) {
+            let event = self.pending.drain(..end).collect::<Vec<_>>();
+            self.pending.drain(..delimiter_len);
+            if let Some(chunk) = decode_sse_event(&event)? {
+                chunks.push(chunk);
+            }
+        }
+        if flush && !self.pending.is_empty() {
+            let event = std::mem::take(&mut self.pending);
+            if let Some(chunk) = decode_sse_event(&event)? {
+                chunks.push(chunk);
+            }
+        }
+        Ok(chunks)
+    }
+}
+
+fn find_sse_delimiter(bytes: &[u8]) -> Option<(usize, usize)> {
+    bytes
+        .windows(2)
+        .position(|window| window == b"\n\n")
+        .map(|index| (index, 2))
+        .into_iter()
+        .chain(
+            bytes
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|index| (index, 4)),
+        )
+        .min_by_key(|(index, _)| *index)
+}
+
+fn decode_sse_event(event: &[u8]) -> Result<Option<GenerateContentChunk>> {
+    let event = std::str::from_utf8(event).map_err(|error| {
+        GoogleVertexError::InvalidSse(format!("invalid UTF-8 in Google SSE: {error}"))
+    })?;
+    let data = event
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if data.is_empty() || data == "[DONE]" {
+        Ok(None)
+    } else {
+        serde_json::from_str(&data)
+            .map(Some)
+            .map_err(GoogleVertexError::InvalidResponse)
+    }
+}
+
+fn canonical_message_value(
+    model: &CanonicalModel,
+    message: &crate::api::google_shared::GoogleAssistantMessage,
+) -> Value {
+    let content = message.content.iter().map(|block| match block {
+        crate::api::google_shared::GoogleContentBlock::Text { text, text_signature } => json!({ "type": "text", "text": text, "textSignature": text_signature }),
+        crate::api::google_shared::GoogleContentBlock::Thinking { thinking, thinking_signature } => json!({ "type": "thinking", "thinking": thinking, "thinkingSignature": thinking_signature }),
+        crate::api::google_shared::GoogleContentBlock::ToolCall { id, name, arguments, thought_signature } => json!({ "type": "toolCall", "id": id, "name": name, "arguments": arguments, "thoughtSignature": thought_signature }),
+    }).collect::<Vec<_>>();
+    let input_cost = model.cost.input * message.usage.input as f64 / 1_000_000.0;
+    let output_cost = model.cost.output * message.usage.output as f64 / 1_000_000.0;
+    let cache_read_cost = model.cost.cache_read * message.usage.cache_read as f64 / 1_000_000.0;
+    let cache_write_cost = model.cost.cache_write * message.usage.cache_write as f64 / 1_000_000.0;
+    json!({
+        "role": "assistant", "content": content, "api": "google-vertex", "provider": model.provider,
+        "model": model.id, "responseId": message.response_id,
+        "usage": { "input": message.usage.input, "output": message.usage.output,
+            "cacheRead": message.usage.cache_read, "cacheWrite": message.usage.cache_write,
+            "reasoning": message.usage.reasoning, "totalTokens": message.usage.total_tokens,
+            "cost": { "input": input_cost, "output": output_cost, "cacheRead": cache_read_cost,
+                "cacheWrite": cache_write_cost, "total": input_cost + output_cost + cache_read_cost + cache_write_cost } },
+        "stopReason": stop_reason_name(message.stop_reason), "timestamp": now_ms()
+    })
+}
+
+fn stop_reason_name(reason: crate::api::google_shared::StopReason) -> &'static str {
+    match reason {
+        crate::api::google_shared::StopReason::Stop => "stop",
+        crate::api::google_shared::StopReason::Length => "length",
+        crate::api::google_shared::StopReason::ToolUse => "toolUse",
+        crate::api::google_shared::StopReason::Error => "error",
+        crate::api::google_shared::StopReason::Aborted => "aborted",
+    }
+}
+
+fn emit_frames(
+    stream: &CanonicalEventStream,
+    model: &CanonicalModel,
+    frames: Vec<GoogleStreamFrame>,
+    signal: Option<&crate::types::AbortSignal>,
+) -> Result<()> {
+    for frame in frames {
+        check_abort(signal)?;
+        let partial = canonical_message_value(model, &frame.partial);
+        let event = match frame.event {
+            crate::api::google_shared::GoogleStreamEvent::Start => {
+                json!({ "type": "start", "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::TextStart { content_index } => {
+                json!({ "type": "text_start", "contentIndex": content_index, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::TextDelta {
+                content_index,
+                delta,
+            } => {
+                json!({ "type": "text_delta", "contentIndex": content_index, "delta": delta, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::TextEnd {
+                content_index,
+                content,
+            } => {
+                json!({ "type": "text_end", "contentIndex": content_index, "content": content, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::ThinkingStart { content_index } => {
+                json!({ "type": "thinking_start", "contentIndex": content_index, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::ThinkingDelta {
+                content_index,
+                delta,
+            } => {
+                json!({ "type": "thinking_delta", "contentIndex": content_index, "delta": delta, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::ThinkingEnd {
+                content_index,
+                content,
+            } => {
+                json!({ "type": "thinking_end", "contentIndex": content_index, "content": content, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::ToolcallStart { content_index } => {
+                json!({ "type": "toolcall_start", "contentIndex": content_index, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::ToolcallDelta {
+                content_index,
+                delta,
+            } => {
+                json!({ "type": "toolcall_delta", "contentIndex": content_index, "delta": delta, "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::ToolcallEnd { content_index } => {
+                json!({ "type": "toolcall_end", "contentIndex": content_index, "toolCall": partial["content"][content_index].clone(), "partial": partial })
+            }
+            crate::api::google_shared::GoogleStreamEvent::Done { .. } => continue,
+        };
+        stream.push(
+            serde_json::from_value::<AssistantMessageEvent>(event)
+                .map_err(GoogleVertexError::InvalidCanonicalEvent)?,
+        );
+    }
+    Ok(())
+}
+
+fn emit_final_message(
+    stream: &CanonicalEventStream,
+    model: &CanonicalModel,
+    message: crate::api::google_shared::GoogleAssistantMessage,
+) {
+    let message: AssistantMessage =
+        serde_json::from_value(canonical_message_value(model, &message))
+            .expect("shared Google messages must map to canonical messages");
+    if message.stop_reason == CanonicalStopReason::Error {
+        stream.push(AssistantMessageEvent::Error {
+            reason: ErrorStopReason::Error,
+            error: message,
+        });
+    } else {
+        let reason = match message.stop_reason {
+            CanonicalStopReason::Length => DoneStopReason::Length,
+            CanonicalStopReason::ToolUse => DoneStopReason::ToolUse,
+            _ => DoneStopReason::Stop,
+        };
+        stream.push(AssistantMessageEvent::Done { reason, message });
+    }
+}
+
+fn emit_terminal_error(
+    stream: &CanonicalEventStream,
+    model: &CanonicalModel,
+    error: String,
+    aborted: bool,
+) {
+    let message: AssistantMessage = serde_json::from_value(json!({
+        "role": "assistant", "content": [], "api": "google-vertex", "provider": model.provider,
+        "model": model.id, "usage": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
+            "cost": { "input": 0.0, "output": 0.0, "cacheRead": 0.0, "cacheWrite": 0.0, "total": 0.0 } },
+        "stopReason": if aborted { "aborted" } else { "error" }, "errorMessage": error, "timestamp": now_ms()
+    })).expect("canonical Google Vertex terminal message");
+    stream.push(AssistantMessageEvent::Error {
+        reason: if aborted {
+            ErrorStopReason::Aborted
+        } else {
+            ErrorStopReason::Error
+        },
+        error: message,
+    });
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]
@@ -1012,7 +1865,7 @@ mod tests {
             api_key: Some("real-key".to_string()),
             on_payload: Some(Arc::new(|mut payload, _model| {
                 payload["config"]["maxOutputTokens"] = json!(9);
-                Some(payload)
+                Box::pin(async move { Ok(Some(payload)) })
             })),
             max_tokens: Some(3),
             ..GoogleVertexOptions::default()
@@ -1094,5 +1947,245 @@ mod tests {
                 reason: StopReason::ToolUse
             })
         );
+    }
+
+    #[test]
+    fn captured_service_account_adc_resolves_bearer_and_dispatches() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::thread;
+
+        use base64::Engine;
+
+        const PRIVATE_KEY: &str = r#"-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCraamItifFxHpA
+p2d54ANGEhUP8LOoY3sQFFeiO8rmCT8Dg6L9DYXtnP455d7ewRhjCwfrATh+GfgM
+5yVgoz4Z6K2mX+97ZAe+lDMPYlJDXnT9tPyYZoSchTkUDUrfkNDw+0J58s4VHzeT
+pXzQILS1ucRyy+/XMgU8pM/wrGug8xCvMfjk/j7Dic8gSYP+NajltJDzujO4TGcg
+Ne/3usVDOI1xlPC0RZWurD/8TsOv4MTngj5wFfNNIWAWPIAV2bQbsAJMJBqY3AyO
+gfr2/k+VLzgb2MXhyPUHPZTBQiPW+mJQi64+ywmn7JeJ4dflRaMvJzYGkCldBaHw
+EJom8k+tAgMBAAECggEABDKpQTzcyn4eVFkFMrnmup+Uvngxni0ZhXJKFyIJvQp6
+7ZYatsHPBtuyai6T/7aQ51QM1JeKD6SJK5+5jZ1R1waYwhtVXRs9CVDN01GgHCBD
+EzeMfBr+omqs1C3jKIh+ZXhxz1S/8Up7bPU/kkVKx6yOABW4gPeroymSIh3G4QEo
+jQMrxb+MIC7UTDA3pZMkKkGONdVOQzqmfaQiqornopsZVSsYtLQLrPXnP3RTCRVl
+7Hp6WSdxGobfgqKleo7nmgNpNB51uXXXudrGYSo4HRjnZ77kEi1bhvjRJP1uxMjn
+mreE+uhkzYOlSV0VL1cd/rKvQ0SmLlI50XSLl2mGYQKBgQDu7Yi6iquDNPYBMAwj
+pId8mAZxsilC4gWK9Z9zhlW0T6sAPhJLPzbilNHkuVIBFlI2aqjC7SxYYZFFHLBu
+jJNgFQjrlkrB5xAD/MQ+Ea89owIieKbsf0XsOfKJacct0ZJXS/E4EoIEFgoN84Jj
+iFiPZEJF7wTGmPDXKoTxqLUFNQKBgQC3qSRpwAi+eJLFUpHwQP3OSyw2pA5LMGi4
+EpAOmQUElpseduk501zLgPVHbSn6/5GWAQMj2B6tlju5HobJaKzcu12u8ya6zPs3
+Wf7G9DTeDrldoOoaSoStMgsQy6o2Q/ut7e80jLlbZXjR1xJT6qy+pfDoH9pEdyL3
+Kfk6cZ7HmQKBgQDA3GJC2Y6KkaSF3ufdmYB4FSsWeY6O221H9u6nzOa/bpOE1ZXk
+wXknOqOWsfS8xezE2iGxfssN6Gvf0sGj6rtHkpMpv55GmKI35b/urk27PiqJ8sQj
+ILUrcrcRLp5FoOY0qytibKYgcD3bdxVoDHYYAQDx/HbpbCj0NfEsNFcyhQKBgBHV
+nu+V8kNsufPnXLyT0xGhQx3bOHgcr06QnuSL/2y+ozmGGoe++pfYYfkZpKX3A1Ap
+sQBeEDyTBiGn0Tblr0OP/jzq56vkE9EAMDlppWiazW1GHvWGnvOilGiBHno+h8YQ
+ANZ9g9JYPC9ET0dO1o981bP0w+E6IG8X6FfAiMahAoGBAI1/TGm5TPSqW2bkjFsK
+mXGDNsFgBxHDHxVRwRonBgTwx7IEGLX8m/B/gu5wbLVwuwratg+vmVFeHsGz676+
+jLQtaBEZPQ2WM4zaLRAhtgoIKxYJBrAs48t/CuYizJMEO/bDDhw+BfAftVZtJ1Nv
+DgxsymU6tx0SZiV+fFCzYMhY
+-----END PRIVATE KEY-----"#;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ADC capture server");
+        let base_url = format!("http://{}", listener.local_addr().expect("capture address"));
+        let token_uri = format!("{base_url}/token");
+        thread::spawn(move || {
+            let (mut token_socket, _) = listener.accept().expect("accept token request");
+            let mut token_request = [0_u8; 8192];
+            let read = token_socket
+                .read(&mut token_request)
+                .expect("read token request");
+            let token_request = String::from_utf8_lossy(&token_request[..read]);
+            assert!(token_request.starts_with("POST /token "));
+            let request_body = token_request
+                .split_once("\r\n\r\n")
+                .expect("token request body")
+                .1;
+            let assertion = url::form_urlencoded::parse(request_body.as_bytes())
+                .find_map(|(name, value)| (name == "assertion").then(|| value.into_owned()))
+                .expect("service-account JWT assertion");
+            let claims = assertion.split('.').nth(1).expect("JWT claims");
+            let claims: Value = serde_json::from_slice(
+                &base64::engine::general_purpose::URL_SAFE
+                    .decode(claims)
+                    .expect("decode JWT claims"),
+            )
+            .expect("parse JWT claims");
+            assert_eq!(
+                claims["scope"],
+                "https://www.googleapis.com/auth/cloud-platform"
+            );
+            let token_body = r#"{"access_token":"captured-service-account-token","expires_in":3600,"token_type":"Bearer"}"#;
+            write!(
+                token_socket,
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                token_body.len(),
+                token_body
+            )
+            .expect("write token response");
+
+            let (mut vertex_socket, _) = listener.accept().expect("accept Vertex request");
+            let mut vertex_request = [0_u8; 8192];
+            let read = vertex_socket
+                .read(&mut vertex_request)
+                .expect("read Vertex request");
+            let vertex_request = String::from_utf8_lossy(&vertex_request[..read]);
+            assert!(vertex_request.starts_with("POST /v1/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse "));
+            assert!(
+                vertex_request
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer captured-service-account-token")
+            );
+            let body = concat!(
+                "data: {\"responseId\":\"service-account-response\",\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"ok\"}]},\"finishReason\":\"STOP\"}],\"usageMetadata\":{\"promptTokenCount\":1,\"candidatesTokenCount\":1,\"totalTokenCount\":2}}\n\n",
+                "data: [DONE]\n\n",
+            );
+            write!(
+                vertex_socket,
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write Vertex response");
+        });
+
+        let credentials_path = std::env::temp_dir().join(format!(
+            "zedflow-vertex-service-account-{}-{}.json",
+            std::process::id(),
+            now_ms()
+        ));
+        std::fs::write(
+            &credentials_path,
+            serde_json::to_vec(&json!({
+                "project_id": "test-project",
+                "private_key": PRIVATE_KEY,
+                "client_email": "captured@test-project.iam.gserviceaccount.com",
+                "token_uri": token_uri,
+            }))
+            .expect("serialize credentials"),
+        )
+        .expect("write credentials");
+
+        let canonical_model = CanonicalModel {
+            id: "gemini-3-flash-preview".to_owned(),
+            name: "Gemini 3 Flash".to_owned(),
+            api: "google-vertex".to_owned(),
+            provider: "google-vertex".to_owned(),
+            base_url,
+            ..CanonicalModel::default()
+        };
+        let options = StreamOptions {
+            api_key: Some(GCP_VERTEX_CREDENTIALS_MARKER.to_owned()),
+            env: Some(HashMap::from([(
+                "GOOGLE_APPLICATION_CREDENTIALS".to_owned(),
+                credentials_path.to_string_lossy().into_owned(),
+            )])),
+            extra: HashMap::from([
+                ("project".to_owned(), json!("test-project")),
+                ("location".to_owned(), json!("us-central1")),
+            ]),
+            ..StreamOptions::default()
+        };
+        let message = futures::executor::block_on(
+            stream_registered(
+                &canonical_model,
+                &CanonicalContext::default(),
+                Some(&options),
+            )
+            .result(),
+        );
+        assert_eq!(
+            message.response_id.as_deref(),
+            Some("service-account-response")
+        );
+        assert_eq!(message.stop_reason, CanonicalStopReason::Stop);
+    }
+
+    #[test]
+    fn registered_stream_normalizes_vertex_http_errors() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind capture server");
+        let base_url = format!("http://{}", listener.local_addr().expect("capture address"));
+        thread::spawn(move || {
+            let (mut socket, _) = listener.accept().expect("accept request");
+            let mut request = [0_u8; 4096];
+            assert!(socket.read(&mut request).expect("read request") > 0);
+            let body = r#"{"error":{"message":"permission denied"}}"#;
+            write!(
+                socket,
+                "HTTP/1.1 403 Forbidden\r\ncontent-length: {}\r\n\r\n{}",
+                body.len(),
+                body
+            )
+            .expect("write response");
+        });
+        let canonical_model = CanonicalModel {
+            id: "gemini-3-flash-preview".to_owned(),
+            name: "Gemini 3 Flash".to_owned(),
+            api: "google-vertex".to_owned(),
+            provider: "google-vertex".to_owned(),
+            base_url,
+            ..CanonicalModel::default()
+        };
+        let options = StreamOptions {
+            api_key: Some("captured-key".to_owned()),
+            ..StreamOptions::default()
+        };
+
+        let message = futures::executor::block_on(
+            stream_registered(
+                &canonical_model,
+                &CanonicalContext::default(),
+                Some(&options),
+            )
+            .result(),
+        );
+        assert_eq!(message.stop_reason, CanonicalStopReason::Error);
+        assert!(
+            message
+                .error_message
+                .as_deref()
+                .is_some_and(|error| error.contains("permission denied") && error.contains("403"))
+        );
+    }
+
+    #[test]
+    fn registered_stream_emits_one_terminal_abort() {
+        use futures::StreamExt;
+
+        let controller = crate::utils::abort_signals::AbortController::new();
+        controller.abort();
+        let canonical_model = CanonicalModel {
+            id: "gemini-3-flash-preview".to_owned(),
+            name: "Gemini 3 Flash".to_owned(),
+            api: "google-vertex".to_owned(),
+            provider: "google-vertex".to_owned(),
+            base_url: "http://127.0.0.1:1".to_owned(),
+            ..CanonicalModel::default()
+        };
+        let options = StreamOptions {
+            api_key: Some("captured-key".to_owned()),
+            signal: Some(controller.signal()),
+            ..StreamOptions::default()
+        };
+        let events = futures::executor::block_on(
+            stream_registered(
+                &canonical_model,
+                &CanonicalContext::default(),
+                Some(&options),
+            )
+            .collect::<Vec<_>>(),
+        );
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            AssistantMessageEvent::Error {
+                reason: ErrorStopReason::Aborted,
+                error
+            } if error.stop_reason == CanonicalStopReason::Aborted
+        ));
     }
 }

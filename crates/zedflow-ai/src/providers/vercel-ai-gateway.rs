@@ -1,8 +1,9 @@
 //! Vercel AI Gateway provider factory ported from Pi's `packages/ai/src/providers/vercel-ai-gateway.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use zedflow_core::error::Result;
 
 use crate::models::Provider;
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
 
 /// Vercel AI Gateway provider id used by Pi.
 pub const VERCEL_AI_GATEWAY_PROVIDER_ID: &str = "vercel-ai-gateway";
@@ -22,66 +23,25 @@ pub const VERCEL_AI_GATEWAY_API_KEY_AUTH_NAME: &str = "Vercel AI Gateway API key
 /// Environment variables checked for Vercel AI Gateway API-key auth, in Pi precedence order.
 pub const VERCEL_AI_GATEWAY_API_KEY_ENV_VARS: &[&str] = &["AI_GATEWAY_API_KEY"];
 
-/// Creates Pi's Vercel AI Gateway provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/providers/vercel-ai-gateway.models.ts VERCEL_AI_GATEWAY_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "vercel-ai-gateway", name: "Vercel AI Gateway", baseUrl: "https://ai-gateway.vercel.sh", auth: { apiKey: envApiKeyAuth("Vercel AI Gateway API key", ["AI_GATEWAY_API_KEY"]) }, models: Object.values(VERCEL_AI_GATEWAY_MODELS), api: anthropicMessagesApi() })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract and
-/// Vercel AI Gateway model catalog are available in Rust.
-#[must_use]
+/// Creates the vercel-ai-gateway provider from the static Rust model catalog.
 pub fn vercel_ai_gateway_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/providers/vercel-ai-gateway.models.ts VERCEL_AI_GATEWAY_MODELS",
-        "return createProvider({ id: \"vercel-ai-gateway\", name: \"Vercel AI Gateway\", baseUrl: \"https://ai-gateway.vercel.sh\", auth: { apiKey: envApiKeyAuth(\"Vercel AI Gateway API key\", [\"AI_GATEWAY_API_KEY\"]) }, models: Object.values(VERCEL_AI_GATEWAY_MODELS), api: anthropicMessagesApi() })",
-    )
+    let provider = static_provider(
+        VERCEL_AI_GATEWAY_PROVIDER_ID,
+        VERCEL_AI_GATEWAY_PROVIDER_NAME,
+        models_from_catalog(crate::providers::vercel_ai_gateway_models::VERCEL_AI_GATEWAY_MODELS),
+    );
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_vercel_ai_gateway_provider_blocker() {
-        match vercel_ai_gateway_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("VERCEL_AI_GATEWAY_MODELS")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("anthropicMessagesApi")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("AI_GATEWAY_API_KEY")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_vercel_ai_gateway_provider_constants() {
-        assert_eq!(VERCEL_AI_GATEWAY_PROVIDER_ID, "vercel-ai-gateway");
-        assert_eq!(VERCEL_AI_GATEWAY_PROVIDER_NAME, "Vercel AI Gateway");
-        assert_eq!(VERCEL_AI_GATEWAY_BASE_URL, "https://ai-gateway.vercel.sh");
-        assert_eq!(VERCEL_AI_GATEWAY_API, "anthropic-messages");
-        assert_eq!(
-            VERCEL_AI_GATEWAY_API_KEY_AUTH_NAME,
-            "Vercel AI Gateway API key"
-        );
-        assert_eq!(VERCEL_AI_GATEWAY_API_KEY_ENV_VARS, &["AI_GATEWAY_API_KEY"]);
+    fn builds_provider_from_static_catalog() {
+        let provider = vercel_ai_gateway_provider().expect("provider");
+        assert_eq!(provider.id, VERCEL_AI_GATEWAY_PROVIDER_ID);
+        assert_eq!(provider.name, VERCEL_AI_GATEWAY_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

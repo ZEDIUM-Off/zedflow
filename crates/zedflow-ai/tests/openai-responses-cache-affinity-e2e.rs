@@ -9,6 +9,10 @@ const BLOCKER: &str = "live OpenAI Responses cache-affinity test skipped; requir
 const EXPECTED_TEXT: &str = "openai cache affinity e2e success";
 const SESSION_ID: &str = "0195d6e4-4cf9-7f44-a2d8-f8f7f49ee9d3";
 
+#[allow(
+    dead_code,
+    reason = "constructed only by the capability-gated live response"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ContentBlock {
     Text(String),

@@ -15,7 +15,6 @@ const EXPECTED_CURRENT_ADAPTIVE_THINKING_MODELS: &[&str] = &[
 ];
 
 #[test]
-#[ignore = "compat get_providers/get_models and unified model compat metadata are still PORT PLACEHOLDERs, so the exact Pi getAllModels path cannot run yet"]
 fn marks_built_in_anthropic_messages_models_that_use_adaptive_thinking() {
     let flagged_models = flagged_adaptive_thinking_models();
 
@@ -50,34 +49,50 @@ fn sorted_expected_models() -> Vec<String> {
 fn flagged_adaptive_thinking_models() -> Vec<String> {
     let mut models = Vec::new();
 
-    models.extend(ANTHROPIC_MODELS.iter().filter_map(|model| {
-        (model.api == "anthropic-messages"
-            && model
-                .compat
-                .is_some_and(|compat| compat.force_adaptive_thinking == Some(true)))
-        .then(|| format!("{}/{}", model.provider, model.id))
-    }));
-    models.extend(CLOUDFLARE_AI_GATEWAY_MODELS.iter().filter_map(|model| {
-        (model.api == "anthropic-messages"
-            && model
-                .compat
-                .is_some_and(|compat| compat.force_adaptive_thinking == Some(true)))
-        .then(|| format!("{}/{}", model.provider, model.id))
-    }));
-    models.extend(OPENCODE_MODELS.iter().filter_map(|model| {
-        (model.api == "anthropic-messages"
-            && model
-                .compat
-                .is_some_and(|compat| compat.force_adaptive_thinking == Some(true)))
-        .then(|| format!("{}/{}", model.provider, model.id))
-    }));
-    models.extend(VERCEL_AI_GATEWAY_MODELS.iter().filter_map(|model| {
-        (model.api == "anthropic-messages"
-            && model
-                .compat
-                .is_some_and(|compat| compat.force_adaptive_thinking == Some(true)))
-        .then(|| format!("{}/{}", model.provider, model.id))
-    }));
+    models.extend(
+        ANTHROPIC_MODELS
+            .iter()
+            .filter(|&model| {
+                model.api == "anthropic-messages"
+                    && model
+                        .compat
+                        .is_some_and(|compat| compat.force_adaptive_thinking == Some(true))
+            })
+            .map(|model| format!("{}/{}", model.provider, model.id)),
+    );
+    models.extend(
+        CLOUDFLARE_AI_GATEWAY_MODELS
+            .iter()
+            .filter(|&model| {
+                model.api == "anthropic-messages"
+                    && model
+                        .compat
+                        .is_some_and(|compat| compat.force_adaptive_thinking == Some(true))
+            })
+            .map(|model| format!("{}/{}", model.provider, model.id)),
+    );
+    models.extend(
+        OPENCODE_MODELS
+            .iter()
+            .filter(|&model| {
+                model.api == "anthropic-messages"
+                    && model
+                        .compat
+                        .is_some_and(|compat| compat.force_adaptive_thinking == Some(true))
+            })
+            .map(|model| format!("{}/{}", model.provider, model.id)),
+    );
+    models.extend(
+        VERCEL_AI_GATEWAY_MODELS
+            .iter()
+            .filter(|&model| {
+                model.api == "anthropic-messages"
+                    && model
+                        .compat
+                        .is_some_and(|compat| compat.force_adaptive_thinking == Some(true))
+            })
+            .map(|model| format!("{}/{}", model.provider, model.id)),
+    );
 
     models.sort();
     models

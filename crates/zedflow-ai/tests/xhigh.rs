@@ -1,31 +1,28 @@
 //! Port of Pi `packages/ai/test/xhigh.test.ts`.
 //!
-//! The source is a live OpenAI reasoning smoke test. Rust compat catalog lookup and live
-//! OpenAI stream transports are still `PORT PLACEHOLDER`s, so parity is represented as
-//! ignored tests until those seams are ported.
+//! These are live OpenAI transport/error smoke tests. P5 validates local catalog metadata;
+//! P7/P8 own capability-gated live provider execution.
 
 use zedflow_ai::compat;
-use zedflow_core::error::Error as CoreError;
 
-fn assert_catalog_blocked(provider: &str, id: &str) {
-    let error = compat::get_model(provider, id).expect_err("compat catalog is still a placeholder");
-    assert!(matches!(error, CoreError::PortPlaceholder(_)));
+fn assert_catalog_model(provider: &str, id: &str) {
+    compat::get_model(provider, id).expect("catalog model should be present");
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: live OpenAI Responses xhigh stream parity needs compat catalog and provider transport"]
+#[ignore = "live OpenAI Codex/Responses transport test; requires capability-gated OpenAI Codex credentials"]
 fn codex_max_supports_xhigh_on_openai_responses() {
-    assert_catalog_blocked("openai", "gpt-5.1-codex-max");
+    assert_catalog_model("openai", "gpt-5.1-codex-max");
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: live OpenAI Responses xhigh error parity needs compat catalog and provider transport"]
+#[ignore = "live OpenAI Responses xhigh error test; requires OPENAI_API_KEY and network"]
 fn gpt_5_mini_errors_with_xhigh_on_openai_responses() {
-    assert_catalog_blocked("openai", "gpt-5-mini");
+    assert_catalog_model("openai", "gpt-5-mini");
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: live OpenAI Completions xhigh error parity needs compat catalog and provider transport"]
+#[ignore = "live OpenAI Completions xhigh error test; requires OPENAI_API_KEY and network"]
 fn gpt_5_mini_errors_with_xhigh_on_openai_completions() {
-    assert_catalog_blocked("openai", "gpt-5-mini");
+    assert_catalog_model("openai", "gpt-5-mini");
 }

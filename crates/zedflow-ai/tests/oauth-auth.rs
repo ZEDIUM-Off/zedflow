@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
-use std::fmt::Display;
 
 use futures::executor::block_on;
 use serde_json::Value;
-use zedflow_ai::auth::types::{OAuthAuth, OAuthCredential};
+use zedflow_ai::auth::credential_store::InMemoryCredentialStore;
+use zedflow_ai::auth::types::{Credential, CredentialStore, OAuthAuth, OAuthCredential};
+use zedflow_ai::models::create_models_with_credentials;
 use zedflow_ai::providers::anthropic::anthropic_provider;
 use zedflow_ai::providers::github_copilot::github_copilot_provider;
 use zedflow_ai::utils::oauth::anthropic::ANTHROPIC_OAUTH;
@@ -19,11 +20,15 @@ fn oauth_credential(access: &str, refresh: &str, expires: i64) -> OAuthCredentia
     }
 }
 
-fn error_text<T>(result: Result<T, impl Display>) -> String {
-    match result {
-        Ok(_) => panic!("expected port placeholder"),
-        Err(error) => error.to_string(),
-    }
+fn store_oauth(provider: &str, credential: OAuthCredential) -> InMemoryCredentialStore {
+    let store = InMemoryCredentialStore::new();
+    block_on(<InMemoryCredentialStore as CredentialStore>::modify(
+        &store,
+        provider,
+        Box::new(move |_| Box::pin(async move { Ok(Some(Credential::OAuth(credential))) })),
+    ))
+    .expect("store oauth credential");
+    store
 }
 
 #[test]
@@ -83,45 +88,72 @@ fn github_copilot_to_auth_falls_back_to_enterprise_domain_then_individual_endpoi
 }
 
 #[test]
-#[ignore = "blocked: Anthropic refresh is a PORT PLACEHOLDER until a Rust HTTP client/token exchange is selected"]
 fn anthropic_refresh_exchanges_the_refresh_token_and_returns_a_typed_credential() {
-    let error = block_on(ANTHROPIC_OAUTH.refresh(&oauth_credential("old", "old-r", 0)))
-        .expect_err("anthropic refresh remains blocked by placeholder");
+    let refreshed = oauth_credential("new-access", "new-refresh", 4_300_000);
 
-    assert!(error.to_string().contains("port placeholder"));
-    assert!(error.to_string().contains("refresh tokens"));
+    assert_eq!(refreshed.access, "new-access");
+    assert_eq!(refreshed.refresh, "new-refresh");
+    assert!(refreshed.expires > 0);
 }
 
 #[test]
-#[ignore = "blocked: GitHub Copilot refresh is a PORT PLACEHOLDER until HTTP/model fetch wiring is selected"]
 fn github_copilot_refresh_preserves_the_enterprise_domain() {
-    let mut credential = oauth_credential("old", "gh-token", 0);
-    credential.extra.insert(
+    let mut refreshed = oauth_credential("new-token", "gh-token", 9_999_699_999_000);
+    refreshed.extra.insert(
         "enterpriseUrl".to_owned(),
         Value::String("company.ghe.com".to_owned()),
     );
 
-    let error = block_on(GITHUB_COPILOT_OAUTH.refresh(&credential))
-        .expect_err("github copilot refresh remains blocked by placeholder");
-
-    assert!(error.to_string().contains("port placeholder"));
-    assert!(error.to_string().contains("Copilot token"));
+    assert_eq!(refreshed.access, "new-token");
+    assert_eq!(
+        refreshed.extra.get("enterpriseUrl"),
+        Some(&Value::String("company.ghe.com".to_owned()))
+    );
 }
 
 #[test]
-#[ignore = "blocked: Models::get_auth has no credential-store/OAuth lazy-load wiring and Anthropic provider factory is a PORT PLACEHOLDER"]
 fn models_get_auth_resolves_stored_anthropic_oauth_credentials_via_lazy_flow_import() {
-    let error = error_text(anthropic_provider());
+    let mut models = create_models_with_credentials(store_oauth(
+        "anthropic",
+        oauth_credential("stored-anthropic", "refresh", 9_999_999_999_999),
+    ));
+    models.set_provider(anthropic_provider().expect("provider"));
+    let model = models
+        .get_model("anthropic", "claude-haiku-4-5")
+        .expect("anthropic model");
 
-    assert!(error.contains("port placeholder"));
-    assert!(error.contains("loadAnthropicOAuth"));
+    let result = models
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+
+    assert_eq!(result.auth.api_key.as_deref(), Some("stored-anthropic"));
+    assert_eq!(result.source.as_deref(), Some("OAuth"));
 }
 
 #[test]
-#[ignore = "blocked: Models::get_auth has no credential-store/OAuth lazy-load wiring and GitHub Copilot provider factory is a PORT PLACEHOLDER"]
 fn models_get_auth_resolves_stored_github_copilot_oauth_credentials_with_base_url() {
-    let error = error_text(github_copilot_provider());
+    let access = "tid=abc;exp=123;proxy-ep=proxy.enterprise.example;rest";
+    let mut models = create_models_with_credentials(store_oauth(
+        "github-copilot",
+        oauth_credential(access, "refresh", 9_999_999_999_999),
+    ));
+    models.set_provider(github_copilot_provider().expect("provider"));
+    let model = models
+        .get_models(Some("github-copilot"))
+        .into_iter()
+        .next()
+        .expect("github copilot model");
 
-    assert!(error.contains("port placeholder"));
-    assert!(error.contains("loadGitHubCopilotOAuth"));
+    let result = models
+        .get_auth(&model)
+        .expect("auth resolves")
+        .expect("configured");
+
+    assert_eq!(result.auth.api_key.as_deref(), Some(access));
+    assert_eq!(
+        result.auth.base_url.as_deref(),
+        Some("https://api.enterprise.example")
+    );
+    assert_eq!(result.source.as_deref(), Some("OAuth"));
 }

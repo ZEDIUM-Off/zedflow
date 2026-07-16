@@ -1,8 +1,11 @@
 //! Google provider factory ported from Pi's `packages/ai/src/providers/google.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use std::sync::Arc;
 
-use crate::models::Provider;
+use zedflow_core::error::Result;
+
+use crate::models::{Provider, ProviderApi};
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
 
 /// Google provider id used by Pi.
 pub const GOOGLE_PROVIDER_ID: &str = "google";
@@ -22,57 +25,77 @@ pub const GOOGLE_API_KEY_AUTH_NAME: &str = "Gemini API key";
 /// Environment variables checked for Gemini API-key auth, in Pi precedence order.
 pub const GOOGLE_API_KEY_ENV_VARS: &[&str] = &["GEMINI_API_KEY"];
 
-/// Creates Pi's Google provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/google-generative-ai.lazy.ts googleGenerativeAIApi, references/pi/packages/ai/src/providers/google.models.ts GOOGLE_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "google", name: "Google", baseUrl: "https://generativelanguage.googleapis.com/v1beta", auth: { apiKey: envApiKeyAuth("Gemini API key", ["GEMINI_API_KEY"]) }, models: Object.values(GOOGLE_MODELS), api: googleGenerativeAIApi() })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract and
-/// Google model catalog are available in Rust.
-#[must_use]
+/// Creates the google provider from the static Rust model catalog.
 pub fn google_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/google-generative-ai.lazy.ts googleGenerativeAIApi, references/pi/packages/ai/src/providers/google.models.ts GOOGLE_MODELS",
-        "return createProvider({ id: \"google\", name: \"Google\", baseUrl: \"https://generativelanguage.googleapis.com/v1beta\", auth: { apiKey: envApiKeyAuth(\"Gemini API key\", [\"GEMINI_API_KEY\"]) }, models: Object.values(GOOGLE_MODELS), api: googleGenerativeAIApi() })",
-    )
+    let mut provider = static_provider(
+        GOOGLE_PROVIDER_ID,
+        GOOGLE_PROVIDER_NAME,
+        models_from_catalog(crate::providers::google_models::GOOGLE_MODELS),
+    );
+    provider.auth.api_key = Some(Arc::new(GoogleApiKeyAuth));
+    provider.api =
+        ProviderApi::Single(crate::api::google_generative_ai_lazy::google_generative_ai_api());
+    Ok(provider)
+}
+
+#[derive(Debug)]
+struct GoogleApiKeyAuth;
+
+impl crate::auth::types::ApiKeyAuth for GoogleApiKeyAuth {
+    fn name(&self) -> &str {
+        GOOGLE_API_KEY_AUTH_NAME
+    }
+
+    fn resolve<'a>(
+        &'a self,
+        input: crate::auth::types::ApiKeyResolveInput<'a>,
+    ) -> crate::auth::types::AuthFuture<
+        'a,
+        crate::auth::types::AuthResult<Option<crate::auth::types::ResolvedAuth>>,
+    > {
+        Box::pin(async move {
+            if let Some(key) = input
+                .credential
+                .and_then(|credential| credential.key.as_deref())
+                .filter(|key| !key.is_empty())
+            {
+                return Ok(Some(crate::auth::types::ResolvedAuth {
+                    auth: crate::auth::types::ModelAuth {
+                        api_key: Some(key.to_owned()),
+                        ..crate::auth::types::ModelAuth::default()
+                    },
+                    env: input
+                        .credential
+                        .and_then(|credential| credential.env.clone()),
+                    source: Some("stored credential".to_owned()),
+                }));
+            }
+            for name in GOOGLE_API_KEY_ENV_VARS {
+                if let Some(key) = input.ctx.env(name).await.filter(|key| !key.is_empty()) {
+                    return Ok(Some(crate::auth::types::ResolvedAuth {
+                        auth: crate::auth::types::ModelAuth {
+                            api_key: Some(key),
+                            ..crate::auth::types::ModelAuth::default()
+                        },
+                        env: None,
+                        source: Some((*name).to_owned()),
+                    }));
+                }
+            }
+            Ok(None)
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_google_provider_blocker() {
-        match google_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(placeholder.original_dependency().contains("GOOGLE_MODELS"));
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("googleGenerativeAIApi")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_google_provider_constants() {
-        assert_eq!(GOOGLE_PROVIDER_ID, "google");
-        assert_eq!(GOOGLE_PROVIDER_NAME, "Google");
-        assert_eq!(
-            GOOGLE_BASE_URL,
-            "https://generativelanguage.googleapis.com/v1beta"
-        );
-        assert_eq!(GOOGLE_API, "google-generative-ai");
-        assert_eq!(GOOGLE_API_KEY_AUTH_NAME, "Gemini API key");
-        assert_eq!(GOOGLE_API_KEY_ENV_VARS, &["GEMINI_API_KEY"]);
+    fn builds_provider_from_static_catalog() {
+        let provider = google_provider().expect("provider");
+        assert_eq!(provider.id, GOOGLE_PROVIDER_ID);
+        assert_eq!(provider.name, GOOGLE_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

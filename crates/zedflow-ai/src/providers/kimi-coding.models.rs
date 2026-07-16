@@ -116,6 +116,7 @@ pub fn kimi_coding_models() -> Vec<Model> {
             provider: model.provider.to_owned(),
             id: model.id.to_owned(),
             api: model.api.to_owned(),
+            ..Model::default()
         })
         .collect()
 }

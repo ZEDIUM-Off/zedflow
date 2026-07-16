@@ -5,7 +5,7 @@
 //! Rust provider streaming plus the abort signal bridge are still port placeholders, so this parity
 //! test is ignored until those blockers are removed.
 
-use zedflow_ai::api::lazy::{StopReason, Usage};
+use zedflow_ai::types::{StopReason, Usage};
 
 const BLOCKER: &str = "requires live provider transports, credentials/OAuth token resolution, completed compat::get_model/get_models, and a Rust StreamOptions.signal abort bridge";
 const SOURCE_PROMPT: &str = "Write a long poem with 20 stanzas about the beauty of nature.";
@@ -326,11 +326,8 @@ fn assert_tokens_on_abort(case: TokenAbortCase, message: &TokenAbortMessage) {
             | "openai-codex-responses"
     ) || matches!(
         case.provider,
-        "zai" | "amazon-bedrock" | "vercel-ai-gateway"
+        "zai" | "amazon-bedrock" | "vercel-ai-gateway" | "minimax"
     ) {
-        assert_eq!(message.usage.input, 0);
-        assert_eq!(message.usage.output, 0);
-    } else if case.provider == "minimax" {
         assert_eq!(message.usage.input, 0);
         assert_eq!(message.usage.output, 0);
     } else if case.provider == "kimi-coding" {

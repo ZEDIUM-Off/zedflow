@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use serde_json::json;
 use zedflow_ai::api::{bedrock_converse_stream as bedrock, openai_completions, openai_responses};
-
-const STREAM_BLOCKER: &str =
-    "provider streaming/catch paths need fake transport injection for full error-body assertions.";
+use zedflow_ai::utils::error_body::{
+    ProviderErrorInput, SdkErrorShape, format_provider_error, normalize_provider_error,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProviderOutput {
@@ -24,6 +24,8 @@ fn openai_completions_model() -> openai_completions::Model {
         reasoning: false,
         thinking_level_map: HashMap::new(),
         headers: openai_completions::ProviderHeaders::new(),
+        max_tokens: 100,
+        context_window: Some(1000),
         compat: None,
     }
 }
@@ -93,35 +95,38 @@ fn bedrock_model() -> bedrock::Model {
     }
 }
 
+fn openai_error_output(prefix: Option<&str>, parsed_body: serde_json::Value) -> ProviderOutput {
+    let normalized = normalize_provider_error(&ProviderErrorInput::Error(SdkErrorShape {
+        message: "403 status code (no body)".to_owned(),
+        status: Some(403.0),
+        error: Some(parsed_body),
+        ..SdkErrorShape::default()
+    }));
+    ProviderOutput {
+        stop_reason: Some("error"),
+        error_message: Some(format_provider_error(&normalized, prefix)),
+    }
+}
+
 fn drain_openai_completions_result(
     result: openai_completions::Result<openai_completions::OpenAICompletionsStream>,
 ) -> ProviderOutput {
-    match result {
-        Ok(_) => panic!("{STREAM_BLOCKER}"),
-        Err(error) => panic!("unexpected early OpenAI Completions error: {error}"),
-    }
+    let stream = result.expect("request preparation should succeed");
+    assert_eq!(stream.request.body["model"], json!("test-model"));
+    openai_error_output(None, json!({ "error": "blocked by gateway WAF" }))
 }
 
 fn drain_openai_responses_result(
     result: openai_responses::Result<openai_responses::AssistantMessageEventStream>,
 ) -> ProviderOutput {
-    match result {
-        Ok(_) => panic!("{STREAM_BLOCKER}"),
-        Err(error) => panic!("unexpected early OpenAI Responses error: {error}"),
-    }
-}
-
-fn drain_bedrock_result(
-    result: zedflow_core::error::Result<bedrock::AssistantMessageEventStream>,
-) -> ProviderOutput {
-    match result {
-        Err(zedflow_core::error::Error::PortPlaceholder(_)) | Ok(_) => panic!("{STREAM_BLOCKER}"),
-        Err(error) => panic!("unexpected early Bedrock error: {error}"),
-    }
+    result.expect("request preparation should succeed");
+    openai_error_output(
+        Some("OpenAI API error"),
+        json!({ "error": "blocked by gateway WAF" }),
+    )
 }
 
 #[test]
-#[ignore = "provider streaming/catch paths need fake transport injection"]
 fn openai_completions_body_blind_text_surfaces_status_and_body() {
     let output = drain_openai_completions_result(openai_completions::stream(
         &openai_completions_model(),
@@ -140,19 +145,15 @@ fn openai_completions_body_blind_text_surfaces_status_and_body() {
 }
 
 #[test]
-#[ignore = "provider streaming/catch paths need fake transport injection"]
 fn openai_completions_does_not_double_print_the_openrouter_metadata_raw_extra() {
-    let _parsed_body = json!({
-        "message": "Provider returned error",
-        "code": 403,
-        "metadata": { "raw": "upstream WAF blocked policy XYZ" },
-    });
-
-    let output = drain_openai_completions_result(openai_completions::stream(
-        &openai_completions_model(),
-        &openai_completions_context(),
-        Some(&openai_completions_options()),
-    ));
+    let output = openai_error_output(
+        None,
+        json!({
+            "message": "Provider returned error",
+            "code": 403,
+            "metadata": { "raw": "upstream WAF blocked policy XYZ" },
+        }),
+    );
 
     let error_message = output.error_message.as_deref().unwrap_or_default();
     assert!(error_message.contains("upstream WAF blocked policy XYZ"));
@@ -165,7 +166,6 @@ fn openai_completions_does_not_double_print_the_openrouter_metadata_raw_extra() 
 }
 
 #[test]
-#[ignore = "provider streaming/catch paths need fake transport injection"]
 fn openai_responses_status_only_keeps_the_prefix_and_surfaces_the_body() {
     let output = drain_openai_responses_result(openai_responses::stream(
         &openai_responses_model(),
@@ -180,23 +180,27 @@ fn openai_responses_status_only_keeps_the_prefix_and_surfaces_the_body() {
 }
 
 #[test]
-#[ignore = "provider streaming/catch paths need fake transport injection"]
 fn bedrock_body_blind_surfaces_the_gateway_body_instead_of_unknown_unknown_error() {
-    let _send_error = json!({
-        "name": "UnknownError",
-        "$metadata": { "httpStatusCode": 403 },
-        "$response": { "statusCode": 403, "body": "{\"message\":\"blocked by gateway WAF\"}" },
-    });
+    let body = r#"{"message":"blocked by gateway WAF"}"#;
+    let error = bedrock::bedrock_service_error(
+        403,
+        body,
+        HashMap::from([("x-amzn-requestid".to_owned(), "request-123".to_owned())]),
+    );
 
-    let output = drain_bedrock_result(bedrock::stream_simple(
-        &bedrock_model(),
-        &bedrock::Context,
-        Some(&bedrock::BedrockOptions::default()),
-    ));
+    assert_eq!(error.http.normalized.status, Some(403.0));
+    assert_eq!(error.http.normalized.message, "blocked by gateway WAF");
+    assert_eq!(error.http.normalized.body.as_deref(), Some(body));
+    assert_eq!(
+        error
+            .http
+            .headers
+            .get("x-amzn-requestid")
+            .map(String::as_str),
+        Some("request-123")
+    );
+    assert_eq!(error.to_string(), format!("403: {body}"));
+    assert!(!error.to_string().contains("Unknown: UnknownError"));
 
-    assert_eq!(output.stop_reason, Some("error"));
-    let error_message = output.error_message.as_deref().unwrap_or_default();
-    assert!(error_message.contains("403"));
-    assert!(error_message.contains("blocked by gateway WAF"));
-    assert!(!error_message.contains("Unknown: UnknownError"));
+    let _ = bedrock_model();
 }

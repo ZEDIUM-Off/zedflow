@@ -13,7 +13,6 @@ fn together_model(id: &str) -> &'static TogetherModel {
 }
 
 #[test]
-#[ignore = "compat get_model is still a PORT PLACEHOLDER, so the exact Pi getModel path cannot run yet"]
 fn registers_the_default_kimi_k2_6_model_via_openai_compatible_chat_completions_api() {
     let model = together_model("moonshotai/Kimi-K2.6");
 
@@ -52,7 +51,6 @@ fn registers_the_default_kimi_k2_6_model_via_openai_compatible_chat_completions_
 }
 
 #[test]
-#[ignore = "compat get_model is still a PORT PLACEHOLDER, so the exact Pi getModel path cannot run yet"]
 fn models_together_reasoning_controls_from_the_together_api_surface() {
     let gpt_oss = together_model("openai/gpt-oss-120b");
     assert_eq!(

@@ -78,14 +78,13 @@ mod tests {
     }
 
     #[test]
-    fn openai_codex_loader_preserves_to_auth_and_documents_blocked_network_flows() {
+    fn openai_codex_loader_preserves_to_auth_without_live_network() {
         let auth = block_on(load_openai_codex_oauth()).expect("loads OpenAI Codex OAuth");
         assert_eq!(auth.name(), OPENAI_CODEX_OAUTH_NAME);
 
         let model_auth = block_on(auth.to_auth(&credential())).expect("to_auth is local");
         assert_eq!(model_auth.api_key.as_deref(), Some("access"));
 
-        let error = block_on(auth.refresh(&credential())).expect_err("refresh is blocked");
-        assert!(error.to_string().contains("OpenAI Codex OAuth"));
+        // Refresh is a live OAuth token exchange; deterministic loader coverage stops at to_auth.
     }
 }

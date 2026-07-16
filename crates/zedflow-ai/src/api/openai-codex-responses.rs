@@ -3,10 +3,18 @@
 use std::collections::{HashMap, HashSet};
 use std::error::Error as StdError;
 use std::fmt;
+use std::io::{BufRead, BufReader, Read};
+use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use base64::Engine as _;
+use reqwest::blocking::Client;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const DEFAULT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api";
 const JWT_CLAIM_PATH: &str = "https://api.openai.com/auth";
@@ -14,6 +22,9 @@ const JWT_CLAIM_PATH: &str = "https://api.openai.com/auth";
 const DEFAULT_MAX_RETRY_DELAY_MS: u64 = 60_000;
 const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH: usize = 64;
 const OPENAI_BETA_RESPONSES_WEBSOCKETS: &str = "responses_websockets=2026-02-06";
+const DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS: u64 = 15_000;
+const REQUEST_COMPRESSION_ZSTD_LEVEL: i32 = 3;
+const WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE: &str = "websocket_connection_limit_reached";
 
 static WEBSOCKET_DEBUG_STATS: LazyLock<Mutex<HashMap<String, OpenAICodexWebSocketDebugStats>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -239,8 +250,11 @@ pub struct OpenAICodexResponsesRequest {
     pub sse_headers: HashMap<String, String>,
     /// WebSocket headers after Pi defaults and explicit overrides.
     pub websocket_headers: HashMap<String, String>,
-    /// JSON body sent to Codex Responses.
+    /// JSON body sent as an uncompressed WebSocket frame.
     pub body: Value,
+    /// Request bytes sent on the SSE path (Zstd-compressed when encoding succeeds).
+    #[serde(skip)]
+    pub sse_body: Vec<u8>,
     /// HTTP timeout in milliseconds.
     pub timeout_ms: Option<u64>,
     /// WebSocket connect timeout in milliseconds.
@@ -256,6 +270,228 @@ pub struct OpenAICodexResponsesRequest {
 pub struct AssistantMessageEventStream {
     /// Request captured before provider I/O starts; deterministic tests assert Pi parity here.
     pub request: OpenAICodexResponsesRequest,
+}
+
+/// Usage/cost reconstructed from deterministic Codex response stream fixtures.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CodexStreamUsageCost {
+    /// Input cost.
+    pub input: f64,
+    /// Output cost.
+    pub output: f64,
+    /// Total cost.
+    pub total: f64,
+}
+
+/// Final assistant result reconstructed from Codex Responses events.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CodexStreamMessage {
+    /// Text content collected from response output events.
+    pub text: Option<String>,
+    /// Pi stop reason string.
+    pub stop_reason: String,
+    /// Terminal error message, when any.
+    pub error_message: Option<String>,
+    /// Calculated usage cost for service-tier parity fixtures.
+    pub usage_cost: Option<CodexStreamUsageCost>,
+}
+
+/// Codex assistant event shape used by deterministic stream parity tests.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CodexStreamEvent {
+    /// Text block started.
+    TextStart,
+    /// Text delta.
+    TextDelta(String),
+    /// Text block ended.
+    TextEnd(String),
+    /// Terminal done event.
+    Done(CodexStreamMessage),
+    /// Terminal error event.
+    Error(String),
+}
+
+/// Deterministic Codex stream processing result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CodexStreamResult {
+    /// Events in Pi emission order.
+    pub events: Vec<CodexStreamEvent>,
+    /// Final assistant message/result.
+    pub message: CodexStreamMessage,
+}
+
+/// Processes decoded Codex Responses stream events into Pi-ordered assistant events.
+#[must_use]
+pub fn process_codex_response_stream_events<I>(
+    model: &Model,
+    events: I,
+    request_service_tier: Option<ServiceTier>,
+) -> CodexStreamResult
+where
+    I: IntoIterator<Item = Value>,
+{
+    let mut state = CodexStreamState::new();
+    for event in events {
+        state.apply_event(model, &event, request_service_tier);
+        if state.terminal {
+            break;
+        }
+    }
+    state.finish()
+}
+
+#[derive(Debug, Clone, Default)]
+struct CodexStreamState {
+    text_started: bool,
+    text_ended: bool,
+    text: String,
+    message: CodexStreamMessage,
+    events: Vec<CodexStreamEvent>,
+    terminal: bool,
+}
+
+impl CodexStreamState {
+    fn new() -> Self {
+        Self {
+            message: CodexStreamMessage {
+                stop_reason: "error".to_owned(),
+                ..CodexStreamMessage::default()
+            },
+            ..Self::default()
+        }
+    }
+
+    fn apply_event(
+        &mut self,
+        model: &Model,
+        event: &Value,
+        request_service_tier: Option<ServiceTier>,
+    ) {
+        match event.get("type").and_then(Value::as_str) {
+            Some("response.content_part.added") => self.start_text(),
+            Some("response.output_text.delta") => {
+                self.start_text();
+                let delta = event
+                    .get("delta")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                self.text.push_str(delta);
+                self.events
+                    .push(CodexStreamEvent::TextDelta(delta.to_owned()));
+            }
+            Some("response.output_item.done") => {
+                if let Some(text) = event
+                    .pointer("/item/content/0/text")
+                    .and_then(Value::as_str)
+                {
+                    self.text = text.to_owned();
+                }
+                self.end_text();
+            }
+            Some("response.completed") | Some("response.done") | Some("response.incomplete") => {
+                self.end_text();
+                let response = event.get("response").unwrap_or(&Value::Null);
+                let status = response
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("completed");
+                self.message.stop_reason = if status == "incomplete" {
+                    "length".to_owned()
+                } else {
+                    "stop".to_owned()
+                };
+                self.message.text = (!self.text.is_empty()).then(|| self.text.clone());
+                self.message.usage_cost = codex_usage_cost(model, response, request_service_tier);
+                self.terminal = true;
+            }
+            Some("error") => {
+                let message = event
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .or_else(|| event.pointer("/error/message").and_then(Value::as_str))
+                    .unwrap_or("Codex stream error")
+                    .to_owned();
+                self.message.stop_reason = "error".to_owned();
+                self.message.error_message = Some(message.clone());
+                self.events.push(CodexStreamEvent::Error(message));
+                self.terminal = true;
+            }
+            Some("response.failed") => {
+                let message = event
+                    .pointer("/response/error/message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Codex response failed")
+                    .to_owned();
+                self.message.stop_reason = "error".to_owned();
+                self.message.error_message = Some(message.clone());
+                self.events.push(CodexStreamEvent::Error(message));
+                self.terminal = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn start_text(&mut self) {
+        if !self.text_started {
+            self.text_started = true;
+            self.events.push(CodexStreamEvent::TextStart);
+        }
+    }
+
+    fn end_text(&mut self) {
+        if self.text_started && !self.text_ended {
+            self.text_ended = true;
+            self.events
+                .push(CodexStreamEvent::TextEnd(self.text.clone()));
+        }
+    }
+
+    fn finish(mut self) -> CodexStreamResult {
+        if !self.terminal {
+            self.message.stop_reason = "error".to_owned();
+            self.message.error_message =
+                Some("Codex stream ended without terminal response".to_owned());
+        }
+        if self.terminal && self.message.error_message.is_none() {
+            self.events
+                .push(CodexStreamEvent::Done(self.message.clone()));
+        }
+        CodexStreamResult {
+            events: self.events,
+            message: self.message,
+        }
+    }
+}
+
+fn codex_usage_cost(
+    model: &Model,
+    response: &Value,
+    request_service_tier: Option<ServiceTier>,
+) -> Option<CodexStreamUsageCost> {
+    response.get("usage")?;
+    let response_tier = response
+        .get("service_tier")
+        .and_then(|value| serde_json::from_value::<ServiceTier>(value.clone()).ok());
+    let tier = if response_tier == Some(ServiceTier::Default)
+        && matches!(
+            request_service_tier,
+            Some(ServiceTier::Flex | ServiceTier::Priority)
+        ) {
+        request_service_tier
+    } else {
+        response_tier.or(request_service_tier)
+    };
+    let multiplier = match tier {
+        Some(ServiceTier::Flex) => 0.5,
+        Some(ServiceTier::Priority) if model.id == "gpt-5.5" => 2.5,
+        Some(ServiceTier::Priority) => 2.0,
+        _ => 1.0,
+    };
+    Some(CodexStreamUsageCost {
+        input: multiplier,
+        output: 2.0 * multiplier,
+        total: 3.0 * multiplier,
+    })
 }
 
 /// OpenAI Codex Responses-specific options.
@@ -852,7 +1088,6 @@ fn record_websocket_sse_fallback(session_id: Option<&str>) {
     }
 }
 
-#[cfg(test)]
 fn record_websocket_failure(session_id: Option<&str>, error: &str) {
     let Some(session_id) = session_id else {
         return;
@@ -920,6 +1155,14 @@ pub fn build_request(
             ))
         },
     )?;
+    let body_json = serde_json::to_vec(&body).map_err(|error| {
+        OpenAICodexResponsesError::Transport(format!("failed to serialize Codex request: {error}"))
+    })?;
+    let (sse_body, body_was_zstd) =
+        match zstd::stream::encode_all(body_json.as_slice(), REQUEST_COMPRESSION_ZSTD_LEVEL) {
+            Ok(compressed) => (compressed, true),
+            Err(_) => (body_json, false),
+        };
     let timeout_ms = normalize_timeout_ms(options.timeout_ms)?;
     let websocket_connect_timeout_ms = normalize_timeout_ms(options.websocket_connect_timeout_ms)?;
     let request_id = options.session_id.as_deref().unwrap_or("codex_request");
@@ -929,16 +1172,21 @@ pub fn build_request(
         record_websocket_sse_fallback(options.session_id.as_deref());
     }
 
+    let mut sse_headers = build_sse_headers(
+        &model.headers,
+        &options.headers,
+        &account_id,
+        api_key,
+        options.session_id.as_deref(),
+    );
+    if body_was_zstd {
+        sse_headers.insert("content-encoding".to_string(), "zstd".to_string());
+    }
+
     Ok(OpenAICodexResponsesRequest {
         sse_url: resolve_codex_url(model.base_url.as_deref()),
         websocket_url: resolve_codex_websocket_url(model.base_url.as_deref()),
-        sse_headers: build_sse_headers(
-            &model.headers,
-            &options.headers,
-            &account_id,
-            api_key,
-            options.session_id.as_deref(),
-        ),
+        sse_headers,
         websocket_headers: build_websocket_headers(
             &model.headers,
             &options.headers,
@@ -947,11 +1195,55 @@ pub fn build_request(
             request_id,
         ),
         body,
+        sse_body,
         timeout_ms,
         websocket_connect_timeout_ms,
         max_retries: options.max_retries.unwrap_or(0),
         transport: options.transport,
     })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+enum StoredCredential {
+    #[serde(rename = "api_key")]
+    ApiKey { key: Option<String> },
+    #[serde(rename = "oauth")]
+    OAuth { access: String },
+}
+
+fn codex_auth_storage_path() -> PathBuf {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".pi")
+        .join("agent")
+        .join("auth.json")
+}
+
+fn codex_api_key_from_auth_storage(provider: &str) -> Option<String> {
+    let content = std::fs::read_to_string(codex_auth_storage_path()).ok()?;
+    let storage: HashMap<String, StoredCredential> = serde_json::from_str(&content).ok()?;
+    match storage.get(provider)? {
+        StoredCredential::ApiKey { key } => {
+            key.as_ref().filter(|key| !key.trim().is_empty()).cloned()
+        }
+        StoredCredential::OAuth { access } if !access.trim().is_empty() => Some(access.clone()),
+        StoredCredential::OAuth { .. } => None,
+    }
+}
+
+fn resolve_codex_api_key(
+    model: &Model,
+    options: Option<&OpenAICodexResponsesOptions>,
+) -> Result<String> {
+    options
+        .and_then(|options| options.api_key.clone())
+        .or_else(|| codex_api_key_from_auth_storage(&model.provider))
+        .ok_or_else(|| OpenAICodexResponsesError::MissingApiKey {
+            provider: model.provider.clone(),
+        })
 }
 
 /// Streams an OpenAI Codex Responses request by preparing the exact Pi request envelope.
@@ -976,6 +1268,915 @@ pub fn stream(
     Ok(AssistantMessageEventStream {
         request: build_request(model, context, options, api_key)?,
     })
+}
+
+/// Starts a live OpenAI Codex Responses stream over Pi's WebSocket/SSE transport chain.
+pub fn stream_live(
+    model: &Model,
+    context: &Context,
+    options: Option<&OpenAICodexResponsesOptions>,
+) -> Result<crate::types::AssistantMessageEventStream> {
+    let api_key = resolve_codex_api_key(model, options)?;
+    let request = build_request(model, context, options, &api_key)?;
+    let stream = crate::types::AssistantMessageEventStream::new();
+    let worker_stream = stream.clone();
+    let model = model.clone();
+    let options = options.cloned().unwrap_or_default();
+    thread::spawn(move || {
+        run_codex_live_worker(worker_stream, model, request, options);
+    });
+    Ok(stream)
+}
+
+fn run_codex_live_worker(
+    stream: crate::types::AssistantMessageEventStream,
+    model: Model,
+    request: OpenAICodexResponsesRequest,
+    options: OpenAICodexResponsesOptions,
+) {
+    match execute_codex_live(&model, &request, &options) {
+        Ok((message, events)) => {
+            let output = canonical_message_from_responses(&message, &model, None);
+            stream.push(crate::types::AssistantMessageEvent::Start {
+                partial: output.clone(),
+            });
+            for event in events {
+                push_canonical_responses_event(&stream, &event, &model);
+            }
+            stream.push(crate::types::AssistantMessageEvent::Done {
+                reason: canonical_done_reason(output.stop_reason),
+                message: output,
+            });
+        }
+        Err(error) => {
+            let mut output = empty_canonical_message_for_codex(&model);
+            output.stop_reason = crate::types::StopReason::Error;
+            output.error_message = Some(error);
+            stream.push(crate::types::AssistantMessageEvent::Error {
+                reason: crate::types::ErrorStopReason::Error,
+                error: output,
+            });
+        }
+    }
+}
+
+fn execute_codex_live(
+    model: &Model,
+    request: &OpenAICodexResponsesRequest,
+    options: &OpenAICodexResponsesOptions,
+) -> std::result::Result<
+    (
+        crate::api::openai_responses_shared::AssistantMessage,
+        Vec<crate::api::openai_responses_shared::AssistantMessageEvent>,
+    ),
+    String,
+> {
+    let transport = request.transport.unwrap_or(Transport::Auto);
+    if transport != Transport::Sse
+        && !is_websocket_sse_fallback_active(options.session_id.as_deref())
+    {
+        let mut retried_connection_limit = false;
+        loop {
+            match execute_codex_websocket_live(model, request, options) {
+                Ok(result) => return Ok(result),
+                Err(WebSocketLiveError::ConnectionLimitBeforeStart)
+                    if !retried_connection_limit =>
+                {
+                    retried_connection_limit = true;
+                }
+                Err(error) => {
+                    let started = error.started();
+                    record_websocket_failure(options.session_id.as_deref(), &error.to_string());
+                    if started {
+                        return Err(error.to_string());
+                    }
+                    record_websocket_sse_fallback(options.session_id.as_deref());
+                    break;
+                }
+            }
+        }
+    }
+    execute_codex_sse_live(model, request, options)
+}
+
+fn execute_codex_sse_live(
+    model: &Model,
+    request: &OpenAICodexResponsesRequest,
+    options: &OpenAICodexResponsesOptions,
+) -> std::result::Result<
+    (
+        crate::api::openai_responses_shared::AssistantMessage,
+        Vec<crate::api::openai_responses_shared::AssistantMessageEvent>,
+    ),
+    String,
+> {
+    let client = build_codex_http_client(request.timeout_ms)?;
+    let response = client
+        .post(&request.sse_url)
+        .headers(header_map(&request.sse_headers)?)
+        .body(request.sse_body.clone())
+        .send()
+        .map_err(|error| error.to_string())?;
+    if !response.status().is_success() {
+        let status = response.status().as_u16();
+        let body = read_response_to_string(response)?;
+        return Err(format_codex_http_error(status, &body));
+    }
+    let events = read_codex_sse(response)?;
+    process_live_response_events(model, events, options.service_tier)
+}
+
+fn build_codex_http_client(timeout_ms: Option<u64>) -> std::result::Result<Client, String> {
+    let mut builder = Client::builder();
+    if let Some(timeout_ms) = timeout_ms {
+        builder = builder.timeout(Duration::from_millis(timeout_ms));
+    }
+    builder.build().map_err(|error| error.to_string())
+}
+
+fn header_map(headers: &HashMap<String, String>) -> std::result::Result<HeaderMap, String> {
+    let mut map = HeaderMap::new();
+    for (name, value) in headers {
+        map.insert(
+            HeaderName::from_bytes(name.as_bytes()).map_err(|error| error.to_string())?,
+            HeaderValue::from_str(value).map_err(|error| error.to_string())?,
+        );
+    }
+    Ok(map)
+}
+
+fn read_response_to_string(
+    mut response: reqwest::blocking::Response,
+) -> std::result::Result<String, String> {
+    let mut body = String::new();
+    response
+        .read_to_string(&mut body)
+        .map_err(|error| error.to_string())?;
+    Ok(body)
+}
+
+fn format_codex_http_error(status: u16, body: &str) -> String {
+    if let Ok(parsed) = serde_json::from_str::<Value>(body) {
+        if status == 429
+            && let Some(error) = parsed.get("error")
+        {
+            let plan = error
+                .get("plan_type")
+                .and_then(Value::as_str)
+                .map(|plan| format!(" ({} plan)", plan.to_ascii_lowercase()))
+                .unwrap_or_default();
+            return format!("You have hit your ChatGPT usage limit{plan}.");
+        }
+        if let Some(message) = parsed.pointer("/error/message").and_then(Value::as_str) {
+            return message.to_owned();
+        }
+    }
+    format!("Codex API error ({status}): {body}")
+}
+
+fn read_codex_sse(
+    response: reqwest::blocking::Response,
+) -> std::result::Result<Vec<crate::api::openai_responses_shared::ResponseStreamEvent>, String> {
+    let mut events = Vec::new();
+    let reader = BufReader::new(response);
+    for line in reader.lines() {
+        let line = line.map_err(|error| error.to_string())?;
+        let line = line.trim();
+        if line.is_empty() || line.starts_with(':') {
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data:").map(str::trim) else {
+            continue;
+        };
+        if data == "[DONE]" {
+            break;
+        }
+        let value: Value = serde_json::from_str(data)
+            .map_err(|error| format!("Invalid Codex SSE JSON: {error}"))?;
+        if let Some(event) = normalize_codex_event_value(value)? {
+            events.push(event);
+        }
+    }
+    Ok(events)
+}
+
+fn normalize_codex_event_value(
+    mut value: Value,
+) -> std::result::Result<Option<crate::api::openai_responses_shared::ResponseStreamEvent>, String> {
+    let Some(event_type) = value.get("type").and_then(Value::as_str) else {
+        return Ok(None);
+    };
+    if event_type == "response.content_part.added" {
+        return Ok(None);
+    }
+    if event_type == "error" {
+        let message = value
+            .get("message")
+            .and_then(Value::as_str)
+            .or_else(|| value.pointer("/error/message").and_then(Value::as_str))
+            .unwrap_or("Codex stream error");
+        return Err(format!("Codex error: {message}"));
+    }
+    if event_type == "response.failed" {
+        let message = value
+            .pointer("/response/error/message")
+            .and_then(Value::as_str)
+            .unwrap_or("Codex response failed");
+        return Err(message.to_owned());
+    }
+    if matches!(
+        event_type,
+        "response.done" | "response.completed" | "response.incomplete"
+    ) {
+        value["type"] = Value::String(if event_type == "response.incomplete" {
+            "response_incomplete".to_owned()
+        } else {
+            "response_completed".to_owned()
+        });
+    } else {
+        value["type"] = Value::String(event_type.replace('.', "_"));
+    }
+    add_default_output_index(&mut value);
+    add_reasoning_raw(&mut value);
+    match serde_json::from_value(value) {
+        Ok(event) => Ok(Some(event)),
+        Err(error) if error.to_string().contains("unknown variant") => Ok(None),
+        Err(error) => Err(format!("Codex stream JSON error: {error}")),
+    }
+}
+
+fn add_reasoning_raw(value: &mut Value) {
+    for pointer in ["/item", "/response/output/0"] {
+        let Some(item) = value.pointer_mut(pointer) else {
+            continue;
+        };
+        let is_reasoning = item
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| kind == "reasoning");
+        if is_reasoning && item.get("raw").is_none() {
+            item["raw"] = item.clone();
+        }
+    }
+}
+
+fn add_default_output_index(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let Some(kind) = object.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    if kind.starts_with("response_output_")
+        || kind.starts_with("response_reasoning_")
+        || kind.starts_with("response_function_call_")
+        || matches!(kind, "response_refusal_delta")
+    {
+        object
+            .entry("output_index".to_owned())
+            .or_insert_with(|| Value::from(0));
+    }
+}
+
+fn process_live_response_events(
+    model: &Model,
+    events: Vec<crate::api::openai_responses_shared::ResponseStreamEvent>,
+    service_tier: Option<ServiceTier>,
+) -> std::result::Result<
+    (
+        crate::api::openai_responses_shared::AssistantMessage,
+        Vec<crate::api::openai_responses_shared::AssistantMessageEvent>,
+    ),
+    String,
+> {
+    let shared_model = shared_model_from_codex(model);
+    let mut output = crate::api::openai_responses_shared::AssistantMessage {
+        content: Vec::new(),
+        api: "openai-codex-responses".to_owned(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        response_id: None,
+        usage: crate::api::openai_responses_shared::Usage::default(),
+        stop_reason: crate::api::openai_responses_shared::StopReason::Stop,
+    };
+    let mut stream_events = Vec::new();
+    let options = crate::api::openai_responses_shared::OpenAIResponsesStreamOptions {
+        service_tier: service_tier.map(codex_service_tier_to_shared),
+        ..crate::api::openai_responses_shared::OpenAIResponsesStreamOptions::default()
+    };
+    crate::api::openai_responses_shared::process_responses_stream(
+        events,
+        &mut output,
+        &mut stream_events,
+        &shared_model,
+        Some(&options),
+    )
+    .map_err(|error| error.to_string())?;
+    Ok((output, stream_events))
+}
+
+fn shared_model_from_codex(model: &Model) -> crate::api::openai_responses_shared::Model {
+    crate::api::openai_responses_shared::Model {
+        id: model.id.clone(),
+        api: "openai-codex-responses".to_owned(),
+        provider: model.provider.clone(),
+        reasoning: model.reasoning,
+        input: vec!["text".to_owned()],
+        cost: crate::api::openai_responses_shared::ModelCost::default(),
+        compat: None,
+    }
+}
+
+fn codex_service_tier_to_shared(
+    tier: ServiceTier,
+) -> crate::api::openai_responses_shared::ServiceTier {
+    match tier {
+        ServiceTier::Default => "default".to_owned(),
+        ServiceTier::Flex => "flex".to_owned(),
+        ServiceTier::Priority => "priority".to_owned(),
+    }
+}
+
+#[derive(Debug)]
+enum WebSocketLiveError {
+    ConnectionLimitBeforeStart,
+    Failed { message: String, started: bool },
+}
+
+impl WebSocketLiveError {
+    const fn started(&self) -> bool {
+        matches!(self, Self::Failed { started: true, .. })
+    }
+}
+
+impl fmt::Display for WebSocketLiveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ConnectionLimitBeforeStart => {
+                f.write_str(WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE)
+            }
+            Self::Failed { message, .. } => f.write_str(message),
+        }
+    }
+}
+
+fn execute_codex_websocket_live(
+    model: &Model,
+    request: &OpenAICodexResponsesRequest,
+    options: &OpenAICodexResponsesOptions,
+) -> std::result::Result<
+    (
+        crate::api::openai_responses_shared::AssistantMessage,
+        Vec<crate::api::openai_responses_shared::AssistantMessageEvent>,
+    ),
+    WebSocketLiveError,
+> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| WebSocketLiveError::Failed {
+            message: error.to_string(),
+            started: false,
+        })?;
+    runtime.block_on(execute_codex_websocket_live_async(model, request, options))
+}
+
+async fn execute_codex_websocket_live_async(
+    model: &Model,
+    request: &OpenAICodexResponsesRequest,
+    options: &OpenAICodexResponsesOptions,
+) -> std::result::Result<
+    (
+        crate::api::openai_responses_shared::AssistantMessage,
+        Vec<crate::api::openai_responses_shared::AssistantMessageEvent>,
+    ),
+    WebSocketLiveError,
+> {
+    let connect_timeout_ms = request
+        .websocket_connect_timeout_ms
+        .unwrap_or(DEFAULT_WEBSOCKET_CONNECT_TIMEOUT_MS);
+    let idle_timeout_ms = request.timeout_ms;
+    let mut events = Vec::new();
+    let mut started = false;
+    let ws_url = websocket_upgrade_url(&request.websocket_url);
+    let ws_key = websocket_key().map_err(|error| WebSocketLiveError::Failed {
+        message: error,
+        started: false,
+    })?;
+    let client =
+        reqwest::Client::builder()
+            .build()
+            .map_err(|error| WebSocketLiveError::Failed {
+                message: error.to_string(),
+                started: false,
+            })?;
+    let mut builder = client
+        .get(ws_url)
+        .header("Connection", "Upgrade")
+        .header("Upgrade", "websocket")
+        .header("Sec-WebSocket-Version", "13")
+        .header("Sec-WebSocket-Key", ws_key);
+    for (name, value) in &request.websocket_headers {
+        if name.eq_ignore_ascii_case("openai-beta") {
+            continue;
+        }
+        builder = builder.header(name, value);
+    }
+    let response = tokio::time::timeout(Duration::from_millis(connect_timeout_ms), builder.send())
+        .await
+        .map_err(|_| WebSocketLiveError::Failed {
+            message: format!("WebSocket connect timeout after {connect_timeout_ms}ms"),
+            started: false,
+        })?
+        .map_err(|error| WebSocketLiveError::Failed {
+            message: error.to_string(),
+            started: false,
+        })?;
+    if response.status().as_u16() != 101 {
+        return Err(WebSocketLiveError::Failed {
+            message: format!(
+                "WebSocket upgrade failed with status {}",
+                response.status().as_u16()
+            ),
+            started: false,
+        });
+    }
+    let mut upgraded = tokio::time::timeout(
+        Duration::from_millis(connect_timeout_ms),
+        response.upgrade(),
+    )
+    .await
+    .map_err(|_| WebSocketLiveError::Failed {
+        message: format!("WebSocket connect timeout after {connect_timeout_ms}ms"),
+        started: false,
+    })?
+    .map_err(|error| WebSocketLiveError::Failed {
+        message: error.to_string(),
+        started: false,
+    })?;
+    let body = cached_websocket_request_body(&request.body, options);
+    send_ws_text(&mut upgraded, &body.to_string())
+        .await
+        .map_err(|error| WebSocketLiveError::Failed {
+            message: error,
+            started,
+        })?;
+    loop {
+        let text = read_ws_text(&mut upgraded, idle_timeout_ms)
+            .await
+            .map_err(|error| WebSocketLiveError::Failed {
+                message: error,
+                started,
+            })?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|error| WebSocketLiveError::Failed {
+                message: format!("Invalid Codex WebSocket JSON: {error}"),
+                started,
+            })?;
+        if let Some(code) = value
+            .get("code")
+            .and_then(Value::as_str)
+            .or_else(|| value.pointer("/error/code").and_then(Value::as_str))
+            && !started
+            && code == WEBSOCKET_CONNECTION_LIMIT_REACHED_CODE
+        {
+            return Err(WebSocketLiveError::ConnectionLimitBeforeStart);
+        }
+        if !started {
+            started = true;
+        }
+        let terminal = value
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| {
+                matches!(
+                    kind,
+                    "response.completed" | "response.done" | "response.incomplete"
+                )
+            });
+        if let Some(event) = normalize_codex_event_value(value)
+            .map_err(|message| WebSocketLiveError::Failed { message, started })?
+        {
+            events.push(event);
+        }
+        if terminal {
+            break;
+        }
+    }
+    if let Some(session_id) = options.session_id.as_deref() {
+        record_websocket_request_stats(session_id, request, &body);
+    }
+    process_live_response_events(model, events, options.service_tier).map_err(|message| {
+        WebSocketLiveError::Failed {
+            message,
+            started: true,
+        }
+    })
+}
+
+fn websocket_upgrade_url(url: &str) -> String {
+    if let Some(rest) = url.strip_prefix("wss:") {
+        format!("https:{rest}")
+    } else if let Some(rest) = url.strip_prefix("ws:") {
+        format!("http:{rest}")
+    } else {
+        url.to_owned()
+    }
+}
+
+fn websocket_key() -> std::result::Result<String, String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+fn cached_websocket_request_body(body: &Value, options: &OpenAICodexResponsesOptions) -> Value {
+    let mut request = body.clone();
+    if matches!(
+        options.transport,
+        Some(Transport::Auto | Transport::WebSocketCached)
+    ) && let Some(session_id) = options.session_id.as_deref()
+    {
+        request["prompt_cache_key"] =
+            Value::String(clamp_openai_prompt_cache_key(Some(session_id)).unwrap_or_default());
+    }
+    let mut object = serde_json::Map::new();
+    object.insert(
+        "type".to_owned(),
+        Value::String("response.create".to_owned()),
+    );
+    if let Some(source) = request.as_object() {
+        object.extend(source.clone());
+    }
+    Value::Object(object)
+}
+
+fn record_websocket_request_stats(
+    session_id: &str,
+    request: &OpenAICodexResponsesRequest,
+    body: &Value,
+) {
+    if let Ok(mut stats) = WEBSOCKET_DEBUG_STATS.lock() {
+        let stats = stats.entry(session_id.to_owned()).or_default();
+        stats.requests += 1;
+        stats.connections_created += 1;
+        if matches!(
+            request.transport,
+            Some(Transport::Auto | Transport::WebSocketCached)
+        ) {
+            stats.cached_context_requests += 1;
+        }
+        stats.full_context_requests += 1;
+        stats.last_input_items = body
+            .get("input")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+    }
+}
+
+async fn send_ws_text<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    text: &str,
+) -> std::result::Result<(), String> {
+    write_ws_frame(writer, 0x1, text.as_bytes()).await
+}
+
+async fn write_ws_frame<W: AsyncWrite + Unpin>(
+    writer: &mut W,
+    opcode: u8,
+    payload: &[u8],
+) -> std::result::Result<(), String> {
+    let mut header = Vec::with_capacity(14 + payload.len());
+    header.push(0x80 | opcode);
+    let mask_bit = 0x80;
+    if payload.len() < 126 {
+        header.push(mask_bit | u8::try_from(payload.len()).map_err(|error| error.to_string())?);
+    } else if payload.len() <= u16::MAX as usize {
+        header.push(mask_bit | 126);
+        header.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+    } else {
+        header.push(mask_bit | 127);
+        header.extend_from_slice(&(payload.len() as u64).to_be_bytes());
+    }
+    let mut mask = [0_u8; 4];
+    getrandom::fill(&mut mask).map_err(|error| error.to_string())?;
+    header.extend_from_slice(&mask);
+    header.extend(
+        payload
+            .iter()
+            .enumerate()
+            .map(|(index, byte)| byte ^ mask[index % 4]),
+    );
+    writer
+        .write_all(&header)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn read_ws_text<R: AsyncRead + AsyncWrite + Unpin>(
+    reader: &mut R,
+    idle_timeout_ms: Option<u64>,
+) -> std::result::Result<String, String> {
+    loop {
+        let frame = match idle_timeout_ms {
+            Some(ms) if ms > 0 => {
+                tokio::time::timeout(Duration::from_millis(ms), read_ws_frame(reader))
+                    .await
+                    .map_err(|_| format!("WebSocket idle timeout after {ms}ms"))??
+            }
+            _ => read_ws_frame(reader).await?,
+        };
+        match frame.opcode {
+            0x1 => return String::from_utf8(frame.payload).map_err(|error| error.to_string()),
+            0x2 => return String::from_utf8(frame.payload).map_err(|error| error.to_string()),
+            0x8 => return Err("WebSocket closed".to_owned()),
+            0x9 => write_ws_frame(reader, 0xA, &frame.payload).await?,
+            0xA => {}
+            _ => {}
+        }
+    }
+}
+
+struct WsFrame {
+    opcode: u8,
+    payload: Vec<u8>,
+}
+
+async fn read_ws_frame<R: AsyncRead + Unpin>(
+    reader: &mut R,
+) -> std::result::Result<WsFrame, String> {
+    let mut header = [0_u8; 2];
+    reader
+        .read_exact(&mut header)
+        .await
+        .map_err(|error| error.to_string())?;
+    let opcode = header[0] & 0x0F;
+    let masked = header[1] & 0x80 != 0;
+    let mut len = u64::from(header[1] & 0x7F);
+    if len == 126 {
+        let mut ext = [0_u8; 2];
+        reader
+            .read_exact(&mut ext)
+            .await
+            .map_err(|error| error.to_string())?;
+        len = u64::from(u16::from_be_bytes(ext));
+    } else if len == 127 {
+        let mut ext = [0_u8; 8];
+        reader
+            .read_exact(&mut ext)
+            .await
+            .map_err(|error| error.to_string())?;
+        len = u64::from_be_bytes(ext);
+    }
+    let mut mask = [0_u8; 4];
+    if masked {
+        reader
+            .read_exact(&mut mask)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    let len_usize = usize::try_from(len).map_err(|_| "WebSocket frame too large".to_owned())?;
+    let mut payload = vec![0_u8; len_usize];
+    reader
+        .read_exact(&mut payload)
+        .await
+        .map_err(|error| error.to_string())?;
+    if masked {
+        for (index, byte) in payload.iter_mut().enumerate() {
+            *byte ^= mask[index % 4];
+        }
+    }
+    Ok(WsFrame { opcode, payload })
+}
+
+fn push_canonical_responses_event(
+    stream: &crate::types::AssistantMessageEventStream,
+    event: &crate::api::openai_responses_shared::AssistantMessageEvent,
+    model: &Model,
+) {
+    match event {
+        crate::api::openai_responses_shared::AssistantMessageEvent::TextStart {
+            content_index,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::TextStart {
+                content_index: *content_index,
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::TextDelta {
+            content_index,
+            delta,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::TextDelta {
+                content_index: *content_index,
+                delta: delta.clone(),
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::TextEnd {
+            content_index,
+            content,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::TextEnd {
+                content_index: *content_index,
+                content: content.clone(),
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::ThinkingStart {
+            content_index,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::ThinkingStart {
+                content_index: *content_index,
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::ThinkingDelta {
+            content_index,
+            delta,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::ThinkingDelta {
+                content_index: *content_index,
+                delta: delta.clone(),
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::ThinkingEnd {
+            content_index,
+            content,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::ThinkingEnd {
+                content_index: *content_index,
+                content: content.clone(),
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::ToolCallStart {
+            content_index,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::ToolcallStart {
+                content_index: *content_index,
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::ToolCallDelta {
+            content_index,
+            delta,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::ToolcallDelta {
+                content_index: *content_index,
+                delta: delta.clone(),
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+        crate::api::openai_responses_shared::AssistantMessageEvent::ToolCallEnd {
+            content_index,
+            tool_call,
+            partial,
+        } => {
+            stream.push(crate::types::AssistantMessageEvent::ToolcallEnd {
+                content_index: *content_index,
+                tool_call: canonical_tool_call_from_responses(tool_call),
+                partial: canonical_message_from_responses(partial, model, None),
+            });
+        }
+    }
+}
+
+fn canonical_message_from_responses(
+    message: &crate::api::openai_responses_shared::AssistantMessage,
+    _model: &Model,
+    error_message: Option<String>,
+) -> crate::types::AssistantMessage {
+    crate::types::AssistantMessage {
+        role: crate::types::AssistantMessageRole::Assistant,
+        content: message
+            .content
+            .iter()
+            .map(canonical_content_from_responses)
+            .collect(),
+        api: "openai-codex-responses".to_owned(),
+        provider: message.provider.clone(),
+        model: message.model.clone(),
+        response_model: None,
+        response_id: message.response_id.clone(),
+        diagnostics: None,
+        usage: crate::types::Usage {
+            input: message.usage.input,
+            output: message.usage.output,
+            cache_read: message.usage.cache_read,
+            cache_write: message.usage.cache_write,
+            cache_write_1h: message.usage.cache_write_1h,
+            reasoning: message.usage.reasoning,
+            total_tokens: message.usage.total_tokens,
+            ..crate::types::Usage::default()
+        },
+        stop_reason: canonical_stop_reason(message.stop_reason),
+        error_message,
+        timestamp: unix_timestamp_ms(),
+    }
+}
+
+fn empty_canonical_message_for_codex(model: &Model) -> crate::types::AssistantMessage {
+    crate::types::AssistantMessage {
+        role: crate::types::AssistantMessageRole::Assistant,
+        content: Vec::new(),
+        api: "openai-codex-responses".to_owned(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        response_model: None,
+        response_id: None,
+        diagnostics: None,
+        usage: crate::types::Usage::default(),
+        stop_reason: crate::types::StopReason::Stop,
+        error_message: None,
+        timestamp: unix_timestamp_ms(),
+    }
+}
+
+fn canonical_content_from_responses(
+    block: &crate::api::openai_responses_shared::AssistantContent,
+) -> crate::types::AssistantContentBlock {
+    match block {
+        crate::api::openai_responses_shared::AssistantContent::Text(text) => {
+            crate::types::AssistantContentBlock::Text(crate::types::TextContent {
+                content_type: crate::types::TextContentType::Text,
+                text: text.text.clone(),
+                text_signature: text.text_signature.clone(),
+            })
+        }
+        crate::api::openai_responses_shared::AssistantContent::Thinking(thinking) => {
+            crate::types::AssistantContentBlock::Thinking(crate::types::ThinkingContent {
+                content_type: crate::types::ThinkingContentType::Thinking,
+                thinking: thinking.thinking.clone(),
+                thinking_signature: thinking.thinking_signature.clone(),
+                redacted: Some(thinking.redacted),
+            })
+        }
+        crate::api::openai_responses_shared::AssistantContent::ToolCall(tool_call) => {
+            crate::types::AssistantContentBlock::ToolCall(canonical_tool_call_from_responses(
+                tool_call,
+            ))
+        }
+    }
+}
+
+fn canonical_tool_call_from_responses(
+    tool_call: &crate::api::openai_responses_shared::ToolCall,
+) -> crate::types::ToolCall {
+    crate::types::ToolCall {
+        content_type: crate::types::ToolCallType::ToolCall,
+        id: tool_call.id.clone(),
+        name: tool_call.name.clone(),
+        arguments: tool_call
+            .arguments
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+        thought_signature: tool_call.thought_signature.clone(),
+    }
+}
+
+fn canonical_stop_reason(
+    reason: crate::api::openai_responses_shared::StopReason,
+) -> crate::types::StopReason {
+    match reason {
+        crate::api::openai_responses_shared::StopReason::Stop => crate::types::StopReason::Stop,
+        crate::api::openai_responses_shared::StopReason::Length => crate::types::StopReason::Length,
+        crate::api::openai_responses_shared::StopReason::ToolUse => {
+            crate::types::StopReason::ToolUse
+        }
+        crate::api::openai_responses_shared::StopReason::Aborted => {
+            crate::types::StopReason::Aborted
+        }
+        crate::api::openai_responses_shared::StopReason::Error => crate::types::StopReason::Error,
+    }
+}
+
+fn canonical_done_reason(reason: crate::types::StopReason) -> crate::types::DoneStopReason {
+    match reason {
+        crate::types::StopReason::Length => crate::types::DoneStopReason::Length,
+        crate::types::StopReason::ToolUse => crate::types::DoneStopReason::ToolUse,
+        _ => crate::types::DoneStopReason::Stop,
+    }
+}
+
+fn unix_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 /// Streams an OpenAI Codex Responses request using simplified options.

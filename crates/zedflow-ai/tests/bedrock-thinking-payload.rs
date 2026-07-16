@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
-use zedflow_ai::api::bedrock_converse_stream::{BedrockOptions, Model, ThinkingLevel};
+use zedflow_ai::api::bedrock_converse_stream::{
+    BedrockOptions, Model, ThinkingLevel, build_bedrock_converse_payload,
+};
 
-const PAYLOAD_BLOCKER: &str = "PORT PLACEHOLDER: bedrock-converse-stream request-payload construction/on_payload capture is not ported; keep ignored until the real ConverseStream payload path exists.";
-const LIVE_BLOCKER: &str = "live Bedrock Claude parity test intentionally ignored: requires AWS Bedrock credentials and provider network calls.";
+const LIVE_BLOCKER: &str = "live Bedrock Claude parity test intentionally ignored: missing AWS Bedrock credentials/network capability.";
 
 fn get_model(provider: &str, id: &str) -> Model {
     Model {
@@ -49,6 +50,14 @@ fn options(reasoning: Option<ThinkingLevel>, region: Option<&str>) -> BedrockOpt
 }
 
 fn capture_payload(model: &Model, options: Option<BedrockOptions>) -> Value {
+    capture_payload_with_context(model, &make_context(), options)
+}
+
+fn capture_payload_with_context(
+    model: &Model,
+    context: &Value,
+    options: Option<BedrockOptions>,
+) -> Value {
     let mut options = options.unwrap_or_else(|| BedrockOptions {
         reasoning: Some(ThinkingLevel::High),
         ..Default::default()
@@ -56,8 +65,7 @@ fn capture_payload(model: &Model, options: Option<BedrockOptions>) -> Value {
     if options.reasoning.is_none() {
         options.reasoning = Some(ThinkingLevel::High);
     }
-    let _ = (model, make_context(), options);
-    panic!("{PAYLOAD_BLOCKER}");
+    build_bedrock_converse_payload(model, context, &options)
 }
 
 fn additional_field<'a>(payload: &'a Value, name: &str) -> Option<&'a Value> {
@@ -65,7 +73,6 @@ fn additional_field<'a>(payload: &'a Value, name: &str) -> Option<&'a Value> {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn uses_adaptive_thinking_for_claude_opus_4_8_when_reasoning_is_enabled() {
     let base_model = get_model("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
     let model = with_id_and_name(
@@ -88,7 +95,6 @@ fn uses_adaptive_thinking_for_claude_opus_4_8_when_reasoning_is_enabled() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn maps_xhigh_reasoning_to_effort_xhigh_for_claude_opus_4_8() {
     let base_model = get_model("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
     let model = with_id_and_name(
@@ -111,7 +117,6 @@ fn maps_xhigh_reasoning_to_effort_xhigh_for_claude_opus_4_8() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn uses_adaptive_thinking_for_claude_fable_5_when_reasoning_is_enabled() {
     let model = get_model("amazon-bedrock", "global.anthropic.claude-fable-5");
 
@@ -129,7 +134,6 @@ fn uses_adaptive_thinking_for_claude_fable_5_when_reasoning_is_enabled() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn uses_adaptive_thinking_for_claude_sonnet_5_when_reasoning_is_enabled() {
     let model = get_model("amazon-bedrock", "global.anthropic.claude-sonnet-5");
 
@@ -147,7 +151,6 @@ fn uses_adaptive_thinking_for_claude_sonnet_5_when_reasoning_is_enabled() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn maps_xhigh_reasoning_to_effort_xhigh_for_claude_fable_5() {
     let model = get_model("amazon-bedrock", "global.anthropic.claude-fable-5");
 
@@ -164,7 +167,6 @@ fn maps_xhigh_reasoning_to_effort_xhigh_for_claude_fable_5() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn omits_display_for_govcloud_model_ids_on_non_adaptive_claude_thinking() {
     let base_model = get_model(
         "amazon-bedrock",
@@ -189,7 +191,6 @@ fn omits_display_for_govcloud_model_ids_on_non_adaptive_claude_thinking() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn omits_display_for_govcloud_regions_on_adaptive_claude_thinking() {
     let base_model = get_model("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
     let model = with_id_and_name(
@@ -231,7 +232,7 @@ fn run_max_tokens_e2e(model: &Model) -> BedrockResponse {
 }
 
 #[test]
-#[ignore = "live Bedrock provider parity test requires AWS credentials and network calls"]
+#[ignore = "live Bedrock provider parity test skipped: missing AWS Bedrock credentials/network capability"]
 fn uses_model_max_tokens_cap_instead_of_bedrock_4096_token_default_for_adaptive_claude_models() {
     let mut model = get_model("amazon-bedrock", "global.anthropic.claude-sonnet-4-6");
     model.max_tokens = 6000;
@@ -248,7 +249,6 @@ fn uses_model_max_tokens_cap_instead_of_bedrock_4096_token_default_for_adaptive_
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn uses_adaptive_thinking_when_model_name_contains_model_name_but_arn_does_not() {
     let base_model = get_model("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
     let model = with_id_and_name(
@@ -270,7 +270,6 @@ fn uses_adaptive_thinking_when_model_name_contains_model_name_but_arn_does_not()
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn injects_cache_points_when_model_name_identifies_supported_claude_model() {
     let base_model = get_model("amazon-bedrock", "global.anthropic.claude-opus-4-6-v1");
     let model = with_id_and_name(
@@ -279,7 +278,11 @@ fn injects_cache_points_when_model_name_identifies_supported_claude_model() {
         "Claude Sonnet 4.6",
     );
 
-    let captured_payload = capture_payload(&model, None);
+    let context = json!({
+        "systemPrompt": "You are helpful.",
+        "messages": [{ "role": "user", "content": "Hello", "timestamp": 0 }]
+    });
+    let captured_payload = capture_payload_with_context(&model, &context, None);
 
     assert_eq!(
         captured_payload
@@ -305,7 +308,6 @@ fn injects_cache_points_when_model_name_identifies_supported_claude_model() {
 }
 
 #[test]
-#[ignore = "PORT PLACEHOLDER: Bedrock request-payload construction/on_payload capture is not ported"]
 fn falls_back_to_fixed_budget_thinking_for_non_adaptive_claude_via_model_name() {
     let base_model = get_model(
         "amazon-bedrock",

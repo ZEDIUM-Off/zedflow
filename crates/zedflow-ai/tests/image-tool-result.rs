@@ -1,8 +1,9 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use zedflow_ai::api::lazy::{Context, Model, StopReason};
-use zedflow_ai::api::simple_options::StreamOptions;
+use futures::executor::block_on;
 use zedflow_ai::compat::{complete, get_model};
+use zedflow_ai::types::StreamOptions;
+use zedflow_ai::types::{Context, Model, StopReason};
 
 const BLOCKER: &str = "live provider image tool-result probe skipped; compat::get_model, typed Context messages/tools/tool results, typed assistant tool-call/text content, StreamOptions provider extras, OAuth auth.json resolution, and provider streaming are still request-capture blockers";
 
@@ -35,6 +36,10 @@ struct ToolCall {
     name: String,
 }
 
+#[allow(
+    dead_code,
+    reason = "tool calls are constructed only by capability-gated live responses"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ContentBlock {
     Text(String),
@@ -416,8 +421,12 @@ fn complete_probe(
     test_case: ProviderCase,
 ) -> Result<ProbeAssistantMessage, String> {
     let _ = (probe_context, test_case.option_note);
-    let _response = complete(model, &Context, Some(StreamOptions::default()))
-        .map_err(|error| format!("{BLOCKER}: {error}"))?;
+    let _response = block_on(complete(
+        model,
+        &Context::default(),
+        Some(StreamOptions::default()),
+    ))
+    .map_err(|error| format!("{BLOCKER}: {error}"))?;
     Err(BLOCKER.to_owned())
 }
 

@@ -851,26 +851,44 @@ enum CurrentBlockKind {
     Thinking,
 }
 
-struct GoogleStreamCollector {
+/// A Google event paired with the exact partial message at emission time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GoogleStreamFrame {
+    /// Stream event.
+    pub event: GoogleStreamEvent,
+    /// Progressive message snapshot for this event.
+    pub partial: GoogleAssistantMessage,
+}
+
+/// Incremental Google chunk collector shared by Generative AI and Vertex transports.
+pub struct GoogleStreamCollector {
     message: GoogleAssistantMessage,
     events: Vec<GoogleStreamEvent>,
+    frames: Vec<GoogleStreamFrame>,
     current_block: Option<CurrentBlockKind>,
     tool_call_counter: u64,
     id_timestamp_ms: u64,
 }
 
 impl GoogleStreamCollector {
-    fn new(api: String, provider: String, model: String, id_timestamp_ms: u64) -> Self {
+    /// Creates a collector and records its empty start snapshot.
+    #[must_use]
+    pub fn new(api: String, provider: String, model: String, id_timestamp_ms: u64) -> Self {
+        let message = GoogleAssistantMessage {
+            api,
+            provider,
+            model,
+            response_id: None,
+            content: Vec::new(),
+            usage: GoogleUsage::default(),
+            stop_reason: StopReason::Stop,
+        };
         Self {
-            message: GoogleAssistantMessage {
-                api,
-                provider,
-                model,
-                response_id: None,
-                content: Vec::new(),
-                usage: GoogleUsage::default(),
-                stop_reason: StopReason::Stop,
-            },
+            frames: vec![GoogleStreamFrame {
+                event: GoogleStreamEvent::Start,
+                partial: message.clone(),
+            }],
+            message,
             events: vec![GoogleStreamEvent::Start],
             current_block: None,
             tool_call_counter: 0,
@@ -878,7 +896,8 @@ impl GoogleStreamCollector {
         }
     }
 
-    fn apply_chunk(&mut self, chunk: &GenerateContentChunk) {
+    /// Applies one provider response chunk without closing the current block.
+    pub fn apply_chunk(&mut self, chunk: &GenerateContentChunk) {
         if self.message.response_id.is_none() {
             self.message.response_id = chunk.response_id.clone().filter(|id| !id.is_empty());
         }
@@ -926,15 +945,13 @@ impl GoogleStreamCollector {
                     thinking: String::new(),
                     thinking_signature: None,
                 });
-                self.events
-                    .push(GoogleStreamEvent::ThinkingStart { content_index });
+                self.push_event(GoogleStreamEvent::ThinkingStart { content_index });
             } else {
                 self.message.content.push(GoogleContentBlock::Text {
                     text: String::new(),
                     text_signature: None,
                 });
-                self.events
-                    .push(GoogleStreamEvent::TextStart { content_index });
+                self.push_event(GoogleStreamEvent::TextStart { content_index });
             }
         }
 
@@ -955,10 +972,11 @@ impl GoogleStreamCollector {
                     part.thought_signature.as_deref(),
                 )
                 .map(str::to_string);
-                self.events.push(GoogleStreamEvent::ThinkingDelta {
+                let event = GoogleStreamEvent::ThinkingDelta {
                     content_index,
                     delta: text.to_string(),
-                });
+                };
+                self.push_event(event);
             }
             GoogleContentBlock::Text {
                 text: current_text,
@@ -970,10 +988,11 @@ impl GoogleStreamCollector {
                     part.thought_signature.as_deref(),
                 )
                 .map(str::to_string);
-                self.events.push(GoogleStreamEvent::TextDelta {
+                let event = GoogleStreamEvent::TextDelta {
                     content_index,
                     delta: text.to_string(),
-                });
+                };
+                self.push_event(event);
             }
             GoogleContentBlock::ToolCall { .. } => {
                 unreachable!("tool call cannot be current text block")
@@ -1010,14 +1029,12 @@ impl GoogleStreamCollector {
             arguments: arguments.clone(),
             thought_signature,
         });
-        self.events
-            .push(GoogleStreamEvent::ToolcallStart { content_index });
-        self.events.push(GoogleStreamEvent::ToolcallDelta {
+        self.push_event(GoogleStreamEvent::ToolcallStart { content_index });
+        self.push_event(GoogleStreamEvent::ToolcallDelta {
             content_index,
             delta: arguments.to_string(),
         });
-        self.events
-            .push(GoogleStreamEvent::ToolcallEnd { content_index });
+        self.push_event(GoogleStreamEvent::ToolcallEnd { content_index });
     }
 
     fn close_current_block(&mut self) {
@@ -1025,20 +1042,23 @@ impl GoogleStreamCollector {
             return;
         };
         let content_index = self.message.content.len() - 1;
-        match (kind, &self.message.content[content_index]) {
+        let event = match (kind, &self.message.content[content_index]) {
             (CurrentBlockKind::Text, GoogleContentBlock::Text { text, .. }) => {
-                self.events.push(GoogleStreamEvent::TextEnd {
+                Some(GoogleStreamEvent::TextEnd {
                     content_index,
                     content: text.clone(),
-                });
+                })
             }
             (CurrentBlockKind::Thinking, GoogleContentBlock::Thinking { thinking, .. }) => {
-                self.events.push(GoogleStreamEvent::ThinkingEnd {
+                Some(GoogleStreamEvent::ThinkingEnd {
                     content_index,
                     content: thinking.clone(),
-                });
+                })
             }
-            _ => {}
+            _ => None,
+        };
+        if let Some(event) = event {
+            self.push_event(event);
         }
     }
 
@@ -1049,15 +1069,40 @@ impl GoogleStreamCollector {
             .any(|block| matches!(block, GoogleContentBlock::ToolCall { .. }))
     }
 
-    fn finish(mut self) -> GoogleAssistantMessageEventStream {
+    fn push_event(&mut self, event: GoogleStreamEvent) {
+        self.events.push(event.clone());
+        self.frames.push(GoogleStreamFrame {
+            event,
+            partial: self.message.clone(),
+        });
+    }
+
+    /// Removes frames recorded since the previous call.
+    pub fn take_frames(&mut self) -> Vec<GoogleStreamFrame> {
+        std::mem::take(&mut self.frames)
+    }
+
+    /// Closes the active block and returns the final stream plus terminal frames.
+    #[must_use]
+    pub fn finish_incremental(
+        mut self,
+    ) -> (GoogleAssistantMessageEventStream, Vec<GoogleStreamFrame>) {
         self.close_current_block();
-        self.events.push(GoogleStreamEvent::Done {
+        self.push_event(GoogleStreamEvent::Done {
             reason: self.message.stop_reason,
         });
-        GoogleAssistantMessageEventStream {
-            events: self.events,
-            message: self.message,
-        }
+        let frames = self.take_frames();
+        (
+            GoogleAssistantMessageEventStream {
+                events: self.events,
+                message: self.message,
+            },
+            frames,
+        )
+    }
+
+    fn finish(self) -> GoogleAssistantMessageEventStream {
+        self.finish_incremental().0
     }
 }
 
@@ -1090,7 +1135,7 @@ fn user_part_to_google_part(item: UserContentPart) -> Part {
 }
 
 fn is_valid_thought_signature(signature: &str) -> bool {
-    if signature.is_empty() || signature.len() % 4 != 0 {
+    if signature.is_empty() || !signature.len().is_multiple_of(4) {
         return false;
     }
 
@@ -1690,7 +1735,7 @@ mod tests {
         });
         let tools = [make_tool(original_parameters.clone())];
 
-        convert_tools(&tools, true);
+        let _ = convert_tools(&tools, true);
 
         assert_eq!(
             original_parameters,

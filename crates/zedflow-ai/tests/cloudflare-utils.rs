@@ -3,6 +3,11 @@
 //! Test-only Cloudflare credential helpers. These only inspect environment values;
 //! they do not make live provider calls.
 
+#![allow(
+    dead_code,
+    reason = "standalone port of helpers imported by Pi test suites"
+)]
+
 fn has_env_value(name: &str) -> bool {
     std::env::var_os(name).is_some_and(|value| !value.is_empty())
 }

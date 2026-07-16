@@ -5,7 +5,7 @@
 //! and tool-result message model are still `request-capture blocker`s, so parity tests are ignored until
 //! those blockers are removed.
 
-use zedflow_ai::api::lazy::StopReason;
+use zedflow_ai::types::StopReason;
 
 const BLOCKER: &str = "live Unicode surrogate provider parity skipped; requires provider credentials/OAuth plus completed compat::get_model, compat::complete, provider streaming transports, and full Context/tool-result message ports";
 
@@ -103,6 +103,10 @@ struct ProviderCase {
     options: &'static [CaseOption],
 }
 
+#[allow(
+    dead_code,
+    reason = "fields are consumed only by capability-gated live dispatch"
+)]
 #[derive(Debug, Clone, Copy)]
 enum CredentialGate {
     Env(&'static str),
@@ -113,6 +117,10 @@ enum CredentialGate {
     OAuth(&'static str),
 }
 
+#[allow(
+    dead_code,
+    reason = "fields are consumed only by capability-gated live dispatch"
+)]
 #[derive(Debug, Clone, Copy)]
 enum CaseOption {
     ApiKeyFromOAuth(&'static str),
@@ -142,6 +150,10 @@ impl FixturePayload {
     }
 }
 
+#[allow(
+    dead_code,
+    reason = "constructed only by capability-gated live responses"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ContentBlock {
     Text(String),
@@ -383,7 +395,7 @@ fn handles_emoji_in_tool_results() {
         let response = run_live_unicode_probe(*case, ProbeFixture::EmojiInToolResults);
 
         assert_not_error(&response);
-        assert!(response.content.len() > 0);
+        assert!(!response.content.is_empty());
     }
 }
 
@@ -412,6 +424,6 @@ fn handles_unpaired_high_surrogate_in_tool_results() {
         let response = run_live_unicode_probe(*case, ProbeFixture::UnpairedHighSurrogate);
 
         assert_not_error(&response);
-        assert!(response.content.len() > 0);
+        assert!(!response.content.is_empty());
     }
 }

@@ -43,7 +43,9 @@ pub type OAuthCredentials = OAuthCredential;
 /// OAuth provider identifier.
 pub type OAuthProviderId = String;
 
-static OAUTH_PROVIDER_REGISTRY: LazyLock<RwLock<Vec<(String, Arc<dyn OAuthProviderInterface>)>>> =
+type OAuthProviderRegistry = Vec<(String, Arc<dyn OAuthProviderInterface>)>;
+
+static OAUTH_PROVIDER_REGISTRY: LazyLock<RwLock<OAuthProviderRegistry>> =
     LazyLock::new(|| RwLock::new(built_in_oauth_providers()));
 
 /// Rust shape for Pi's `OAuthProviderInterface` registry contract.

@@ -91,8 +91,10 @@ mod tests {
 
     #[test]
     fn model_lookup_reads_generated_catalog() {
-        let model = get_image_model(KnownImagesProvider::Openrouter, "openrouter/auto")
-            .expect("openrouter auto model should be generated");
+        let model = get_image_models(KnownImagesProvider::Openrouter)
+            .into_iter()
+            .next()
+            .expect("openrouter image models should be generated");
 
         assert_eq!(model.api, "openrouter-images");
         assert_eq!(model.provider, "openrouter");

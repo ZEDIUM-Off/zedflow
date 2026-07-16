@@ -121,6 +121,33 @@ where
     Fut: Future<Output = Result<OAuthDeviceCodePollResult<T>, E>>,
     E: StdError + Send + Sync + 'static,
 {
+    let started = Instant::now();
+    poll_oauth_device_code_flow_with_runtime(
+        options,
+        move || started.elapsed(),
+        |duration, signal| async move { abortable_sleep(duration, signal.as_ref()).await },
+    )
+    .await
+}
+
+/// Polls with caller-provided monotonic time and sleep operations.
+///
+/// This is the deterministic test seam for the same state machine used by
+/// [`poll_oauth_device_code_flow`].
+#[doc(hidden)]
+pub async fn poll_oauth_device_code_flow_with_runtime<T, P, Fut, E, N, S, SleepFut>(
+    options: OAuthDeviceCodePollOptions<P>,
+    now: N,
+    mut sleep: S,
+) -> OAuthDeviceCodeFlowResult<T>
+where
+    P: FnMut() -> Fut,
+    Fut: Future<Output = Result<OAuthDeviceCodePollResult<T>, E>>,
+    E: StdError + Send + Sync + 'static,
+    N: Fn() -> Duration,
+    S: FnMut(Duration, Option<AbortSignal>) -> SleepFut,
+    SleepFut: Future<Output = OAuthDeviceCodeFlowResult<()>>,
+{
     let OAuthDeviceCodePollOptions {
         interval_seconds,
         expires_in_seconds,
@@ -129,18 +156,18 @@ where
         signal,
     } = options;
 
-    let deadline = deadline_from_now(expires_in_seconds);
+    let deadline = deadline_from_now(expires_in_seconds, now());
     let mut interval = interval_duration(interval_seconds);
     let mut slow_down_responses = 0_usize;
 
     if wait_before_first_poll {
-        let Some(sleep_for) = sleep_duration(interval, deadline) else {
+        let Some(sleep_for) = sleep_duration(interval, deadline, now()) else {
             return Err(timeout_error(slow_down_responses));
         };
-        abortable_sleep(sleep_for, signal.as_ref()).await?;
+        sleep(sleep_for, signal.clone()).await?;
     }
 
-    while !is_expired(deadline) {
+    while !is_expired(deadline, now()) {
         if is_aborted(signal.as_ref()) {
             return Err(OAuthDeviceCodeFlowError::Cancelled);
         }
@@ -163,23 +190,23 @@ where
             }
         }
 
-        let Some(sleep_for) = sleep_duration(interval, deadline) else {
+        let Some(sleep_for) = sleep_duration(interval, deadline, now()) else {
             break;
         };
-        abortable_sleep(sleep_for, signal.as_ref()).await?;
+        sleep(sleep_for, signal.clone()).await?;
     }
 
     Err(timeout_error(slow_down_responses))
 }
 
-fn deadline_from_now(expires_in_seconds: Option<f64>) -> Option<Instant> {
+fn deadline_from_now(expires_in_seconds: Option<f64>, now: Duration) -> Option<Duration> {
     match expires_in_seconds {
         None => None,
         Some(seconds) if seconds.is_infinite() && seconds.is_sign_positive() => None,
         Some(seconds) if seconds.is_finite() && seconds > 0.0 => {
-            Instant::now().checked_add(Duration::from_secs_f64(seconds))
+            now.checked_add(Duration::from_secs_f64(seconds))
         }
-        Some(_) => Some(Instant::now()),
+        Some(_) => Some(now),
     }
 }
 
@@ -196,19 +223,23 @@ fn interval_duration(interval_seconds: Option<f64>) -> Duration {
     Duration::from_millis(millis)
 }
 
-fn sleep_duration(interval: Duration, deadline: Option<Instant>) -> Option<Duration> {
+fn sleep_duration(
+    interval: Duration,
+    deadline: Option<Duration>,
+    now: Duration,
+) -> Option<Duration> {
     let Some(deadline) = deadline else {
         return Some(interval);
     };
 
     deadline
-        .checked_duration_since(Instant::now())
+        .checked_sub(now)
         .map(|remaining| interval.min(remaining))
         .filter(|duration| !duration.is_zero())
 }
 
-fn is_expired(deadline: Option<Instant>) -> bool {
-    deadline.is_some_and(|deadline| Instant::now() >= deadline)
+fn is_expired(deadline: Option<Duration>, now: Duration) -> bool {
+    deadline.is_some_and(|deadline| now >= deadline)
 }
 
 fn timeout_error(slow_down_responses: usize) -> OAuthDeviceCodeFlowError {

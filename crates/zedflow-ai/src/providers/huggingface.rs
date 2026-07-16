@@ -1,8 +1,9 @@
 //! Hugging Face provider factory ported from Pi's `packages/ai/src/providers/huggingface.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use zedflow_core::error::Result;
 
 use crate::models::Provider;
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
 
 /// Hugging Face provider id used by Pi.
 pub const HUGGINGFACE_PROVIDER_ID: &str = "huggingface";
@@ -22,58 +23,25 @@ pub const HUGGINGFACE_API_KEY_AUTH_NAME: &str = "Hugging Face token";
 /// Environment variables checked for Hugging Face token auth, in Pi precedence order.
 pub const HUGGINGFACE_API_KEY_ENV_VARS: &[&str] = &["HF_TOKEN"];
 
-/// Creates Pi's Hugging Face provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/providers/huggingface.models.ts HUGGINGFACE_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "huggingface", name: "Hugging Face", baseUrl: "https://router.huggingface.co/v1", auth: { apiKey: envApiKeyAuth("Hugging Face token", ["HF_TOKEN"]) }, models: Object.values(HUGGINGFACE_MODELS), api: openAICompletionsApi() })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract and
-/// Hugging Face model catalog are available in Rust.
-#[must_use]
+/// Creates the huggingface provider from the static Rust model catalog.
 pub fn huggingface_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/providers/huggingface.models.ts HUGGINGFACE_MODELS",
-        "return createProvider({ id: \"huggingface\", name: \"Hugging Face\", baseUrl: \"https://router.huggingface.co/v1\", auth: { apiKey: envApiKeyAuth(\"Hugging Face token\", [\"HF_TOKEN\"]) }, models: Object.values(HUGGINGFACE_MODELS), api: openAICompletionsApi() })",
-    )
+    let provider = static_provider(
+        HUGGINGFACE_PROVIDER_ID,
+        HUGGINGFACE_PROVIDER_NAME,
+        models_from_catalog(crate::providers::huggingface_models::HUGGINGFACE_MODELS),
+    );
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_huggingface_provider_blocker() {
-        match huggingface_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("HUGGINGFACE_MODELS")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("openAICompletionsApi")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_huggingface_provider_constants() {
-        assert_eq!(HUGGINGFACE_PROVIDER_ID, "huggingface");
-        assert_eq!(HUGGINGFACE_PROVIDER_NAME, "Hugging Face");
-        assert_eq!(HUGGINGFACE_BASE_URL, "https://router.huggingface.co/v1");
-        assert_eq!(HUGGINGFACE_API, "openai-completions");
-        assert_eq!(HUGGINGFACE_API_KEY_AUTH_NAME, "Hugging Face token");
-        assert_eq!(HUGGINGFACE_API_KEY_ENV_VARS, &["HF_TOKEN"]);
+    fn builds_provider_from_static_catalog() {
+        let provider = huggingface_provider().expect("provider");
+        assert_eq!(provider.id, HUGGINGFACE_PROVIDER_ID);
+        assert_eq!(provider.name, HUGGINGFACE_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

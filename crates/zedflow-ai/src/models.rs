@@ -4,38 +4,65 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use crate::auth::resolve::{AuthResult, ModelsError, ModelsErrorCode};
+use futures::executor::block_on;
+use futures::future::{BoxFuture, FutureExt, Shared, join_all};
 
-/// API identifier for a model stream implementation.
-pub type Api = String;
+use crate::auth::resolve::{
+    AuthResolutionOverrides, ModelsError, ModelsErrorCode, resolve_provider_auth,
+};
+use crate::auth::types::{
+    AuthContext, AuthFuture, AuthModel, AuthProvider, CredentialStore,
+    ProviderEnv as AuthProviderEnv, ProviderHeaders as AuthProviderHeaders, ResolvedAuth,
+};
+use crate::types::{
+    AssistantContentBlock, AssistantMessageEvent, AssistantMessageRole, ErrorStopReason,
+    ProviderHeaders, ProviderStreams, StopReason, TextContent, TextContentType, Usage, UsageCost,
+};
 
-/// Minimal chat model shape used by the collection.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Model {
-    /// Provider id that owns this model.
-    pub provider: String,
-    /// Model id.
-    pub id: String,
-    /// API implementation id.
-    pub api: Api,
+pub use crate::auth::types::ProviderAuth;
+pub use crate::types::{
+    Api, AssistantMessage, AssistantMessageEventStream, Context, Model, SimpleStreamOptions,
+    StreamOptions,
+};
+
+/// Dynamic model refresh callback.
+pub type RefreshModelSource =
+    Arc<dyn Fn() -> BoxFuture<'static, Result<Vec<Model>, ModelsError>> + Send + Sync>;
+
+type SharedRefresh = Shared<BoxFuture<'static, Result<(), ModelsError>>>;
+
+/// Last-known model source for a provider.
+pub type ModelSource = Arc<Mutex<Result<Vec<Model>, ModelsError>>>;
+
+/// Single implementation or dispatch map keyed by `model.api`.
+#[derive(Clone)]
+pub enum ProviderApi {
+    /// One stream implementation handles every model.
+    Single(ProviderStreams),
+    /// Stream implementations are selected by `model.api`.
+    ByApi(HashMap<Api, ProviderStreams>),
 }
 
-/// Minimal stream options placeholder.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StreamOptions {
-    /// Optional API key supplied by caller.
-    pub api_key: Option<String>,
+impl ProviderApi {
+    fn streams_for(&self, api: &str) -> Option<&ProviderStreams> {
+        match self {
+            Self::Single(streams) => Some(streams),
+            Self::ByApi(streams) => streams.get(api),
+        }
+    }
 }
 
-/// Minimal assistant message returned by `complete`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AssistantMessage {
-    /// Text content.
-    pub text: String,
+impl fmt::Debug for ProviderApi {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Single(_) => f.write_str("ProviderApi::Single(..)"),
+            Self::ByApi(streams) => f
+                .debug_struct("ProviderApi::ByApi")
+                .field("apis", &streams.keys().collect::<Vec<_>>())
+                .finish(),
+        }
+    }
 }
-
-/// Minimal stream event list. This is intentionally small until concrete stream rows own event types.
-pub type AssistantMessageEventStream = Vec<AssistantMessage>;
 
 /// Provider runtime unit.
 #[derive(Clone)]
@@ -44,10 +71,19 @@ pub struct Provider {
     pub id: String,
     /// Display name.
     pub name: String,
-    models: Arc<Mutex<Vec<Model>>>,
-    refresh_models: Option<Arc<dyn Fn() -> Result<Vec<Model>, ModelsError> + Send + Sync>>,
-    stream:
-        Arc<dyn Fn(&Model, Option<&StreamOptions>) -> AssistantMessageEventStream + Send + Sync>,
+    /// Provider-level base URL metadata.
+    pub base_url: Option<String>,
+    /// Provider-level HTTP headers metadata.
+    pub headers: Option<ProviderHeaders>,
+    /// Provider auth metadata.
+    pub auth: ProviderAuth,
+    /// Last-known models.
+    pub model_source: ModelSource,
+    /// Optional dynamic refresh source.
+    pub refresh_source: Option<RefreshModelSource>,
+    in_flight_refresh: Arc<Mutex<Option<SharedRefresh>>>,
+    /// Single stream implementation or per-API dispatch map.
+    pub api: ProviderApi,
 }
 
 impl fmt::Debug for Provider {
@@ -55,26 +91,66 @@ impl fmt::Debug for Provider {
         f.debug_struct("Provider")
             .field("id", &self.id)
             .field("name", &self.name)
-            .field("models", &self.models)
-            .finish_non_exhaustive()
+            .field("base_url", &self.base_url)
+            .field("headers", &self.headers)
+            .field(
+                "auth_configured",
+                &(self.auth.api_key.is_some() || self.auth.oauth.is_some()),
+            )
+            .field("model_source", &self.model_source)
+            .field("refresh_source", &self.refresh_source.is_some())
+            .field("api", &self.api)
+            .finish()
     }
 }
 
 impl Provider {
-    /// Returns last-known provider models.
+    /// Returns last-known provider models, or an empty list if the source failed.
     #[must_use]
     pub fn get_models(&self) -> Vec<Model> {
-        self.models.lock().expect("models lock poisoned").clone()
+        self.get_models_result().unwrap_or_default()
     }
 
-    /// Refreshes dynamic models if configured.
-    pub fn refresh_models(&self) -> Result<(), ModelsError> {
-        let Some(refresh) = &self.refresh_models else {
+    /// Returns the fallible last-known provider model source.
+    pub fn get_models_result(&self) -> Result<Vec<Model>, ModelsError> {
+        self.model_source
+            .lock()
+            .expect("models lock poisoned")
+            .clone()
+    }
+
+    /// Refreshes dynamic models if configured. Concurrent calls share one fetch.
+    pub async fn refresh_models(&self) -> Result<(), ModelsError> {
+        let Some(refresh) = &self.refresh_source else {
             return Ok(());
         };
-        let models = refresh()?;
-        *self.models.lock().expect("models lock poisoned") = models;
-        Ok(())
+
+        let in_flight = {
+            let mut guard = self
+                .in_flight_refresh
+                .lock()
+                .expect("refresh lock poisoned");
+            if let Some(in_flight) = guard.clone() {
+                in_flight
+            } else {
+                let refresh = Arc::clone(refresh);
+                let model_source = Arc::clone(&self.model_source);
+                let in_flight_refresh = Arc::clone(&self.in_flight_refresh);
+                let in_flight = async move {
+                    let result = refresh().await;
+                    if let Ok(models) = result.as_ref() {
+                        *model_source.lock().expect("models lock poisoned") = Ok(models.clone());
+                    }
+                    *in_flight_refresh.lock().expect("refresh lock poisoned") = None;
+                    result.map(|_| ())
+                }
+                .boxed()
+                .shared();
+                *guard = Some(in_flight.clone());
+                in_flight
+            }
+        };
+        in_flight.await
     }
 
     /// Opens a message event stream.
@@ -82,27 +158,81 @@ impl Provider {
     pub fn stream(
         &self,
         model: &Model,
+        context: &Context,
         options: Option<&StreamOptions>,
     ) -> AssistantMessageEventStream {
-        (self.stream)(model, options)
+        self.api.streams_for(&model.api).map_or_else(
+            || stream_error(missing_api_message(self, model)),
+            |streams| (streams.stream)(model, context, options),
+        )
+    }
+
+    /// Opens a simple message event stream.
+    #[must_use]
+    pub fn stream_simple(
+        &self,
+        model: &Model,
+        context: &Context,
+        options: Option<&SimpleStreamOptions>,
+    ) -> AssistantMessageEventStream {
+        self.api.streams_for(&model.api).map_or_else(
+            || stream_error(missing_api_message(self, model)),
+            |streams| (streams.stream_simple)(model, context, options),
+        )
     }
 }
 
 /// Mutable runtime collection of providers.
-#[derive(Default)]
 pub struct Models {
-    providers: HashMap<String, Provider>,
+    providers: Vec<Provider>,
+    auth_context: Arc<dyn AuthContext>,
+    credentials: Arc<dyn CredentialStore>,
+}
+
+impl Default for Models {
+    fn default() -> Self {
+        Self {
+            providers: Vec::new(),
+            auth_context: Arc::new(DefaultAuthContext),
+            credentials: Arc::new(crate::auth::credential_store::InMemoryCredentialStore::new()),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct DefaultAuthContext;
+
+impl AuthContext for DefaultAuthContext {
+    fn env<'a>(&'a self, name: &'a str) -> AuthFuture<'a, Option<String>> {
+        Box::pin(async move {
+            std::env::var(name)
+                .ok()
+                .filter(|value| !value.trim().is_empty())
+        })
+    }
+
+    fn file_exists<'a>(&'a self, path: &'a str) -> AuthFuture<'a, bool> {
+        Box::pin(async move { default_file_exists(path) })
+    }
 }
 
 impl Models {
-    /// Upsert/replace by provider id.
+    /// Upsert/replace by provider id without moving its insertion slot.
     pub fn set_provider(&mut self, provider: Provider) {
-        self.providers.insert(provider.id.clone(), provider);
+        if let Some(existing) = self
+            .providers
+            .iter_mut()
+            .find(|entry| entry.id == provider.id)
+        {
+            *existing = provider;
+        } else {
+            self.providers.push(provider);
+        }
     }
 
     /// Delete provider by id.
     pub fn delete_provider(&mut self, id: &str) {
-        self.providers.remove(id);
+        self.providers.retain(|provider| provider.id != id);
     }
 
     /// Clear all providers.
@@ -110,29 +240,28 @@ impl Models {
         self.providers.clear();
     }
 
-    /// Returns all providers.
+    /// Returns all providers in insertion order.
     #[must_use]
     pub fn get_providers(&self) -> Vec<Provider> {
-        self.providers.values().cloned().collect()
+        self.providers.clone()
     }
 
     /// Returns one provider.
     #[must_use]
     pub fn get_provider(&self, id: &str) -> Option<&Provider> {
-        self.providers.get(id)
+        self.providers.iter().find(|provider| provider.id == id)
     }
 
-    /// Returns models from one provider or all providers.
+    /// Returns models from one provider or all providers in insertion order.
     #[must_use]
     pub fn get_models(&self, provider: Option<&str>) -> Vec<Model> {
         if let Some(provider) = provider {
             return self
-                .providers
-                .get(provider)
+                .get_provider(provider)
                 .map_or_else(Vec::new, Provider::get_models);
         }
         self.providers
-            .values()
+            .iter()
             .flat_map(Provider::get_models)
             .collect()
     }
@@ -146,12 +275,12 @@ impl Models {
     }
 
     /// Refreshes one provider, or all providers best-effort.
-    pub fn refresh(&self, provider: Option<&str>) -> Result<(), ModelsError> {
+    pub async fn refresh_async(&self, provider: Option<&str>) -> Result<(), ModelsError> {
         if let Some(provider) = provider {
-            let Some(entry) = self.providers.get(provider) else {
+            let Some(entry) = self.get_provider(provider) else {
                 return Ok(());
             };
-            return entry.refresh_models().map_err(|error| {
+            return entry.refresh_models().await.map_err(|error| {
                 if error.code() == ModelsErrorCode::ModelSource {
                     error
                 } else {
@@ -162,18 +291,80 @@ impl Models {
                 }
             });
         }
-        for entry in self.providers.values() {
-            let _ = entry.refresh_models();
-        }
+        let _ = join_all(self.providers.iter().map(Provider::refresh_models)).await;
         Ok(())
     }
 
-    /// Resolves auth for a model. Full key-store/OAuth wiring stays in auth rows.
-    #[must_use]
-    pub fn get_auth(&self, model: &Model) -> Option<AuthResult> {
-        self.providers
-            .get(&model.provider)
-            .map(|_| AuthResult::default())
+    /// Synchronous compatibility wrapper around [`Models::refresh_async`].
+    pub fn refresh(&self, provider: Option<&str>) -> Result<(), ModelsError> {
+        block_on(self.refresh_async(provider))
+    }
+
+    /// Resolves stored or ambient provider auth for a model.
+    pub async fn get_auth_async(&self, model: &Model) -> Result<Option<ResolvedAuth>, ModelsError> {
+        let Some(provider) = self.get_provider(&model.provider) else {
+            return Ok(None);
+        };
+        self.resolve_auth(provider, model, None).await
+    }
+
+    /// Synchronous compatibility wrapper around [`Models::get_auth_async`].
+    pub fn get_auth(&self, model: &Model) -> Result<Option<ResolvedAuth>, ModelsError> {
+        block_on(self.get_auth_async(model))
+    }
+
+    async fn resolve_auth(
+        &self,
+        provider: &Provider,
+        model: &Model,
+        overrides: Option<&AuthResolutionOverrides>,
+    ) -> Result<Option<ResolvedAuth>, ModelsError> {
+        resolve_provider_auth(
+            &AuthProvider {
+                id: provider.id.clone(),
+                auth: provider.auth.clone(),
+            },
+            &auth_model(model),
+            self.credentials.as_ref(),
+            self.auth_context.as_ref(),
+            overrides,
+        )
+        .await
+    }
+
+    fn apply_auth_to_stream_options(
+        &self,
+        provider: &Provider,
+        model: &Model,
+        options: Option<&StreamOptions>,
+    ) -> Result<(Model, Option<StreamOptions>), ModelsError> {
+        let overrides = auth_overrides(options);
+        let resolution = block_on(self.resolve_auth(provider, model, overrides.as_ref()))?;
+        Ok(merge_resolved_auth(model, options.cloned(), resolution))
+    }
+
+    fn apply_auth_to_simple_options(
+        &self,
+        provider: &Provider,
+        model: &Model,
+        options: Option<&SimpleStreamOptions>,
+    ) -> Result<(Model, Option<SimpleStreamOptions>), ModelsError> {
+        let stream_options = options.map(|options| &options.stream);
+        let (request_model, request_stream_options) =
+            self.apply_auth_to_stream_options(provider, model, stream_options)?;
+        let request_options = match (options.cloned(), request_stream_options) {
+            (Some(mut options), Some(stream)) => {
+                options.stream = stream;
+                Some(options)
+            }
+            (Some(options), None) => Some(options),
+            (None, Some(stream)) => Some(SimpleStreamOptions {
+                stream,
+                ..SimpleStreamOptions::default()
+            }),
+            (None, None) => None,
+        };
+        Ok((request_model, request_options))
     }
 
     /// Opens a stream through the owning provider.
@@ -181,20 +372,59 @@ impl Models {
     pub fn stream(
         &self,
         model: &Model,
+        context: &Context,
         options: Option<&StreamOptions>,
     ) -> AssistantMessageEventStream {
-        self.providers
-            .get(&model.provider)
-            .map_or_else(Vec::new, |provider| provider.stream(model, options))
+        let Some(provider) = self.get_provider(&model.provider) else {
+            return stream_error(unknown_provider_message(model, &model.provider));
+        };
+        match self.apply_auth_to_stream_options(provider, model, options) {
+            Ok((request_model, request_options)) => {
+                provider.stream(&request_model, context, request_options.as_ref())
+            }
+            Err(error) => stream_error(auth_stream_error_message(model, error)),
+        }
+    }
+
+    /// Opens a simple stream through the owning provider.
+    #[must_use]
+    pub fn stream_simple(
+        &self,
+        model: &Model,
+        context: &Context,
+        options: Option<&SimpleStreamOptions>,
+    ) -> AssistantMessageEventStream {
+        let Some(provider) = self.get_provider(&model.provider) else {
+            return stream_error(unknown_provider_message(model, &model.provider));
+        };
+        match self.apply_auth_to_simple_options(provider, model, options) {
+            Ok((request_model, request_options)) => {
+                provider.stream_simple(&request_model, context, request_options.as_ref())
+            }
+            Err(error) => stream_error(auth_stream_error_message(model, error)),
+        }
     }
 
     /// Collects the stream into a single assistant message.
     #[must_use]
-    pub fn complete(&self, model: &Model, options: Option<&StreamOptions>) -> AssistantMessage {
-        self.stream(model, options)
-            .into_iter()
-            .last()
-            .unwrap_or_default()
+    pub fn complete(
+        &self,
+        model: &Model,
+        context: &Context,
+        options: Option<&StreamOptions>,
+    ) -> AssistantMessage {
+        block_on(self.stream(model, context, options).result())
+    }
+
+    /// Collects the simple stream into a single assistant message.
+    #[must_use]
+    pub fn complete_simple(
+        &self,
+        model: &Model,
+        context: &Context,
+        options: Option<&SimpleStreamOptions>,
+    ) -> AssistantMessage {
+        block_on(self.stream_simple(model, context, options).result())
     }
 }
 
@@ -204,19 +434,238 @@ pub fn create_models() -> Models {
     Models::default()
 }
 
+/// Creates an empty provider collection with a custom auth context.
+#[must_use]
+pub fn create_models_with_auth_context(context: impl AuthContext + 'static) -> Models {
+    create_models_with_auth_context_and_credentials(
+        context,
+        crate::auth::credential_store::InMemoryCredentialStore::new(),
+    )
+}
+
+/// Creates an empty provider collection with a custom credential store.
+#[must_use]
+pub fn create_models_with_credentials(credentials: impl CredentialStore + 'static) -> Models {
+    Models {
+        providers: Vec::new(),
+        auth_context: Arc::new(DefaultAuthContext),
+        credentials: Arc::new(credentials),
+    }
+}
+
+/// Creates an empty provider collection with custom auth context and credentials.
+#[must_use]
+pub fn create_models_with_auth_context_and_credentials(
+    context: impl AuthContext + 'static,
+    credentials: impl CredentialStore + 'static,
+) -> Models {
+    Models {
+        providers: Vec::new(),
+        auth_context: Arc::new(context),
+        credentials: Arc::new(credentials),
+    }
+}
+
+fn auth_model(model: &Model) -> AuthModel {
+    AuthModel {
+        provider: model.provider.clone(),
+        api: model.api.clone(),
+        id: model.id.clone(),
+        base_url: non_empty(model.base_url.clone()),
+    }
+}
+
+fn auth_overrides(options: Option<&StreamOptions>) -> Option<AuthResolutionOverrides> {
+    let options = options?;
+    (options.api_key.is_some() || options.env.is_some()).then(|| AuthResolutionOverrides {
+        api_key: options.api_key.clone(),
+        env: options.env.as_ref().map(|env| {
+            env.iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        }),
+    })
+}
+
+fn merge_resolved_auth(
+    model: &Model,
+    options: Option<StreamOptions>,
+    resolution: Option<ResolvedAuth>,
+) -> (Model, Option<StreamOptions>) {
+    let Some(resolution) = resolution else {
+        return (model.clone(), options);
+    };
+
+    let mut request_model = model.clone();
+    if let Some(base_url) = resolution
+        .auth
+        .base_url
+        .filter(|base_url| !base_url.is_empty())
+    {
+        request_model.base_url = base_url;
+    }
+
+    let mut request_options = options.unwrap_or_default();
+    if request_options.api_key.is_none() {
+        request_options.api_key = resolution.auth.api_key;
+    }
+    request_options.headers = merge_headers(resolution.auth.headers, request_options.headers);
+    request_options.env = merge_env(resolution.env, request_options.env);
+
+    (request_model, Some(request_options))
+}
+
+fn merge_headers(
+    resolved: Option<AuthProviderHeaders>,
+    explicit: Option<ProviderHeaders>,
+) -> Option<ProviderHeaders> {
+    if resolved.is_none() && explicit.is_none() {
+        return None;
+    }
+    let mut headers = resolved
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<ProviderHeaders>();
+    headers.extend(explicit.unwrap_or_default());
+    Some(headers)
+}
+
+fn merge_env(
+    resolved: Option<AuthProviderEnv>,
+    explicit: Option<crate::types::ProviderEnv>,
+) -> Option<crate::types::ProviderEnv> {
+    if resolved.is_none() && explicit.is_none() {
+        return None;
+    }
+    let mut env = resolved
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<crate::types::ProviderEnv>();
+    env.extend(explicit.unwrap_or_default());
+    Some(env)
+}
+
+fn non_empty(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
+}
+
+fn default_file_exists(path: &str) -> bool {
+    let resolved = if let Some(rest) = path.strip_prefix("~/") {
+        std::env::var_os("HOME")
+            .map(|home| std::path::PathBuf::from(home).join(rest))
+            .unwrap_or_else(|| std::path::PathBuf::from(path))
+    } else {
+        std::path::PathBuf::from(path)
+    };
+    resolved.exists()
+}
+
+fn auth_stream_error_message(model: &Model, error: ModelsError) -> AssistantMessage {
+    let message = error.to_string();
+    assistant_message(model, StopReason::Error, message.clone(), Some(message))
+}
+
+/// Converts a setup failure into the one terminal event a request stream can expose.
+pub(crate) fn terminal_stream_error(
+    model: &Model,
+    message: impl Into<String>,
+) -> AssistantMessageEventStream {
+    let message = message.into();
+    stream_error(assistant_message(
+        model,
+        StopReason::Error,
+        message.clone(),
+        Some(message),
+    ))
+}
+
+fn unknown_provider_message(model: &Model, provider: &str) -> AssistantMessage {
+    assistant_message(
+        model,
+        StopReason::Error,
+        format!("Unknown provider: {provider}"),
+        Some(format!("Unknown provider: {provider}")),
+    )
+}
+
+fn missing_api_message(provider: &Provider, model: &Model) -> AssistantMessage {
+    let message = format!(
+        "Provider {} has no API implementation for \"{}\"",
+        provider.id, model.api
+    );
+    assistant_message(model, StopReason::Error, message.clone(), Some(message))
+}
+
+fn stream_error(message: AssistantMessage) -> AssistantMessageEventStream {
+    let stream = AssistantMessageEventStream::new();
+    stream.push(AssistantMessageEvent::Error {
+        reason: ErrorStopReason::Error,
+        error: message,
+    });
+    stream
+}
+
+#[cfg(test)]
+fn stream_done(message: AssistantMessage) -> AssistantMessageEventStream {
+    let stream = AssistantMessageEventStream::new();
+    stream.push(AssistantMessageEvent::Done {
+        reason: crate::types::DoneStopReason::Stop,
+        message,
+    });
+    stream
+}
+
+fn assistant_message(
+    model: &Model,
+    stop_reason: StopReason,
+    text: String,
+    error_message: Option<String>,
+) -> AssistantMessage {
+    AssistantMessage {
+        role: AssistantMessageRole::Assistant,
+        content: if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![AssistantContentBlock::Text(TextContent {
+                content_type: TextContentType::Text,
+                text,
+                text_signature: None,
+            })]
+        },
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        response_model: None,
+        response_id: None,
+        diagnostics: None,
+        usage: Usage {
+            cost: UsageCost::default(),
+            ..Usage::default()
+        },
+        stop_reason,
+        error_message,
+        timestamp: 0,
+    }
+}
+
 /// Options for [`create_provider`].
 pub struct CreateProviderOptions {
     /// Provider id.
     pub id: String,
     /// Optional display name.
     pub name: Option<String>,
+    /// Provider-level base URL metadata.
+    pub base_url: Option<String>,
+    /// Provider-level headers metadata.
+    pub headers: Option<ProviderHeaders>,
+    /// Provider auth metadata.
+    pub auth: ProviderAuth,
     /// Initial models.
     pub models: Vec<Model>,
     /// Dynamic refresh callback.
-    pub refresh_models: Option<Arc<dyn Fn() -> Result<Vec<Model>, ModelsError> + Send + Sync>>,
-    /// Stream callback.
-    pub stream:
-        Arc<dyn Fn(&Model, Option<&StreamOptions>) -> AssistantMessageEventStream + Send + Sync>,
+    pub refresh_models: Option<RefreshModelSource>,
+    /// Single implementation or per-API dispatch map.
+    pub api: ProviderApi,
 }
 
 /// Builds a provider from parts.
@@ -225,9 +674,13 @@ pub fn create_provider(input: CreateProviderOptions) -> Provider {
     Provider {
         id: input.id.clone(),
         name: input.name.unwrap_or(input.id),
-        models: Arc::new(Mutex::new(input.models)),
-        refresh_models: input.refresh_models,
-        stream: input.stream,
+        base_url: input.base_url,
+        headers: input.headers,
+        auth: input.auth,
+        model_source: Arc::new(Mutex::new(Ok(input.models))),
+        refresh_source: input.refresh_models,
+        in_flight_refresh: Arc::new(Mutex::new(None)),
+        api: input.api,
     }
 }
 
@@ -244,9 +697,30 @@ mod tests {
                 provider: "p".into(),
                 id: "m".into(),
                 api: "a".into(),
+                ..Model::default()
             }],
+            base_url: None,
+            headers: None,
+            auth: ProviderAuth::default(),
             refresh_models: None,
-            stream: Arc::new(|_, _| vec![AssistantMessage { text: "ok".into() }]),
+            api: ProviderApi::Single(ProviderStreams {
+                stream: Arc::new(|model, _, _| {
+                    stream_done(assistant_message(
+                        model,
+                        StopReason::Stop,
+                        "ok".into(),
+                        None,
+                    ))
+                }),
+                stream_simple: Arc::new(|model, _, _| {
+                    stream_done(assistant_message(
+                        model,
+                        StopReason::Stop,
+                        "ok".into(),
+                        None,
+                    ))
+                }),
+            }),
         });
         let mut models = create_models();
         models.set_provider(provider);
@@ -257,12 +731,18 @@ mod tests {
                     &Model {
                         provider: "p".into(),
                         id: "m".into(),
-                        api: "a".into()
+                        api: "a".into(),
+                        ..Model::default()
                     },
+                    &Context::default(),
                     None
                 )
-                .text,
-            "ok"
+                .content,
+            vec![AssistantContentBlock::Text(TextContent {
+                content_type: TextContentType::Text,
+                text: "ok".into(),
+                text_signature: None,
+            })]
         );
     }
 }

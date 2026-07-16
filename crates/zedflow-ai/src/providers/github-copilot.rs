@@ -1,8 +1,17 @@
 //! GitHub Copilot provider factory ported from Pi's `packages/ai/src/providers/github-copilot.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::models::Provider;
+use zedflow_core::error::Result;
+
+use crate::api::github_copilot_headers::build_copilot_dynamic_headers_for_context;
+use crate::models::{Provider, ProviderApi};
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
+use crate::types::{
+    AnthropicMessagesCompat, Context, Model, ModelCompat, ModelThinkingLevel, ProviderHeaders,
+    ProviderStreams, StreamOptions, ThinkingLevelMap,
+};
 
 /// GitHub Copilot provider id used by Pi.
 pub const GITHUB_COPILOT_PROVIDER_ID: &str = "github-copilot";
@@ -29,66 +38,128 @@ pub const GITHUB_COPILOT_APIS: &[&str] = &[
     "openai-responses",
 ];
 
-/// Creates Pi's GitHub Copilot provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth/lazyOAuth, references/pi/packages/ai/src/utils/oauth/load.ts loadGitHubCopilotOAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/api/openai-responses.lazy.ts openAIResponsesApi, references/pi/packages/ai/src/providers/github-copilot.models.ts GITHUB_COPILOT_MODELS`.
-/// Reason: no Rust replacement selected yet for provider auth/OAuth/API wiring.
-/// Required behavior: `return createProvider({ id: "github-copilot", name: "GitHub Copilot", baseUrl: "https://api.individual.githubcopilot.com", auth: { apiKey: envApiKeyAuth("GitHub Copilot token", ["COPILOT_GITHUB_TOKEN"]), oauth: lazyOAuth({ name: "GitHub Copilot", load: loadGitHubCopilotOAuth }) }, models: Object.values(GITHUB_COPILOT_MODELS), api: { "anthropic-messages": anthropicMessagesApi(), "openai-completions": openAICompletionsApi(), "openai-responses": openAIResponsesApi() } })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract and
-/// GitHub Copilot OAuth loader are available in Rust.
-#[must_use]
+/// Creates the GitHub Copilot provider with Pi's mixed-API dispatch.
 pub fn github_copilot_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth/lazyOAuth, references/pi/packages/ai/src/utils/oauth/load.ts loadGitHubCopilotOAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/api/openai-responses.lazy.ts openAIResponsesApi, references/pi/packages/ai/src/providers/github-copilot.models.ts GITHUB_COPILOT_MODELS",
-        "return createProvider({ id: \"github-copilot\", name: \"GitHub Copilot\", baseUrl: \"https://api.individual.githubcopilot.com\", auth: { apiKey: envApiKeyAuth(\"GitHub Copilot token\", [\"COPILOT_GITHUB_TOKEN\"]), oauth: lazyOAuth({ name: \"GitHub Copilot\", load: loadGitHubCopilotOAuth }) }, models: Object.values(GITHUB_COPILOT_MODELS), api: { \"anthropic-messages\": anthropicMessagesApi(), \"openai-completions\": openAICompletionsApi(), \"openai-responses\": openAIResponsesApi() } })",
-    )
+    let mut provider = static_provider(
+        GITHUB_COPILOT_PROVIDER_ID,
+        GITHUB_COPILOT_PROVIDER_NAME,
+        registered_models(),
+    );
+    provider.base_url = Some(GITHUB_COPILOT_BASE_URL.to_owned());
+    provider.api = ProviderApi::ByApi(HashMap::from([
+        ("anthropic-messages".to_owned(), copilot_anthropic_streams()),
+        (
+            "openai-completions".to_owned(),
+            crate::api::openai_completions_lazy::open_ai_completions_api(),
+        ),
+        (
+            "openai-responses".to_owned(),
+            crate::api::openai_responses_lazy::open_ai_responses_api(),
+        ),
+    ]));
+    Ok(provider)
+}
+
+fn registered_models() -> Vec<Model> {
+    let mut models =
+        models_from_catalog(crate::providers::github_copilot_models::GITHUB_COPILOT_MODELS);
+    for (model, source) in models
+        .iter_mut()
+        .zip(crate::providers::github_copilot_models::GITHUB_COPILOT_MODELS)
+    {
+        model.headers = Some(
+            source
+                .headers
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+                .collect(),
+        );
+        model.thinking_level_map = source.thinking_level_map.map(|entries| {
+            entries
+                .iter()
+                .filter_map(|(level, value)| {
+                    let level = match *level {
+                        "off" => ModelThinkingLevel::Off,
+                        "minimal" => ModelThinkingLevel::Minimal,
+                        "low" => ModelThinkingLevel::Low,
+                        "medium" => ModelThinkingLevel::Medium,
+                        "high" => ModelThinkingLevel::High,
+                        "xhigh" => ModelThinkingLevel::XHigh,
+                        _ => return None,
+                    };
+                    Some((level, value.map(str::to_owned)))
+                })
+                .collect::<ThinkingLevelMap>()
+        });
+        if model.api == "anthropic-messages" {
+            model.compat = source.compat.map(|compat| {
+                ModelCompat::AnthropicMessages(AnthropicMessagesCompat {
+                    supports_eager_tool_input_streaming: compat.supports_eager_tool_input_streaming,
+                    supports_temperature: compat.supports_temperature,
+                    force_adaptive_thinking: compat.force_adaptive_thinking,
+                    ..AnthropicMessagesCompat::default()
+                })
+            });
+        }
+    }
+    models
+}
+
+fn copilot_anthropic_streams() -> ProviderStreams {
+    let anthropic = crate::api::anthropic_messages_lazy::anthropic_messages_api();
+    let simple_anthropic = anthropic.clone();
+    ProviderStreams {
+        stream: Arc::new(move |model, context, options| {
+            let options = copilot_stream_options(context, options.cloned().unwrap_or_default());
+            (anthropic.stream)(model, context, Some(&options))
+        }),
+        stream_simple: Arc::new(move |model, context, options| {
+            let mut options = options.cloned().unwrap_or_default();
+            options.stream = copilot_stream_options(context, options.stream);
+            (simple_anthropic.stream_simple)(model, context, Some(&options))
+        }),
+    }
+}
+
+fn copilot_stream_options(context: &Context, mut options: StreamOptions) -> StreamOptions {
+    let mut headers = copilot_headers(context);
+    if let Some(option_headers) = options.headers.take() {
+        headers.extend(option_headers);
+    }
+    options.headers = Some(headers);
+    options
+}
+
+fn copilot_headers(context: &Context) -> ProviderHeaders {
+    build_copilot_dynamic_headers_for_context(&context.messages)
+        .into_iter()
+        .map(|(name, value)| (name, Some(value)))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_github_copilot_provider_blocker() {
-        match github_copilot_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(placeholder.original_dependency().contains("lazyOAuth"));
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("loadGitHubCopilotOAuth")
-                );
-                assert!(placeholder.required_behavior().contains("openai-responses"));
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_github_copilot_provider_constants() {
-        assert_eq!(GITHUB_COPILOT_PROVIDER_ID, "github-copilot");
-        assert_eq!(GITHUB_COPILOT_PROVIDER_NAME, "GitHub Copilot");
-        assert_eq!(
-            GITHUB_COPILOT_BASE_URL,
-            "https://api.individual.githubcopilot.com"
-        );
-        assert_eq!(GITHUB_COPILOT_API_KEY_AUTH_NAME, "GitHub Copilot token");
-        assert_eq!(GITHUB_COPILOT_OAUTH_NAME, "GitHub Copilot");
-        assert_eq!(GITHUB_COPILOT_API_KEY_ENV_VARS, &["COPILOT_GITHUB_TOKEN"]);
-        assert_eq!(
-            GITHUB_COPILOT_APIS,
-            &[
-                "anthropic-messages",
-                "openai-completions",
-                "openai-responses"
-            ]
-        );
+    fn builds_provider_with_exact_mixed_api_registration() {
+        let provider = github_copilot_provider().expect("provider");
+        assert_eq!(provider.id, GITHUB_COPILOT_PROVIDER_ID);
+        assert_eq!(provider.name, GITHUB_COPILOT_PROVIDER_NAME);
+        assert_eq!(provider.base_url.as_deref(), Some(GITHUB_COPILOT_BASE_URL));
+        let ProviderApi::ByApi(apis) = &provider.api else {
+            panic!("Copilot must dispatch by model API");
+        };
+        let mut actual = apis.keys().map(String::as_str).collect::<Vec<_>>();
+        actual.sort_unstable();
+        let mut expected = GITHUB_COPILOT_APIS.to_vec();
+        expected.sort_unstable();
+        assert_eq!(actual, expected);
+        assert!(provider.get_models().iter().any(|model| {
+            model.api == "anthropic-messages"
+                && model.headers.as_ref().is_some_and(|headers| {
+                    headers.get("Copilot-Integration-Id").map(String::as_str) == Some("vscode-chat")
+                })
+        }));
     }
 }

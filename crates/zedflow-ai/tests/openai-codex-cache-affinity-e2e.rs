@@ -1,55 +1,79 @@
 //! Port of Pi `packages/ai/test/openai-codex-cache-affinity-e2e.test.ts`.
 //!
-//! The source test is a live OpenAI Codex SSE request gated by local auth. P1.T2 forbids live
-//! provider calls, and the Rust Codex transport/compat model catalog are still documented port
-//! placeholders, so this parity test is represented as ignored until those blockers are removed.
+//! The source test is a live OpenAI Codex SSE request gated by local auth.
+//! It is capability-gated here and uses the Codex SSE live transport directly.
 
-const BLOCKER: &str = "live OpenAI Codex SSE cache-affinity test skipped; requires local openai-codex credentials plus completed compat::get_model/complete and Codex SSE transport ports";
+mod common;
+
+use futures::executor::block_on;
+use serde_json::json;
+use zedflow_ai::api::openai_codex_responses::{
+    Context, Model, OpenAICodexResponsesOptions, Transport, stream_live,
+};
+
 const EXPECTED_TEXT: &str = "cache affinity e2e success";
 const SESSION_ID: &str = "0195d6e4-4cf9-7f44-a2d8-f8f7f49ee9d3";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ContentBlock {
-    Text(String),
+fn run_live_codex_sse_cache_affinity_request(
+    api_key: String,
+) -> zedflow_ai::types::AssistantMessage {
+    let model = Model {
+        id: "gpt-5.5".to_owned(),
+        provider: "openai-codex".to_owned(),
+        base_url: Some("https://chatgpt.com/backend-api".to_owned()),
+        reasoning: true,
+        thinking_level_map: Default::default(),
+        headers: Default::default(),
+        max_tokens: Some(128_000),
+    };
+    let context = Context {
+        system_prompt: Some("You are a helpful assistant. Reply exactly as requested.".to_owned()),
+        tools: Vec::new(),
+        input: vec![json!({
+            "role": "user",
+            "content": [{ "type": "input_text", "text": "Reply with exactly: cache affinity e2e success" }]
+        })],
+    };
+    let stream = stream_live(
+        &model,
+        &context,
+        Some(&OpenAICodexResponsesOptions {
+            api_key: Some(api_key),
+            session_id: Some(SESSION_ID.to_owned()),
+            transport: Some(Transport::Sse),
+            timeout_ms: Some(30_000),
+            ..OpenAICodexResponsesOptions::default()
+        }),
+    )
+    .expect("Codex SSE live stream should start");
+    block_on(stream.result())
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CodexResponse {
-    stop_reason: &'static str,
-    error_message: Option<String>,
-    content: Vec<ContentBlock>,
-}
-
-fn run_live_codex_sse_cache_affinity_request() -> CodexResponse {
-    let _source_fixture = (
-        "openai-codex",
-        "gpt-5.5",
-        SESSION_ID,
-        "sse",
-        "You are a helpful assistant. Reply exactly as requested.",
-        "Reply with exactly: cache affinity e2e success",
-    );
-
-    panic!("{BLOCKER}");
-}
-
-fn response_text(response: &CodexResponse) -> String {
+fn response_text(response: &zedflow_ai::types::AssistantMessage) -> String {
     response
         .content
         .iter()
-        .map(|block| match block {
-            ContentBlock::Text(text) => text.as_str(),
+        .filter_map(|block| match block {
+            zedflow_ai::types::AssistantContentBlock::Text(text) => Some(text.text.as_str()),
+            _ => None,
         })
         .collect()
 }
 
 #[test]
-#[ignore = "live provider call skipped; see BLOCKER"]
 fn handles_sse_requests_with_aligned_cache_affinity_identifiers() {
-    let response = run_live_codex_sse_cache_affinity_request();
+    if let Some(message) = common::live_credentials::openai_codex().skip_message() {
+        eprintln!("{message}");
+        return;
+    }
+
+    let api_key = common::live_credentials::api_key("openai-codex")
+        .expect("capability helper reported Codex credentials");
+    let response = run_live_codex_sse_cache_affinity_request(api_key);
 
     assert_ne!(
-        response.stop_reason, "error",
+        response.stop_reason,
+        zedflow_ai::types::StopReason::Error,
         "{:?}",
         response.error_message
     );

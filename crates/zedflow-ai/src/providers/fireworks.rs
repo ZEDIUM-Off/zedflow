@@ -1,8 +1,15 @@
 //! Fireworks provider factory ported from Pi's `packages/ai/src/providers/fireworks.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use std::collections::HashMap;
 
-use crate::models::Provider;
+use zedflow_core::error::Result;
+
+use crate::models::{Provider, ProviderApi};
+use crate::providers::fireworks_models::FireworksModel;
+use crate::providers::static_catalog::{models_from_catalog, static_provider};
+use crate::types::{
+    AnthropicMessagesCompat, Model, ModelCompat, ModelThinkingLevel, OpenAICompletionsCompat,
+};
 
 /// Fireworks provider id used by Pi.
 pub const FIREWORKS_PROVIDER_ID: &str = "fireworks";
@@ -22,66 +29,73 @@ pub const FIREWORKS_API_KEY_ENV_VARS: &[&str] = &["FIREWORKS_API_KEY"];
 /// Fireworks chat API ids registered by Pi.
 pub const FIREWORKS_APIS: &[&str] = &["anthropic-messages", "openai-completions"];
 
-/// Creates Pi's Fireworks provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/providers/fireworks.models.ts FIREWORKS_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "fireworks", name: "Fireworks", baseUrl: "https://api.fireworks.ai/inference", auth: { apiKey: envApiKeyAuth("Fireworks API key", ["FIREWORKS_API_KEY"]) }, models: Object.values(FIREWORKS_MODELS), api: { "anthropic-messages": anthropicMessagesApi(), "openai-completions": openAICompletionsApi() } })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract and
-/// Fireworks model catalog are available in Rust.
-#[must_use]
+fn apply_catalog_metadata(model: &mut Model, source: &FireworksModel) {
+    model.compat = Some(match source.api {
+        "anthropic-messages" => ModelCompat::AnthropicMessages(AnthropicMessagesCompat {
+            supports_eager_tool_input_streaming: source.compat.supports_eager_tool_input_streaming,
+            supports_long_cache_retention: source.compat.supports_long_cache_retention,
+            send_session_affinity_headers: source.compat.send_session_affinity_headers,
+            supports_cache_control_on_tools: source.compat.supports_cache_control_on_tools,
+            ..AnthropicMessagesCompat::default()
+        }),
+        _ => ModelCompat::OpenAICompletions(OpenAICompletionsCompat {
+            supports_store: source.compat.supports_store,
+            supports_developer_role: source.compat.supports_developer_role,
+            ..OpenAICompletionsCompat::default()
+        }),
+    });
+    model.thinking_level_map = source.thinking_level_map.map(|entries| {
+        entries
+            .iter()
+            .map(|(level, value)| {
+                let level = match *level {
+                    "off" => ModelThinkingLevel::Off,
+                    "minimal" => ModelThinkingLevel::Minimal,
+                    "low" => ModelThinkingLevel::Low,
+                    "medium" => ModelThinkingLevel::Medium,
+                    "high" => ModelThinkingLevel::High,
+                    _ => ModelThinkingLevel::XHigh,
+                };
+                (level, value.map(str::to_owned))
+            })
+            .collect()
+    });
+}
+
+/// Creates the Fireworks provider from the static Rust model catalog.
 pub fn fireworks_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/api/openai-completions.lazy.ts openAICompletionsApi, references/pi/packages/ai/src/providers/fireworks.models.ts FIREWORKS_MODELS",
-        "return createProvider({ id: \"fireworks\", name: \"Fireworks\", baseUrl: \"https://api.fireworks.ai/inference\", auth: { apiKey: envApiKeyAuth(\"Fireworks API key\", [\"FIREWORKS_API_KEY\"]) }, models: Object.values(FIREWORKS_MODELS), api: { \"anthropic-messages\": anthropicMessagesApi(), \"openai-completions\": openAICompletionsApi() } })",
-    )
+    let mut models = models_from_catalog(crate::providers::fireworks_models::FIREWORKS_MODELS);
+    for model in &mut models {
+        if let Some(source) = crate::providers::fireworks_models::FIREWORKS_MODELS
+            .iter()
+            .find(|source| source.id == model.id)
+        {
+            apply_catalog_metadata(model, source);
+        }
+    }
+    let mut provider = static_provider(FIREWORKS_PROVIDER_ID, FIREWORKS_PROVIDER_NAME, models);
+    provider.api = ProviderApi::ByApi(HashMap::from([
+        (
+            "anthropic-messages".to_owned(),
+            crate::api::anthropic_messages::provider_streams(),
+        ),
+        (
+            "openai-completions".to_owned(),
+            crate::api::openai_completions::provider_streams(),
+        ),
+    ]));
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_fireworks_provider_blocker() {
-        match fireworks_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("FIREWORKS_MODELS")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("anthropicMessagesApi")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("openAICompletionsApi")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_fireworks_provider_constants() {
-        assert_eq!(FIREWORKS_PROVIDER_ID, "fireworks");
-        assert_eq!(FIREWORKS_PROVIDER_NAME, "Fireworks");
-        assert_eq!(FIREWORKS_BASE_URL, "https://api.fireworks.ai/inference");
-        assert_eq!(FIREWORKS_API_KEY_AUTH_NAME, "Fireworks API key");
-        assert_eq!(FIREWORKS_API_KEY_ENV_VARS, &["FIREWORKS_API_KEY"]);
-        assert_eq!(
-            FIREWORKS_APIS,
-            &["anthropic-messages", "openai-completions"]
-        );
+    fn builds_provider_from_static_catalog() {
+        let provider = fireworks_provider().expect("provider");
+        assert_eq!(provider.id, FIREWORKS_PROVIDER_ID);
+        assert_eq!(provider.name, FIREWORKS_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

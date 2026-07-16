@@ -1,21 +1,18 @@
 //! Compatibility entrypoint preserving Pi's legacy `packages/ai/src/compat.ts` surface.
 //!
-//! This module ports the local registry and dispatch behavior that does not require
-//! live provider calls. Builtin provider registration and generated catalog reads
-//! remain documented placeholders until the provider catalog, faux provider, and
-//! lazy stream modules are fully ported.
+//! This module ports the local registry, builtin catalog reads, faux provider registration,
+//! and dispatch behavior that does not require live provider calls.
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::api::lazy::{
-    Api, AssistantMessage, AssistantMessageEventStream, Context, Model, ProviderId,
+use crate::types::{
+    Api, AssistantMessage, AssistantMessageEventStream, Context, Model, ProviderEnv, ProviderId,
+    ProviderStreams, SimpleStreamOptions, StreamOptions,
 };
-use crate::api::simple_options::{ProviderEnv, SimpleStreamOptions, StreamOptions};
 use zedflow_core::error::{Error as CoreError, PortPlaceholderError};
-use zedflow_core::placeholders;
 
 /// Result type returned by the compat registry and dispatch functions.
 pub type Result<T> = std::result::Result<T, CompatError>;
@@ -57,25 +54,60 @@ impl fmt::Debug for ApiProvider {
     }
 }
 
-/// Placeholder registration returned by `register_faux_provider` in the TypeScript API.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/providers/faux.ts FauxProviderRegistration`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `create a faux provider, register its stream and streamSimple functions with a generated source id, expose its model/state helpers, and unregister those providers on demand`.
-/// Replacement decision needed before production use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FauxProviderRegistration;
+/// Registration returned by `register_faux_provider` in the TypeScript API.
+#[derive(Clone)]
+pub struct FauxProviderRegistration {
+    /// API id registered for the faux provider.
+    pub api: Api,
+    /// Faux models exposed by the registration.
+    pub models: Vec<Model>,
+    /// Shared faux state.
+    pub state: crate::providers::faux::FauxProviderState,
+    source_id: String,
+    core: crate::providers::faux::FauxCore,
+}
 
-/// Options accepted by the faux provider registration placeholder.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/providers/faux.ts RegisterFauxProviderOptions`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `configure createFauxCore exactly as the TypeScript compat registerFauxProvider helper does`.
-/// Replacement decision needed before production use.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RegisterFauxProviderOptions;
+impl fmt::Debug for FauxProviderRegistration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FauxProviderRegistration")
+            .field("api", &self.api)
+            .field("models", &self.models)
+            .field("state", &self.state)
+            .finish_non_exhaustive()
+    }
+}
+
+impl FauxProviderRegistration {
+    /// Returns the default faux model or the requested model id.
+    #[must_use]
+    pub fn get_model(&self, model_id: Option<&str>) -> Option<Model> {
+        self.core.get_model(model_id)
+    }
+
+    /// Replaces pending faux responses.
+    pub fn set_responses(&self, responses: Vec<crate::providers::faux::FauxResponseStep>) {
+        self.core.set_responses(responses);
+    }
+
+    /// Appends pending faux responses.
+    pub fn append_responses(&self, responses: Vec<crate::providers::faux::FauxResponseStep>) {
+        self.core.append_responses(responses);
+    }
+
+    /// Returns pending faux response count.
+    #[must_use]
+    pub fn get_pending_response_count(&self) -> usize {
+        self.core.get_pending_response_count()
+    }
+
+    /// Unregisters the faux API provider.
+    pub fn unregister(&self) {
+        unregister_api_providers(&self.source_id);
+    }
+}
+
+/// Options accepted by the faux provider registration helper.
+pub type RegisterFauxProviderOptions = crate::providers::faux::RegisterFauxProviderOptions;
 
 /// Error type for legacy compat dispatch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,6 +172,9 @@ struct RegisteredApiProvider {
 
 static API_PROVIDER_REGISTRY: OnceLock<Mutex<HashMap<Api, RegisteredApiProvider>>> =
     OnceLock::new();
+static BUILTIN_API_PROVIDER_INSTANCES: OnceLock<Mutex<HashMap<Api, ApiProvider>>> = OnceLock::new();
+static BUILTINS_REGISTERED: OnceLock<()> = OnceLock::new();
+static COMPAT_MODELS: OnceLock<crate::models::Models> = OnceLock::new();
 
 fn registry() -> &'static Mutex<HashMap<Api, RegisteredApiProvider>> {
     API_PROVIDER_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
@@ -177,6 +212,11 @@ fn wrap_stream_simple(api: Api, stream_simple: ApiStreamSimpleFunction) -> ApiSt
 
 /// Registers an API provider in the legacy compat registry.
 pub fn register_api_provider(provider: ApiProvider, source_id: Option<String>) {
+    ensure_builtins_registered();
+    register_api_provider_inner(provider, source_id);
+}
+
+fn register_api_provider_inner(provider: ApiProvider, source_id: Option<String>) {
     let api = provider.api.clone();
     let wrapped = ApiProvider {
         api: provider.api.clone(),
@@ -196,12 +236,14 @@ pub fn register_api_provider(provider: ApiProvider, source_id: Option<String>) {
 /// Returns the provider registered for an API, if any.
 #[must_use]
 pub fn get_api_provider(api: &str) -> Option<ApiProvider> {
+    ensure_builtins_registered();
     registry_lock().get(api).map(|entry| entry.provider.clone())
 }
 
 /// Returns all registered API providers.
 #[must_use]
 pub fn get_api_providers() -> Vec<ApiProvider> {
+    ensure_builtins_registered();
     registry_lock()
         .values()
         .map(|entry| entry.provider.clone())
@@ -217,97 +259,274 @@ fn clear_api_providers() {
     registry_lock().clear();
 }
 
+fn builtin_instances_lock() -> MutexGuard<'static, HashMap<Api, ApiProvider>> {
+    BUILTIN_API_PROVIDER_INSTANCES
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+}
+
+fn ensure_builtins_registered() {
+    BUILTINS_REGISTERED.get_or_init(|| {
+        let _ = register_built_in_api_providers();
+    });
+}
+
+fn builtin_apis() -> Vec<(&'static str, ProviderStreams)> {
+    vec![
+        (
+            "anthropic-messages",
+            crate::api::anthropic_messages_lazy::anthropic_messages_api(),
+        ),
+        (
+            "openai-completions",
+            crate::api::openai_completions_lazy::open_ai_completions_api(),
+        ),
+        (
+            "openai-responses",
+            crate::api::openai_responses_lazy::open_ai_responses_api(),
+        ),
+        (
+            "openai-codex-responses",
+            crate::api::openai_codex_responses_lazy::open_ai_codex_responses_api(),
+        ),
+        (
+            "azure-openai-responses",
+            crate::api::azure_openai_responses_lazy::azure_open_ai_responses_api(),
+        ),
+        (
+            "google-generative-ai",
+            crate::api::google_generative_ai_lazy::google_generative_ai_api(),
+        ),
+        (
+            "google-vertex",
+            crate::api::google_vertex_lazy::google_vertex_api(),
+        ),
+        (
+            "mistral-conversations",
+            crate::api::mistral_conversations_lazy::mistral_conversations_api(),
+        ),
+        (
+            "bedrock-converse-stream",
+            crate::api::bedrock_converse_stream_lazy::bedrock_converse_stream_api(),
+        ),
+    ]
+}
+
+fn api_provider_from_streams(api: &str, streams: ProviderStreams) -> ApiProvider {
+    ApiProvider {
+        api: api.to_owned(),
+        stream: Arc::new({
+            let stream = Arc::clone(&streams.stream);
+            move |model, context, options| Ok(stream(model, context, options.as_ref()))
+        }),
+        stream_simple: Arc::new(move |model, context, options| {
+            Ok((streams.stream_simple)(model, context, options.as_ref()))
+        }),
+    }
+}
+
 /// Registers the faux provider helper from Pi's compat API.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/providers/faux.ts createFauxCore`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `create a faux core, register its api stream functions under a generated faux-provider source id, and return model/state helpers plus an unregister callback`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the faux provider core is ported.
-pub fn register_faux_provider(
-    _options: RegisterFauxProviderOptions,
-) -> zedflow_core::error::Result<FauxProviderRegistration> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/providers/faux.ts createFauxCore",
-        "create a faux core, register its api stream functions under a generated faux-provider source id, and return model/state helpers plus an unregister callback",
-    )
+pub fn register_faux_provider(options: RegisterFauxProviderOptions) -> FauxProviderRegistration {
+    let core = crate::providers::faux::create_faux_core(options);
+    let source_id = format!("faux-provider-{}", core.api);
+    let api = core.api.clone();
+    register_api_provider(
+        ApiProvider {
+            api: api.clone(),
+            stream: Arc::new({
+                let core = core.clone();
+                move |model, context, options| {
+                    Ok(core.stream_compat(model, context, options.as_ref()))
+                }
+            }),
+            stream_simple: Arc::new({
+                let core = core.clone();
+                move |model, context, options| {
+                    Ok(core.stream_compat(
+                        model,
+                        context,
+                        options.as_ref().map(|options| &options.stream),
+                    ))
+                }
+            }),
+        },
+        Some(source_id.clone()),
+    );
+    FauxProviderRegistration {
+        api,
+        models: core.models.clone(),
+        state: core.state.clone(),
+        source_id,
+        core,
+    }
 }
 
 /// Returns a builtin model from Pi's generated catalog.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/providers/all.ts getBuiltinModel`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `read the generated builtin model catalog and return the model matching provider and id`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the generated provider catalog is ported.
-pub fn get_model(_provider: &str, _id: &str) -> zedflow_core::error::Result<Model> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/providers/all.ts getBuiltinModel",
-        "read the generated builtin model catalog and return the model matching provider and id",
-    )
+pub fn get_model(provider: &str, id: &str) -> zedflow_core::error::Result<Model> {
+    let Some(model) = crate::providers::all::get_builtin_model(provider, id) else {
+        return Err(zedflow_core::error::Error::port_placeholder(
+            PortPlaceholderError::new(
+                "references/pi/packages/ai/src/providers/all.ts getBuiltinModel missing row",
+                "return undefined for unknown builtin models once the compat API can represent absence",
+            ),
+        ));
+    };
+    Ok(model)
 }
 
 /// Returns all builtin models from Pi's generated catalog.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/providers/all.ts getBuiltinModels`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `read and return all generated builtin models in Pi catalog order`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the generated provider catalog is ported.
 pub fn get_models() -> zedflow_core::error::Result<Vec<Model>> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/providers/all.ts getBuiltinModels",
-        "read and return all generated builtin models in Pi catalog order",
-    )
+    Ok(crate::providers::all::get_builtin_providers()
+        .into_iter()
+        .flat_map(crate::providers::all::get_builtin_models)
+        .collect())
+}
+
+/// Returns Pi's supported thinking levels for a model.
+#[must_use]
+pub fn get_supported_thinking_levels(model: &Model) -> Vec<&'static str> {
+    let Some(levels) = thinking_level_map(&model.provider, &model.id) else {
+        return if model_supports_reasoning(&model.provider, &model.id) {
+            vec!["off", "minimal", "low", "medium", "high"]
+        } else {
+            vec!["off"]
+        };
+    };
+
+    supported_thinking_levels_from_map(levels)
+}
+
+type ThinkingLevelMap = &'static [(&'static str, Option<&'static str>)];
+const THINKING_XHIGH_MINIMAL_COMPAT: ThinkingLevelMap =
+    &[("xhigh", Some("xhigh")), ("minimal", Some("low"))];
+const THINKING_FABLE_COMPAT: ThinkingLevelMap = &[("off", None), ("xhigh", Some("xhigh"))];
+
+fn supported_thinking_levels_from_map(map: ThinkingLevelMap) -> Vec<&'static str> {
+    ["off", "minimal", "low", "medium", "high", "xhigh"]
+        .into_iter()
+        .filter(|level| {
+            let mapped = map
+                .iter()
+                .find(|(name, _)| name == level)
+                .map(|(_, value)| *value);
+            if matches!(mapped, Some(None)) {
+                return false;
+            }
+            if *level == "xhigh" {
+                return mapped.is_some();
+            }
+            true
+        })
+        .collect()
+}
+
+fn model_supports_reasoning(provider: &str, id: &str) -> bool {
+    match provider {
+        "anthropic" => crate::providers::anthropic_models::ANTHROPIC_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "openai" => crate::providers::openai_models::OPENAI_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "openai-codex" => crate::providers::openai_codex_models::OPENAI_CODEX_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "deepseek" => crate::providers::deepseek_models::DEEPSEEK_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "opencode" => crate::providers::opencode_models::OPENCODE_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "opencode-go" => crate::providers::opencode_go_models::OPENCODE_GO_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "moonshotai" => crate::providers::moonshotai_models::MOONSHOTAI_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "moonshotai-cn" => crate::providers::moonshotai_cn_models::MOONSHOTAI_CN_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "openrouter" => crate::providers::openrouter_models::OPENROUTER_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .is_some_and(|model| model.reasoning),
+        "amazon-bedrock" => id.contains("claude") || id.contains("deepseek"),
+        _ => false,
+    }
+}
+
+fn thinking_level_map(provider: &str, id: &str) -> Option<ThinkingLevelMap> {
+    match provider {
+        "anthropic" => crate::providers::anthropic_models::ANTHROPIC_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "openai" => crate::providers::openai_models::OPENAI_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "openai-codex" => crate::providers::openai_codex_models::OPENAI_CODEX_MODELS
+            .iter()
+            .any(|model| model.id == id)
+            .then_some(THINKING_XHIGH_MINIMAL_COMPAT),
+        "deepseek" => crate::providers::deepseek_models::DEEPSEEK_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .map(|model| model.thinking_level_map),
+        "opencode" => crate::providers::opencode_models::OPENCODE_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "opencode-go" => crate::providers::opencode_go_models::OPENCODE_GO_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "moonshotai" => crate::providers::moonshotai_models::MOONSHOTAI_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "moonshotai-cn" => crate::providers::moonshotai_cn_models::MOONSHOTAI_CN_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "openrouter" => crate::providers::openrouter_models::OPENROUTER_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .and_then(|model| model.thinking_level_map),
+        "amazon-bedrock" if id.contains("claude-fable-5") => Some(THINKING_FABLE_COMPAT),
+        _ => None,
+    }
 }
 
 /// Returns all builtin provider identifiers from Pi's generated catalog.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/providers/all.ts getBuiltinProviders`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `read and return all generated builtin providers in Pi catalog order`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the generated provider catalog is ported.
 pub fn get_providers() -> zedflow_core::error::Result<Vec<ProviderId>> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/providers/all.ts getBuiltinProviders",
-        "read and return all generated builtin providers in Pi catalog order",
-    )
+    Ok(crate::providers::all::get_builtin_providers()
+        .into_iter()
+        .map(str::to_owned)
+        .collect())
 }
 
-/// Registers Pi's builtin lazy API providers.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/api/*.lazy.ts` and `references/pi/packages/ai/src/providers/all.ts builtinModels`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `register builtin API stream wrappers without clobbering overrides and remember the registered builtin provider instances for builtin model dispatch`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the builtin lazy API providers and catalog are ported.
+/// Registers Pi's builtin lazy API providers without clobbering existing overrides.
 pub fn register_built_in_api_providers() -> Result<()> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/api/*.lazy.ts and references/pi/packages/ai/src/providers/all.ts builtinModels",
-        "register builtin API stream wrappers without clobbering overrides and remember the registered builtin provider instances for builtin model dispatch",
-    )
-    .map_err(CompatError::from)
+    for (api, streams) in builtin_apis() {
+        if !registry_lock().contains_key(api) {
+            let provider = api_provider_from_streams(api, streams.clone());
+            register_api_provider_inner(provider, None);
+        }
+        if let Some(provider) = registry_lock().get(api).map(|entry| entry.provider.clone()) {
+            builtin_instances_lock().insert(api.to_owned(), provider);
+        }
+    }
+    Ok(())
 }
 
 /// Clears all API providers and restores Pi's builtin providers.
@@ -317,6 +536,7 @@ pub fn register_built_in_api_providers() -> Result<()> {
 /// Returns a port placeholder until builtin provider registration is ported.
 pub fn reset_api_providers() -> Result<()> {
     clear_api_providers();
+    builtin_instances_lock().clear();
     register_built_in_api_providers()
 }
 
@@ -384,8 +604,11 @@ fn with_env_api_key(model: &Model, options: Option<StreamOptions>) -> Option<Str
 
     let env = options
         .as_ref()
-        .map_or_else(ProviderEnv::new, |options| options.env.clone());
-    let api_key = env_api_key(&model.provider, &env)?;
+        .and_then(|options| options.env.clone())
+        .unwrap_or_default();
+    let Some(api_key) = env_api_key(&model.provider, &env) else {
+        return options;
+    };
     let mut options = options.unwrap_or_default();
     options.api_key = Some(api_key);
     Some(options)
@@ -405,11 +628,40 @@ fn with_env_api_key_simple(
 
     let env = options
         .as_ref()
-        .map_or_else(ProviderEnv::new, |options| options.stream.env.clone());
-    let api_key = env_api_key(&model.provider, &env)?;
+        .and_then(|options| options.stream.env.clone())
+        .unwrap_or_default();
+    let Some(api_key) = env_api_key(&model.provider, &env) else {
+        return options;
+    };
     let mut options = options.unwrap_or_default();
     options.stream.api_key = Some(api_key);
     Some(options)
+}
+
+fn compat_models() -> &'static crate::models::Models {
+    COMPAT_MODELS.get_or_init(crate::providers::all::builtin_models)
+}
+
+fn same_api_provider(left: &ApiProvider, right: &ApiProvider) -> bool {
+    left.api == right.api
+        && Arc::ptr_eq(&left.stream, &right.stream)
+        && Arc::ptr_eq(&left.stream_simple, &right.stream_simple)
+}
+
+fn should_use_builtin_models(model: &Model) -> bool {
+    let Some(builtin) = compat_models().get_model(&model.provider, &model.id) else {
+        return false;
+    };
+    if builtin.api != model.api {
+        return false;
+    }
+
+    let Some(registered) = get_api_provider(&model.api) else {
+        return false;
+    };
+    builtin_instances_lock()
+        .get(&model.api)
+        .is_some_and(|builtin_provider| same_api_provider(&registered, builtin_provider))
 }
 
 fn resolve_api_provider(api: &str) -> Result<ApiProvider> {
@@ -418,11 +670,8 @@ fn resolve_api_provider(api: &str) -> Result<ApiProvider> {
     })
 }
 
-/// Streams through the compat API registry.
-///
-/// This preserves the TypeScript fallback path for models whose API provider was
-/// explicitly registered in the compat registry. Builtin model short-circuiting is
-/// blocked until `providers/all.ts` is ported.
+/// Streams through Pi's builtin `Models` collection for untouched builtin API providers,
+/// otherwise through the compat API registry.
 ///
 /// # Errors
 ///
@@ -433,6 +682,9 @@ pub fn stream(
     context: &Context,
     options: Option<StreamOptions>,
 ) -> Result<AssistantMessageEventStream> {
+    if should_use_builtin_models(model) {
+        return Ok(stream_builtin_models(model, context, options));
+    }
     let provider = resolve_api_provider(&model.api)?;
     (provider.stream)(model, context, with_env_api_key(model, options))
 }
@@ -443,15 +695,12 @@ pub fn stream(
 ///
 /// Returns the same errors as [`stream`], or [`CompatError::MissingStreamResult`] if the provider
 /// stream does not expose a final result.
-pub fn complete(
+pub async fn complete(
     model: &Model,
     context: &Context,
     options: Option<StreamOptions>,
 ) -> Result<AssistantMessage> {
-    stream(model, context, options)?
-        .result()
-        .cloned()
-        .ok_or(CompatError::MissingStreamResult)
+    Ok(stream(model, context, options)?.result().await)
 }
 
 /// Streams through the compat API registry using simple stream options.
@@ -465,6 +714,9 @@ pub fn stream_simple(
     context: &Context,
     options: Option<SimpleStreamOptions>,
 ) -> Result<AssistantMessageEventStream> {
+    if should_use_builtin_models(model) {
+        return Ok(stream_builtin_models_simple(model, context, options));
+    }
     let provider = resolve_api_provider(&model.api)?;
     (provider.stream_simple)(model, context, with_env_api_key_simple(model, options))
 }
@@ -475,21 +727,38 @@ pub fn stream_simple(
 ///
 /// Returns the same errors as [`stream_simple`], or [`CompatError::MissingStreamResult`] if the
 /// provider stream does not expose a final result.
-pub fn complete_simple(
+pub async fn complete_simple(
     model: &Model,
     context: &Context,
     options: Option<SimpleStreamOptions>,
 ) -> Result<AssistantMessage> {
-    stream_simple(model, context, options)?
-        .result()
-        .cloned()
-        .ok_or(CompatError::MissingStreamResult)
+    Ok(stream_simple(model, context, options)?.result().await)
+}
+
+fn stream_builtin_models(
+    model: &Model,
+    context: &Context,
+    options: Option<StreamOptions>,
+) -> AssistantMessageEventStream {
+    compat_models().stream(model, context, options.as_ref())
+}
+
+fn stream_builtin_models_simple(
+    model: &Model,
+    context: &Context,
+    options: Option<SimpleStreamOptions>,
+) -> AssistantMessageEventStream {
+    compat_models().stream_simple(model, context, options.as_ref())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::lazy::{AssistantContent, AssistantMessageEvent, StopReason, Usage};
+    use crate::types::{
+        AssistantContentBlock, AssistantMessageEvent, AssistantMessageRole, DoneStopReason,
+        StopReason, TextContent, TextContentType, ThinkingLevel, Usage,
+    };
+    use futures::executor::block_on;
 
     static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -501,16 +770,29 @@ mod tests {
     }
 
     fn model() -> Model {
-        Model::new("test-model", "openai-responses", "openai")
+        Model {
+            id: "test-model".into(),
+            name: "test-model".into(),
+            api: "openai-responses".into(),
+            provider: "openai".into(),
+            ..Model::default()
+        }
     }
 
     fn message(model: &Model) -> AssistantMessage {
         AssistantMessage {
-            role: "assistant",
-            content: vec![AssistantContent::Opaque("ok".to_owned())],
+            role: AssistantMessageRole::Assistant,
+            content: vec![AssistantContentBlock::Text(TextContent {
+                content_type: TextContentType::Text,
+                text: "ok".to_owned(),
+                text_signature: None,
+            })],
             api: model.api.clone(),
             provider: model.provider.clone(),
             model: model.id.clone(),
+            response_model: None,
+            response_id: None,
+            diagnostics: None,
             usage: Usage::default(),
             stop_reason: StopReason::Stop,
             error_message: None,
@@ -520,12 +802,11 @@ mod tests {
 
     fn done_stream(model: &Model) -> AssistantMessageEventStream {
         let output = message(model);
-        let mut stream = AssistantMessageEventStream::new();
+        let stream = AssistantMessageEventStream::new();
         stream.push(AssistantMessageEvent::Done {
-            reason: StopReason::Stop,
+            reason: DoneStopReason::Stop,
             message: output.clone(),
         });
-        stream.end(Some(output));
         stream
     }
 
@@ -549,14 +830,19 @@ mod tests {
         };
 
         register_api_provider(provider, None);
-        complete(
-            &Model::new("test-model", "openai-responses", "custom-openai"),
-            &Context,
+        block_on(complete(
+            &Model {
+                id: "test-model".into(),
+                api: "openai-responses".into(),
+                provider: "custom-openai".into(),
+                ..Model::default()
+            },
+            &Context::default(),
             Some(StreamOptions {
                 api_key: Some("request-key".to_owned()),
                 ..StreamOptions::default()
             }),
-        )
+        ))
         .expect("registered provider should complete");
 
         assert_eq!(
@@ -590,11 +876,12 @@ mod tests {
             None,
         );
 
-        let mut options = StreamOptions::default();
-        options
-            .env
-            .insert("OPENAI_API_KEY".into(), "env-key".into());
-        stream(&model(), &Context, Some(options)).expect("registered provider should stream");
+        let options = StreamOptions {
+            env: Some(HashMap::from([("OPENAI_API_KEY".into(), "env-key".into())])),
+            ..StreamOptions::default()
+        };
+        stream(&model(), &Context::default(), Some(options))
+            .expect("registered provider should stream");
 
         assert_eq!(
             captured
@@ -602,6 +889,177 @@ mod tests {
                 .unwrap_or_else(|poison| poison.into_inner())
                 .as_deref(),
             Some("env-key")
+        );
+    }
+
+    #[test]
+    fn builtin_catalog_models_short_circuit_through_models_when_registry_is_unchanged() {
+        let _guard = test_lock();
+        reset_api_providers().expect("builtin providers reset");
+        let model = get_model("openai", "gpt-4").expect("builtin model");
+
+        let stream = super::stream(
+            &model,
+            &Context::default(),
+            Some(StreamOptions {
+                api_key: Some("request-key".to_owned()),
+                ..StreamOptions::default()
+            }),
+        )
+        .expect("builtin stream");
+
+        let result = block_on(stream.result());
+        assert_eq!(result.stop_reason, StopReason::Error);
+    }
+
+    #[test]
+    fn builtin_registry_override_disables_short_circuit_and_receives_options() {
+        let _guard = test_lock();
+        reset_api_providers().expect("builtin providers reset");
+        let model = get_model("openai", "gpt-4").expect("builtin model");
+        let captured = Arc::new(Mutex::new(None));
+        let captured_stream = Arc::clone(&captured);
+
+        register_api_provider(
+            ApiProvider {
+                api: model.api.clone(),
+                stream: Arc::new(move |model, _, options| {
+                    *captured_stream
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner()) =
+                        options.and_then(|options| options.api_key);
+                    Ok(done_stream(model))
+                }),
+                stream_simple: Arc::new(|model, _, _| Ok(done_stream(model))),
+            },
+            Some("override".to_owned()),
+        );
+
+        block_on(complete(
+            &model,
+            &Context::default(),
+            Some(StreamOptions {
+                api_key: Some("request-key".to_owned()),
+                ..StreamOptions::default()
+            }),
+        ))
+        .expect("override provider should complete");
+
+        assert_eq!(
+            captured
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .as_deref(),
+            Some("request-key")
+        );
+    }
+
+    #[test]
+    fn builtin_stream_wrappers_forward_option_presence() {
+        let _guard = test_lock();
+        let saw_stream_options = Arc::new(Mutex::new(false));
+        let saw_simple_options = Arc::new(Mutex::new(false));
+        let saw_stream_options_for_stream = Arc::clone(&saw_stream_options);
+        let saw_simple_options_for_stream = Arc::clone(&saw_simple_options);
+        let provider = api_provider_from_streams(
+            "test-api",
+            ProviderStreams {
+                stream: Arc::new(move |model, _, options| {
+                    *saw_stream_options_for_stream
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner()) = options.is_some();
+                    done_stream(model)
+                }),
+                stream_simple: Arc::new(move |model, _, options| {
+                    *saw_simple_options_for_stream
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner()) = options.is_some();
+                    done_stream(model)
+                }),
+            },
+        );
+        let model = Model {
+            id: "model".into(),
+            api: "test-api".into(),
+            provider: "provider".into(),
+            ..Model::default()
+        };
+
+        (provider.stream)(&model, &Context::default(), Some(StreamOptions::default()))
+            .expect("stream");
+        (provider.stream_simple)(
+            &model,
+            &Context::default(),
+            Some(SimpleStreamOptions::default()),
+        )
+        .expect("stream simple");
+
+        assert!(
+            *saw_stream_options
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+        );
+        assert!(
+            *saw_simple_options
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+        );
+    }
+
+    #[test]
+    fn complete_simple_forwards_caller_options_to_custom_provider() {
+        let _guard = test_lock();
+        clear_api_providers();
+        let captured = Arc::new(Mutex::new(None));
+        let captured_simple = Arc::clone(&captured);
+        register_api_provider(
+            ApiProvider {
+                api: "simple-api".to_owned(),
+                stream: Arc::new(|model, _, _| Ok(done_stream(model))),
+                stream_simple: Arc::new(move |model, _, options| {
+                    *captured_simple
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner()) = options.map(|options| {
+                        (
+                            options.stream.api_key.clone(),
+                            options.stream.session_id.clone(),
+                            options.reasoning,
+                        )
+                    });
+                    Ok(done_stream(model))
+                }),
+            },
+            None,
+        );
+        let model = Model {
+            id: "model".into(),
+            api: "simple-api".into(),
+            provider: "custom".into(),
+            ..Model::default()
+        };
+
+        block_on(complete_simple(
+            &model,
+            &Context::default(),
+            Some(SimpleStreamOptions {
+                stream: StreamOptions {
+                    api_key: Some("request-key".to_owned()),
+                    session_id: Some("session-1".to_owned()),
+                    ..StreamOptions::default()
+                },
+                reasoning: Some(ThinkingLevel::High),
+                thinking_budgets: None,
+            }),
+        ))
+        .expect("simple provider should complete");
+
+        assert_eq!(
+            *captured.lock().unwrap_or_else(|poison| poison.into_inner()),
+            Some((
+                Some("request-key".to_owned()),
+                Some("session-1".to_owned()),
+                Some(ThinkingLevel::High)
+            ))
         );
     }
 

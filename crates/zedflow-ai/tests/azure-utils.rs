@@ -1,4 +1,9 @@
 //! Port of Pi `packages/ai/test/azure-utils.ts`.
+
+#![allow(
+    dead_code,
+    reason = "standalone port of helpers imported by Pi test suites"
+)]
 //!
 //! Test-only Azure OpenAI helpers. These only inspect environment values and parse local strings;
 //! they do not make live provider calls.

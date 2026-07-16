@@ -1,15 +1,16 @@
 //! Port of Pi `packages/ai/test/openrouter-cache-write-repro.test.ts`.
 //!
-//! The source test is a live OpenRouter request gated by `OPENROUTER_API_KEY`. P1.T2 forbids live
-//! provider calls, and Rust `compat::get_model` plus the OpenAI-completions streaming transport are
-//! still documented port placeholders, so the parity E2E assertion is ignored until those blockers
-//! are removed.
+//! The source test is a live OpenRouter request gated by OpenRouter credentials.
+//! It is capability-gated here; the live call remains blocked until the Rust
+//! compat dispatch and OpenAI-completions network transport are implemented.
+
+mod common;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-const BLOCKER: &str = "live OpenRouter cache_write repro skipped; requires OPENROUTER_API_KEY plus completed compat::get_model/complete_simple and OpenAI-completions streaming transport ports";
+const BLOCKER: &str = "live OpenRouter cache_write repro blocked: Rust compat::get_model/complete_simple and OpenAI-completions network transport are not implemented";
 const PROVIDER: &str = "openrouter";
 const MODEL: &str = "google/gemini-2.5-flash";
 const USER_PROMPT: &str = "Reply with exactly: OK";
@@ -59,14 +60,13 @@ fn mark_last_user_message_cache_control(payload: &mut Value) {
             break;
         }
 
-        if let Some(parts) = content.as_array_mut() {
-            if let Some(part) = parts
+        if let Some(parts) = content.as_array_mut()
+            && let Some(part) = parts
                 .iter_mut()
                 .rev()
                 .find(|part| part.get("type").and_then(Value::as_str) == Some("text"))
-            {
-                part["cache_control"] = json!({ "type": "ephemeral" });
-            }
+        {
+            part["cache_control"] = json!({ "type": "ephemeral" });
         }
         break;
     }
@@ -107,9 +107,21 @@ fn marks_last_user_message_with_ephemeral_cache_control() {
     assert!(payload["messages"][0]["content"].as_str().is_some());
 }
 
+fn blocked_by_live_transport() -> bool {
+    eprintln!("skipping live openrouter cache_write test: {BLOCKER}");
+    true
+}
+
 #[test]
-#[ignore = "live OpenRouter provider call skipped; see BLOCKER"]
 fn regression_preserves_cache_write_tokens_on_openai_completions_stream_path() {
+    if let Some(message) = common::live_credentials::openrouter().skip_message() {
+        eprintln!("{message}");
+        return;
+    }
+    if blocked_by_live_transport() {
+        return;
+    }
+
     let (first, second) = run_live_openrouter_cache_write_probe();
 
     assert_eq!(first.stop_reason, "stop", "{:?}", first.error_message);

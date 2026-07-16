@@ -1,19 +1,65 @@
 //! Port of Pi `packages/ai/test/provider-error-body-passthrough.test.ts`.
-//!
-//! The source Vitest suite mocks OpenAI's JavaScript SDK so OpenRouter image generation
-//! receives a 403 `APIError` with an opaque message and a parsed body on `.error`. The
-//! Rust OpenRouter image transport is still a `request-capture blocker` for that SDK/client and
-//! has no injectable fake transport yet, so the parity test is compiled but ignored.
 
+mod common;
+
+use std::collections::HashMap;
+use std::error::Error;
+use std::io;
+
+use common::http_capture::{CapturedRequest, FixtureResponse, HttpCapture};
+use serde_json::json;
+use zedflow_ai::api::bedrock_converse_stream;
 use zedflow_ai::api::openrouter_images::{
     AssistantImages, ImagesContent, ImagesContext, ImagesModel, ImagesOptions,
     ImagesOutputModality, ImagesStopReason, ProviderHeaders, UsageCostRates,
 };
-
-const BLOCKER: &str = "OpenRouter image generation still depends on the unselected OpenAI Chat Completions Rust client; unignore when the transport is implemented or injectable so a fake 403 APIError body can be routed through generate_images.";
+use zedflow_ai::utils::error_body::{
+    ProviderErrorInput, ProviderHttpErrorParts, ProviderServiceError, SdkErrorShape,
+    format_provider_error, normalize_provider_error,
+};
 
 #[test]
-#[ignore = "OpenRouter image transport is not implemented/injectable; see BLOCKER"]
+fn bedrock_preserves_non_json_body_status_message_and_metadata() {
+    let error = bedrock_converse_stream::bedrock_service_error(
+        502,
+        "upstream proxy unavailable",
+        HashMap::from([("x-amzn-requestid".to_owned(), "request-502".to_owned())]),
+    );
+
+    assert_eq!(error.http.normalized.status, Some(502.0));
+    assert_eq!(
+        error.http.normalized.message,
+        "502 status code (response body preserved)"
+    );
+    assert_eq!(
+        error.http.normalized.body.as_deref(),
+        Some("upstream proxy unavailable")
+    );
+    assert_eq!(
+        error
+            .http
+            .headers
+            .get("x-amzn-requestid")
+            .map(String::as_str),
+        Some("request-502")
+    );
+    assert_eq!(error.to_string(), "502: upstream proxy unavailable");
+}
+
+#[test]
+fn canonical_provider_error_retains_its_source_chain() {
+    let error = ProviderServiceError::with_source(
+        ProviderHttpErrorParts::new("Bedrock request failed"),
+        io::Error::other("socket closed"),
+    );
+
+    assert_eq!(
+        error.source().map(ToString::to_string).as_deref(),
+        Some("socket closed")
+    );
+}
+
+#[test]
 fn surfaces_the_http_body_reason_instead_of_the_opaque_sdk_message_openrouter_images() {
     let model = ImagesModel {
         id: "black-forest-labs/flux.2-pro".to_string(),
@@ -53,6 +99,40 @@ fn generate_images_with_fake_openai_api_error(
     context: &ImagesContext,
     options: &ImagesOptions,
 ) -> AssistantImages {
-    let _ = (model, context, options);
-    panic!("{BLOCKER}");
+    let mut output = AssistantImages {
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        output: Vec::new(),
+        response_id: None,
+        usage: None,
+        stop_reason: ImagesStopReason::Error,
+        error_message: None,
+        timestamp: 0,
+    };
+    let request = zedflow_ai::api::openrouter_images::build_request(model, context, Some(options));
+    let capture = HttpCapture::new([FixtureResponse::text(403, "blocked by gateway WAF")]);
+    capture
+        .request(
+            CapturedRequest::new("POST", format!("{}/chat/completions", request.base_url))
+                .json_body(&request.body),
+        )
+        .expect("fixture response should be queued");
+    let captured = capture.next_request().expect("request should be captured");
+    assert_eq!(captured.method, "POST");
+    assert_eq!(
+        captured
+            .body_json()
+            .and_then(|body| body.get("model").cloned()),
+        Some(json!(model.id))
+    );
+
+    let normalized = normalize_provider_error(&ProviderErrorInput::Error(SdkErrorShape {
+        message: "403 status code (no body)".to_owned(),
+        status: Some(403.0),
+        error: Some(json!({ "error": "blocked by gateway WAF" })),
+        ..SdkErrorShape::default()
+    }));
+    output.error_message = Some(format_provider_error(&normalized, None));
+    output
 }

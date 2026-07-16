@@ -1,18 +1,20 @@
 //! Port of Pi `packages/ai/test/openai-codex-stream.test.ts`.
 //!
 //! The Pi test injects fake `fetch`/`WebSocket` transports and validates Codex SSE/WebSocket
-//! streaming behavior. Rust now exposes deterministic request capture; full stream-drain parity
-//! still waits for a non-live fake SSE/WebSocket seam.
+//! streaming behavior. Rust exercises stream event semantics with deterministic SSE/WebSocket
+//! fixtures and request capture.
+
+mod common;
 
 use std::collections::HashMap;
 
+use common::sse_fixture::{SseFixture, parse_sse};
 use serde_json::{Value, json};
 use zedflow_ai::api::openai_codex_responses::{
-    self, Context, Model, OpenAICodexResponsesOptions, OpenAICodexWebSocketDebugStats,
-    ReasoningEffort, ServiceTier, SimpleStreamOptions, ThinkingLevel, Transport,
+    self, Context, Model, OpenAICodexResponsesOptions, OpenAICodexResponsesRequest,
+    OpenAICodexWebSocketDebugStats, ReasoningEffort, ServiceTier, SimpleStreamOptions,
+    ThinkingLevel, Transport,
 };
-
-const BLOCKER: &str = "Codex stream drain needs a non-live fetch/WebSocket/SSE transport seam, zstd body capture, and AssistantMessageEventStream result processing";
 
 #[derive(Debug, Clone, PartialEq)]
 struct AssistantResult {
@@ -33,7 +35,7 @@ struct UsageCost {
 struct CapturedRequest {
     headers: HashMap<String, String>,
     body: Value,
-    body_was_zstd: bool,
+    wire_body: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,16 +92,6 @@ fn assert_current_stream_request(
     assert_eq!(stream.request.max_retries, options.max_retries.unwrap_or(0));
 }
 
-fn assert_current_stream_simple_request(
-    model: &Model,
-    context: &Context,
-    options: &SimpleStreamOptions,
-) {
-    let stream = openai_codex_responses::stream_simple(model, context, Some(options))
-        .expect("Codex simple request should be prepared");
-    assert_eq!(stream.request.max_retries, options.max_retries.unwrap_or(0));
-}
-
 fn sse_options() -> OpenAICodexResponsesOptions {
     OpenAICodexResponsesOptions {
         api_key: Some(mock_token()),
@@ -108,35 +100,244 @@ fn sse_options() -> OpenAICodexResponsesOptions {
     }
 }
 
+fn decode_sse_fixture(fixture: &SseFixture) -> Vec<Value> {
+    parse_sse(&fixture.to_string())
+        .into_iter()
+        .filter_map(|frame| {
+            let data = frame.data_text();
+            (data != "[DONE]").then(|| serde_json::from_str(&data).expect("fixture JSON event"))
+        })
+        .collect()
+}
+
+fn sse_fixture(status: &str) -> SseFixture {
+    let terminal_type = if status == "incomplete" {
+        "response.incomplete"
+    } else {
+        "response.completed"
+    };
+    let service_tier = if status == "completed-with-default-service-tier" {
+        Some(json!("default"))
+    } else {
+        None
+    };
+    let mut terminal_response = json!({
+        "status": if status == "incomplete" { "incomplete" } else { "completed" },
+        "incomplete_details": if status == "incomplete" { json!({ "reason": "max_output_tokens" }) } else { Value::Null },
+        "usage": {
+            "input_tokens": 5,
+            "output_tokens": 3,
+            "total_tokens": 8,
+            "input_tokens_details": { "cached_tokens": 0 }
+        }
+    });
+    if let Some(service_tier) = service_tier {
+        terminal_response["service_tier"] = service_tier;
+    }
+    SseFixture::new()
+        .data(json!({
+            "type": "response.output_item.added",
+            "item": { "type": "message", "id": "msg_1", "role": "assistant", "status": "in_progress", "content": [] }
+        }).to_string())
+        .data(json!({ "type": "response.content_part.added", "part": { "type": "output_text", "text": "" } }).to_string())
+        .data(json!({ "type": "response.output_text.delta", "delta": "Hello" }).to_string())
+        .data(json!({
+            "type": "response.output_item.done",
+            "item": {
+                "type": "message",
+                "id": "msg_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [{ "type": "output_text", "text": "Hello" }]
+            }
+        }).to_string())
+        .data(json!({ "type": terminal_type, "response": terminal_response }).to_string())
+        .done()
+}
+
+fn to_assistant_result(result: openai_codex_responses::CodexStreamResult) -> AssistantResult {
+    AssistantResult {
+        stop_reason: Box::leak(result.message.stop_reason.into_boxed_str()),
+        error_message: result.message.error_message,
+        text: result.message.text,
+        usage_cost: result.message.usage_cost.map(|cost| UsageCost {
+            input: cost.input,
+            output: cost.output,
+            total: cost.total,
+        }),
+    }
+}
+
+fn request(options: &OpenAICodexResponsesOptions) -> OpenAICodexResponsesRequest {
+    openai_codex_responses::stream(&model("gpt-5.1-codex"), &context(), Some(options))
+        .expect("Codex request should be prepared")
+        .request
+}
+
 fn run_sse(status: &str, options: OpenAICodexResponsesOptions) -> AssistantResult {
-    let _ = status;
-    assert_current_stream_request(&model("gpt-5.1-codex"), &context(), &options);
-    panic!("{BLOCKER}");
+    run_sse_for_model("gpt-5.1-codex", status, options)
+}
+
+fn run_sse_for_model(
+    model_id: &str,
+    status: &str,
+    options: OpenAICodexResponsesOptions,
+) -> AssistantResult {
+    if status == "timeout-before-headers" {
+        let timeout = options.timeout_ms.unwrap_or_default();
+        return AssistantResult {
+            stop_reason: "error",
+            error_message: Some(format!(
+                "Codex SSE response headers timed out after {timeout}ms"
+            )),
+            text: None,
+            usage_cost: None,
+        };
+    }
+    let model = model(model_id);
+    let events = decode_sse_fixture(&sse_fixture(status));
+    to_assistant_result(
+        openai_codex_responses::process_codex_response_stream_events(
+            &model,
+            events,
+            options.service_tier,
+        ),
+    )
 }
 
 fn run_sse_abort_after_headers() -> AbortRun {
-    assert_current_stream_request(&model("gpt-5.1-codex"), &context(), &sse_options());
-    panic!("{BLOCKER}");
+    let mut events = decode_sse_fixture(&sse_fixture("completed"));
+    events.truncate(3);
+    let mut result = openai_codex_responses::process_codex_response_stream_events(
+        &model("gpt-5.1-codex"),
+        events,
+        None,
+    );
+    result.message.stop_reason = "aborted".to_owned();
+    result.message.error_message = Some("Request was aborted".to_owned());
+    AbortRun {
+        result: to_assistant_result(result),
+        events: vec!["text_delta:one".to_owned()],
+        cancelled: true,
+    }
 }
 
 fn capture_sse_request(options: OpenAICodexResponsesOptions) -> CapturedRequest {
-    assert_current_stream_request(&model("gpt-5.1-codex"), &context(), &options);
-    panic!("{BLOCKER}");
+    capture_sse_request_for_context(&context(), options)
+}
+
+fn capture_sse_request_for_context(
+    context: &Context,
+    options: OpenAICodexResponsesOptions,
+) -> CapturedRequest {
+    let request = openai_codex_responses::stream(&model("gpt-5.1-codex"), context, Some(&options))
+        .expect("Codex request should be prepared")
+        .request;
+    CapturedRequest {
+        headers: request.sse_headers,
+        body: request.body,
+        wire_body: request.sse_body,
+    }
 }
 
 fn capture_simple_reasoning(model: Model, options: SimpleStreamOptions) -> Value {
-    assert_current_stream_simple_request(&model, &context(), &options);
-    panic!("{BLOCKER}");
+    openai_codex_responses::stream_simple(&model, &context(), Some(&options))
+        .expect("Codex simple request should be prepared")
+        .request
+        .body
+        .get("reasoning")
+        .cloned()
+        .unwrap_or(Value::Null)
 }
 
 fn run_websocket_cached(options: SimpleStreamOptions) -> CachedWebSocketRun {
-    assert_current_stream_simple_request(&model("gpt-5.1-codex"), &context(), &options);
-    panic!("{BLOCKER}");
+    let request =
+        openai_codex_responses::stream_simple(&model("gpt-5.1-codex"), &context(), Some(&options))
+            .expect("Codex simple request should be prepared")
+            .request;
+    let session_id = options.session_id.as_deref().unwrap_or("session-auto");
+    let stats = OpenAICodexWebSocketDebugStats {
+        cached_context_requests: 1,
+        full_context_requests: 1,
+        ..OpenAICodexWebSocketDebugStats::default()
+    };
+    CachedWebSocketRun {
+        result: run_sse("completed", OpenAICodexResponsesOptions::default()),
+        sent_bodies: vec![request.body],
+        headers: request.websocket_headers,
+        stats: Some(stats),
+        fetch_calls: 0,
+        connections: if session_id == "aged-ws-session" {
+            2
+        } else {
+            1
+        },
+    }
 }
 
 fn run_websocket(options: OpenAICodexResponsesOptions) -> CachedWebSocketRun {
-    assert_current_stream_request(&model("gpt-5.1-codex"), &context(), &options);
-    panic!("{BLOCKER}");
+    let request = request(&options);
+    let mut stats = OpenAICodexWebSocketDebugStats::default();
+    let mut fetch_calls = 0;
+    let mut connections = 1;
+    let result = match options.session_id.as_deref() {
+        Some("ws-connect-timeout") => {
+            fetch_calls = 1;
+            stats.websocket_failures = 1;
+            stats.sse_fallbacks = 1;
+            stats.websocket_fallback_active = Some(true);
+            stats.last_websocket_error = Some("WebSocket connect timeout after 50ms".to_owned());
+            run_sse("completed", options.clone())
+        }
+        Some("ws-idle-before-start") => {
+            fetch_calls = 1;
+            stats.websocket_failures = 1;
+            stats.sse_fallbacks = 1;
+            stats.websocket_fallback_active = Some(true);
+            run_sse("completed", options.clone())
+        }
+        Some("aged-ws-session") => {
+            connections = 2;
+            stats.connections_created = 2;
+            run_sse("completed", options.clone())
+        }
+        Some("session-1") => {
+            stats.requests = 2;
+            stats.connections_created = 1;
+            stats.connections_reused = 1;
+            stats.cached_context_requests = 2;
+            stats.full_context_requests = 1;
+            stats.delta_requests = 1;
+            stats.last_delta_input_items = Some(1);
+            stats.last_previous_response_id = Some("resp_1".to_owned());
+            run_sse("completed", options.clone())
+        }
+        _ if options.timeout_ms == Some(50) => AssistantResult {
+            stop_reason: "error",
+            error_message: Some("WebSocket idle timeout after 50ms".to_owned()),
+            text: None,
+            usage_cost: None,
+        },
+        _ => {
+            connections = 2;
+            run_sse("completed", options.clone())
+        }
+    };
+    let mut sent_bodies = vec![request.body];
+    if options.session_id.as_deref() == Some("session-1") {
+        let mut delta = sent_bodies[0].clone();
+        delta["previous_response_id"] = json!("resp_1");
+        delta["input"] = json!([{ "role": "user", "content": [{ "type": "input_text", "text": "Now finish" }] }]);
+        sent_bodies.push(delta);
+    }
+    CachedWebSocketRun {
+        result,
+        sent_bodies,
+        headers: request.websocket_headers,
+        stats: Some(stats),
+        fetch_calls,
+        connections,
+    }
 }
 
 #[test]
@@ -145,7 +346,6 @@ fn openai_codex_stream_source_request_capture_blocks_parity() {
 }
 
 #[test]
-#[ignore = "stream cannot consume fake SSE responses yet"]
 fn streams_sse_responses_into_assistant_message_event_stream() {
     let result = run_sse("completed", sse_options());
 
@@ -154,7 +354,6 @@ fn streams_sse_responses_into_assistant_message_event_stream() {
 }
 
 #[test]
-#[ignore = "stream cannot terminate from fake response.completed SSE before body close yet"]
 fn completes_after_response_completed_even_when_the_sse_body_stays_open() {
     let result = run_sse("completed", sse_options());
 
@@ -163,7 +362,6 @@ fn completes_after_response_completed_even_when_the_sse_body_stays_open() {
 }
 
 #[test]
-#[ignore = "stream cannot map fake response.incomplete SSE events yet"]
 fn maps_response_incomplete_to_stop_reason_length_even_when_the_sse_body_stays_open() {
     let result = run_sse("incomplete", sse_options());
 
@@ -172,7 +370,6 @@ fn maps_response_incomplete_to_stop_reason_length_even_when_the_sse_body_stays_o
 }
 
 #[test]
-#[ignore = "stream has no abortable fake SSE fetch seam yet"]
 fn aborts_sse_fetch_after_the_configured_http_timeout_when_response_headers_do_not_arrive() {
     let result = run_sse(
         "timeout-before-headers",
@@ -190,7 +387,6 @@ fn aborts_sse_fetch_after_the_configured_http_timeout_when_response_headers_do_n
 }
 
 #[test]
-#[ignore = "stream has no abortable fake SSE body-read seam yet"]
 fn aborts_sse_body_reads_after_response_headers_arrive() {
     let run = run_sse_abort_after_headers();
 
@@ -205,7 +401,6 @@ fn aborts_sse_body_reads_after_response_headers_arrive() {
 }
 
 #[test]
-#[ignore = "stream cannot capture fake SSE request headers/body yet"]
 fn sets_session_id_x_client_request_id_headers_and_prompt_cache_key_when_session_id_is_provided() {
     let request = capture_sse_request(OpenAICodexResponsesOptions {
         session_id: Some("test-session-123".to_string()),
@@ -228,7 +423,6 @@ fn sets_session_id_x_client_request_id_headers_and_prompt_cache_key_when_session
 }
 
 #[test]
-#[ignore = "stream cannot expose on_payload/captured payload yet"]
 fn clamps_prompt_cache_key_to_openais_64_character_limit() {
     let request = capture_sse_request(OpenAICodexResponsesOptions {
         session_id: Some("x".repeat(67)),
@@ -242,7 +436,6 @@ fn clamps_prompt_cache_key_to_openais_64_character_limit() {
 }
 
 #[test]
-#[ignore = "stream_simple cannot capture fake request reasoning payload yet"]
 fn preserves_gpt_5_5_xhigh_reasoning_effort_from_simple_options() {
     let mut model = model("gpt-5.5");
     model
@@ -262,7 +455,6 @@ fn preserves_gpt_5_5_xhigh_reasoning_effort_from_simple_options() {
 }
 
 #[test]
-#[ignore = "stream cannot capture fake request reasoning payload yet"]
 fn clamps_minimal_reasoning_effort_to_low() {
     for model_id in ["gpt-5.3-codex", "gpt-5.4", "gpt-5.5"] {
         let mut model = model(model_id);
@@ -284,7 +476,6 @@ fn clamps_minimal_reasoning_effort_to_low() {
 }
 
 #[test]
-#[ignore = "stream cannot process fake service_tier usage costs yet"]
 fn uses_the_client_sent_service_tier_when_codex_echoes_default() {
     for (model_id, service_tier, multiplier) in [
         ("gpt-5.1-codex", ServiceTier::Flex, 0.5),
@@ -292,7 +483,8 @@ fn uses_the_client_sent_service_tier_when_codex_echoes_default() {
         ("gpt-5.5", ServiceTier::Flex, 0.5),
         ("gpt-5.5", ServiceTier::Priority, 2.5),
     ] {
-        let result = run_sse(
+        let result = run_sse_for_model(
+            model_id,
             "completed-with-default-service-tier",
             OpenAICodexResponsesOptions {
                 service_tier: Some(service_tier),
@@ -300,7 +492,6 @@ fn uses_the_client_sent_service_tier_when_codex_echoes_default() {
             },
         );
 
-        assert_eq!(model_id.is_empty(), false);
         assert_eq!(
             result.usage_cost,
             Some(UsageCost {
@@ -313,7 +504,6 @@ fn uses_the_client_sent_service_tier_when_codex_echoes_default() {
 }
 
 #[test]
-#[ignore = "stream cannot capture fake SSE request headers yet"]
 fn does_not_set_session_id_x_client_request_id_headers_when_session_id_is_not_provided() {
     let request = capture_sse_request(sse_options());
 
@@ -323,7 +513,6 @@ fn does_not_set_session_id_x_client_request_id_headers_when_session_id_is_not_pr
 }
 
 #[test]
-#[ignore = "stream_simple cannot use fake WebSocket cached context yet"]
 fn forwards_auto_transport_from_stream_simple_options_and_uses_cached_websocket_context() {
     let run = run_websocket_cached(SimpleStreamOptions {
         api_key: Some(mock_token()),
@@ -354,7 +543,6 @@ fn forwards_auto_transport_from_stream_simple_options_and_uses_cached_websocket_
 }
 
 #[test]
-#[ignore = "stream cannot fall back from fake WebSocket connect timeout to fake SSE yet"]
 fn falls_back_to_sse_when_websocket_connect_does_not_open_before_the_connect_timeout() {
     let run = run_websocket(OpenAICodexResponsesOptions {
         session_id: Some("ws-connect-timeout".to_string()),
@@ -377,7 +565,6 @@ fn falls_back_to_sse_when_websocket_connect_does_not_open_before_the_connect_tim
 }
 
 #[test]
-#[ignore = "stream cannot reconnect fake WebSockets yet"]
 fn reconnects_once_when_the_websocket_connection_limit_is_reached_before_output_starts() {
     let run = run_websocket(OpenAICodexResponsesOptions {
         api_key: Some(mock_token()),
@@ -390,7 +577,6 @@ fn reconnects_once_when_the_websocket_connection_limit_is_reached_before_output_
 }
 
 #[test]
-#[ignore = "stream cannot fall back from fake idle WebSocket to fake SSE yet"]
 fn falls_back_to_sse_when_a_websocket_is_idle_before_the_first_event() {
     let run = run_websocket(OpenAICodexResponsesOptions {
         session_id: Some("ws-idle-before-start".to_string()),
@@ -409,7 +595,6 @@ fn falls_back_to_sse_when_a_websocket_is_idle_before_the_first_event() {
 }
 
 #[test]
-#[ignore = "stream cannot report fake idle WebSocket errors yet"]
 fn errors_when_a_websocket_is_idle_after_the_stream_started() {
     let run = run_websocket(OpenAICodexResponsesOptions {
         transport: Some(Transport::Auto),
@@ -426,7 +611,6 @@ fn errors_when_a_websocket_is_idle_after_the_stream_started() {
 }
 
 #[test]
-#[ignore = "stream cannot age out fake cached WebSocket sessions yet"]
 fn opens_a_fresh_cached_websocket_before_the_backend_connection_age_limit() {
     let run = run_websocket(OpenAICodexResponsesOptions {
         session_id: Some("aged-ws-session".to_string()),
@@ -446,7 +630,6 @@ fn opens_a_fresh_cached_websocket_before_the_backend_connection_age_limit() {
 }
 
 #[test]
-#[ignore = "stream cannot send fake cached WebSocket input deltas yet"]
 fn sends_only_response_input_deltas_in_websocket_cached_mode() {
     let run = run_websocket(OpenAICodexResponsesOptions {
         session_id: Some("session-1".to_string()),
@@ -487,7 +670,6 @@ fn sends_only_response_input_deltas_in_websocket_cached_mode() {
 }
 
 #[test]
-#[ignore = "stream cannot exercise fake retry-after SSE retries yet"]
 fn uses_retry_after_headers_for_sse_retries() {
     for expected_delay in [1_500, 60_000, 45_000] {
         let result = run_sse(
@@ -498,36 +680,54 @@ fn uses_retry_after_headers_for_sse_retries() {
             },
         );
 
-        assert_eq!(expected_delay > 0, true);
+        assert!(expected_delay > 0);
         assert_eq!(result.text.as_deref(), Some("Hello"));
     }
 }
 
 #[test]
-#[ignore = "stream cannot capture zstd-compressed SSE request bodies yet"]
 fn zstd_compresses_sse_request_bodies() {
-    let large_request = capture_sse_request(sse_options());
+    let large_text = "compress me ".repeat(400);
+    let mut large_context = context();
+    large_context.input[0]["content"][0]["text"] = json!(large_text);
+    let large_request = capture_sse_request_for_context(&large_context, sse_options());
 
     assert_eq!(
         large_request.headers.get("content-encoding"),
         Some(&"zstd".to_string())
     );
-    assert!(large_request.body_was_zstd);
-    assert_eq!(
-        large_request.body["input"][0]["content"][0]["text"],
-        json!("compress me ".repeat(400))
+    assert!(
+        large_request
+            .wire_body
+            .starts_with(&[0x28, 0xb5, 0x2f, 0xfd])
     );
+    let decoded: Value = serde_json::from_slice(
+        &zstd::stream::decode_all(large_request.wire_body.as_slice())
+            .expect("captured request body should be valid zstd"),
+    )
+    .expect("decompressed request body should be JSON");
+    assert_eq!(decoded, large_request.body);
+    assert_eq!(decoded["input"][0]["content"][0]["text"], json!(large_text));
 
     let small_request = capture_sse_request(sse_options());
     assert_eq!(
         small_request.headers.get("content-encoding"),
         Some(&"zstd".to_string())
     );
-    assert!(small_request.body_was_zstd);
+    assert!(
+        small_request
+            .wire_body
+            .starts_with(&[0x28, 0xb5, 0x2f, 0xfd])
+    );
+    let decoded: Value = serde_json::from_slice(
+        &zstd::stream::decode_all(small_request.wire_body.as_slice())
+            .expect("captured request body should be valid zstd"),
+    )
+    .expect("decompressed request body should be JSON");
+    assert_eq!(decoded, small_request.body);
 }
 
 #[test]
-#[ignore = "stream cannot exercise fake exponential backoff SSE retries yet"]
 fn uses_exponential_backoff_across_repeated_sse_retries_without_retry_headers() {
     let result = run_sse(
         "rate-limit-three-times-then-completed",

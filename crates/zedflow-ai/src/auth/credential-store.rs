@@ -4,6 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use crate::auth::types as auth_types;
+
 use futures::lock::Mutex as AsyncMutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -166,6 +168,78 @@ impl CredentialStore for InMemoryCredentialStore {
 
     async fn delete<'a>(&'a self, provider_id: &'a str) {
         Self::delete(self, provider_id).await;
+    }
+}
+
+impl auth_types::CredentialStore for InMemoryCredentialStore {
+    fn read<'a>(
+        &'a self,
+        provider_id: &'a str,
+    ) -> auth_types::AuthFuture<'a, auth_types::AuthResult<Option<auth_types::Credential>>> {
+        Box::pin(async move {
+            Ok(InMemoryCredentialStore::read(self, provider_id)
+                .await
+                .map(Into::into))
+        })
+    }
+
+    fn modify<'a>(
+        &'a self,
+        provider_id: &'a str,
+        update: auth_types::CredentialModify<'a>,
+    ) -> auth_types::AuthFuture<'a, auth_types::AuthResult<Option<auth_types::Credential>>> {
+        Box::pin(async move {
+            InMemoryCredentialStore::modify(self, provider_id, move |current| {
+                let current = current.map(Into::into);
+                async move { update(current).await.map(|next| next.map(Into::into)) }
+            })
+            .await
+            .map(|credential| credential.map(Into::into))
+        })
+    }
+
+    fn delete<'a>(
+        &'a self,
+        provider_id: &'a str,
+    ) -> auth_types::AuthFuture<'a, auth_types::AuthResult<()>> {
+        Box::pin(async move {
+            InMemoryCredentialStore::delete(self, provider_id).await;
+            Ok(())
+        })
+    }
+}
+
+impl From<Credential> for auth_types::Credential {
+    fn from(value: Credential) -> Self {
+        match value {
+            Credential::ApiKey(credential) => Self::ApiKey(auth_types::ApiKeyCredential {
+                key: credential.key,
+                env: credential.env.map(|env| env.into_iter().collect()),
+            }),
+            Credential::OAuth(credential) => Self::OAuth(auth_types::OAuthCredential {
+                refresh: credential.refresh,
+                access: credential.access,
+                expires: credential.expires,
+                extra: credential.extra,
+            }),
+        }
+    }
+}
+
+impl From<auth_types::Credential> for Credential {
+    fn from(value: auth_types::Credential) -> Self {
+        match value {
+            auth_types::Credential::ApiKey(credential) => Self::ApiKey(ApiKeyCredential {
+                key: credential.key,
+                env: credential.env.map(|env| env.into_iter().collect()),
+            }),
+            auth_types::Credential::OAuth(credential) => Self::OAuth(OAuthCredential {
+                refresh: credential.refresh,
+                access: credential.access,
+                expires: credential.expires,
+                extra: credential.extra,
+            }),
+        }
     }
 }
 

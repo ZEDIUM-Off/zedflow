@@ -5,7 +5,7 @@
 //! calls, and Rust `compat::get_model` plus provider transports are still port placeholders, so the
 //! live parity test is ignored until those blockers are removed.
 
-use zedflow_ai::api::lazy::{StopReason, Usage};
+use zedflow_ai::types::{StopReason, Usage};
 
 const BLOCKER: &str = "requires live provider transports, credentials/OAuth token resolution, and completed compat::get_model/get_models";
 const LONG_SYSTEM_PROMPT: &str = "long system prompt fixture from the TypeScript test, repeated enough to trigger provider prompt caching";

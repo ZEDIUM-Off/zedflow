@@ -1,12 +1,19 @@
 //! Mistral Conversations API ported from Pi.
 
+#![allow(
+    clippy::result_large_err,
+    reason = "preserve partial streamed state in provider errors"
+)]
+
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
 use std::io::{BufRead, BufReader, Read};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+#[cfg(test)]
+use std::thread;
 
 use reqwest::blocking::Client;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
@@ -418,7 +425,16 @@ pub struct MistralOptions {
 }
 
 /// Payload hook used by this narrow blocking transport.
-pub type MistralPayloadHook = Arc<dyn Fn(Value, &Model) -> Option<Value> + Send + Sync>;
+pub type MistralPayloadHook = Arc<
+    dyn Fn(
+            Value,
+            Model,
+        ) -> futures::future::BoxFuture<
+            'static,
+            std::result::Result<Option<Value>, crate::types::ProviderHookError>,
+        > + Send
+        + Sync,
+>;
 
 impl fmt::Debug for MistralOptions {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -723,7 +739,9 @@ pub fn stream(
     let model = model.clone();
     let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    thread::spawn(move || run_stream_worker(worker_stream, model, context, options));
+    crate::utils::runtime::spawn_worker(async move {
+        run_stream_worker(worker_stream, model, context, options).await;
+    });
     Ok(stream)
 }
 
@@ -785,16 +803,64 @@ pub fn build_chat_payload(
     payload
 }
 
+/// Converts the SDK-shaped payload exposed to hooks into Mistral's HTTP wire shape.
+///
+/// Only protocol component fields are renamed. Tool JSON Schema and arbitrary user values are
+/// intentionally left untouched.
+#[must_use]
+pub fn mistral_wire_payload(mut payload: Value) -> Value {
+    let Some(root) = payload.as_object_mut() else {
+        return payload;
+    };
+    for (sdk, wire) in [
+        ("maxTokens", "max_tokens"),
+        ("toolChoice", "tool_choice"),
+        ("promptMode", "prompt_mode"),
+        ("reasoningEffort", "reasoning_effort"),
+        ("promptCacheKey", "prompt_cache_key"),
+    ] {
+        rename_protocol_field(root, sdk, wire);
+    }
+    if let Some(messages) = root.get_mut("messages").and_then(Value::as_array_mut) {
+        for message in messages {
+            let Some(message) = message.as_object_mut() else {
+                continue;
+            };
+            rename_protocol_field(message, "toolCalls", "tool_calls");
+            rename_protocol_field(message, "toolCallId", "tool_call_id");
+            if let Some(chunks) = message.get_mut("content").and_then(Value::as_array_mut) {
+                for chunk in chunks {
+                    if let Some(chunk) = chunk.as_object_mut() {
+                        rename_protocol_field(chunk, "imageUrl", "image_url");
+                    }
+                }
+            }
+        }
+    }
+    payload
+}
+
+fn rename_protocol_field(
+    object: &mut serde_json::Map<String, Value>,
+    sdk_name: &str,
+    wire_name: &str,
+) {
+    if let Some(value) = object.remove(sdk_name) {
+        object.insert(wire_name.to_owned(), value);
+    }
+}
+
 /// Builds request options passed to the Mistral SDK.
 #[must_use]
 pub fn build_request_options(model: &Model, options: Option<&MistralOptions>) -> RequestOptions {
     let mut headers = model.headers.clone();
     if let Some(options) = options {
         headers.extend(options.headers.clone());
-        if should_use_prompt_caching(options) && !headers.contains_key("x-affinity") {
-            if let Some(session_id) = &options.session_id {
-                headers.insert("x-affinity".to_string(), session_id.clone());
-            }
+        if should_use_prompt_caching(options)
+            && !headers.contains_key("x-affinity")
+            && let Some(session_id) = &options.session_id
+        {
+            headers.insert("x-affinity".to_string(), session_id.clone());
         }
     }
 
@@ -828,7 +894,7 @@ pub fn get_mistral_cached_prompt_tokens(usage: &Value, prompt_tokens: u64) -> u6
     prompt_tokens.min(cached_tokens)
 }
 
-fn run_stream_worker(
+async fn run_stream_worker(
     stream: AssistantMessageEventStream,
     model: Model,
     context: Context,
@@ -839,7 +905,9 @@ fn run_stream_worker(
         partial: output.clone(),
     });
 
-    if let Err(error) = execute_mistral_stream(&model, &context, &options, &stream, &mut output) {
+    if let Err(error) =
+        execute_mistral_stream(&model, &context, &options, &stream, &mut output).await
+    {
         output.stop_reason = StopReason::Error;
         output.error_message = Some(error);
         stream.push(AssistantMessageEvent::Error {
@@ -864,7 +932,7 @@ fn run_stream_worker(
     });
 }
 
-fn execute_mistral_stream(
+async fn execute_mistral_stream(
     model: &Model,
     context: &Context,
     options: &MistralOptions,
@@ -874,22 +942,56 @@ fn execute_mistral_stream(
     let api_key = options
         .api_key
         .as_deref()
-        .ok_or_else(|| format!("No API key for provider: {}", model.provider))?;
+        .ok_or_else(|| format!("No API key for provider: {}", model.provider))?
+        .to_owned();
     let messages = normalize_tool_call_ids(&context.messages);
     let payload = build_chat_payload(model, context, &messages, Some(options));
     let mut payload = serde_json::to_value(payload).map_err(|error| error.to_string())?;
-    if let Some(on_payload) = options.on_payload.as_ref() {
-        if let Some(next_payload) = on_payload(payload.clone(), model) {
-            payload = next_payload;
-        }
+    if let Some(on_payload) = options.on_payload.as_ref()
+        && let Some(next_payload) = on_payload(payload.clone(), model.clone())
+            .await
+            .map_err(|error| error.to_string())?
+    {
+        payload = next_payload;
     }
 
+    let model = model.clone();
+    let options = options.clone();
+    let stream = stream.clone();
+    let initial_output = output.clone();
+    let final_output = tokio::task::spawn_blocking(move || {
+        execute_mistral_stream_blocking(
+            &model,
+            &options,
+            &stream,
+            initial_output,
+            &api_key,
+            payload,
+        )
+    })
+    .await
+    .map_err(|error| format!("Mistral stream worker failed: {error}"))??;
+    *output = final_output;
+    Ok(())
+}
+
+fn execute_mistral_stream_blocking(
+    model: &Model,
+    options: &MistralOptions,
+    stream: &AssistantMessageEventStream,
+    mut output: AssistantMessage,
+    api_key: &str,
+    payload: Value,
+) -> std::result::Result<AssistantMessage, String> {
     let request_options = build_request_options(model, Some(options));
     let client = build_http_client(options)?;
     let response = client
         .post(mistral_chat_url(model))
         .headers(request_headers(api_key, &request_options.headers)?)
-        .body(serde_json::to_vec(&payload).map_err(|error| error.to_string())?)
+        .body(
+            serde_json::to_vec(&mistral_wire_payload(payload))
+                .map_err(|error| error.to_string())?,
+        )
         .send()
         .map_err(|error| {
             format_mistral_error(&MistralApiError {
@@ -909,7 +1011,8 @@ fn execute_mistral_stream(
         }));
     }
 
-    consume_sse_response(model, output, stream, response)
+    consume_sse_response(model, &mut output, stream, response)?;
+    Ok(output)
 }
 
 fn build_http_client(options: &MistralOptions) -> std::result::Result<Client, String> {
@@ -1866,12 +1969,774 @@ fn to_base36(mut value: u32) -> String {
     digits.iter().rev().collect()
 }
 
+/// Returns the canonical Mistral Conversations request/SSE implementation.
+#[must_use]
+pub fn provider_streams() -> crate::types::ProviderStreams {
+    crate::types::ProviderStreams {
+        stream: Arc::new(stream_registered),
+        stream_simple: Arc::new(stream_simple_registered),
+    }
+}
+
+/// Starts a canonical Mistral request and returns immediately.
+#[must_use]
+pub fn stream_registered(
+    model: &crate::types::Model,
+    context: &crate::types::Context,
+    options: Option<&crate::types::StreamOptions>,
+) -> crate::types::AssistantMessageEventStream {
+    let stream = crate::types::AssistantMessageEventStream::new();
+    let worker_stream = stream.clone();
+    let model = model.clone();
+    let context = context.clone();
+    let options = options.cloned().unwrap_or_default();
+    crate::utils::runtime::spawn_worker(async move {
+        run_registered_worker(worker_stream, model, context, options).await;
+    });
+    stream
+}
+
+/// Starts Mistral using Pi's simple reasoning option mapping.
+#[must_use]
+pub fn stream_simple_registered(
+    model: &crate::types::Model,
+    context: &crate::types::Context,
+    options: Option<&crate::types::SimpleStreamOptions>,
+) -> crate::types::AssistantMessageEventStream {
+    let mut stream_options = options
+        .map(|options| options.stream.clone())
+        .unwrap_or_default();
+    if let Some(reasoning) = options.and_then(|options| options.reasoning) {
+        stream_options.extra.insert(
+            "reasoning".to_owned(),
+            Value::String(
+                match reasoning {
+                    crate::types::ThinkingLevel::Minimal => "minimal",
+                    crate::types::ThinkingLevel::Low => "low",
+                    crate::types::ThinkingLevel::Medium => "medium",
+                    crate::types::ThinkingLevel::High => "high",
+                    crate::types::ThinkingLevel::XHigh => "xhigh",
+                }
+                .to_owned(),
+            ),
+        );
+    }
+    stream_registered(model, context, Some(&stream_options))
+}
+
+#[derive(Debug)]
+struct RegisteredError {
+    message: String,
+    aborted: bool,
+    output: Option<AssistantMessage>,
+}
+
+impl RegisteredError {
+    fn error(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            aborted: false,
+            output: None,
+        }
+    }
+
+    fn aborted() -> Self {
+        Self {
+            message: "Request was aborted".to_owned(),
+            aborted: true,
+            output: None,
+        }
+    }
+}
+
+async fn run_registered_worker(
+    stream: crate::types::AssistantMessageEventStream,
+    model: crate::types::Model,
+    context: crate::types::Context,
+    options: crate::types::StreamOptions,
+) {
+    match execute_registered(&stream, &model, &context, &options).await {
+        Ok(output) => {
+            let message = canonical_message(&model, &output);
+            if message.stop_reason == crate::types::StopReason::Error {
+                emit_registered_error(
+                    &stream,
+                    &model,
+                    "An unknown error occurred".to_owned(),
+                    false,
+                    Some(&output),
+                );
+            } else {
+                let reason = match message.stop_reason {
+                    crate::types::StopReason::Length => crate::types::DoneStopReason::Length,
+                    crate::types::StopReason::ToolUse => crate::types::DoneStopReason::ToolUse,
+                    _ => crate::types::DoneStopReason::Stop,
+                };
+                stream.push(crate::types::AssistantMessageEvent::Done { reason, message });
+            }
+        }
+        Err(error) => emit_registered_error(
+            &stream,
+            &model,
+            error.message,
+            error.aborted,
+            error.output.as_ref(),
+        ),
+    }
+}
+
+async fn execute_registered(
+    stream: &crate::types::AssistantMessageEventStream,
+    model: &crate::types::Model,
+    context: &crate::types::Context,
+    options: &crate::types::StreamOptions,
+) -> std::result::Result<AssistantMessage, RegisteredError> {
+    check_registered_abort(options.signal.as_ref())?;
+    let api_key = options
+        .api_key
+        .as_deref()
+        .filter(|key| !key.is_empty())
+        .ok_or_else(|| {
+            RegisteredError::error(format!("No API key for provider: {}", model.provider))
+        })?;
+    let mut local_model = local_model(model);
+    if let Some(headers) = options.headers.as_ref() {
+        for (name, value) in headers {
+            if let Some(value) = value {
+                local_model.headers.insert(name.clone(), value.clone());
+            } else {
+                local_model.headers.remove(name);
+            }
+        }
+    }
+    let local_context = local_context(context);
+    let messages = normalize_tool_call_ids(&local_context.messages);
+    let local_options = local_options(model, options);
+    let payload = build_chat_payload(
+        &local_model,
+        &local_context,
+        &messages,
+        Some(&local_options),
+    );
+    let mut payload =
+        serde_json::to_value(payload).map_err(|error| RegisteredError::error(error.to_string()))?;
+    if let Some(hook) = options.on_payload.as_ref()
+        && let Some(next) = hook(payload.clone(), model.clone())
+            .await
+            .map_err(|error| RegisteredError::error(error.to_string()))?
+    {
+        payload = next;
+    }
+
+    let request_options = build_request_options(&local_model, Some(&local_options));
+    let mut builder = reqwest::Client::builder();
+    if let Some(timeout_ms) = options.timeout_ms {
+        builder = builder.timeout(Duration::from_millis(timeout_ms));
+    }
+    let client = builder
+        .build()
+        .map_err(|error| RegisteredError::error(error.to_string()))?;
+    let response = await_registered_or_abort(
+        client
+            .post(mistral_chat_url(&local_model))
+            .headers(
+                request_headers(api_key, &request_options.headers)
+                    .map_err(RegisteredError::error)?,
+            )
+            .json(&mistral_wire_payload(payload))
+            .send(),
+        options.signal.clone(),
+    )
+    .await?;
+    let status = response.status();
+    let response_headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_owned()))
+        })
+        .collect::<HashMap<_, _>>();
+    if let Some(hook) = options.on_response.as_ref() {
+        hook(
+            crate::types::ProviderResponse {
+                status: status.as_u16(),
+                headers: response_headers,
+            },
+            model.clone(),
+        )
+        .await
+        .map_err(|error| RegisteredError::error(error.to_string()))?;
+    }
+    if !status.is_success() {
+        let body = await_registered_or_abort(response.text(), options.signal.clone()).await?;
+        return Err(RegisteredError::error(format_mistral_error(
+            &MistralApiError {
+                message: status.to_string(),
+                status_code: Some(status.as_u16()),
+                body: Some(body),
+            },
+        )));
+    }
+
+    let mut output = create_output(&local_model);
+    let local_stream = AssistantMessageEventStream::new();
+    local_stream.push(AssistantMessageEvent::Start {
+        partial: output.clone(),
+    });
+    let mut emitted = 0;
+    emit_registered_events(stream, model, &local_stream, &mut emitted)
+        .map_err(|error| registered_error_with_output(error, &output))?;
+    let mut consumer = MistralStreamConsumer::default();
+    let mut decoder = RegisteredSseDecoder::default();
+    let mut response = response;
+    loop {
+        check_registered_abort(options.signal.as_ref())
+            .map_err(|error| registered_error_with_output(error, &output))?;
+        let Some(bytes) = await_registered_or_abort(response.chunk(), options.signal.clone())
+            .await
+            .map_err(|error| registered_error_with_output(error, &output))?
+        else {
+            break;
+        };
+        for data in decoder
+            .push(&bytes)
+            .map_err(|error| registered_error_with_output(error, &output))?
+        {
+            if data == "[DONE]" {
+                continue;
+            }
+            let event = serde_json::from_str::<MistralStreamEnvelope>(&data).map_err(|error| {
+                registered_error_with_output(
+                    RegisteredError::error(format!("Mistral stream JSON error: {error}")),
+                    &output,
+                )
+            })?;
+            consumer.consume_chunk(&local_model, &mut output, &local_stream, event.into_chunk());
+            emit_registered_events(stream, model, &local_stream, &mut emitted)
+                .map_err(|error| registered_error_with_output(error, &output))?;
+            tokio::task::yield_now().await;
+            check_registered_abort(options.signal.as_ref())
+                .map_err(|error| registered_error_with_output(error, &output))?;
+        }
+    }
+    for data in decoder
+        .finish()
+        .map_err(|error| registered_error_with_output(error, &output))?
+    {
+        if data == "[DONE]" {
+            continue;
+        }
+        let event = serde_json::from_str::<MistralStreamEnvelope>(&data).map_err(|error| {
+            registered_error_with_output(
+                RegisteredError::error(format!("Mistral stream JSON error: {error}")),
+                &output,
+            )
+        })?;
+        consumer.consume_chunk(&local_model, &mut output, &local_stream, event.into_chunk());
+    }
+    consumer.finish(&mut output, &local_stream);
+    emit_registered_events(stream, model, &local_stream, &mut emitted)
+        .map_err(|error| registered_error_with_output(error, &output))?;
+    check_registered_abort(options.signal.as_ref())
+        .map_err(|error| registered_error_with_output(error, &output))?;
+    Ok(output)
+}
+
+fn registered_error_with_output(
+    mut error: RegisteredError,
+    output: &AssistantMessage,
+) -> RegisteredError {
+    error.output = Some(output.clone());
+    error
+}
+
+async fn await_registered_or_abort<T>(
+    future: impl std::future::Future<Output = std::result::Result<T, reqwest::Error>>,
+    signal: Option<crate::types::AbortSignal>,
+) -> std::result::Result<T, RegisteredError> {
+    if let Some(signal) = signal {
+        match futures::future::select(Box::pin(future), Box::pin(wait_registered_abort(signal)))
+            .await
+        {
+            futures::future::Either::Left((result, _)) => {
+                result.map_err(|error| RegisteredError::error(error.to_string()))
+            }
+            futures::future::Either::Right(((), _)) => Err(RegisteredError::aborted()),
+        }
+    } else {
+        future
+            .await
+            .map_err(|error| RegisteredError::error(error.to_string()))
+    }
+}
+
+async fn wait_registered_abort(signal: crate::types::AbortSignal) {
+    while !signal.aborted() {
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+}
+
+fn check_registered_abort(
+    signal: Option<&crate::types::AbortSignal>,
+) -> std::result::Result<(), RegisteredError> {
+    if signal.is_some_and(crate::types::AbortSignal::aborted) {
+        Err(RegisteredError::aborted())
+    } else {
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+struct RegisteredSseDecoder {
+    pending: Vec<u8>,
+}
+
+impl RegisteredSseDecoder {
+    fn push(&mut self, bytes: &[u8]) -> std::result::Result<Vec<String>, RegisteredError> {
+        self.pending.extend_from_slice(bytes);
+        self.decode(false)
+    }
+
+    fn finish(&mut self) -> std::result::Result<Vec<String>, RegisteredError> {
+        self.decode(true)
+    }
+
+    fn decode(&mut self, flush: bool) -> std::result::Result<Vec<String>, RegisteredError> {
+        let mut values = Vec::new();
+        while let Some((end, delimiter)) = registered_sse_delimiter(&self.pending) {
+            let event = self.pending.drain(..end).collect::<Vec<_>>();
+            self.pending.drain(..delimiter);
+            if let Some(data) = registered_sse_data(&event)? {
+                values.push(data);
+            }
+        }
+        if flush && !self.pending.is_empty() {
+            let event = std::mem::take(&mut self.pending);
+            if let Some(data) = registered_sse_data(&event)? {
+                values.push(data);
+            }
+        }
+        Ok(values)
+    }
+}
+
+fn registered_sse_delimiter(bytes: &[u8]) -> Option<(usize, usize)> {
+    bytes
+        .windows(2)
+        .position(|window| window == b"\n\n")
+        .map(|index| (index, 2))
+        .into_iter()
+        .chain(
+            bytes
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|index| (index, 4)),
+        )
+        .min_by_key(|(index, _)| *index)
+}
+
+fn registered_sse_data(event: &[u8]) -> std::result::Result<Option<String>, RegisteredError> {
+    let event = std::str::from_utf8(event).map_err(|error| {
+        RegisteredError::error(format!("invalid UTF-8 in Mistral SSE: {error}"))
+    })?;
+    let data = event
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:").map(str::trim))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok((!data.is_empty()).then_some(data))
+}
+
+fn local_model(model: &crate::types::Model) -> Model {
+    Model {
+        id: model.id.clone(),
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        base_url: Some(model.base_url.clone()),
+        input: model
+            .input
+            .iter()
+            .map(|input| match input {
+                crate::types::ModelInput::Image => ModelInput::Image,
+                crate::types::ModelInput::Text => ModelInput::Text,
+            })
+            .collect(),
+        reasoning: model.reasoning,
+        thinking_level_map: HashMap::new(),
+        headers: model.headers.clone().unwrap_or_default(),
+    }
+}
+
+fn local_context(context: &crate::types::Context) -> Context {
+    Context {
+        system_prompt: context.system_prompt.clone(),
+        messages: context.messages.iter().map(local_message).collect(),
+        tools: context
+            .tools
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|tool| Tool {
+                name: tool.name,
+                description: tool.description,
+                parameters: strip_symbol_keys(&tool.parameters),
+            })
+            .collect(),
+    }
+}
+
+fn local_message(message: &crate::types::Message) -> Message {
+    match message {
+        crate::types::Message::User(message) => Message::User {
+            content: match &message.content {
+                crate::types::UserMessageContent::Text(text) => UserContent::Text(text.clone()),
+                crate::types::UserMessageContent::Blocks(parts) => UserContent::Parts(
+                    parts
+                        .iter()
+                        .map(|part| match part {
+                            crate::types::UserContentBlock::Text(text) => UserContentPart::Text {
+                                text: text.text.clone(),
+                            },
+                            crate::types::UserContentBlock::Image(image) => {
+                                UserContentPart::Image {
+                                    data: image.data.clone(),
+                                    mime_type: image.mime_type.clone(),
+                                }
+                            }
+                        })
+                        .collect(),
+                ),
+            },
+        },
+        crate::types::Message::Assistant(message) => Message::Assistant {
+            content: message
+                .content
+                .iter()
+                .map(|block| match block {
+                    crate::types::AssistantContentBlock::Text(text) => AssistantContent::Text {
+                        text: text.text.clone(),
+                    },
+                    crate::types::AssistantContentBlock::Thinking(thinking) => {
+                        AssistantContent::Thinking {
+                            thinking: thinking.thinking.clone(),
+                        }
+                    }
+                    crate::types::AssistantContentBlock::ToolCall(call) => {
+                        AssistantContent::ToolCall {
+                            id: call.id.clone(),
+                            name: call.name.clone(),
+                            arguments: Value::Object(call.arguments.clone().into_iter().collect()),
+                        }
+                    }
+                })
+                .collect(),
+        },
+        crate::types::Message::ToolResult(message) => Message::ToolResult {
+            tool_call_id: message.tool_call_id.clone(),
+            tool_name: message.tool_name.clone(),
+            is_error: message.is_error,
+            content: message
+                .content
+                .iter()
+                .map(|part| match part {
+                    crate::types::ToolResultContentBlock::Text(text) => UserContentPart::Text {
+                        text: text.text.clone(),
+                    },
+                    crate::types::ToolResultContentBlock::Image(image) => UserContentPart::Image {
+                        data: image.data.clone(),
+                        mime_type: image.mime_type.clone(),
+                    },
+                })
+                .collect(),
+        },
+    }
+}
+
+fn local_options(
+    model: &crate::types::Model,
+    options: &crate::types::StreamOptions,
+) -> MistralOptions {
+    let reasoning = options.extra.get("reasoning").and_then(Value::as_str);
+    let should_reason = model.reasoning && reasoning.is_some();
+    MistralOptions {
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
+        api_key: options.api_key.clone(),
+        session_id: options.session_id.clone(),
+        cache_retention: options.cache_retention.map(|retention| match retention {
+            crate::types::CacheRetention::None => CacheRetention::None,
+            crate::types::CacheRetention::Short => CacheRetention::Short,
+            crate::types::CacheRetention::Long => CacheRetention::Long,
+        }),
+        headers: options
+            .headers
+            .clone()
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(name, value)| value.map(|value| (name, value)))
+            .collect(),
+        timeout_ms: options.timeout_ms,
+        on_payload: None,
+        tool_choice: options
+            .extra
+            .get("toolChoice")
+            .and_then(Value::as_str)
+            .map(|choice| match choice {
+                "none" => MistralToolChoice::None,
+                "any" => MistralToolChoice::Any,
+                "required" => MistralToolChoice::Required,
+                _ => MistralToolChoice::Auto,
+            }),
+        prompt_mode: (should_reason && !registered_uses_reasoning_effort(&model.id))
+            .then(|| "reasoning".to_owned()),
+        reasoning_effort: (should_reason && registered_uses_reasoning_effort(&model.id))
+            .then_some(MistralReasoningEffort::High),
+    }
+}
+
+fn registered_uses_reasoning_effort(model_id: &str) -> bool {
+    matches!(
+        model_id,
+        "mistral-small-2603" | "mistral-small-latest" | "mistral-medium-3.5"
+    )
+}
+
+fn emit_registered_events(
+    stream: &crate::types::AssistantMessageEventStream,
+    model: &crate::types::Model,
+    local_stream: &AssistantMessageEventStream,
+    emitted: &mut usize,
+) -> std::result::Result<(), RegisteredError> {
+    let events = local_stream.events();
+    for event in &events[*emitted..] {
+        let event = match event {
+            AssistantMessageEvent::Start { partial } => {
+                crate::types::AssistantMessageEvent::Start {
+                    partial: canonical_message(model, partial),
+                }
+            }
+            AssistantMessageEvent::TextStart {
+                content_index,
+                partial,
+            } => crate::types::AssistantMessageEvent::TextStart {
+                content_index: *content_index,
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::TextDelta {
+                content_index,
+                delta,
+                partial,
+            } => crate::types::AssistantMessageEvent::TextDelta {
+                content_index: *content_index,
+                delta: delta.clone(),
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::TextEnd {
+                content_index,
+                content,
+                partial,
+            } => crate::types::AssistantMessageEvent::TextEnd {
+                content_index: *content_index,
+                content: content.clone(),
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::ThinkingStart {
+                content_index,
+                partial,
+            } => crate::types::AssistantMessageEvent::ThinkingStart {
+                content_index: *content_index,
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::ThinkingDelta {
+                content_index,
+                delta,
+                partial,
+            } => crate::types::AssistantMessageEvent::ThinkingDelta {
+                content_index: *content_index,
+                delta: delta.clone(),
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::ThinkingEnd {
+                content_index,
+                content,
+                partial,
+            } => crate::types::AssistantMessageEvent::ThinkingEnd {
+                content_index: *content_index,
+                content: content.clone(),
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::ToolcallStart {
+                content_index,
+                partial,
+            } => crate::types::AssistantMessageEvent::ToolcallStart {
+                content_index: *content_index,
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::ToolcallDelta {
+                content_index,
+                delta,
+                partial,
+            } => crate::types::AssistantMessageEvent::ToolcallDelta {
+                content_index: *content_index,
+                delta: delta.clone(),
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::ToolcallEnd {
+                content_index,
+                tool_call,
+                partial,
+            } => crate::types::AssistantMessageEvent::ToolcallEnd {
+                content_index: *content_index,
+                tool_call: canonical_tool_call(tool_call),
+                partial: canonical_message(model, partial),
+            },
+            AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. } => continue,
+        };
+        stream.push(event);
+    }
+    *emitted = events.len();
+    Ok(())
+}
+
+fn canonical_tool_call(content: &AssistantContent) -> crate::types::ToolCall {
+    let AssistantContent::ToolCall {
+        id,
+        name,
+        arguments,
+    } = content
+    else {
+        unreachable!("tool-call event must contain a tool call")
+    };
+    crate::types::ToolCall {
+        content_type: crate::types::ToolCallType::ToolCall,
+        id: id.clone(),
+        name: name.clone(),
+        arguments: arguments
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+        thought_signature: None,
+    }
+}
+
+fn canonical_message(
+    model: &crate::types::Model,
+    output: &AssistantMessage,
+) -> crate::types::AssistantMessage {
+    let mut usage = crate::types::Usage {
+        input: output.usage.input,
+        output: output.usage.output,
+        cache_read: output.usage.cache_read,
+        cache_write: output.usage.cache_write,
+        total_tokens: output.usage.total_tokens,
+        ..crate::types::Usage::default()
+    };
+    usage.cost.input = model.cost.input * usage.input as f64 / 1_000_000.0;
+    usage.cost.output = model.cost.output * usage.output as f64 / 1_000_000.0;
+    usage.cost.cache_read = model.cost.cache_read * usage.cache_read as f64 / 1_000_000.0;
+    usage.cost.cache_write = model.cost.cache_write * usage.cache_write as f64 / 1_000_000.0;
+    usage.cost.total =
+        usage.cost.input + usage.cost.output + usage.cost.cache_read + usage.cost.cache_write;
+    crate::types::AssistantMessage {
+        role: crate::types::AssistantMessageRole::Assistant,
+        content: output
+            .content
+            .iter()
+            .map(|block| match block {
+                AssistantContent::Text { text } => {
+                    crate::types::AssistantContentBlock::Text(crate::types::TextContent {
+                        content_type: crate::types::TextContentType::Text,
+                        text: text.clone(),
+                        text_signature: None,
+                    })
+                }
+                AssistantContent::Thinking { thinking } => {
+                    crate::types::AssistantContentBlock::Thinking(crate::types::ThinkingContent {
+                        content_type: crate::types::ThinkingContentType::Thinking,
+                        thinking: thinking.clone(),
+                        thinking_signature: None,
+                        redacted: None,
+                    })
+                }
+                AssistantContent::ToolCall { .. } => {
+                    crate::types::AssistantContentBlock::ToolCall(canonical_tool_call(block))
+                }
+            })
+            .collect(),
+        api: model.api.clone(),
+        provider: model.provider.clone(),
+        model: model.id.clone(),
+        response_model: None,
+        response_id: output.response_id.clone(),
+        diagnostics: None,
+        usage,
+        stop_reason: match output.stop_reason {
+            StopReason::Stop => crate::types::StopReason::Stop,
+            StopReason::Length => crate::types::StopReason::Length,
+            StopReason::ToolUse => crate::types::StopReason::ToolUse,
+            StopReason::Error => crate::types::StopReason::Error,
+            StopReason::Aborted => crate::types::StopReason::Aborted,
+        },
+        error_message: output.error_message.clone(),
+        timestamp: output.timestamp,
+    }
+}
+
+fn emit_registered_error(
+    stream: &crate::types::AssistantMessageEventStream,
+    model: &crate::types::Model,
+    message: String,
+    aborted: bool,
+    output: Option<&AssistantMessage>,
+) {
+    let mut error = output.map_or_else(
+        || crate::types::AssistantMessage {
+            role: crate::types::AssistantMessageRole::Assistant,
+            content: Vec::new(),
+            api: model.api.clone(),
+            provider: model.provider.clone(),
+            model: model.id.clone(),
+            response_model: None,
+            response_id: None,
+            diagnostics: None,
+            usage: crate::types::Usage::default(),
+            stop_reason: if aborted {
+                crate::types::StopReason::Aborted
+            } else {
+                crate::types::StopReason::Error
+            },
+            error_message: None,
+            timestamp: unix_timestamp_ms(),
+        },
+        |output| canonical_message(model, output),
+    );
+    error.stop_reason = if aborted {
+        crate::types::StopReason::Aborted
+    } else {
+        crate::types::StopReason::Error
+    };
+    error.error_message = Some(message);
+    stream.push(crate::types::AssistantMessageEvent::Error {
+        reason: if aborted {
+            crate::types::ErrorStopReason::Aborted
+        } else {
+            crate::types::ErrorStopReason::Error
+        },
+        error,
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::Arc;
     use std::sync::mpsc::{self, Receiver};
+    use std::sync::{Arc, Mutex};
 
     use super::*;
     use serde_json::json;
@@ -2186,6 +3051,23 @@ mod tests {
         let message = output.error_message.expect("error message");
         assert_eq!(message, "Mistral API error (429): too many requests");
         assert!(!message.contains("Input validation failed"));
+        let events = stream.events();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event,
+                        AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. }
+                    )
+                })
+                .count(),
+            1
+        );
+        assert!(matches!(
+            events.last(),
+            Some(AssistantMessageEvent::Error { .. })
+        ));
     }
 
     #[test]
@@ -2248,9 +3130,133 @@ mod tests {
         );
     }
 
-    fn replace_payload(mut payload: Value, _model: &Model) -> Option<Value> {
+    fn replace_payload(
+        mut payload: Value,
+        _model: Model,
+    ) -> futures::future::BoxFuture<
+        'static,
+        std::result::Result<Option<Value>, crate::types::ProviderHookError>,
+    > {
         payload["temperature"] = json!(0.42);
-        Some(payload)
+        Box::pin(async move { Ok(Some(payload)) })
+    }
+
+    #[test]
+    fn transmitted_body_uses_wire_keys_without_renaming_tool_schema_properties() {
+        let response_body = concat!(
+            "data: {\"id\":\"cmpl-wire\",\"choices\":[{\"finishReason\":\"stop\",\"delta\":{}}]}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let (base_url, request) = serve_once(response_body, "200 OK");
+        let mut test_model = model("mistral-small-2603");
+        test_model.base_url = Some(base_url);
+        let parameters = json!({
+            "type": "object",
+            "properties": {
+                "camelCaseProperty": {
+                    "type": "object",
+                    "properties": { "nestedThing": { "type": "string" } }
+                }
+            }
+        });
+        let context = Context {
+            messages: vec![
+                Message::User {
+                    content: UserContent::Text("Hello".to_owned()),
+                },
+                Message::Assistant {
+                    content: vec![AssistantContent::ToolCall {
+                        id: "abc123XYZ".to_owned(),
+                        name: "inspect_schema".to_owned(),
+                        arguments: json!({"camelCaseArgument": true}),
+                    }],
+                },
+                Message::ToolResult {
+                    tool_call_id: "abc123XYZ".to_owned(),
+                    tool_name: "inspect_schema".to_owned(),
+                    content: vec![UserContentPart::Text {
+                        text: "done".to_owned(),
+                    }],
+                    is_error: false,
+                },
+            ],
+            tools: vec![Tool {
+                name: "inspect_schema".to_owned(),
+                description: "Inspect the schema".to_owned(),
+                parameters: parameters.clone(),
+            }],
+            ..Context::default()
+        };
+        let captured = Arc::new(Mutex::new(None));
+        let hook_capture = Arc::clone(&captured);
+        let stream = stream(
+            &test_model,
+            &context,
+            Some(&MistralOptions {
+                api_key: Some("test-key".to_owned()),
+                max_tokens: Some(123),
+                session_id: Some("session-wire".to_owned()),
+                tool_choice: Some(MistralToolChoice::Required),
+                prompt_mode: Some("reasoning".to_owned()),
+                reasoning_effort: Some(MistralReasoningEffort::High),
+                timeout_ms: Some(2000),
+                on_payload: Some(Arc::new(move |payload, _model| {
+                    let hook_capture = Arc::clone(&hook_capture);
+                    Box::pin(async move {
+                        *hook_capture.lock().expect("capture lock") = Some(payload.clone());
+                        Ok(Some(payload))
+                    })
+                })),
+                ..MistralOptions::default()
+            }),
+        )
+        .expect("stream starts");
+        assert_eq!(
+            stream
+                .wait_result(Duration::from_secs(2))
+                .expect("terminal event")
+                .stop_reason,
+            StopReason::Stop
+        );
+
+        let sdk_payload = captured
+            .lock()
+            .expect("capture lock")
+            .clone()
+            .expect("SDK payload captured");
+        assert_eq!(sdk_payload["maxTokens"], 123);
+        assert_eq!(sdk_payload["toolChoice"], "required");
+        assert_eq!(sdk_payload["promptMode"], "reasoning");
+        assert_eq!(sdk_payload["reasoningEffort"], "high");
+        assert_eq!(sdk_payload["promptCacheKey"], "session-wire");
+        assert!(sdk_payload.get("max_tokens").is_none());
+
+        let request = request
+            .recv_timeout(Duration::from_secs(1))
+            .expect("request captured");
+        let body = request
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body)
+            .expect("request body");
+        let body: Value = serde_json::from_str(body).expect("wire JSON");
+        assert_eq!(body["max_tokens"], 123);
+        assert_eq!(body["tool_choice"], "required");
+        assert_eq!(body["prompt_mode"], "reasoning");
+        assert_eq!(body["reasoning_effort"], "high");
+        assert_eq!(body["prompt_cache_key"], "session-wire");
+        assert!(body.get("maxTokens").is_none());
+        assert_eq!(body["messages"][1]["tool_calls"][0]["id"], "abc123XYZ");
+        assert_eq!(
+            body["messages"][1]["tool_calls"][0]["function"]["arguments"],
+            r#"{"camelCaseArgument":true}"#
+        );
+        assert_eq!(body["messages"][2]["tool_call_id"], "abc123XYZ");
+        assert_eq!(body["tools"][0]["function"]["parameters"], parameters);
+        assert_eq!(
+            body["tools"][0]["function"]["parameters"]["properties"]["camelCaseProperty"]["properties"]
+                ["nestedThing"]["type"],
+            "string"
+        );
     }
 
     #[test]
@@ -2309,5 +3315,22 @@ mod tests {
         );
         assert!(request.contains("/v1/chat/completions"));
         assert!(request.contains("\"temperature\":0.42"));
+        let events = stream.events();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event,
+                        AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. }
+                    )
+                })
+                .count(),
+            1
+        );
+        assert!(matches!(
+            events.last(),
+            Some(AssistantMessageEvent::Done { .. })
+        ));
     }
 }

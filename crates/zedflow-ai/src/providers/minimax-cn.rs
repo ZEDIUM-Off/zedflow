@@ -1,8 +1,9 @@
 //! MiniMax CN provider factory ported from Pi's `packages/ai/src/providers/minimax-cn.ts`.
 
-use zedflow_core::{error::Result, placeholders};
+use zedflow_core::error::Result;
 
 use crate::models::Provider;
+use crate::providers::static_catalog::static_provider;
 
 /// MiniMax CN provider id used by Pi.
 pub const MINIMAX_CN_PROVIDER_ID: &str = "minimax-cn";
@@ -22,58 +23,25 @@ pub const MINIMAX_CN_API_KEY_AUTH_NAME: &str = "MiniMax CN API key";
 /// Environment variables checked for MiniMax CN API-key auth, in Pi precedence order.
 pub const MINIMAX_CN_API_KEY_ENV_VARS: &[&str] = &["MINIMAX_CN_API_KEY"];
 
-/// Creates Pi's MiniMax CN provider.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/providers/minimax-cn.models.ts MINIMAX_CN_MODELS`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `return createProvider({ id: "minimax-cn", name: "MiniMax CN", baseUrl: "https://api.minimaxi.com/anthropic", auth: { apiKey: envApiKeyAuth("MiniMax CN API key", ["MINIMAX_CN_API_KEY"]) }, models: Object.values(MINIMAX_CN_MODELS), api: anthropicMessagesApi() })`.
-/// Replacement decision needed before production use.
-///
-/// # Errors
-///
-/// Always returns a port placeholder until the shared provider auth/base URL/API stream contract and
-/// MiniMax CN model catalog are available in Rust.
-#[must_use]
+/// Creates the minimax-cn provider from the static Rust model catalog.
 pub fn minimax_cn_provider() -> Result<Provider> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/models.ts Provider/createProvider, references/pi/packages/ai/src/auth/helpers.ts envApiKeyAuth, references/pi/packages/ai/src/api/anthropic-messages.lazy.ts anthropicMessagesApi, references/pi/packages/ai/src/providers/minimax-cn.models.ts MINIMAX_CN_MODELS",
-        "return createProvider({ id: \"minimax-cn\", name: \"MiniMax CN\", baseUrl: \"https://api.minimaxi.com/anthropic\", auth: { apiKey: envApiKeyAuth(\"MiniMax CN API key\", [\"MINIMAX_CN_API_KEY\"]) }, models: Object.values(MINIMAX_CN_MODELS), api: anthropicMessagesApi() })",
-    )
+    let provider = static_provider(
+        MINIMAX_CN_PROVIDER_ID,
+        MINIMAX_CN_PROVIDER_NAME,
+        crate::providers::minimax_cn_models::minimax_cn_models(),
+    );
+    Ok(provider)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zedflow_core::error::Error;
 
     #[test]
-    fn documents_minimax_cn_provider_blocker() {
-        match minimax_cn_provider() {
-            Err(Error::PortPlaceholder(placeholder)) => {
-                assert!(
-                    placeholder
-                        .original_dependency()
-                        .contains("MINIMAX_CN_MODELS")
-                );
-                assert!(
-                    placeholder
-                        .required_behavior()
-                        .contains("anthropicMessagesApi")
-                );
-            }
-            Err(err) => panic!("unexpected provider error: {err:?}"),
-            Ok(_) => panic!("provider creation is intentionally blocked"),
-        }
-    }
-
-    #[test]
-    fn preserves_minimax_cn_provider_constants() {
-        assert_eq!(MINIMAX_CN_PROVIDER_ID, "minimax-cn");
-        assert_eq!(MINIMAX_CN_PROVIDER_NAME, "MiniMax CN");
-        assert_eq!(MINIMAX_CN_BASE_URL, "https://api.minimaxi.com/anthropic");
-        assert_eq!(MINIMAX_CN_API, "anthropic-messages");
-        assert_eq!(MINIMAX_CN_API_KEY_AUTH_NAME, "MiniMax CN API key");
-        assert_eq!(MINIMAX_CN_API_KEY_ENV_VARS, &["MINIMAX_CN_API_KEY"]);
+    fn builds_provider_from_static_catalog() {
+        let provider = minimax_cn_provider().expect("provider");
+        assert_eq!(provider.id, MINIMAX_CN_PROVIDER_ID);
+        assert_eq!(provider.name, MINIMAX_CN_PROVIDER_NAME);
+        assert!(!provider.get_models().is_empty());
     }
 }

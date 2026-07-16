@@ -1,8 +1,10 @@
 use zedflow_ai::models::create_models;
 use zedflow_ai::providers::anthropic::anthropic_provider;
-use zedflow_ai::types::{Context, Message, UserMessage, UserMessageContent, UserMessageRole};
+use zedflow_ai::types::{
+    AssistantContentBlock, Context, Message, UserMessage, UserMessageContent, UserMessageRole,
+};
 
-const BLOCKER: &str = "live Anthropic scratch script skipped; original requires ANTHROPIC_API_KEY and the Rust port still has provider/auth/completeSimple/streamSimple PORT PLACEHOLDERs";
+const BLOCKER: &str = "live Anthropic scratch script skipped; original requires ANTHROPIC_API_KEY and the Rust port still has provider/auth/completeSimple/streamSimple blockers";
 
 fn scratch_context() -> Context {
     Context {
@@ -17,7 +19,7 @@ fn scratch_context() -> Context {
 }
 
 #[test]
-#[ignore = "live Anthropic scratch script requires ANTHROPIC_API_KEY; provider/auth/completeSimple/streamSimple remain PORT PLACEHOLDERs"]
+#[ignore = "live Anthropic scratch script requires ANTHROPIC_API_KEY; provider/auth/completeSimple/streamSimple remain blocked"]
 fn scratch_models_api_anthropic_smoke_is_live_provider_sample() {
     let mut context = scratch_context();
     assert_eq!(context.system_prompt.as_deref(), Some("You are terse."));
@@ -28,11 +30,18 @@ fn scratch_models_api_anthropic_smoke_is_live_provider_sample() {
     let model = models
         .get_model("anthropic", "claude-haiku-4-5")
         .expect("model not found");
-    let auth = models.get_auth(&model).expect("auth should be configured");
+    let auth = models
+        .get_auth(&model)
+        .expect("auth resolution should not fail")
+        .expect("auth should be configured");
     assert!(auth.source.is_some(), "auth should report its source");
 
-    let message = models.complete(&model, None);
-    assert_eq!(message.text, "ok");
+    let message = models.complete(&model, &context, None);
+    let text = message.content.iter().find_map(|block| match block {
+        AssistantContentBlock::Text(text) => Some(text.text.as_str()),
+        _ => None,
+    });
+    assert_eq!(text, Some("ok"));
 
     context.messages.push(Message::User(UserMessage {
         role: UserMessageRole::User,
@@ -40,11 +49,9 @@ fn scratch_models_api_anthropic_smoke_is_live_provider_sample() {
         timestamp: 0,
     }));
 
-    let stream = models.stream(&model, None);
+    let stream = models.stream(&model, &context, None);
     assert!(
-        stream
-            .iter()
-            .any(|event| event.text.replace('\n', " ").contains('1')),
-        "stream should include count deltas"
+        !stream.is_done(),
+        "stream should start before terminal event"
     );
 }

@@ -6,9 +6,11 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
+use crate::auth::types::{
+    AuthEvent, AuthFuture, AuthLoginCallbacks, AuthPrompt, AuthResult, BoxError,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use zedflow_core::{error::Result as PortResult, placeholders};
 
 /// Pi CLI auth file name.
 pub const AUTH_FILE: &str = "auth.json";
@@ -273,23 +275,51 @@ pub fn save_auth_to_path(
     Ok(())
 }
 
-/// Runs the provider OAuth login flow.
-///
-/// PORT PLACEHOLDER:
-/// Original dependency: `references/pi/packages/ai/src/utils/oauth/index.ts OAuthProviderInterface.login and Node readline callbacks`.
-/// Reason: no Rust replacement selected yet.
-/// Required behavior: `look up the OAuth provider by id, run its interactive login callbacks, return credentials, and perform no live provider/network calls in unit tests`.
-/// Replacement decision needed before production use.
+/// Runs the provider OAuth login flow with caller-owned interaction callbacks.
 ///
 /// # Errors
 ///
-/// Returns a port placeholder until the OAuth provider registry and provider
-/// login implementations are ported.
-pub fn login(_provider_id: &str) -> PortResult<OAuthCredentials> {
-    placeholders::unsupported(
-        "references/pi/packages/ai/src/utils/oauth/index.ts OAuthProviderInterface.login and Node readline callbacks",
-        "look up the OAuth provider by id, run its interactive login callbacks, return credentials, and perform no live provider/network calls in unit tests",
-    )
+/// Returns unknown-provider, prompt, cancellation, or provider login failures.
+pub async fn login_with_callbacks(
+    provider_id: &str,
+    callbacks: &dyn AuthLoginCallbacks,
+) -> AuthResult<OAuthCredentials> {
+    let provider = crate::utils::oauth::index::get_oauth_provider(provider_id)
+        .ok_or_else(|| Box::new(CliError::UnknownProvider(provider_id.to_owned())) as BoxError)?;
+    let credential = provider.login(callbacks).await?;
+    Ok(OAuthCredentials {
+        refresh: credential.refresh,
+        access: credential.access,
+        expires: credential.expires,
+        extra: credential.extra,
+    })
+}
+
+/// Runs the provider OAuth login flow using non-interactive callbacks.
+///
+/// This helper is useful for tests and callers that only need provider lookup. Real CLI callers
+/// should use [`login_with_callbacks`] so prompts and auth/device-code notifications reach the UI.
+///
+/// # Errors
+///
+/// Returns an error when the selected provider needs interactive input.
+pub async fn login(provider_id: &str) -> AuthResult<OAuthCredentials> {
+    login_with_callbacks(provider_id, &NonInteractiveLoginCallbacks).await
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NonInteractiveLoginCallbacks;
+
+impl AuthLoginCallbacks for NonInteractiveLoginCallbacks {
+    fn prompt<'a>(&'a self, _prompt: AuthPrompt) -> AuthFuture<'a, AuthResult<String>> {
+        Box::pin(async {
+            Err(Box::new(CliError::InvalidSelection(
+                "interactive OAuth login requires callbacks".to_owned(),
+            )) as BoxError)
+        })
+    }
+
+    fn notify(&self, _event: AuthEvent) {}
 }
 
 fn parse_js_integer(input: &str) -> Option<isize> {
