@@ -1,6 +1,7 @@
 ---
 name: cocoindex
 description: This skill should be used when building data processing pipelines with CocoIndex, a Python library for incremental data transformation. Use when the task involves processing files/data into databases, creating vector embeddings, building knowledge graphs, ETL workflows, or any data pipeline requiring automatic change detection and incremental updates. CocoIndex is Python-native (supports any Python types), has no DSL, and uses version 1.0.0 or later.
+disable-model-invocation: true
 ---
 
 # CocoIndex

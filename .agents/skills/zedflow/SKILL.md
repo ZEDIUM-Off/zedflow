@@ -3,6 +3,7 @@ name: zedflow
 description: >-
   Product-intent and repo-context skill for Zedflow. Use when you need to understand
   the repo's identity, canonical LangGraph baseline, and graph-native replacement seams before planning or editing.
+disable-model-invocation: true
 ---
 
 # Zedflow

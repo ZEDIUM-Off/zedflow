@@ -1,3 +1,7 @@
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
+> [!CAUTION]
+> **Migration status: SUPERSEDED / HISTORICAL.** Do not use this file as the current execution tracker. See `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md`.
+
 # Pi to Rust Package Port — Progress
 
 Plan: `.agents/plans/pi-to-rust-package-port.md`
@@ -392,4 +396,6 @@ Subagent session limit reached at 40/40, so parent completed remaining P1.T2 row
 ## Current orchestration state
 
 - P1.T2 `packages/ai` tests complete: 98/98 rows represented in Rust.
-- Next wave: W3 / P2.T1 (`packages/agent` source files), but this session has reached the 40-subagent spawn limit. Start a new session to continue batches.
+- W3/P2 `packages/agent` complete after AV1: source manifest 25/25 represented, test manifest 20/20 represented, `cargo fmt --all --check`, `cargo check -p zedflow-agent --all-targets`, `cargo test -p zedflow-agent --all-targets --no-run`, and targeted runnable tests passed.
+- Remaining agent parity gaps are tracked in `.agents/state/zedflow-agent-pi-agent-port-final-report.md`: 3 source `PORT PLACEHOLDER` markers and 9 ignored tests with exact reasons.
+- Next wave recommendation: start the next package wave with `packages/tui` source rows (`tui-src.tsv`) after reviewer acceptance of the agent final report.
