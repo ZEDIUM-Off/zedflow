@@ -348,18 +348,22 @@ fn abort_between_decoded_events_suppresses_remaining_buffered_sse() {
         write!(socket, "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}", body.len(), body).unwrap();
     });
     let controller = AbortController::new();
-    let options = zedflow_ai::types::StreamOptions {
-        api_key: Some("test-key".into()),
-        signal: Some(controller.signal()),
-        ..Default::default()
-    };
-    let provider = google_provider().unwrap();
-    let mut stream = provider.stream(
-        &test_model("gemini-2.5-flash", address),
-        &test_context(),
-        Some(&options),
-    );
-    let events = block_on(async {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let events = runtime.block_on(async {
+        let options = zedflow_ai::types::StreamOptions {
+            api_key: Some("test-key".into()),
+            signal: Some(controller.signal()),
+            ..Default::default()
+        };
+        let provider = google_provider().unwrap();
+        let mut stream = provider.stream(
+            &test_model("gemini-2.5-flash", address),
+            &test_context(),
+            Some(&options),
+        );
         let mut events = Vec::new();
         while let Some(event) = stream.next().await {
             let abort =
