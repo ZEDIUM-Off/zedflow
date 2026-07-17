@@ -153,31 +153,59 @@ impl From<AgentHarnessStreamOptions> for SimpleStreamOptions {
     }
 }
 
+/// Tri-state update used by patch contracts.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Patch<T> {
+    /// Leave the current value unchanged.
+    #[default]
+    Unchanged,
+    /// Replace or apply the supplied value.
+    Set(T),
+    /// Remove the current value.
+    Clear,
+}
+
+impl<T> Patch<T> {
+    /// Return whether this patch leaves the value unchanged.
+    #[must_use]
+    pub const fn is_unchanged(&self) -> bool {
+        matches!(self, Self::Unchanged)
+    }
+}
+
+/// Per-key map updates. [`Patch::Clear`] deletes a key and [`Patch::Set`] replaces it.
+pub type MapPatch<T> = HashMap<String, Patch<T>>;
+
 /// Per-request stream option patch returned by provider hooks.
+///
+/// Every field distinguishes omission, replacement, and clearing. Map fields additionally use
+/// [`MapPatch`] so one [`Patch::Set`] can replace and delete individual keys; clearing the outer
+/// patch removes the entire map.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentHarnessStreamOptionsPatch {
     /// Preferred transport patch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transport: Option<Transport>,
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub transport: Patch<Transport>,
     /// Provider timeout patch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub timeout_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub timeout_ms: Patch<u64>,
     /// Maximum retry attempts patch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_retries: Option<u32>,
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub max_retries: Patch<u32>,
     /// Maximum retry delay patch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_retry_delay_ms: Option<u64>,
-    /// Header patch; `None` values delete keys.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers: Option<HashMap<String, Option<String>>>,
-    /// Metadata patch; `None` values delete keys.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<HashMap<String, Option<Value>>>,
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub max_retry_delay_ms: Patch<u64>,
+    /// Header patch; clear the outer patch for all headers or a map value for one key.
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub headers: Patch<MapPatch<String>>,
+    /// Metadata patch; clear the outer patch for all metadata or a map value for one key.
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub metadata: Patch<MapPatch<Value>>,
     /// Cache retention patch.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_retention: Option<CacheRetention>,
+    #[serde(default, skip_serializing_if = "Patch::is_unchanged")]
+    pub cache_retention: Patch<CacheRetention>,
 }
 
 /// Kind of filesystem object addressed by a [`FileSystem`].
@@ -425,26 +453,31 @@ pub enum SessionErrorCode {
     Unknown,
 }
 
+/// Type-erased source retained by [`SessionError`].
+pub type SessionErrorSource = Box<dyn StdError + Send + Sync + 'static>;
+
 /// Error returned by session storage, repositories, and tree operations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct SessionError {
     /// Stable error code.
     pub code: SessionErrorCode,
     /// Human-readable message.
     pub message: String,
-    /// Optional stringified cause.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cause: Option<String>,
+    source: Option<SessionErrorSource>,
 }
 
 impl SessionError {
-    /// Create a session error.
+    /// Create a session error while retaining its source error.
     #[must_use]
-    pub fn new(code: SessionErrorCode, message: impl Into<String>, cause: Option<String>) -> Self {
+    pub fn new(
+        code: SessionErrorCode,
+        message: impl Into<String>,
+        source: Option<SessionErrorSource>,
+    ) -> Self {
         Self {
             code,
             message: message.into(),
-            cause,
+            source,
         }
     }
 }
@@ -455,7 +488,13 @@ impl fmt::Display for SessionError {
     }
 }
 
-impl StdError for SessionError {}
+impl StdError for SessionError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        self.source
+            .as_deref()
+            .map(|source| source as &(dyn StdError + 'static))
+    }
+}
 
 /// Stable top-level harness error codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1010,7 +1049,14 @@ pub trait SessionStorage: Send + Sync {
     /// Return current leaf id.
     fn get_leaf_id<'a>(&'a self) -> HarnessFuture<'a, Option<String>>;
     /// Persist the active leaf id.
-    fn set_leaf_id<'a>(&'a self, leaf_id: Option<String>) -> HarnessFuture<'a, ()>;
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionError`] when the target does not exist or persistence fails.
+    fn set_leaf_id<'a>(
+        &'a self,
+        leaf_id: Option<String>,
+    ) -> HarnessFuture<'a, Result<(), SessionError>>;
     /// Create a new entry id.
     fn create_entry_id<'a>(&'a self) -> HarnessFuture<'a, String>;
     /// Append an entry.

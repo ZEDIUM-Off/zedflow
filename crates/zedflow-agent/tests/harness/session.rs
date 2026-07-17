@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -6,7 +7,9 @@ use zedflow_agent::harness::env::nodejs::NodeExecutionEnv;
 use zedflow_agent::harness::session::{
     InMemorySessionStorage, JsonlSessionStorage, JsonlSessionStorageCreateOptions, Session,
 };
-use zedflow_agent::harness::types::{BranchSummaryDraft, CustomMessageContent};
+use zedflow_agent::harness::types::{
+    AgentHarnessStreamOptionsPatch, BranchSummaryDraft, CustomMessageContent, Patch,
+};
 
 #[path = "session-test-utils.rs"]
 mod session_test_utils;
@@ -15,6 +18,26 @@ use session_test_utils::{TempDir, assistant_message, message_role, message_roles
 
 fn run<T>(future: impl Future<Output = T>) -> T {
     futures::executor::block_on(future)
+}
+
+#[test]
+fn stream_option_patches_distinguish_omission_replacement_and_clearing() {
+    let omitted = AgentHarnessStreamOptionsPatch::default();
+    let replace = AgentHarnessStreamOptionsPatch {
+        headers: Patch::Set(HashMap::from([
+            ("set".to_string(), Patch::Set("value".to_string())),
+            ("delete".to_string(), Patch::Clear),
+        ])),
+        ..AgentHarnessStreamOptionsPatch::default()
+    };
+    let clear = AgentHarnessStreamOptionsPatch {
+        headers: Patch::Clear,
+        ..AgentHarnessStreamOptionsPatch::default()
+    };
+
+    assert_eq!(omitted.headers, Patch::Unchanged);
+    assert_ne!(replace.headers, Patch::Unchanged);
+    assert_eq!(clear.headers, Patch::Clear);
 }
 
 #[test]

@@ -366,7 +366,7 @@ where
                 ));
             }
         }
-        self.storage.set_leaf_id(entry_id.clone()).await;
+        self.storage.set_leaf_id(entry_id.clone()).await?;
         let Some(summary) = summary else {
             return Ok(None);
         };

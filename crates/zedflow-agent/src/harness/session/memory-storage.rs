@@ -99,14 +99,15 @@ impl SessionStorage for InMemorySessionStorage {
     fn set_leaf_id<'a>(
         &'a self,
         leaf_id: Option<String>,
-    ) -> crate::harness::types::HarnessFuture<'a, ()> {
+    ) -> crate::harness::types::HarnessFuture<'a, Result<(), SessionError>> {
         Box::pin(async move {
             let mut state = self.state.lock().expect("session storage lock");
-            if leaf_id
-                .as_ref()
-                .is_some_and(|id| !state.by_id.contains_key(id))
-            {
-                return;
+            if let Some(id) = leaf_id.as_ref().filter(|id| !state.by_id.contains_key(*id)) {
+                return Err(SessionError::new(
+                    SessionErrorCode::NotFound,
+                    format!("Entry {id} not found"),
+                    None,
+                ));
             }
             let entry = SessionTreeEntry::Leaf(LeafEntry {
                 base: create_entry_base(generate_entry_id(&state.by_id), state.leaf_id.clone()),
@@ -117,6 +118,7 @@ impl SessionStorage for InMemorySessionStorage {
                 .insert(entry_id(&entry).to_string(), entry.clone());
             state.entries.push(entry);
             state.leaf_id = leaf_id;
+            Ok(())
         })
     }
 

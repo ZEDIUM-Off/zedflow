@@ -1,3 +1,4 @@
+use std::error::Error as _;
 use std::future::Future;
 use std::sync::Arc;
 
@@ -53,7 +54,7 @@ fn memory_copies_initial_entries_and_persists_leaf_changes() {
 
         assert_eq!(entry_ids(storage.get_entries().await), vec!["entry-1"]);
         assert_eq!(storage.get_leaf_id().await.as_deref(), Some("entry-1"));
-        storage.set_leaf_id(None).await;
+        storage.set_leaf_id(None).await.unwrap();
         assert_eq!(storage.get_leaf_id().await, None);
         assert!(matches!(
             storage.get_entries().await.last(),
@@ -65,13 +66,17 @@ fn memory_copies_initial_entries_and_persists_leaf_changes() {
     });
 }
 
-#[ignore = "source blocker: SessionStorage::set_leaf_id is non-fallible in Rust A1/A2, so invalid leaf ids cannot reject like Pi"]
 #[test]
 fn memory_rejects_invalid_leaf_ids() {
     run(async {
         let storage = InMemorySessionStorage::default();
-        storage.set_leaf_id(Some("missing".to_string())).await;
-        assert_ne!(storage.get_leaf_id().await.as_deref(), Some("missing"));
+        let error = storage
+            .set_leaf_id(Some("missing".to_string()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, SessionErrorCode::NotFound);
+        assert_eq!(error.message, "Entry missing not found");
+        assert_eq!(storage.get_leaf_id().await, None);
     });
 }
 
@@ -219,6 +224,7 @@ fn jsonl_throws_for_malformed_session_headers() {
                 .message
                 .contains("first line is not a valid session header")
         );
+        assert!(error.source().is_some());
     });
 }
 
@@ -308,7 +314,13 @@ fn jsonl_loads_existing_entries_and_reconstructs_leaf() {
         .unwrap();
         assert_eq!(loaded.get_leaf_id().await.as_deref(), Some("child"));
         assert_eq!(entry_ids(loaded.get_entries().await), vec!["root", "child"]);
-        loaded.set_leaf_id(Some("root".to_string())).await;
+        let error = loaded
+            .set_leaf_id(Some("missing".to_string()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, SessionErrorCode::NotFound);
+        assert_eq!(loaded.get_leaf_id().await.as_deref(), Some("child"));
+        loaded.set_leaf_id(Some("root".to_string())).await.unwrap();
         let reloaded = JsonlSessionStorage::open(
             Arc::new(NodeExecutionEnv::with_cwd(temp.string())),
             file.to_string_lossy().to_string(),
