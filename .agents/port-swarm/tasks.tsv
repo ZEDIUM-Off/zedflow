@@ -1,4 +1,21 @@
 id	role	model	depends_on	ownership	validation
-RECONCILE-CHECKPOINT	reconcile	openai-codex/gpt-5.6-sol		state/docs	frozen source and plan hash
-AG-C1..V2	see dag	see dag	canonical order	see dag	exact-SHA only
-NEXT-PORT-DAG	reconcile	openai-codex/gpt-5.6-terra	V2	dag/docs	extend packages only after V2
+RECONCILE-CHECKPOINT	reconcile	openai-codex/gpt-5.6-sol		tools/pi-port-swarm/dag.json,.agents/port-swarm,docs/porting/pi-fidelity-decisions	record base SHA and plan hash
+AG-C1	writer	openai-codex/gpt-5.6-sol	RECONCILE-CHECKPOINT	crates/zedflow-agent/src/types.rs	owned tests; cargo check if contract permits
+AG-C2	writer	openai-codex/gpt-5.6-sol	AG-C1	crates/zedflow-agent/src/harness/types.rs,crates/zedflow-agent/src/harness/session/memory-storage.rs,crates/zedflow-agent/src/harness/session/jsonl-storage.rs,crates/zedflow-agent/src/harness/session/repo-utils.rs,crates/zedflow-agent/src/harness/session/session.rs,crates/zedflow-agent/tests/harness/storage.rs,crates/zedflow-agent/tests/harness/session.rs	cargo test -p zedflow-agent --test storage --test session
+AG-L1	writer	openai-codex/gpt-5.6-sol	AG-C2	crates/zedflow-agent/src/agent-loop.rs,crates/zedflow-agent/tests/agent-loop.rs	cargo test -p zedflow-agent --test agent-loop
+AG-L2	writer	openai-codex/gpt-5.6-sol	AG-L1	crates/zedflow-agent/src/agent.rs,crates/zedflow-agent/tests/agent.rs	cargo test -p zedflow-agent --test agent
+AG-H1	writer	openai-codex/gpt-5.6-sol	AG-L2	crates/zedflow-agent/src/harness/agent-harness.rs,crates/zedflow-agent/tests/harness/agent-harness.rs	cargo test -p zedflow-agent --test agent-harness
+AG-H2	writer	openai-codex/gpt-5.6-sol	AG-H1	crates/zedflow-agent/src/harness/agent-harness.rs,crates/zedflow-agent/tests/harness/agent-harness-stream.rs,crates/zedflow-agent/tests/harness/agent-harness.rs	cargo test -p zedflow-agent --test agent-harness --test agent-harness-stream
+AG-H3	writer	openai-codex/gpt-5.6-sol	AG-H2	crates/zedflow-agent/src/harness/agent-harness.rs,crates/zedflow-agent/src/harness/compaction,crates/zedflow-agent/tests/harness/compaction.rs,crates/zedflow-agent/tests/harness/agent-harness.rs	cargo test -p zedflow-agent --test compaction --test agent-harness
+AG-H4	writer	openai-codex/gpt-5.6-sol	AG-H3	crates/zedflow-agent/src/harness/agent-harness.rs,crates/zedflow-agent/tests/harness/agent-harness.rs	cargo check --workspace --all-targets
+AG-P1	writer	openai-codex/gpt-5.6-terra	AG-H4	crates/zedflow-agent/src/harness/session/uuid.rs,crates/zedflow-agent/tests/harness/session-uuid.rs	cargo test -p zedflow-agent --test session-uuid
+AG-P2	writer	openai-codex/gpt-5.6-terra	AG-P1	crates/zedflow-agent/src/harness/env/nodejs.rs,crates/zedflow-agent/tests/harness/nodejs-env.rs	cargo test -p zedflow-agent --test nodejs-env
+AG-P3	writer	openai-codex/gpt-5.6-sol	AG-P2	crates/zedflow-agent/src/proxy.rs,crates/zedflow-agent/src/index.rs,crates/zedflow-agent/src/node.rs,crates/zedflow-agent/tests/proxy.rs	cargo test -p zedflow-agent --test proxy
+AG-P4	writer	openai-codex/gpt-5.6-terra	AG-P3	crates/zedflow-agent/tests/utils/get-current-time.rs	cargo test -p zedflow-agent get_current_time
+AG-T1	writer	openai-codex/gpt-5.6-terra	AG-P4	crates/zedflow-agent/tests	cargo test -p zedflow-agent --all-targets --no-run
+R-AG	reviewer	openai-codex/gpt-5.6-terra	AG-T1		read-only diff review
+V1	validator	openai-codex/gpt-5.6-luna	R-AG		fmt/check/test/doc gates
+RV-FID	reviewer	openai-codex/gpt-5.6-sol	V1		read-only Pi/Rust comparison
+RV-RUST	reviewer	openai-codex/gpt-5.6-terra	V1		read-only Rust review
+V2	validator	openai-codex/gpt-5.6-sol	RV-FID,RV-RUST		exact-SHA final gates
+NEXT-PORT-DAG	reconcile	openai-codex/gpt-5.6-sol	V2	tools/pi-port-swarm/dag.json,.agents/port-swarm/tasks.tsv,docs/porting	validate-dag and documented crate comparison
