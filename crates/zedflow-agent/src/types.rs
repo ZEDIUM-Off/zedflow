@@ -22,11 +22,29 @@ pub use zedflow_ai::{
 /// JSON Schema value used in place of Pi's TypeBox `TSchema`.
 pub type ToolSchema = serde_json::Value;
 
-/// Stream function used by the agent loop.
-pub type StreamFn = zedflow_ai::StreamFunction<AiApi, SimpleStreamOptions>;
-
 /// Boxed future used by async callback contracts.
 pub type AgentFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Type-erased error returned by fallible agent callbacks.
+pub type AgentCallbackError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+/// Stream function used by the agent loop.
+///
+/// Unlike [`zedflow_ai::StreamFunction`], agent-local stream setup is asynchronous and fallible.
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when stream setup rejects the request.
+pub type StreamFn = Arc<
+    dyn for<'a> Fn(
+            &'a Model<AiApi>,
+            &'a AiContext,
+            Option<&'a SimpleStreamOptions>,
+        )
+            -> AgentFuture<'a, Result<AssistantMessageEventStream, AgentCallbackError>>
+        + Send
+        + Sync,
+>;
 
 /// Configuration for how tool calls from a single assistant message are executed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -114,16 +132,25 @@ pub type AgentToolUpdateCallback<TDetails = Value> =
     Arc<dyn Fn(AgentToolResult<TDetails>) + Send + Sync>;
 
 /// Optional compatibility shim for raw tool-call arguments before schema validation.
-pub type PrepareArgumentsFn = Arc<dyn Fn(Value) -> Value + Send + Sync>;
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when argument preparation rejects the tool call.
+pub type PrepareArgumentsFn = Arc<dyn Fn(Value) -> Result<Value, AgentCallbackError> + Send + Sync>;
 
 /// Tool execution function contract.
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when tool execution fails.
 pub type AgentToolExecuteFn<TDetails = Value> = Arc<
     dyn for<'a> Fn(
             &'a str,
             Value,
             Option<zedflow_ai::AbortSignal>,
             Option<AgentToolUpdateCallback<TDetails>>,
-        ) -> AgentFuture<'a, AgentToolResult<TDetails>>
+        )
+            -> AgentFuture<'a, Result<AgentToolResult<TDetails>, AgentCallbackError>>
         + Send
         + Sync,
 >;
@@ -138,7 +165,7 @@ pub struct AgentTool<TDetails = Value> {
     /// Optional argument preparation hook.
     pub prepare_arguments: Option<PrepareArgumentsFn>,
     /// Tool execution callback.
-    pub execute: Option<AgentToolExecuteFn<TDetails>>,
+    pub execute: AgentToolExecuteFn<TDetails>,
     /// Per-tool execution mode override.
     pub execution_mode: Option<ToolExecutionMode>,
 }
@@ -149,7 +176,7 @@ impl<TDetails> fmt::Debug for AgentTool<TDetails> {
             .field("tool", &self.tool)
             .field("label", &self.label)
             .field("has_prepare_arguments", &self.prepare_arguments.is_some())
-            .field("has_execute", &self.execute.is_some())
+            .field("execute", &"<callback>")
             .field("execution_mode", &self.execution_mode)
             .finish()
     }
@@ -196,6 +223,8 @@ pub struct BeforeToolCallResult {
     pub block: Option<bool>,
     /// Error text used when a call is blocked.
     pub reason: Option<String>,
+    /// Replacement arguments passed directly to tool execution.
+    pub args: Option<Value>,
 }
 
 /// Partial override returned from `after_tool_call`.
@@ -291,11 +320,17 @@ pub type ShouldStopAfterTurnFn<TDetails = Value> =
     Arc<dyn Fn(ShouldStopAfterTurnContext<TDetails>) -> AgentFuture<'static, bool> + Send + Sync>;
 
 /// Hook that may replace context/model/thinking before the next turn.
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when next-turn preparation fails.
 pub type PrepareNextTurnFn<TDetails = Value> = Arc<
     dyn Fn(
             PrepareNextTurnContext<TDetails>,
-        ) -> AgentFuture<'static, Option<AgentLoopTurnUpdate<TDetails>>>
-        + Send
+        ) -> AgentFuture<
+            'static,
+            Result<Option<AgentLoopTurnUpdate<TDetails>>, AgentCallbackError>,
+        > + Send
         + Sync,
 >;
 
@@ -303,24 +338,43 @@ pub type PrepareNextTurnFn<TDetails = Value> = Arc<
 pub type MessageQueueFn = Arc<dyn Fn() -> AgentFuture<'static, Vec<AgentMessage>> + Send + Sync>;
 
 /// Hook called before a tool executes.
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when the hook rejects the tool call.
 pub type BeforeToolCallFn<TDetails = Value> = Arc<
     dyn Fn(
             BeforeToolCallContext<TDetails>,
             Option<zedflow_ai::AbortSignal>,
-        ) -> AgentFuture<'static, Option<BeforeToolCallResult>>
+        )
+            -> AgentFuture<'static, Result<Option<BeforeToolCallResult>, AgentCallbackError>>
         + Send
         + Sync,
 >;
 
 /// Hook called after a tool executes.
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when the hook rejects the tool result.
 pub type AfterToolCallFn<TDetails = Value> = Arc<
     dyn Fn(
             AfterToolCallContext<TDetails>,
             Option<zedflow_ai::AbortSignal>,
-        ) -> AgentFuture<'static, Option<AfterToolCallResult<TDetails>>>
-        + Send
+        ) -> AgentFuture<
+            'static,
+            Result<Option<AfterToolCallResult<TDetails>>, AgentCallbackError>,
+        > + Send
         + Sync,
 >;
+
+/// Fallible async event sink used by agent runtimes.
+///
+/// # Errors
+///
+/// Returns [`AgentCallbackError`] when an event listener rejects the event.
+pub type AgentEventSink =
+    Arc<dyn Fn(AgentEvent) -> AgentFuture<'static, Result<(), AgentCallbackError>> + Send + Sync>;
 
 /// Low-level agent-loop configuration.
 #[derive(Clone)]
