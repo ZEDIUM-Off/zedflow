@@ -104,6 +104,24 @@ class SwarmTest(unittest.TestCase):
             with self.assertRaisesRegex(swarm.DagError, "parent-session evidence"):
                 swarm.accept_result(repo, unit("write", ownership=["a"]), forged, base)
 
+    def test_checked_agents_allow_acceptance_reports(self):
+        agents = Path(__file__).parents[2] / ".pi/agents"
+        for name in ("pi-fidelity-reviewer.md", "pi-rust-reviewer.md", "pi-port-validator.md"):
+            self.assertIn("fenced `acceptance-report`", (agents / name).read_text())
+
+    def test_child_artifact_uses_swarm_tmpdir(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_tmp = swarm.SWARM_TMP
+            swarm.SWARM_TMP = Path(tmp)
+            try:
+                artifact = Path(tmp) / "pi-subagents-uid-1000/async-subagent-runs/deadbeef"
+                artifact.mkdir(parents=True)
+                (artifact / "status.json").write_text(json.dumps({"state": "complete"}))
+                (artifact / "output-0.log").write_text(json.dumps({"status": "PASS", "sha": "abc"}))
+                swarm.child_artifact("deadbeef", "abc")
+            finally:
+                swarm.SWARM_TMP = old_tmp
+
     def test_batched_evidence_agents_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             session = Path(tmp) / "session.jsonl"
@@ -150,6 +168,27 @@ class SwarmTest(unittest.TestCase):
                 self.assertTrue((slots / "slot-1" / "dirty").exists())
             finally:
                 swarm.DATA, swarm.MAX_SLOTS, swarm.init_pi = old_data, old_slots, old_init
+
+    def test_tick_immediately_runs_a_newly_ready_successor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, old_state = Path(tmp), swarm.STATE
+            d = {"source_gitlink": "references/pi@pin", "units": [unit("a", ownership=["a"]), unit("b", ["a"], ownership=["b"])]}
+            calls = []
+            originals = {name: getattr(swarm, name) for name in ("STATE", "runtime_dag", "bootstrap", "pinned_pi", "sha", "prepare_slot", "execute_pi", "accept_result")}
+            swarm.STATE = root / "state"
+            swarm.runtime_dag = lambda _: d
+            swarm.bootstrap = lambda *_: {"ok": True}
+            swarm.pinned_pi = lambda _: "pin"
+            swarm.sha = lambda *_: "base"
+            swarm.prepare_slot = lambda unit, *_: root / unit["id"]
+            swarm.execute_pi = lambda current, *_: (calls.append(current["id"]) or subprocess.CompletedProcess([], 0, json.dumps(orchestrated(commit="candidate", sha="candidate")), ""), None)
+            swarm.accept_result = lambda *_: True
+            try:
+                swarm.tick(type("Args", (), {"dag": root / "dag.json", "source": root})())
+                self.assertEqual(calls, ["a", "b"])
+            finally:
+                for name, value in originals.items():
+                    setattr(swarm, name, value)
 
     def test_parser_accepts_global_options_before_command(self):
         args = swarm.parser().parse_args(["--source", "/tmp/source", "--dag", "/tmp/dag.json", "status"])

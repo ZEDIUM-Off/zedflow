@@ -25,6 +25,7 @@ RUN_SECONDS, PI_RUN_SECONDS = 2 * 3600 + 45 * 60, 2 * 3600 + 35 * 60
 ROOT = Path(os.environ.get("ZEDFLOW_SOURCE", "/home/zedium/workspaces/zedflow")).resolve()
 DATA = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zedflow-pi-port-swarm"
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "zedflow-pi-port-swarm"
+SWARM_TMP = Path("/tmp/zedflow-pi-port-swarm-tmp")
 
 
 class DagError(ValueError):
@@ -296,7 +297,7 @@ def session_file(session_dir, name):
 def child_artifact(run_id, expected_sha):
     if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f-]{8,36}", run_id):
         raise DagError(f"invalid subagent run id: {run_id!r}")
-    candidates = list(Path("/tmp").glob(f"pi-subagents-uid-*/async-subagent-runs/{run_id}*"))
+    candidates = list(SWARM_TMP.glob(f"pi-subagents-uid-*/async-subagent-runs/{run_id}*"))
     if len(candidates) != 1:
         raise DagError(f"subagent artifact not uniquely found for {run_id}")
     status = load_json(candidates[0] / "status.json")
@@ -397,7 +398,7 @@ def run_environment():
     environment = os.environ.copy()
     environment.update({
         "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0", "PI_SUBAGENT_MAX_SPAWNS_PER_SESSION": str(MAX_SUBAGENTS),
-        "PI_SUBAGENT_WAIT_TOOL_ENABLED": "true", "CARGO_TARGET_DIR": "/tmp/zedflow-pi-port-swarm-target", "TMPDIR": "/tmp/zedflow-pi-port-swarm-tmp",
+        "PI_SUBAGENT_WAIT_TOOL_ENABLED": "true", "CARGO_TARGET_DIR": "/tmp/zedflow-pi-port-swarm-target", "TMPDIR": str(SWARM_TMP),
     })
     Path(environment["CARGO_TARGET_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(environment["TMPDIR"]).mkdir(parents=True, exist_ok=True)
@@ -448,10 +449,10 @@ def reconcile_pending(state, state_path):
     atomic_json(state_path, state)
 
 
-def execute_pi(unit, session_dir, slot):
+def execute_pi(unit, session_dir, slot, timeout=PI_RUN_SECONDS):
     command, name = invocation(unit, session_dir, slot)
     try:
-        completed = run(command, cwd=slot, env=run_environment(), check=False, timeout=PI_RUN_SECONDS)
+        completed = run(command, cwd=slot, env=run_environment(), check=False, timeout=min(timeout, PI_RUN_SECONDS))
     except subprocess.TimeoutExpired as error:
         completed = subprocess.CompletedProcess(error.cmd, 124, error.stdout or "", (error.stderr or "") + "\npi run timed out\n")
     except OSError as error:
@@ -463,22 +464,15 @@ def execute_pi(unit, session_dir, slot):
     return completed, persisted
 
 
-def tick(args):
-    dag = runtime_dag(args.dag)
-    validate_dag(dag)
-    STATE.mkdir(parents=True, exist_ok=True)
-    state_path = STATE / "state.json"
-    state = load_json(state_path) if state_path.exists() else {"units": {}, "runs": []}
-    if not state.get("bootstrap"):
-        state["bootstrap"] = bootstrap(args.source, dag)
-        atomic_json(state_path, state)
-        dag = runtime_dag(args.dag)
-        validate_dag(dag)
-    reconcile_pending(state, state_path)
-    recover_claims(state)
-    atomic_json(state_path, state)
-    started, launched, pin, jobs, reserved_slots = time.monotonic(), 0, pinned_pi(dag), [], set()
-    for unit in ready_units(dag, state):
+def run_batch(args, dag, state, state_path, started, launched, pin, session_dir):
+    """Run one ready batch; the caller recomputes readiness for successors."""
+    jobs, reserved_slots, failed = [], set(), False
+    ready = ready_units(dag, state)
+    if {unit["id"] for unit in ready} >= {"RV-FID", "RV-RUST"}:
+        ready = [unit for unit in ready if unit["id"] in {"RV-FID", "RV-RUST"}]
+    else:
+        ready = ready[:1]
+    for unit in ready:
         if time.monotonic() - started >= RUN_SECONDS or launched >= MAX_SUBAGENTS:
             break
         uid = unit["id"]
@@ -490,19 +484,28 @@ def tick(args):
             record.update(attempts=attempt)
             mark_failure(record, "no clean persistent worktree slot")
             atomic_json(state_path, state)
+            failed = True
             continue
         record.update(status="CLAIMED", attempts=attempt, expected_head=expected_head, idempotence=f"{uid}+{expected_head}+{plan_hash(dag)}")
         jobs.append((unit, record, expected_head, slot))
         launched += 1
         atomic_json(state_path, state)
-    session_dir = STATE / "sessions"
-    session_dir.mkdir(parents=True, exist_ok=True)
     parallel_reviews = len(jobs) == 2 and {job[0]["id"] for job in jobs} == {"RV-FID", "RV-RUST"} and all(job[0]["role"] == "reviewer" for job in jobs)
+    timeout = int(RUN_SECONDS - (time.monotonic() - started))
+    if timeout <= 0:
+        for _, record, _, _ in jobs:
+            record["attempts"] -= 1
+            if record["attempts"]:
+                record["status"] = "FAILED"
+            else:
+                record.clear()
+        atomic_json(state_path, state)
+        return launched - len(jobs), False, failed
     if parallel_reviews:
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            completed_runs = list(executor.map(lambda job: execute_pi(job[0], session_dir, job[3]), jobs))
+            completed_runs = list(executor.map(lambda job: execute_pi(job[0], session_dir, job[3], timeout), jobs))
     else:
-        completed_runs = [execute_pi(unit, session_dir, slot) for unit, _, _, slot in jobs]
+        completed_runs = [execute_pi(unit, session_dir, slot, timeout) for unit, _, _, slot in jobs]
     for (unit, record, expected_head, _), (completed, parent_session) in zip(jobs, completed_runs):
         uid = unit["id"]
         log = STATE / "logs" / f"{uid}-{int(time.time())}.log"
@@ -522,9 +525,40 @@ def tick(args):
             mark_failure(record, error)
             if sha(DATA / "repo", "automation/pi-port") == expected_head:
                 state.pop("pending_integration", None)
+            failed = True
         state["runs"].append({"unit": uid, "exit": completed.returncode, "log": str(log)})
         atomic_json(state_path, state)
-    print(json.dumps({"ready": [unit["id"] for unit in ready_units(runtime_dag(args.dag), state)], "state": str(state_path)}))
+    return launched, bool(jobs), failed
+
+
+def tick(args):
+    dag = runtime_dag(args.dag)
+    validate_dag(dag)
+    STATE.mkdir(parents=True, exist_ok=True)
+    state_path = STATE / "state.json"
+    state = load_json(state_path) if state_path.exists() else {"units": {}, "runs": []}
+    if not state.get("bootstrap"):
+        state["bootstrap"] = bootstrap(args.source, dag)
+        atomic_json(state_path, state)
+        dag = runtime_dag(args.dag)
+        validate_dag(dag)
+    reconcile_pending(state, state_path)
+    recover_claims(state)
+    atomic_json(state_path, state)
+    started, launched, pin = time.monotonic(), 0, pinned_pi(dag)
+    session_dir = STATE / "sessions"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    failed = False
+    while time.monotonic() - started < RUN_SECONDS and launched < MAX_SUBAGENTS:
+        launched, ran, batch_failed = run_batch(args, runtime_dag(args.dag), state, state_path, started, launched, pin, session_dir)
+        failed |= batch_failed
+        if not ran or batch_failed:
+            break
+    ready = [unit["id"] for unit in ready_units(runtime_dag(args.dag), state)]
+    blocked = [uid for uid, record in state["units"].items() if record.get("status") == "BLOCKED"]
+    print(json.dumps({"ready": ready, "blocked": blocked, "state": str(state_path)}))
+    if failed or blocked:
+        raise DagError("swarm blocked or failed: " + ", ".join(blocked or ready))
 
 
 def paseo_connection():

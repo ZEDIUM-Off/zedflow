@@ -1,6 +1,6 @@
 # Pi port swarm
 
-`swarm.py` is a stdlib-only coordinator launched hourly by a remotely visible Paseo schedule. It snapshots the current dirty source through a temporary Git index, creates an isolated clone and three persistent worktrees, initializes only the frozen local `references/pi` submodule in each, and drives the declared DAG through `pi -p` sessions. The current coordinator integrates one writer at a time; the extra slots support read-only review and later expansion.
+`swarm.py` is a stdlib-only coordinator launched hourly by a remotely visible Paseo schedule. It snapshots the current dirty source through a temporary Git index, creates an isolated clone and three persistent worktrees, initializes only the frozen local `references/pi` submodule in each, and drives the declared DAG through `pi -p` sessions. A tick immediately recomputes readiness after each accepted batch, so a completed prerequisite starts its successor in the same Paseo run while its time and subagent budgets remain. It integrates one writer at a time; `RV-FID` and `RV-RUST` are the only parallel pair. A failed or blocked unit makes the tick fail so Paseo does not report false success.
 
 ```sh
 python3 tools/pi-port-swarm/swarm.py validate-dag

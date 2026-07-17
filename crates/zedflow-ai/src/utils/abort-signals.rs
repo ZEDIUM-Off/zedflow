@@ -5,6 +5,8 @@ use std::fmt;
 use std::mem;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
+use futures::channel::oneshot;
+
 /// Opaque reason carried by an aborted signal.
 #[derive(Clone)]
 pub struct AbortReason {
@@ -102,22 +104,37 @@ impl AbortSignal {
     }
 
     fn add_abort_listener_once(&self, listener: impl FnOnce() + Send + 'static) -> AbortListener {
-        let mut state = lock_state(&self.inner);
-        if state.aborted {
-            return AbortListener::detached();
+        let mut listener = Some(Box::new(listener) as Box<dyn FnOnce() + Send>);
+        let handle = {
+            let mut state = lock_state(&self.inner);
+            if state.aborted {
+                AbortListener::detached()
+            } else {
+                state.next_listener_id = state.next_listener_id.saturating_add(1);
+                let id = state.next_listener_id;
+                state.listeners.push(AbortListenerEntry {
+                    id,
+                    listener: listener.take().expect("abort listener is present"),
+                });
+                AbortListener {
+                    signal: Arc::downgrade(&self.inner),
+                    id,
+                }
+            }
+        };
+        if let Some(listener) = listener {
+            listener();
         }
+        handle
+    }
 
-        state.next_listener_id = state.next_listener_id.saturating_add(1);
-        let id = state.next_listener_id;
-        state.listeners.push(AbortListenerEntry {
-            id,
-            listener: Box::new(listener),
+    /// Waits until this signal is aborted.
+    pub async fn cancelled(&self) {
+        let (sender, receiver) = oneshot::channel();
+        let _listener = self.add_abort_listener_once(move || {
+            let _ = sender.send(());
         });
-
-        AbortListener {
-            signal: Arc::downgrade(&self.inner),
-            id,
-        }
+        let _ = receiver.await;
     }
 }
 
@@ -194,13 +211,23 @@ impl AbortListener {
         }
     }
 
-    fn remove(self) {
-        let Some(signal) = self.signal.upgrade() else {
+    fn remove(&mut self) {
+        if self.id == 0 {
             return;
-        };
-        lock_state(&signal)
-            .listeners
-            .retain(|entry| entry.id != self.id);
+        }
+        if let Some(signal) = self.signal.upgrade() {
+            lock_state(&signal)
+                .listeners
+                .retain(|entry| entry.id != self.id);
+        }
+        self.id = 0;
+        self.signal = Weak::new();
+    }
+}
+
+impl Drop for AbortListener {
+    fn drop(&mut self) {
+        self.remove();
     }
 }
 
@@ -215,9 +242,7 @@ pub struct CombinedAbortSignal {
 impl CombinedAbortSignal {
     /// Removes listeners installed while combining multiple signals.
     pub fn cleanup(&mut self) {
-        for listener in self.listeners.drain(..) {
-            listener.remove();
-        }
+        self.listeners.clear();
     }
 }
 
@@ -279,6 +304,10 @@ fn lock_state(inner: &AbortSignalInner) -> MutexGuard<'_, AbortSignalState> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::executor::block_on;
+    use futures::task::noop_waker;
+    use std::future::Future;
+    use std::task::{Context, Poll};
 
     #[test]
     fn combines_no_signals_as_absent_signal() {
@@ -315,6 +344,38 @@ mod tests {
             reason.downcast_ref::<String>().map(String::as_str),
             Some("second")
         );
+    }
+
+    #[test]
+    fn cancelled_resolves_before_or_after_subscription() {
+        let already_aborted = AbortController::new();
+        already_aborted.abort();
+        block_on(already_aborted.signal().cancelled());
+
+        let controller = AbortController::new();
+        let signal = controller.signal();
+        let observed = signal.clone();
+        let waiter = std::thread::spawn(move || block_on(signal.cancelled()));
+        while lock_state(&observed.inner).listeners.is_empty() {
+            std::thread::yield_now();
+        }
+        controller.abort();
+        waiter.join().expect("abort waiter");
+    }
+
+    #[test]
+    fn dropping_cancelled_future_removes_its_listener() {
+        let controller = AbortController::new();
+        let signal = controller.signal();
+        let mut future = Box::pin(signal.cancelled());
+        let waker = noop_waker();
+        let mut context = Context::from_waker(&waker);
+        assert_eq!(future.as_mut().poll(&mut context), Poll::Pending);
+        assert_eq!(lock_state(&signal.inner).listeners.len(), 1);
+
+        drop(future);
+
+        assert!(lock_state(&signal.inner).listeners.is_empty());
     }
 
     #[test]

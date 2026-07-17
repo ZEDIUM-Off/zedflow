@@ -72,7 +72,7 @@ fn assistant_event_json_names_match_pi() {
 
     let text_start = serde_json::to_value(AssistantMessageEvent::TextStart {
         content_index: 2,
-        partial: partial.clone(),
+        partial: partial.clone().into(),
     })
     .expect("text_start event serializes");
     assert_eq!(text_start["type"], "text_start");
@@ -82,7 +82,7 @@ fn assistant_event_json_names_match_pi() {
     let tool_end = serde_json::to_value(AssistantMessageEvent::ToolcallEnd {
         content_index: 3,
         tool_call,
-        partial,
+        partial: partial.into(),
     })
     .expect("toolcall_end event serializes");
     assert_eq!(tool_end["type"], "toolcall_end");
@@ -112,16 +112,16 @@ fn assistant_stream_preserves_iteration_order_and_done_result() {
     let final_message = message(StopReason::Stop, "hello");
 
     stream.push(AssistantMessageEvent::Start {
-        partial: start.clone(),
+        partial: start.clone().into(),
     });
     stream.push(AssistantMessageEvent::TextStart {
         content_index: 0,
-        partial: start,
+        partial: start.into(),
     });
     stream.push(AssistantMessageEvent::TextDelta {
         content_index: 0,
         delta: "hel".to_owned(),
-        partial,
+        partial: partial.into(),
     });
     stream.push(AssistantMessageEvent::Done {
         reason: DoneStopReason::Stop,
@@ -136,6 +136,21 @@ fn assistant_stream_preserves_iteration_order_and_done_result() {
     assert!(matches!(events[2], AssistantMessageEvent::TextDelta { .. }));
     assert!(matches!(events[3], AssistantMessageEvent::Done { .. }));
     assert_eq!(events.len(), 4);
+    let partials = events[..3]
+        .iter()
+        .filter_map(|event| match event {
+            AssistantMessageEvent::Start { partial }
+            | AssistantMessageEvent::TextStart { partial, .. }
+            | AssistantMessageEvent::TextDelta { partial, .. } => Some(partial),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(partials.windows(2).all(|pair| pair[0].ptr_eq(pair[1])));
+    assert!(
+        partials
+            .iter()
+            .all(|partial| partial.snapshot() == final_message)
+    );
 }
 
 #[test]
@@ -151,7 +166,7 @@ fn assistant_stream_error_result_returns_terminal_error_message() {
     stream.push(AssistantMessageEvent::TextDelta {
         content_index: 0,
         delta: "ignored".to_owned(),
-        partial: message(StopReason::Stop, "ignored"),
+        partial: message(StopReason::Stop, "ignored").into(),
     });
 
     assert!(stream.is_done());
@@ -193,12 +208,12 @@ fn assistant_stream_aborted_error_result_preserves_partial_message() {
 
     stream.push(AssistantMessageEvent::TextStart {
         content_index: 0,
-        partial: message(StopReason::Stop, ""),
+        partial: message(StopReason::Stop, "").into(),
     });
     stream.push(AssistantMessageEvent::TextDelta {
         content_index: 0,
         delta: "partial output".to_owned(),
-        partial,
+        partial: partial.into(),
     });
     stream.push(AssistantMessageEvent::Error {
         reason: ErrorStopReason::Aborted,

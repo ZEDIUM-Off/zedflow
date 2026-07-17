@@ -1,10 +1,10 @@
 //! Shared AI types ported from Pi's `packages/ai/src/types.ts`.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 /// Known chat API identifiers built into Pi.
@@ -689,6 +689,7 @@ pub struct UserMessage {
     /// Role discriminator; Pi value is `user`.
     pub role: UserMessageRole,
     /// User content.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub content: UserMessageContent,
     /// Unix timestamp in milliseconds.
     pub timestamp: u64,
@@ -702,6 +703,12 @@ pub enum UserMessageContent {
     Text(String),
     /// Structured user content.
     Blocks(Vec<UserContentBlock>),
+}
+
+impl Default for UserMessageContent {
+    fn default() -> Self {
+        Self::Blocks(Vec::new())
+    }
 }
 
 /// Structured user content block.
@@ -729,6 +736,7 @@ pub struct AssistantMessage {
     /// Role discriminator; Pi value is `assistant`.
     pub role: AssistantMessageRole,
     /// Assistant content blocks.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub content: Vec<AssistantContentBlock>,
     /// API identifier.
     pub api: Api,
@@ -750,6 +758,78 @@ pub struct AssistantMessage {
     pub error_message: Option<String>,
     /// Unix timestamp in milliseconds.
     pub timestamp: u64,
+}
+
+/// Shared mutable assistant message used by non-terminal stream events.
+#[derive(Clone)]
+pub struct SharedAssistantMessage(Arc<Mutex<AssistantMessage>>);
+
+impl SharedAssistantMessage {
+    /// Creates a shared message handle.
+    #[must_use]
+    pub fn new(message: AssistantMessage) -> Self {
+        Self(Arc::new(Mutex::new(message)))
+    }
+
+    /// Mutates the current message without exposing the lock guard.
+    pub fn with_mut<R>(&self, update: impl FnOnce(&mut AssistantMessage) -> R) -> R {
+        let mut message = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        update(&mut message)
+    }
+
+    /// Returns an owned snapshot of the current message.
+    #[must_use]
+    pub fn snapshot(&self) -> AssistantMessage {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Returns whether two handles point at the same message.
+    #[must_use]
+    pub fn ptr_eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl From<AssistantMessage> for SharedAssistantMessage {
+    fn from(message: AssistantMessage) -> Self {
+        Self::new(message)
+    }
+}
+
+impl std::fmt::Debug for SharedAssistantMessage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.snapshot().fmt(formatter)
+    }
+}
+
+impl PartialEq for SharedAssistantMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.snapshot() == other.snapshot()
+    }
+}
+
+impl Serialize for SharedAssistantMessage {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.snapshot().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SharedAssistantMessage {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        AssistantMessage::deserialize(deserializer).map(Self::new)
+    }
 }
 
 /// Assistant content block.
@@ -783,6 +863,7 @@ pub struct ToolResultMessage<TDetails = Value> {
     /// Tool name.
     pub tool_name: String,
     /// Result content blocks.
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub content: Vec<ToolResultContentBlock>,
     /// Optional tool-specific details.
     pub details: Option<TDetails>,
@@ -800,6 +881,14 @@ pub enum ToolResultContentBlock {
     Text(TextContent),
     /// Image content block.
     Image(ImageContent),
+}
+
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de> + Default,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 /// Chat message.
@@ -904,14 +993,14 @@ pub enum AssistantMessageEvent {
     /// Stream start event.
     Start {
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Text content start event.
     TextStart {
         /// Content block index.
         content_index: usize,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Text delta event.
     TextDelta {
@@ -920,7 +1009,7 @@ pub enum AssistantMessageEvent {
         /// Delta text.
         delta: String,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Text end event.
     TextEnd {
@@ -929,14 +1018,14 @@ pub enum AssistantMessageEvent {
         /// Final text content.
         content: String,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Thinking content start event.
     ThinkingStart {
         /// Content block index.
         content_index: usize,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Thinking delta event.
     ThinkingDelta {
@@ -945,7 +1034,7 @@ pub enum AssistantMessageEvent {
         /// Delta thinking text.
         delta: String,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Thinking end event.
     ThinkingEnd {
@@ -954,14 +1043,14 @@ pub enum AssistantMessageEvent {
         /// Final thinking content.
         content: String,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Tool-call content start event.
     ToolcallStart {
         /// Content block index.
         content_index: usize,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Tool-call delta event.
     ToolcallDelta {
@@ -970,7 +1059,7 @@ pub enum AssistantMessageEvent {
         /// Delta tool-call text.
         delta: String,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Tool-call end event.
     ToolcallEnd {
@@ -979,7 +1068,7 @@ pub enum AssistantMessageEvent {
         /// Final tool call.
         tool_call: ToolCall,
         /// Partial assistant message.
-        partial: AssistantMessage,
+        partial: SharedAssistantMessage,
     },
     /// Successful terminal event.
     Done {

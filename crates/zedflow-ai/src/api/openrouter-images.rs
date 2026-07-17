@@ -391,7 +391,7 @@ async fn execute_request(
     let attempts = request.max_retries.saturating_add(1);
     let mut last_error = None;
 
-    for _ in 0..attempts {
+    for attempt in 0..attempts {
         if is_aborted(options) {
             return Err("Request aborted".to_string());
         }
@@ -405,7 +405,35 @@ async fn execute_request(
                 }
                 return Ok(response);
             }
-            Err(error) => last_error = Some(error),
+            Err(error) => {
+                if let Some(meta) = error.meta.as_ref()
+                    && let Some(hook) = options.and_then(|options| options.on_response.as_ref())
+                {
+                    hook(meta.clone(), model)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                }
+                let retryable = error.retryable && attempt + 1 < attempts;
+                let delay = error.retry_after.unwrap_or_else(|| {
+                    crate::utils::retry::retry_delay(
+                        Duration::from_millis(500),
+                        attempt,
+                        Some(Duration::from_secs(8)),
+                    )
+                });
+                last_error = Some(error.message);
+                if !retryable {
+                    break;
+                }
+                if !crate::utils::retry::wait_or_abort(
+                    delay,
+                    options.and_then(|options| options.signal.as_ref()),
+                )
+                .await
+                {
+                    return Err("Request aborted".to_owned());
+                }
+            }
         }
     }
 
@@ -443,6 +471,13 @@ fn build_client(timeout_ms: Option<u64>) -> Result<reqwest::blocking::Client, St
     })
 }
 
+struct OpenRouterAttemptError {
+    message: String,
+    meta: Option<OpenRouterImagesResponseMeta>,
+    retry_after: Option<Duration>,
+    retryable: bool,
+}
+
 fn send_once(
     client: &reqwest::blocking::Client,
     url: &str,
@@ -454,7 +489,7 @@ fn send_once(
         OpenRouterImagesResponseMeta,
         OpenRouterImageGenerationResponse,
     ),
-    String,
+    OpenRouterAttemptError,
 > {
     let api_key = request.api_key.as_deref().unwrap_or_default();
     let response = client
@@ -463,13 +498,25 @@ fn send_once(
         .headers(headers)
         .json(body)
         .send()
-        .map_err(|error| {
-            format!("OpenRouter image request failed with headers redacted: {error}")
+        .map_err(|error| OpenRouterAttemptError {
+            message: format!("OpenRouter image request failed with headers redacted: {error}"),
+            meta: None,
+            retry_after: None,
+            retryable: true,
         })?;
     let status = response.status();
+    let retry_after =
+        crate::utils::retry::retry_after_delay(response.headers(), std::time::SystemTime::now());
     let headers = response_headers(response.headers());
-    let body_text = response.text().map_err(|error| {
-        format!("OpenRouter image response read failed with headers redacted: {error}")
+    let meta = OpenRouterImagesResponseMeta {
+        status: status.as_u16(),
+        headers: headers.clone(),
+    };
+    let body_text = response.text().map_err(|error| OpenRouterAttemptError {
+        message: format!("OpenRouter image response read failed with headers redacted: {error}"),
+        meta: Some(meta.clone()),
+        retry_after,
+        retryable: true,
     })?;
 
     if !status.is_success() {
@@ -484,19 +531,21 @@ fn send_once(
                         .collect(),
                 ),
         );
-        return Err(format_provider_error(&normalized.normalized, None));
+        return Err(OpenRouterAttemptError {
+            message: format_provider_error(&normalized.normalized, None),
+            meta: Some(meta),
+            retry_after,
+            retryable: matches!(status.as_u16(), 408 | 409 | 429 | 500..=599),
+        });
     }
 
-    let parsed = serde_json::from_str(&body_text).map_err(|error| {
-        format!("OpenRouter image response parse failed with headers redacted: {error}")
+    let parsed = serde_json::from_str(&body_text).map_err(|error| OpenRouterAttemptError {
+        message: format!("OpenRouter image response parse failed with headers redacted: {error}"),
+        meta: Some(meta.clone()),
+        retry_after: None,
+        retryable: false,
     })?;
-    Ok((
-        OpenRouterImagesResponseMeta {
-            status: status.as_u16(),
-            headers,
-        },
-        parsed,
-    ))
+    Ok((meta, parsed))
 }
 
 fn build_header_map(headers: &ProviderHeaders) -> Result<HeaderMap, String> {

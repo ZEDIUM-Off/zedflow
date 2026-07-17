@@ -9,7 +9,8 @@ use futures::Stream;
 use futures::future::poll_fn;
 
 use crate::types::{
-    AssistantMessage, AssistantMessageEvent, DoneStopReason, ErrorStopReason, StopReason,
+    AssistantMessage, AssistantMessageEvent, DoneStopReason, ErrorStopReason,
+    SharedAssistantMessage, StopReason,
 };
 
 /// In-memory async event stream with a separately awaited final result.
@@ -153,6 +154,7 @@ impl<T, R> Stream for EventStream<T, R> {
 #[derive(Clone)]
 pub struct AssistantMessageEventStream {
     inner: EventStream<AssistantMessageEvent, AssistantMessage>,
+    last_message: Arc<Mutex<Option<SharedAssistantMessage>>>,
 }
 
 impl AssistantMessageEventStream {
@@ -165,12 +167,67 @@ impl AssistantMessageEventStream {
                 AssistantMessageEvent::Error { error, .. } => error.clone(),
                 _ => unreachable!("assistant terminal event matched by is_complete"),
             }),
+            last_message: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Pushes an assistant-message event, ignoring pushes after completion.
-    pub fn push(&self, event: AssistantMessageEvent) {
+    pub fn push(&self, mut event: AssistantMessageEvent) {
+        let mut last = self
+            .last_message
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(partial) = assistant_event_partial_mut(&mut event) {
+            if let Some(shared) = last.as_ref() {
+                if !shared.ptr_eq(partial) {
+                    let snapshot = partial.snapshot();
+                    shared.with_mut(|message| *message = snapshot);
+                    *partial = shared.clone();
+                }
+            } else {
+                *last = Some(partial.clone());
+            }
+        } else if let Some(message) = terminal_event_message(&event) {
+            if let Some(shared) = last.as_ref() {
+                shared.with_mut(|partial| *partial = message.clone());
+            } else {
+                *last = Some(SharedAssistantMessage::new(message.clone()));
+            }
+        }
+        drop(last);
         self.inner.push(event);
+    }
+
+    pub(crate) fn fail(&self, api: &str, provider: &str, model: &str, message: String) {
+        if self.is_done() {
+            return;
+        }
+        let mut output = self
+            .last_message
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(SharedAssistantMessage::snapshot)
+            .unwrap_or_else(|| AssistantMessage {
+                role: crate::types::AssistantMessageRole::Assistant,
+                content: Vec::new(),
+                api: api.to_owned(),
+                provider: provider.to_owned(),
+                model: model.to_owned(),
+                response_model: None,
+                response_id: None,
+                diagnostics: None,
+                usage: crate::types::Usage::default(),
+                stop_reason: StopReason::Error,
+                error_message: None,
+                timestamp: 0,
+            });
+        output.stop_reason = StopReason::Error;
+        output.error_message = Some(message);
+        self.push(AssistantMessageEvent::Error {
+            reason: ErrorStopReason::Error,
+            error: output,
+        });
     }
 
     /// Ends the stream, translating a final result into its terminal event.
@@ -234,6 +291,32 @@ impl Stream for AssistantMessageEventStream {
 #[must_use]
 pub fn create_assistant_message_event_stream() -> AssistantMessageEventStream {
     AssistantMessageEventStream::new()
+}
+
+fn assistant_event_partial_mut(
+    event: &mut AssistantMessageEvent,
+) -> Option<&mut SharedAssistantMessage> {
+    match event {
+        AssistantMessageEvent::Start { partial }
+        | AssistantMessageEvent::TextStart { partial, .. }
+        | AssistantMessageEvent::TextDelta { partial, .. }
+        | AssistantMessageEvent::TextEnd { partial, .. }
+        | AssistantMessageEvent::ThinkingStart { partial, .. }
+        | AssistantMessageEvent::ThinkingDelta { partial, .. }
+        | AssistantMessageEvent::ThinkingEnd { partial, .. }
+        | AssistantMessageEvent::ToolcallStart { partial, .. }
+        | AssistantMessageEvent::ToolcallDelta { partial, .. }
+        | AssistantMessageEvent::ToolcallEnd { partial, .. } => Some(partial),
+        AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. } => None,
+    }
+}
+
+fn terminal_event_message(event: &AssistantMessageEvent) -> Option<&AssistantMessage> {
+    match event {
+        AssistantMessageEvent::Done { message, .. } => Some(message),
+        AssistantMessageEvent::Error { error, .. } => Some(error),
+        _ => None,
+    }
 }
 
 fn is_terminal_assistant_event(event: &AssistantMessageEvent) -> bool {

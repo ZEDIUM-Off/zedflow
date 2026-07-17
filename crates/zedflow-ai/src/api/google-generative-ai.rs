@@ -712,10 +712,15 @@ pub fn stream_registered(
 ) -> CanonicalEventStream {
     let stream = CanonicalEventStream::new();
     let worker_stream = stream.clone();
+    let context = crate::api::transform_messages::transform_context(context, model, None);
     let model = model.clone();
-    let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_registered_worker(worker_stream, model, context, options).await;
     });
     stream
@@ -938,9 +943,7 @@ async fn await_or_abort<T>(
 }
 
 async fn wait_for_abort(signal: crate::types::AbortSignal) {
-    while !signal.aborted() {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    signal.cancelled().await;
 }
 
 fn check_abort(signal: Option<&crate::types::AbortSignal>) -> Result<()> {

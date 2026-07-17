@@ -477,7 +477,12 @@ pub fn stream_live(
     let model = model.clone();
     let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_openai_responses_live_worker(worker_stream, model, context, options).await;
     });
     Ok(stream)
@@ -616,30 +621,70 @@ async fn execute_openai_responses_live(
     check_openai_responses_abort(options.signal.as_ref()).map_err(OpenAIResponsesLiveError::new)?;
     let client =
         build_openai_http_client(request.timeout_ms).map_err(OpenAIResponsesLiveError::new)?;
-    let response = await_openai_responses_or_abort(
-        client
-            .post(openai_responses_url(&request.base_url))
-            .headers(
-                openai_responses_headers(api_key, &request.headers)
-                    .map_err(OpenAIResponsesLiveError::new)?,
-            )
-            .body(
-                serde_json::to_vec(&request.body)
-                    .map_err(|error| OpenAIResponsesLiveError::new(error.to_string()))?,
-            )
-            .send(),
-        options.signal.clone(),
-    )
-    .await
-    .map_err(OpenAIResponsesLiveError::new)?;
-    if let Some(on_response) = options.on_response.as_ref() {
-        on_response(
-            provider_response_from_headers(response.status().as_u16(), response.headers()),
-            model.clone(),
-        )
-        .await
+    let headers = openai_responses_headers(api_key, &request.headers)
+        .map_err(OpenAIResponsesLiveError::new)?;
+    let body = serde_json::to_vec(&request.body)
         .map_err(|error| OpenAIResponsesLiveError::new(error.to_string()))?;
-    }
+    let mut attempts = 0;
+    let response = loop {
+        let response = await_openai_responses_or_abort(
+            client
+                .post(openai_responses_url(&request.base_url))
+                .headers(headers.clone())
+                .body(body.clone())
+                .send(),
+            options.signal.clone(),
+        )
+        .await;
+        match response {
+            Ok(response) => {
+                if let Some(on_response) = options.on_response.as_ref() {
+                    on_response(
+                        provider_response_from_headers(
+                            response.status().as_u16(),
+                            response.headers(),
+                        ),
+                        model.clone(),
+                    )
+                    .await
+                    .map_err(|error| OpenAIResponsesLiveError::new(error.to_string()))?;
+                }
+                if is_retryable_openai_responses_status(response.status().as_u16())
+                    && attempts < request.max_retries
+                {
+                    let delay = crate::utils::retry::retry_after_delay(
+                        response.headers(),
+                        std::time::SystemTime::now(),
+                    )
+                    .unwrap_or_else(|| {
+                        crate::utils::retry::retry_delay(
+                            Duration::from_millis(500),
+                            attempts,
+                            Some(Duration::from_secs(8)),
+                        )
+                    });
+                    if !crate::utils::retry::wait_or_abort(delay, options.signal.as_ref()).await {
+                        return Err(OpenAIResponsesLiveError::new("Request was aborted"));
+                    }
+                    attempts += 1;
+                    continue;
+                }
+                break response;
+            }
+            Err(error) if attempts < request.max_retries && error != "Request was aborted" => {
+                let delay = crate::utils::retry::retry_delay(
+                    Duration::from_millis(500),
+                    attempts,
+                    Some(Duration::from_secs(8)),
+                );
+                if !crate::utils::retry::wait_or_abort(delay, options.signal.as_ref()).await {
+                    return Err(OpenAIResponsesLiveError::new("Request was aborted"));
+                }
+                attempts += 1;
+            }
+            Err(error) => return Err(OpenAIResponsesLiveError::new(error)),
+        }
+    };
     if !response.status().is_success() {
         let status = response.status().as_u16();
         let body = await_openai_responses_or_abort(response.text(), options.signal.clone())
@@ -655,7 +700,7 @@ async fn execute_openai_responses_live(
     let shared_model = shared_model_from_responses(model);
     let initial_output = empty_shared_responses_message(model);
     stream.push(crate::types::AssistantMessageEvent::Start {
-        partial: canonical_message_from_responses(&initial_output, model, None),
+        partial: canonical_message_from_responses(&initial_output, model, None).into(),
     });
 
     let mut decoder = OpenAIResponsesSseDecoder::default();
@@ -723,6 +768,10 @@ fn empty_shared_responses_message(
     }
 }
 
+fn is_retryable_openai_responses_status(status: u16) -> bool {
+    matches!(status, 408 | 409 | 429 | 500..=599)
+}
+
 fn build_openai_http_client(
     timeout_ms: Option<u64>,
 ) -> std::result::Result<reqwest::Client, String> {
@@ -753,9 +802,7 @@ async fn await_openai_responses_or_abort<T>(
 }
 
 async fn wait_openai_responses_abort(signal: crate::types::AbortSignal) {
-    while !signal.aborted() {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    signal.cancelled().await;
 }
 
 fn check_openai_responses_abort(
@@ -932,7 +979,7 @@ fn push_canonical_responses_event(
             partial,
         } => stream.push(crate::types::AssistantMessageEvent::ThinkingStart {
             content_index: *content_index,
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::ThinkingDelta {
             content_index,
@@ -941,7 +988,7 @@ fn push_canonical_responses_event(
         } => stream.push(crate::types::AssistantMessageEvent::ThinkingDelta {
             content_index: *content_index,
             delta: delta.clone(),
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::ThinkingEnd {
             content_index,
@@ -950,14 +997,14 @@ fn push_canonical_responses_event(
         } => stream.push(crate::types::AssistantMessageEvent::ThinkingEnd {
             content_index: *content_index,
             content: content.clone(),
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::TextStart {
             content_index,
             partial,
         } => stream.push(crate::types::AssistantMessageEvent::TextStart {
             content_index: *content_index,
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::TextDelta {
             content_index,
@@ -966,7 +1013,7 @@ fn push_canonical_responses_event(
         } => stream.push(crate::types::AssistantMessageEvent::TextDelta {
             content_index: *content_index,
             delta: delta.clone(),
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::TextEnd {
             content_index,
@@ -975,14 +1022,14 @@ fn push_canonical_responses_event(
         } => stream.push(crate::types::AssistantMessageEvent::TextEnd {
             content_index: *content_index,
             content: content.clone(),
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::ToolCallStart {
             content_index,
             partial,
         } => stream.push(crate::types::AssistantMessageEvent::ToolcallStart {
             content_index: *content_index,
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::ToolCallDelta {
             content_index,
@@ -991,7 +1038,7 @@ fn push_canonical_responses_event(
         } => stream.push(crate::types::AssistantMessageEvent::ToolcallDelta {
             content_index: *content_index,
             delta: delta.clone(),
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
         crate::api::openai_responses_shared::AssistantMessageEvent::ToolCallEnd {
             content_index,
@@ -1000,7 +1047,7 @@ fn push_canonical_responses_event(
         } => stream.push(crate::types::AssistantMessageEvent::ToolcallEnd {
             content_index: *content_index,
             tool_call: canonical_tool_call_from_responses(tool_call),
-            partial: canonical_message_from_responses(partial, model, None),
+            partial: canonical_message_from_responses(partial, model, None).into(),
         }),
     }
 }
@@ -1447,8 +1494,9 @@ pub fn stream_registered(
     context: &crate::types::Context,
     options: Option<&crate::types::StreamOptions>,
 ) -> crate::types::AssistantMessageEventStream {
+    let context = crate::api::transform_messages::transform_context(context, model, None);
     let local_model = registered_model(model);
-    let local_context = registered_context(model, context);
+    let local_context = registered_context(model, &context);
     let mut local_options = registered_options(model, options);
     if model.provider == "github-copilot" {
         local_options.headers.extend(
@@ -1615,7 +1663,7 @@ fn registered_context(model: &crate::types::Model, context: &crate::types::Conte
     }
 }
 
-fn canonical_message_to_shared_json(value: Value) -> Value {
+pub(crate) fn canonical_message_to_shared_json(value: Value) -> Value {
     match value {
         Value::Array(values) => Value::Array(
             values
