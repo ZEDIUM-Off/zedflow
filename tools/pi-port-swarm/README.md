@@ -1,11 +1,13 @@
 # Pi port swarm
 
-`swarm.py` is a stdlib-only, hourly systemd-user coordinator. It snapshots the current dirty source through a temporary Git index, creates an isolated clone and three persistent worktrees, initializes only the frozen local `references/pi` submodule in each, and drives the declared DAG through `pi -p` sessions. The current coordinator integrates one writer at a time; the extra slots support read-only review and later expansion.
+`swarm.py` is a stdlib-only coordinator launched hourly by a remotely visible Paseo schedule. It snapshots the current dirty source through a temporary Git index, creates an isolated clone and three persistent worktrees, initializes only the frozen local `references/pi` submodule in each, and drives the declared DAG through `pi -p` sessions. The current coordinator integrates one writer at a time; the extra slots support read-only review and later expansion.
 
 ```sh
 python3 tools/pi-port-swarm/swarm.py validate-dag
 python3 tools/pi-port-swarm/swarm.py status
-python3 tools/pi-port-swarm/swarm.py install
+python3 tools/pi-port-swarm/swarm.py install  # create/update the Paseo schedule
 ```
+
+The Paseo schedule is named `zedflow-pi-port-swarm`, uses `pi/openai-codex/gpt-5.6-luna` only as a thin visible launcher, and runs at `0 * * * *` in `Europe/Paris`. The coordinator retains all task-level Luna/Terra/Sol routing.
 
 Defaults are the checked-out source, `~/.local/share/zedflow-pi-port-swarm/{repo,worktrees}`, and `~/.local/state/zedflow-pi-port-swarm`. `--source` and `ZEDFLOW_SOURCE` override source. `tick` is locked with non-blocking `flock`; it never resets, cleans, pushes, removes dirty worktrees, initializes LangGraph, or changes the source index/HEAD. Dirty slots are retained as recovery evidence and replaced from a bounded pool; they are never reset or removed. State is persisted before launch and around the `update-ref` transaction, then reconciled after interruption. The active DAG is read from the integration ref, so reviewed reconciliation commits can advance the execution plan. A writer result cannot close without an owned descendant commit, independent fidelity and Rust review run IDs, exact-SHA validator evidence, drained-subagent evidence, and `update-ref` CAS; reviews and validations require PASS on `expected_head` and no commit.

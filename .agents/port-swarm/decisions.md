@@ -4,3 +4,4 @@
 - `automation/pi-port` exists only in the automation clone. Slot branches are persistent recovery evidence.
 - Crate choices require a documented comparison in the unit result before implementation. Existing workspace dependencies win; no dependency is added solely for convenience.
 - Integration is CAS-protected by unit/base SHA/plan hash and exact-SHA review plus validation.
+- Paseo owns the hourly schedule and remote run visibility; systemd timer units are intentionally not installed.

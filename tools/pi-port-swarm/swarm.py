@@ -527,22 +527,37 @@ def tick(args):
     print(json.dumps({"ready": [unit["id"] for unit in ready_units(runtime_dag(args.dag), state)], "state": str(state_path)}))
 
 
+def paseo_connection():
+    home = Path(os.environ.get("PASEO_HOME", Path.home() / ".paseo"))
+    config = load_json(home / "config.json")
+    host = config.get("daemon", {}).get("listen")
+    if not host:
+        raise DagError("Paseo daemon.listen is not configured")
+    environment = os.environ.copy()
+    password_file = home / "credentials" / "daemon-password"
+    if password_file.exists():
+        environment["PASEO_PASSWORD"] = password_file.read_text(encoding="utf-8").strip()
+    return host, environment
+
+
 def install(args):
-    unit_dir = Path.home() / ".config/systemd/user"
-    unit_dir.mkdir(parents=True, exist_ok=True)
-    replacements = {
-        "@PYTHON@": sys.executable,
-        "@SWARM@": str(ROOT / "tools/pi-port-swarm/swarm.py"),
-        "@SOURCE@": str(Path(args.source).resolve()),
-        "@PATH@": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-    }
-    for name in ("zedflow-pi-port-swarm.service", "zedflow-pi-port-swarm.timer"):
-        text = (ROOT / "tools/pi-port-swarm/systemd" / f"{name}.in").read_text()
-        for old, new in replacements.items():
-            text = text.replace(old, new)
-        (unit_dir / name).write_text(text)
-    run(["systemctl", "--user", "daemon-reload"])
-    run(["systemctl", "--user", "enable", "--now", "zedflow-pi-port-swarm.timer"])
+    """Create or update the remotely visible Paseo hourly schedule."""
+    host, environment = paseo_connection()
+    name = "zedflow-pi-port-swarm"
+    prompt = (ROOT / ".pi/prompts/pi-port-paseo-schedule.md").read_text(encoding="utf-8").strip()
+    listed = run(["paseo", "--json", "schedule", "ls", "--host", host], env=environment)
+    schedules = json.loads(listed.stdout)
+    existing = next((schedule for schedule in schedules if schedule.get("name") == name), None)
+    common = [
+        "--cron", "0 * * * *", "--timezone", "Europe/Paris", "--name", name,
+        "--provider", "pi/openai-codex/gpt-5.6-luna", "--cwd", str(Path(args.source).resolve()),
+        "--json", "--host", host,
+    ]
+    if existing:
+        completed = run(["paseo", "schedule", "update", existing["id"], "--prompt", prompt, *common], env=environment)
+    else:
+        completed = run(["paseo", "schedule", "create", prompt, "--target", "new-agent", *common], env=environment)
+    print(completed.stdout.strip())
 
 
 def parser():
