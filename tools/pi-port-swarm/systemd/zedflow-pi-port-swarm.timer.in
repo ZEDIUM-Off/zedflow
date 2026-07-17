@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly Zedflow Pi port swarm
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=2m
+Unit=zedflow-pi-port-swarm.service
+
+[Install]
+WantedBy=timers.target

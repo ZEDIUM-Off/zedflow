@@ -1,0 +1,7 @@
+# Autonomous Pi TypeScript → Rust port
+
+The port swarm runs hourly as a systemd user timer. Its Python coordinator uses no non-stdlib dependency, snapshots the current source non-destructively, and works only in `automation/pi-port` clone worktrees. The source Pi submodule gitlink is frozen and never auto-updated.
+
+The DAG starts at `RECONCILE-CHECKPOINT`, follows active `AG-C1` through `V2`, performs `RV-FID` and `RV-RUST` in parallel, and only then permits `NEXT-PORT-DAG` to add remaining packages. Ownership prevents parallel writes to the same paths; `Cargo.toml`, `Cargo.lock`, `lib.rs`, and `mod.rs` are exclusive when assigned. A close requires a non-empty owned commit, fidelity/Rust PASS review, validation against that commit SHA, and an `update-ref` compare-and-swap.
+
+Luna performs inventories and mechanical gates; Terra supervises normal work and handles ordinary implementation/dependency/Rust review; Sol supervises checkpoint reconciliation and handles fundamental contracts. The current integrator runs one mutating unit at a time and only `RV-FID`/`RV-RUST` in parallel. Three persistent slots plus three bounded recovery slots preserve interrupted work and leave room for future DAG waves to add proven-safe parallel writers. Runs cap at 18 subagents/session, two attempts per unit, and 2h45. Missing secrets or unavailable external capacity block rather than retrying expensively. No automatic push or merge to main occurs.
