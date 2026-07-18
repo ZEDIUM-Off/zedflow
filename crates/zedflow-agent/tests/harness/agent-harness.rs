@@ -394,6 +394,56 @@ fn appends_before_agent_start_messages_and_persists_them() {
 }
 
 #[test]
+fn flushes_listener_writes_after_agent_messages() {
+    run(async {
+        let snapshots = Arc::new(Mutex::new(Vec::new()));
+        let (models, model) = models_with_responses(
+            vec![assistant_text(&test_model("model-1", true), "ok")],
+            snapshots,
+        );
+        let session = memory_session();
+        let harness = Arc::new(harness(models, model, Arc::clone(&session)));
+        let listener_harness = Arc::clone(&harness);
+        harness.subscribe(Arc::new(move |event| {
+            let listener_harness = Arc::clone(&listener_harness);
+            Box::pin(async move {
+                if matches!(
+                    event,
+                    AgentHarnessEvent::Agent(zedflow_agent::types::AgentEvent::MessageEnd {
+                        message: AgentMessage::Llm(Message::Assistant(_)),
+                    })
+                ) {
+                    listener_harness
+                        .append_message(AgentMessage::Custom(json!("listener write")))
+                        .await?;
+                }
+                Ok(())
+            })
+        }));
+
+        harness.prompt("hello", None).await.expect("prompt");
+
+        let roles = session
+            .get_entries()
+            .await
+            .into_iter()
+            .filter_map(|entry| match entry {
+                zedflow_agent::harness::types::SessionTreeEntry::Message(entry) => {
+                    Some(match entry.message {
+                        AgentMessage::Llm(Message::User(_)) => "user",
+                        AgentMessage::Llm(Message::Assistant(_)) => "assistant",
+                        AgentMessage::Llm(Message::ToolResult(_)) => "tool_result",
+                        AgentMessage::Custom(_) => "custom",
+                    })
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(roles, ["user", "assistant", "custom"]);
+    });
+}
+
+#[test]
 fn invokes_loaded_skill_and_prompt_template_resources() {
     run(async {
         let snapshots = Arc::new(Mutex::new(Vec::new()));

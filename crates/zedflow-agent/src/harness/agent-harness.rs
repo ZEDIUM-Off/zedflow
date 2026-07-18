@@ -1310,19 +1310,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
     }
 
     async fn flush_pending_session_writes(&self) -> Result<(), AgentHarnessError> {
-        loop {
-            let write = {
-                let mut state = lock_state(&self.state);
-                if state.pending_writes.is_empty() {
-                    None
-                } else {
-                    Some(state.pending_writes.remove(0))
-                }
-            };
-            let Some(write) = write else { break };
-            flush_one_pending_write(self.session.as_ref(), write).await?;
-        }
-        Ok(())
+        flush_pending_session_writes(&self.state, self.session.as_ref()).await
     }
 }
 
@@ -1371,11 +1359,12 @@ async fn handle_agent_event<TSkill, TPromptTemplate>(
             emit_any(state, AgentHarnessEvent::Agent(event)).await?;
         }
         AgentEvent::TurnEnd { .. } => {
-            emit_any(state, AgentHarnessEvent::Agent(event)).await?;
-            let had_pending_mutations = {
-                let state = lock_state(state);
-                !state.pending_writes.is_empty()
-            };
+            let event_error = emit_any(state, AgentHarnessEvent::Agent(event)).await.err();
+            let had_pending_mutations = !lock_state(state).pending_writes.is_empty();
+            flush_pending_session_writes(state, session.as_ref()).await?;
+            if let Some(error) = event_error {
+                return Err(error);
+            }
             emit_own(
                 state,
                 AgentHarnessOwnEvent::SavePoint(SavePointEvent {
@@ -1385,6 +1374,7 @@ async fn handle_agent_event<TSkill, TPromptTemplate>(
             .await?;
         }
         AgentEvent::AgentEnd { .. } => {
+            flush_pending_session_writes(state, session.as_ref()).await?;
             {
                 let mut state = lock_state(state);
                 state.phase = AgentHarnessPhase::Idle;
@@ -1403,6 +1393,19 @@ async fn handle_agent_event<TSkill, TPromptTemplate>(
         _ => emit_any(state, AgentHarnessEvent::Agent(event)).await?,
     }
     Ok(())
+}
+
+async fn flush_pending_session_writes<TSkill, TPromptTemplate>(
+    state: &Arc<Mutex<AgentHarnessState<TSkill, TPromptTemplate>>>,
+    session: &dyn Session,
+) -> Result<(), AgentHarnessError> {
+    loop {
+        let Some(write) = lock_state(state).pending_writes.first().cloned() else {
+            return Ok(());
+        };
+        flush_one_pending_write(session, write).await?;
+        lock_state(state).pending_writes.remove(0);
+    }
 }
 
 async fn flush_one_pending_write(
