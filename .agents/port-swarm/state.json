@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "closed": [],
+  "closed": ["RECONCILE-CHECKPOINT"],
   "current": {
-    "id": "RECONCILE-CHECKPOINT",
+    "id": "AG-C1",
     "base": "HEAD",
     "worker": null,
     "status": "ready",
