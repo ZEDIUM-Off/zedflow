@@ -5,6 +5,7 @@
 //! dispatch the loop onto the current Tokio runtime or a private fallback runtime.
 
 use std::any::Any;
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
