@@ -1011,8 +1011,10 @@ async fn execute_prepared_tool_call(
         futures::select! {
             result = tool_future => break result,
             update = update_receiver.next() => {
-                if let Some(event) = update
-                    && let Err(error) = emit(event).await
+                let Some(event) = update else {
+                    break tool_future.await;
+                };
+                if let Err(error) = emit(event).await
                     && update_error.is_none()
                 {
                     update_error = Some(error);

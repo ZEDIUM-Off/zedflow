@@ -912,6 +912,39 @@ fn ignores_assistant_updates_before_start_without_overwriting_context() {
 }
 
 #[test]
+fn pending_tool_that_ignores_updates_completes() {
+    let mut tool = echo_tool(None);
+    tool.execute = Arc::new(|_, _, _, _on_update| {
+        Box::pin(async {
+            let mut first_poll = true;
+            futures::future::poll_fn(move |cx| {
+                if std::mem::take(&mut first_poll) {
+                    cx.waker().wake_by_ref();
+                    std::task::Poll::Pending
+                } else {
+                    std::task::Poll::Ready(())
+                }
+            })
+            .await;
+            Ok(AgentToolResult {
+                content: vec![AgentToolResultContent::Text(text("done"))],
+                details: json!({}),
+                terminate: Some(true),
+            })
+        })
+    });
+    let tool_use = assistant(
+        vec![tool_call("tool-1", "echo", json!({ "value": "hello" }))],
+        StopReason::ToolUse,
+    );
+    let (config, stream_fn) = config(Some(stream_from_messages(vec![tool_use])));
+
+    let (_, messages) = collect_stream(vec![user("run")], context(vec![tool]), config, stream_fn);
+
+    assert_eq!(error_tool_result(&messages), ("done", false));
+}
+
+#[test]
 fn tool_execution_update_sink_error_is_propagated() {
     let mut tool = echo_tool(None);
     tool.execute = Arc::new(|_, _, _, on_update| {
