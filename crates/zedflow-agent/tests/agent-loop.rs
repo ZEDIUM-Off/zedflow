@@ -5,17 +5,18 @@ use futures::StreamExt;
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use serde_json::{Value, json};
-use zedflow_agent::agent_loop::{agent_loop, agent_loop_continue};
+use zedflow_agent::agent_loop::{agent_loop, agent_loop_continue, run_agent_loop};
 use zedflow_agent::types::{
-    AfterToolCallResult, AgentCallbackError, AgentContext, AgentEvent, AgentLoopConfig,
-    AgentLoopTurnUpdate, AgentMessage, AgentTool, AgentToolResult, AgentToolResultContent,
-    AssistantMessageEventStream, BeforeToolCallResult, ConvertToLlmFn, Message, Model,
-    SimpleStreamOptions, StreamFn, TextContent, ThinkingLevel, Tool, ToolExecutionMode,
+    AfterToolCallResult, AgentCallbackError, AgentContext, AgentEvent, AgentEventSink,
+    AgentLoopConfig, AgentLoopTurnUpdate, AgentMessage, AgentTool, AgentToolResult,
+    AgentToolResultContent, AssistantMessageEventStream, BeforeToolCallResult, ConvertToLlmFn,
+    Message, Model, SimpleStreamOptions, StreamFn, TextContent, ThinkingLevel, Tool,
+    ToolExecutionMode,
 };
 use zedflow_ai::types::{
     AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageRole,
-    DoneStopReason, StopReason, TextContentType, ToolCall, ToolCallType, Usage, UserMessage,
-    UserMessageContent, UserMessageRole,
+    DoneStopReason, SharedAssistantMessage, StopReason, TextContentType, ToolCall, ToolCallType,
+    Usage, UserMessage, UserMessageContent, UserMessageRole,
 };
 use zedflow_ai::utils::abort_signals::AbortController;
 
@@ -807,6 +808,164 @@ fn stream_setup_failure_preserves_assistant_error_order() {
             if message.stop_reason == StopReason::Error
                 && message.error_message.as_deref() == Some("setup failed")
     ));
+}
+
+#[test]
+fn fallible_prepare_next_turn_preserves_messages_and_balances_terminal_lifecycle() {
+    let (mut config, stream_fn) = config(Some(stream_from_messages(vec![assistant_text("ok")])));
+    config.prepare_next_turn = Some(Arc::new(|_| {
+        Box::pin(async { Err(callback_error("prepare next turn failed")) })
+    }));
+
+    let (events, messages) =
+        collect_stream(vec![user("hello")], context(Vec::new()), config, stream_fn);
+
+    assert_eq!(
+        messages.iter().map(role).collect::<Vec<_>>(),
+        ["user", "assistant", "assistant"]
+    );
+    assert!(matches!(
+        messages.last(),
+        Some(AgentMessage::Llm(Message::Assistant(message)))
+            if message.stop_reason == StopReason::Error
+                && message.error_message.as_deref() == Some("prepare next turn failed")
+    ));
+    assert_eq!(
+        events.iter().map(event_type).collect::<Vec<_>>(),
+        [
+            "agent_start",
+            "turn_start",
+            "message_start",
+            "message_end",
+            "message_start",
+            "message_end",
+            "turn_end",
+            "turn_start",
+            "message_start",
+            "message_end",
+            "turn_end",
+            "agent_end",
+        ]
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| matches!(event, AgentEvent::TurnStart))
+            .count(),
+        events
+            .iter()
+            .filter(|event| matches!(event, AgentEvent::TurnEnd { .. }))
+            .count()
+    );
+}
+
+#[test]
+fn ignores_assistant_updates_before_start_without_overwriting_context() {
+    let stream_fn: StreamFn = Arc::new(|_model, _context, _options| {
+        Box::pin(async {
+            let stream = AssistantMessageEventStream::new();
+            stream.push(AssistantMessageEvent::TextDelta {
+                content_index: 0,
+                delta: "ignored".to_owned(),
+                partial: SharedAssistantMessage::new(assistant_text("partial")),
+            });
+            stream.push(AssistantMessageEvent::Done {
+                reason: DoneStopReason::Stop,
+                message: assistant_text("done"),
+            });
+            Ok(stream)
+        })
+    });
+    let observed_roles = Arc::new(Mutex::new(Vec::<String>::new()));
+    let observed_roles_hook = observed_roles.clone();
+    let (mut config, _) = config(Some(stream_fn.clone()));
+    config.should_stop_after_turn = Some(Arc::new(move |turn| {
+        let observed_roles_hook = observed_roles_hook.clone();
+        Box::pin(async move {
+            *observed_roles_hook.lock().expect("observed roles lock") = turn
+                .context
+                .messages
+                .iter()
+                .map(role)
+                .map(str::to_owned)
+                .collect();
+            true
+        })
+    }));
+
+    let (events, _) = collect_stream(
+        vec![user("hello")],
+        context(Vec::new()),
+        config,
+        Some(stream_fn),
+    );
+
+    assert_eq!(
+        *observed_roles.lock().expect("observed roles lock"),
+        ["user", "assistant"]
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, AgentEvent::MessageUpdate { .. }))
+    );
+}
+
+#[test]
+fn tool_execution_update_sink_error_is_propagated() {
+    let mut tool = echo_tool(None);
+    tool.execute = Arc::new(|_, _, _, on_update| {
+        on_update.expect("update callback")(AgentToolResult {
+            content: vec![AgentToolResultContent::Text(text("partial"))],
+            details: json!({ "partial": true }),
+            terminate: None,
+        });
+        Box::pin(async {
+            Ok(AgentToolResult {
+                content: vec![AgentToolResultContent::Text(text("done"))],
+                details: json!({}),
+                terminate: Some(true),
+            })
+        })
+    });
+    let tool_use = assistant(
+        vec![tool_call("tool-1", "echo", json!({ "value": "hello" }))],
+        StopReason::ToolUse,
+    );
+    let stream_fn = stream_from_messages(vec![tool_use]);
+    let (config, _) = config(Some(stream_fn.clone()));
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let events_sink = events.clone();
+    let emit: AgentEventSink = Arc::new(move |event: AgentEvent| {
+        let events_sink = events_sink.clone();
+        Box::pin(async move {
+            events_sink.lock().expect("events lock").push(event.clone());
+            if matches!(event, AgentEvent::ToolExecutionUpdate { .. }) {
+                Err(callback_error("update sink failed"))
+            } else {
+                Ok(())
+            }
+        })
+    });
+
+    let error = block_on(run_agent_loop(
+        vec![user("update")],
+        context(vec![tool]),
+        config,
+        emit,
+        None,
+        Some(stream_fn),
+    ))
+    .expect_err("update sink failure must propagate");
+
+    assert_eq!(error.to_string(), "update sink failed");
+    assert!(
+        events
+            .lock()
+            .expect("events lock")
+            .iter()
+            .any(|event| matches!(event, AgentEvent::ToolExecutionUpdate { .. }))
+    );
 }
 
 #[test]

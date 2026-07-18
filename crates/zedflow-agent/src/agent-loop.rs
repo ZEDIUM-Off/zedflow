@@ -5,12 +5,11 @@
 //! dispatch the loop onto the current Tokio runtime or a private fallback runtime.
 
 use std::any::Any;
-use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::channel::mpsc;
@@ -68,10 +67,14 @@ pub fn agent_loop(
     stream_fn: Option<StreamFn>,
 ) -> AgentEventStream {
     let stream = create_agent_stream();
+    let progress = Arc::new(Mutex::new(AgentLoopProgress::default()));
     let emit_stream = stream.clone();
+    let emit_progress = progress.clone();
     let emit: AgentEventSink = Arc::new(move |event| {
         let emit_stream = emit_stream.clone();
+        let emit_progress = emit_progress.clone();
         Box::pin(async move {
+            lock_progress(&emit_progress).record(&event);
             emit_stream.push(event);
             Ok(())
         })
@@ -81,6 +84,7 @@ pub fn agent_loop(
     spawn_agent_loop_worker(
         stream.clone(),
         model,
+        progress,
         run_agent_loop(prompts, context, config, emit, signal, stream_fn),
     );
     stream
@@ -100,10 +104,14 @@ pub fn agent_loop_continue(
     validate_continuation_context(&context)?;
 
     let stream = create_agent_stream();
+    let progress = Arc::new(Mutex::new(AgentLoopProgress::default()));
     let emit_stream = stream.clone();
+    let emit_progress = progress.clone();
     let emit: AgentEventSink = Arc::new(move |event| {
         let emit_stream = emit_stream.clone();
+        let emit_progress = emit_progress.clone();
         Box::pin(async move {
+            lock_progress(&emit_progress).record(&event);
             emit_stream.push(event);
             Ok(())
         })
@@ -113,6 +121,7 @@ pub fn agent_loop_continue(
     spawn_agent_loop_worker(
         stream.clone(),
         model,
+        progress,
         run_agent_loop_continue(context, config, emit, signal, stream_fn),
     );
     Ok(stream)
@@ -194,21 +203,62 @@ fn create_agent_stream() -> AgentEventStream {
     )
 }
 
+#[derive(Default)]
+struct AgentLoopProgress {
+    messages: Vec<AgentMessage>,
+    agent_started: bool,
+    turn_open: bool,
+    message_open: bool,
+}
+
+impl AgentLoopProgress {
+    fn record(&mut self, event: &AgentEvent) {
+        match event {
+            AgentEvent::AgentStart => self.agent_started = true,
+            AgentEvent::TurnStart => self.turn_open = true,
+            AgentEvent::MessageStart { .. } => self.message_open = true,
+            AgentEvent::MessageEnd { message } => {
+                self.message_open = false;
+                self.messages.push(message.clone());
+            }
+            AgentEvent::TurnEnd { .. } => self.turn_open = false,
+            AgentEvent::AgentEnd { .. }
+            | AgentEvent::MessageUpdate { .. }
+            | AgentEvent::ToolExecutionStart { .. }
+            | AgentEvent::ToolExecutionUpdate { .. }
+            | AgentEvent::ToolExecutionEnd { .. } => {}
+        }
+    }
+}
+
+fn lock_progress(
+    progress: &Mutex<AgentLoopProgress>,
+) -> std::sync::MutexGuard<'_, AgentLoopProgress> {
+    progress
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 fn spawn_agent_loop_worker(
     stream: AgentEventStream,
     model: zedflow_ai::Model,
+    progress: Arc<Mutex<AgentLoopProgress>>,
     task: impl Future<Output = Result<Vec<AgentMessage>, AgentCallbackError>> + Send + 'static,
 ) {
     let failure_stream = stream.clone();
+    let failure_progress = progress.clone();
     let worker_model = model.clone();
     let worker = async move {
         let result = AssertUnwindSafe(task).catch_unwind().await;
         match result {
             Ok(Ok(messages)) => stream.end(Some(messages)),
-            Ok(Err(error)) => finish_agent_loop_error(&stream, &worker_model, error.to_string()),
+            Ok(Err(error)) => {
+                finish_agent_loop_error(&stream, &worker_model, &progress, error.to_string())
+            }
             Err(panic) => finish_agent_loop_error(
                 &stream,
                 &worker_model,
+                &progress,
                 format!("agent loop worker panicked: {}", panic_message(&panic)),
             ),
         }
@@ -226,6 +276,7 @@ fn spawn_agent_loop_worker(
                 Err(error) => finish_agent_loop_error(
                     &failure_stream,
                     &model,
+                    &failure_progress,
                     format!("agent loop runtime construction failed: {error}"),
                 ),
             }
@@ -233,16 +284,35 @@ fn spawn_agent_loop_worker(
     }
 }
 
-fn finish_agent_loop_error(stream: &AgentEventStream, model: &zedflow_ai::Model, error: String) {
+fn finish_agent_loop_error(
+    stream: &AgentEventStream,
+    model: &zedflow_ai::Model,
+    progress: &Mutex<AgentLoopProgress>,
+    error: String,
+) {
     if stream.is_done() {
         return;
     }
+    let AgentLoopProgress {
+        mut messages,
+        agent_started,
+        turn_open,
+        message_open,
+    } = std::mem::take(&mut *lock_progress(progress));
     let message = AgentMessage::Llm(Message::Assistant(stream_error_message(
         model, error, false,
     )));
-    stream.push(AgentEvent::MessageStart {
-        message: message.clone(),
-    });
+    if !agent_started {
+        stream.push(AgentEvent::AgentStart);
+    }
+    if !turn_open {
+        stream.push(AgentEvent::TurnStart);
+    }
+    if !message_open {
+        stream.push(AgentEvent::MessageStart {
+            message: message.clone(),
+        });
+    }
     stream.push(AgentEvent::MessageEnd {
         message: message.clone(),
     });
@@ -250,9 +320,8 @@ fn finish_agent_loop_error(stream: &AgentEventStream, model: &zedflow_ai::Model,
         message: message.clone(),
         tool_results: Vec::new(),
     });
-    stream.push(AgentEvent::AgentEnd {
-        messages: vec![message],
-    });
+    messages.push(message);
+    stream.push(AgentEvent::AgentEnd { messages });
 }
 
 fn panic_message(panic: &Box<dyn Any + Send>) -> &str {
@@ -502,7 +571,7 @@ async fn stream_assistant_response(
                 return Ok(final_message);
             }
             _ => {
-                if let Some(partial) = partial_from_event(&event) {
+                if added_partial && let Some(partial) = partial_from_event(&event) {
                     partial_message = Some(partial.clone());
                     let snapshot = partial.snapshot();
                     if let Some(last) = context.messages.last_mut() {
@@ -663,7 +732,7 @@ async fn execute_tool_calls_sequential(
             },
             PreparedToolCallOutcome::Prepared(prepared) => {
                 let executed =
-                    execute_prepared_tool_call(&prepared, signal.clone(), emit.clone()).await;
+                    execute_prepared_tool_call(&prepared, signal.clone(), emit.clone()).await?;
                 finalize_executed_tool_call(
                     current_context,
                     assistant_message,
@@ -737,7 +806,7 @@ async fn execute_tool_calls_parallel(
                     async move {
                         let executed =
                             execute_prepared_tool_call(&prepared, signal.clone(), emit.clone())
-                                .await;
+                                .await?;
                         let finalized = finalize_executed_tool_call(
                             &context, &assistant, prepared, executed, &cfg, signal,
                         )
@@ -907,7 +976,7 @@ async fn execute_prepared_tool_call(
     prepared: &PreparedToolCall,
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
-) -> ExecutedToolCallOutcome {
+) -> Result<ExecutedToolCallOutcome, AgentCallbackError> {
     let accepting_updates = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let (update_sender, update_receiver) = mpsc::unbounded();
     let update_flag = accepting_updates.clone();
@@ -941,35 +1010,37 @@ async fn execute_prepared_tool_call(
         futures::select! {
             result = tool_future => break result,
             update = update_receiver.next() => {
-                if let Some(event) = update {
-                    if let Err(error) = emit(event).await {
-                        update_error.get_or_insert_with(|| error.to_string());
-                    }
+                if let Some(event) = update
+                    && let Err(error) = emit(event).await
+                    && update_error.is_none()
+                {
+                    update_error = Some(error);
                 }
             }
         }
     };
     accepting_updates.store(false, std::sync::atomic::Ordering::SeqCst);
     while let Some(Some(event)) = update_receiver.next().now_or_never() {
-        if let Err(error) = emit(event).await {
-            update_error.get_or_insert_with(|| error.to_string());
+        if let Err(error) = emit(event).await
+            && update_error.is_none()
+        {
+            update_error = Some(error);
         }
     }
+    if let Some(error) = update_error {
+        return Err(error);
+    }
 
-    match result {
-        Ok(result) if update_error.is_none() => ExecutedToolCallOutcome {
+    Ok(match result {
+        Ok(result) => ExecutedToolCallOutcome {
             result,
             is_error: false,
-        },
-        Ok(_) => ExecutedToolCallOutcome {
-            result: create_error_tool_result(update_error.expect("update error was checked")),
-            is_error: true,
         },
         Err(error) => ExecutedToolCallOutcome {
             result: create_error_tool_result(error.to_string()),
             is_error: true,
         },
-    }
+    })
 }
 
 async fn finalize_executed_tool_call(
