@@ -4,7 +4,7 @@ use futures::FutureExt;
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use serde_json::{Value, json};
-use zedflow_agent::agent::{Agent, AgentOptions};
+use zedflow_agent::agent::{Agent, AgentError, AgentOptions};
 use zedflow_agent::types::{
     AgentCallbackError, AgentEvent, AgentMessage, AgentTool, AgentToolResult,
     AgentToolResultContent, AgentToolUpdateCallback, AssistantMessageEventStream, Message, Model,
@@ -304,6 +304,32 @@ fn provider_error_event_emits_lifecycle_and_sets_error_state() {
         agent.state().error_message.as_deref(),
         Some("provider exploded")
     );
+}
+
+#[test]
+fn rejected_continue_from_provider_error_preserves_state() {
+    let stream_fn: StreamFn = Arc::new(|_model, _context, _options| {
+        let stream = AssistantMessageEventStream::new();
+        stream.push(AssistantMessageEvent::Error {
+            reason: ErrorStopReason::Error,
+            error: error_assistant("provider exploded", StopReason::Error),
+        });
+        Box::pin(async move { Ok(stream) })
+    });
+    let agent = Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn),
+        ..AgentOptions::default()
+    });
+
+    block_on(agent.prompt("hello")).expect("provider error run completes");
+    let prior_state = agent.state();
+
+    let error = block_on(agent.r#continue()).expect_err("assistant tail rejects continuation");
+
+    assert_eq!(error, AgentError::CannotContinueFromAssistant);
+    let state = agent.state();
+    assert_eq!(state.error_message, prior_state.error_message);
+    assert_eq!(state.messages, prior_state.messages);
 }
 
 #[test]

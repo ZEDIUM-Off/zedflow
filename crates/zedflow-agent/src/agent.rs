@@ -532,13 +532,22 @@ impl Agent {
     ///
     /// Returns an error when already running, empty, or ending on an assistant without queued work.
     pub async fn r#continue(&self) -> Result<(), AgentError> {
-        let run =
-            self.admit_run("Agent is already processing. Wait for completion before continuing.")?;
+        const ALREADY_PROCESSING: &str =
+            "Agent is already processing. Wait for completion before continuing.";
+        if lock(&self.lifecycle).active.is_some() {
+            return Err(AgentError::AlreadyProcessing(ALREADY_PROCESSING.to_owned()));
+        }
 
         let last_message = lock(&self.state).messages.last().cloned();
         let Some(last_message) = last_message else {
             return Err(AgentError::NoMessagesToContinue);
         };
+
+        if is_assistant_message(&last_message) && !self.has_queued_messages() {
+            return Err(AgentError::CannotContinueFromAssistant);
+        }
+
+        let run = self.admit_run(ALREADY_PROCESSING)?;
 
         if is_assistant_message(&last_message) {
             let queued_steering = lock(&self.steering_queue).drain();
