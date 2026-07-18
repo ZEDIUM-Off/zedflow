@@ -1,5 +1,7 @@
 /target/
 /.pi-subagents/
+/.pi/git/
+/.pi/npm/
 /tools/zedflow-index/.venv/
 /tools/zedflow-index/cocoindex.db/
 **/__pycache__/

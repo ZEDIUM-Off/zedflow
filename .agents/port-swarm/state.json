@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "closed": [],
+  "current": {
+    "id": "RECONCILE-CHECKPOINT",
+    "base": "HEAD",
+    "worker": null,
+    "status": "ready",
+    "result": null,
+    "blocker": null
+  }
+}

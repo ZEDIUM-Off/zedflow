@@ -1,4 +1,0 @@
-id	role	model	depends_on	ownership	validation
-RECONCILE-CHECKPOINT	reconcile	openai-codex/gpt-5.6-sol		state/docs	frozen source and plan hash
-AG-C1..V2	see dag	see dag	canonical order	see dag	exact-SHA only
-NEXT-PORT-DAG	reconcile	openai-codex/gpt-5.6-terra	V2	dag/docs	extend packages only after V2

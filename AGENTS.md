@@ -45,6 +45,10 @@ mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR"
 
 This repo is being cleaned from an inherited Pi Rust port workspace into a focused Zedflow base. Treat old drop-in certification, parity ledgers, swarm/operator automation, extension-corpus artifacts, and port-management docs as removable unless they are directly needed by the runtime or current tests.
 
+## Pi port coordination
+
+The active port uses persistent Pi sessions named `zedflow-port-coordinator` and `zedflow-port-worker`. They communicate with pi-intercom; use `send` for assignments, progress, and completion, and `ask` only for blocking decisions. A session may use subagents internally, but a DAG task must not create a new top-level Pi process. Read `tools/pi-port-swarm/dag.json` and `.agents/port-swarm/state.json`; Git and runnable checks are authoritative.
+
 The root crate is now a temporary quarry. New product code should land in `crates/`, following the package split in `references/pi/packages/`:
 
 - `zedflow-core`

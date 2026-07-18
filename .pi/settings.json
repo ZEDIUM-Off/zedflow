@@ -9,5 +9,8 @@
         "openai-codex/gpt-5.6-sol"
       ]
     }
-  }
+  },
+  "packages": [
+    "npm:pi-intercom@0.6.0"
+  ]
 }

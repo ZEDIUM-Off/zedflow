@@ -1,7 +1,10 @@
-# Port-swarm decisions
+# Port coordination decisions
 
-- The source snapshot is created by `GIT_INDEX_FILE`, `read-tree`, `add -A`, `write-tree`, and `commit-tree`; source HEAD, index, and worktree are not changed.
-- `automation/pi-port` exists only in the automation clone. Slot branches are persistent recovery evidence.
-- Crate choices require a documented comparison in the unit result before implementation. Existing workspace dependencies win; no dependency is added solely for convenience.
-- Integration is CAS-protected by unit/base SHA/plan hash and exact-SHA review plus validation.
-- Paseo owns the hourly schedule and remote run visibility; systemd timer units are intentionally not installed.
+- Use one persistent coordinator Pi session and one persistent worker Pi session.
+- A session may use subagents; a DAG task does not create a new top-level Pi process.
+- pi-intercom carries assignments, decisions, progress, and completion messages. It is not the source of truth.
+- One writer is active. The coordinator may validate directly or through a subagent after the worker becomes idle.
+- Git ancestry, owned diffs, and declared commands are the acceptance evidence.
+- Independent fidelity and Rust reviews happen at wave boundaries, not after every micro-task.
+- The Pi gitlink remains frozen at the value in the DAG.
+- Paseo remains paused until the manual two-session pilot succeeds.
