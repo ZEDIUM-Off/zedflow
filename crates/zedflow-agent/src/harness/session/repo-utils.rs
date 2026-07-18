@@ -106,7 +106,7 @@ pub fn get_file_system_result_or_throw<TValue>(
         SessionError::new(
             code,
             format!("{message}: {}", error.message),
-            Some(error.to_string()),
+            Some(Box::new(error)),
         )
     })
 }
@@ -298,7 +298,7 @@ where
     fn set_leaf_id<'a>(
         &'a self,
         leaf_id: Option<String>,
-    ) -> crate::harness::types::HarnessFuture<'a, ()> {
+    ) -> crate::harness::types::HarnessFuture<'a, Result<(), SessionError>> {
         (**self).set_leaf_id(leaf_id)
     }
 

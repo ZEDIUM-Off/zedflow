@@ -91,7 +91,7 @@ impl JsonlSessionStorage {
             SessionError::new(
                 SessionErrorCode::Storage,
                 "failed to serialize session header",
-                Some(error.to_string()),
+                Some(Box::new(error)),
             )
         })?;
         get_file_system_result_or_throw(
@@ -160,15 +160,16 @@ impl SessionStorage for JsonlSessionStorage {
     fn set_leaf_id<'a>(
         &'a self,
         leaf_id: Option<String>,
-    ) -> crate::harness::types::HarnessFuture<'a, ()> {
+    ) -> crate::harness::types::HarnessFuture<'a, Result<(), SessionError>> {
         Box::pin(async move {
             let entry = {
                 let state = self.state.lock().expect("jsonl session storage lock");
-                if leaf_id
-                    .as_ref()
-                    .is_some_and(|id| !state.by_id.contains_key(id))
-                {
-                    return;
+                if let Some(id) = leaf_id.as_ref().filter(|id| !state.by_id.contains_key(*id)) {
+                    return Err(SessionError::new(
+                        SessionErrorCode::NotFound,
+                        format!("Entry {id} not found"),
+                        None,
+                    ));
                 }
                 SessionTreeEntry::Leaf(LeafEntry {
                     base: create_entry_base(
@@ -178,18 +179,14 @@ impl SessionStorage for JsonlSessionStorage {
                     target_id: leaf_id.clone(),
                 })
             };
-            if append_jsonl_entry(self.fs.as_ref(), &self.file_path, &entry)
-                .await
-                .is_err()
-            {
-                return;
-            }
+            append_jsonl_entry(self.fs.as_ref(), &self.file_path, &entry).await?;
             let mut state = self.state.lock().expect("jsonl session storage lock");
             state
                 .by_id
                 .insert(entry_id(&entry).to_string(), entry.clone());
             state.entries.push(entry);
             state.current_leaf_id = leaf_id;
+            Ok(())
         })
     }
 
@@ -357,7 +354,7 @@ fn parse_header_line(line: &str, file_path: &str) -> Result<SessionHeader, Sessi
         invalid_session(
             file_path,
             "first line is not a valid session header",
-            Some(error.to_string()),
+            Some(Box::new(error)),
         )
     })?;
     if !parsed.is_object() {
@@ -371,7 +368,7 @@ fn parse_header_line(line: &str, file_path: &str) -> Result<SessionHeader, Sessi
         invalid_session(
             file_path,
             "first line is not a valid session header",
-            Some(error.to_string()),
+            Some(Box::new(error)),
         )
     })?;
     if header.header_type != "session" {
@@ -422,7 +419,7 @@ fn parse_entry_line(
             file_path,
             line_number,
             "is not valid JSON",
-            Some(error.to_string()),
+            Some(Box::new(error)),
         )
     })?;
     let Some(object) = parsed.as_object() else {
@@ -493,7 +490,7 @@ fn parse_entry_line(
             file_path,
             line_number,
             "is not a valid session entry",
-            Some(error.to_string()),
+            Some(Box::new(error)),
         )
     })
 }
@@ -519,7 +516,7 @@ async fn append_jsonl_entry(
         SessionError::new(
             SessionErrorCode::Storage,
             format!("Failed to serialize session entry {}", entry_id(entry)),
-            Some(error.to_string()),
+            Some(Box::new(error)),
         )
     })?;
     get_file_system_result_or_throw(
@@ -529,11 +526,15 @@ async fn append_jsonl_entry(
     )
 }
 
-fn invalid_session(file_path: &str, message: &str, cause: Option<String>) -> SessionError {
+fn invalid_session(
+    file_path: &str,
+    message: &str,
+    source: Option<crate::harness::types::SessionErrorSource>,
+) -> SessionError {
     SessionError::new(
         SessionErrorCode::InvalidSession,
         format!("Invalid JSONL session file {file_path}: {message}"),
-        cause,
+        source,
     )
 }
 
@@ -541,12 +542,12 @@ fn invalid_entry(
     file_path: &str,
     line_number: usize,
     message: &str,
-    cause: Option<String>,
+    source: Option<crate::harness::types::SessionErrorSource>,
 ) -> SessionError {
     SessionError::new(
         SessionErrorCode::InvalidEntry,
         format!("Invalid JSONL session file {file_path}: line {line_number} {message}"),
-        cause,
+        source,
     )
 }
 
