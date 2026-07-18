@@ -11,10 +11,12 @@ use std::fmt;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
+use std::task::Poll;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::channel::mpsc;
-use futures::future::{join_all, ready};
+use futures::future::{join_all, poll_fn, ready};
+use futures::stream::FuturesOrdered;
 use futures::{FutureExt, StreamExt};
 use serde_json::{Map, Value};
 use zedflow_ai::{
@@ -1006,25 +1008,31 @@ async fn execute_prepared_tool_call(
     )
     .fuse();
     futures::pin_mut!(tool_future);
+    let mut update_emits = FuturesOrdered::new();
     let mut update_error = None;
-    let result = loop {
-        futures::select! {
-            result = tool_future => break result,
-            update = update_receiver.next() => {
-                let Some(event) = update else {
-                    break tool_future.await;
-                };
-                if let Err(error) = emit(event).await
-                    && update_error.is_none()
-                {
-                    update_error = Some(error);
-                }
+    let result = poll_fn(|context| {
+        loop {
+            match update_receiver.poll_next_unpin(context) {
+                Poll::Ready(Some(event)) => update_emits.push_back(emit(event)),
+                Poll::Ready(None) | Poll::Pending => break,
             }
         }
-    };
+        while let Poll::Ready(Some(result)) = update_emits.poll_next_unpin(context) {
+            if let Err(error) = result
+                && update_error.is_none()
+            {
+                update_error = Some(error);
+            }
+        }
+        tool_future.as_mut().poll(context)
+    })
+    .await;
     accepting_updates.store(false, std::sync::atomic::Ordering::SeqCst);
     while let Some(Some(event)) = update_receiver.next().now_or_never() {
-        if let Err(error) = emit(event).await
+        update_emits.push_back(emit(event));
+    }
+    while let Some(result) = update_emits.next().await {
+        if let Err(error) = result
             && update_error.is_none()
         {
             update_error = Some(error);

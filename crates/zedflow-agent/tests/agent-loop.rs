@@ -957,6 +957,98 @@ fn pending_tool_that_ignores_updates_completes() {
 }
 
 #[test]
+fn pending_update_sink_does_not_block_tool_result() {
+    let sink_started = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let tool_completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (sink_started_for_test, sink_started_for_test_wait) = oneshot::channel();
+    let sink_started_for_test = Arc::new(Mutex::new(Some(sink_started_for_test)));
+    let (release_sink, sink_release) = oneshot::channel();
+    let sink_release = Arc::new(Mutex::new(Some(sink_release)));
+
+    let mut tool = echo_tool(None);
+    let sink_started_for_tool = sink_started.clone();
+    let tool_completed_for_tool = tool_completed.clone();
+    tool.execute = Arc::new(move |_, _, _, on_update| {
+        on_update.expect("update callback")(AgentToolResult {
+            content: vec![AgentToolResultContent::Text(text("partial"))],
+            details: json!({ "partial": true }),
+            terminate: None,
+        });
+        let sink_started = sink_started_for_tool.clone();
+        let tool_completed = tool_completed_for_tool.clone();
+        Box::pin(async move {
+            futures::future::poll_fn(|_| {
+                if sink_started.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::task::Poll::Ready(())
+                } else {
+                    std::task::Poll::Pending
+                }
+            })
+            .await;
+            tool_completed.store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(AgentToolResult {
+                content: vec![AgentToolResultContent::Text(text("done"))],
+                details: json!({}),
+                terminate: Some(true),
+            })
+        })
+    });
+    let tool_use = assistant(
+        vec![tool_call("tool-1", "echo", json!({ "value": "hello" }))],
+        StopReason::ToolUse,
+    );
+    let stream_fn = stream_from_messages(vec![tool_use]);
+    let (config, _) = config(Some(stream_fn.clone()));
+    let emit: AgentEventSink = Arc::new(move |event| {
+        if matches!(event, AgentEvent::ToolExecutionUpdate { .. }) {
+            let sink_started_for_test = sink_started_for_test
+                .lock()
+                .expect("sink started lock")
+                .take()
+                .expect("single update");
+            let sink_release = sink_release
+                .lock()
+                .expect("sink release lock")
+                .take()
+                .expect("single update");
+            let sink_started = sink_started.clone();
+            Box::pin(async move {
+                sink_started.store(true, std::sync::atomic::Ordering::SeqCst);
+                sink_started_for_test.send(()).expect("test observes sink");
+                sink_release.await.expect("release update sink");
+                Ok(())
+            })
+        } else {
+            Box::pin(async { Ok(()) })
+        }
+    });
+
+    let run = Box::pin(run_agent_loop(
+        vec![user("update")],
+        context(vec![tool]),
+        config,
+        emit,
+        None,
+        Some(stream_fn),
+    ));
+    let run = match block_on(futures::future::select(sink_started_for_test_wait, run)) {
+        futures::future::Either::Left((started, run)) => {
+            started.expect("update sink starts");
+            run
+        }
+        futures::future::Either::Right(_) => panic!("agent loop completed with sink pending"),
+    };
+
+    assert!(
+        tool_completed.load(std::sync::atomic::Ordering::SeqCst),
+        "tool result settles while update sink remains pending"
+    );
+    release_sink.send(()).expect("pending update sink");
+    let messages = block_on(run).expect("agent loop completes after sink release");
+    assert_eq!(error_tool_result(&messages), ("done", false));
+}
+
+#[test]
 fn tool_execution_update_sink_error_is_propagated() {
     let mut tool = echo_tool(None);
     tool.execute = Arc::new(|_, _, _, on_update| {
