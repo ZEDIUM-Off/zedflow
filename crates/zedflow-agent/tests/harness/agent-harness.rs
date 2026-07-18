@@ -256,15 +256,15 @@ fn calculate_tool() -> AgentTool {
         },
         label: "Calculate".into(),
         prepare_arguments: None,
-        execute: Some(Arc::new(|_id, args, _signal, _update| {
+        execute: Arc::new(|_id, args, _signal, _update| {
             Box::pin(async move {
-                AgentToolResult {
+                Ok(AgentToolResult {
                     content: text_tool_result("4"),
                     details: args,
                     terminate: None,
-                }
+                })
             })
-        })),
+        }),
         execution_mode: None,
     }
 }
@@ -609,16 +609,15 @@ fn compaction_hook_persists_summary_and_emits_session_event() {
             ))))
             .await
             .expect("assistant");
-        let seen_compact_event = Arc::new(Mutex::new(false));
+        let seen_compact_event = Arc::new(Mutex::new(None));
         let harness = harness(models, model, Arc::clone(&session));
         harness.subscribe(subscriber({
             let seen_compact_event = Arc::clone(&seen_compact_event);
             move |event| {
-                if matches!(
-                    event,
-                    AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionCompact(_))
-                ) {
-                    *seen_compact_event.lock().expect("seen compact") = true;
+                if let AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionCompact(event)) =
+                    event
+                {
+                    *seen_compact_event.lock().expect("seen compact") = Some(event.from_hook);
                 }
             }
         }));
@@ -645,9 +644,16 @@ fn compaction_hook_persists_summary_and_emits_session_event() {
         let result = harness.compact(Some("focus files")).await.expect("compact");
 
         assert_eq!(result.summary, "hook summary");
-        assert!(*seen_compact_event.lock().expect("seen compact"));
+        assert_eq!(
+            *seen_compact_event.lock().expect("seen compact"),
+            Some(true)
+        );
         assert!(session.get_entries().await.into_iter().any(|entry| {
-            matches!(entry, zedflow_agent::harness::types::SessionTreeEntry::Compaction(entry) if entry.summary == "hook summary")
+            matches!(
+                entry,
+                zedflow_agent::harness::types::SessionTreeEntry::Compaction(entry)
+                    if entry.summary == "hook summary" && entry.from_hook == Some(true)
+            )
         }));
     });
 }

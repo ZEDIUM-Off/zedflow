@@ -460,6 +460,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                 Some(AgentHarnessHookResult::SessionBeforeCompact(result)) => result.compaction,
                 _ => None,
             };
+            let from_hook = provided.is_some();
             let result = if let Some(provided) = provided {
                 provided
             } else {
@@ -486,7 +487,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                     result.first_kept_entry_id.clone(),
                     result.tokens_before,
                     result.details.clone(),
-                    None,
+                    Some(from_hook),
                 )
                 .await
                 .map_err(|error| normalize_session_error(error.to_string()))?;
@@ -497,7 +498,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                     &self.state,
                     AgentHarnessOwnEvent::SessionCompact(SessionCompactEvent {
                         compaction_entry: entry,
-                        from_hook: false,
+                        from_hook,
                     }),
                 )
                 .await?;
