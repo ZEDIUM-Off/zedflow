@@ -1008,23 +1008,48 @@ async fn execute_prepared_tool_call(
     )
     .fuse();
     futures::pin_mut!(tool_future);
+    const UPDATE_POLL_BUDGET: usize = 64;
+
     let mut update_emits = FuturesOrdered::new();
     let mut update_error = None;
     let result = poll_fn(|context| {
-        loop {
+        let mut receiver_budget_exhausted = true;
+        for _ in 0..UPDATE_POLL_BUDGET {
             match update_receiver.poll_next_unpin(context) {
                 Poll::Ready(Some(event)) => update_emits.push_back(emit(event)),
-                Poll::Ready(None) | Poll::Pending => break,
+                Poll::Ready(None) | Poll::Pending => {
+                    receiver_budget_exhausted = false;
+                    break;
+                }
             }
         }
-        while let Poll::Ready(Some(result)) = update_emits.poll_next_unpin(context) {
-            if let Err(error) = result
-                && update_error.is_none()
-            {
-                update_error = Some(error);
+
+        let mut emit_budget_exhausted = true;
+        for _ in 0..UPDATE_POLL_BUDGET {
+            match update_emits.poll_next_unpin(context) {
+                Poll::Ready(Some(result)) => {
+                    if let Err(error) = result
+                        && update_error.is_none()
+                    {
+                        update_error = Some(error);
+                    }
+                }
+                Poll::Ready(None) | Poll::Pending => {
+                    emit_budget_exhausted = false;
+                    break;
+                }
             }
         }
-        tool_future.as_mut().poll(context)
+
+        match tool_future.as_mut().poll(context) {
+            Poll::Ready(result) => Poll::Ready(result),
+            Poll::Pending => {
+                if receiver_budget_exhausted || emit_budget_exhausted {
+                    context.waker().wake_by_ref();
+                }
+                Poll::Pending
+            }
+        }
     })
     .await;
     accepting_updates.store(false, std::sync::atomic::Ordering::SeqCst);

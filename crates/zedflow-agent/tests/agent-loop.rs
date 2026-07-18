@@ -1049,6 +1049,70 @@ fn pending_update_sink_does_not_block_tool_result() {
 }
 
 #[test]
+fn update_flood_does_not_starve_tool_future() {
+    const UPDATE_COUNT: usize = 256;
+
+    let emitted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let emitted_for_tool = emitted.clone();
+    let mut tool = echo_tool(None);
+    tool.execute = Arc::new(move |_, _, _, on_update| {
+        let on_update = on_update.expect("update callback");
+        let emitted = emitted_for_tool.clone();
+        let mut first_poll = true;
+        Box::pin(futures::future::poll_fn(move |context| {
+            if first_poll {
+                first_poll = false;
+                for index in 0..UPDATE_COUNT {
+                    on_update(AgentToolResult {
+                        content: vec![AgentToolResultContent::Text(text(index.to_string()))],
+                        details: json!({ "index": index }),
+                        terminate: None,
+                    });
+                }
+                context.waker().wake_by_ref();
+                return std::task::Poll::Pending;
+            }
+
+            assert!(
+                emitted.load(std::sync::atomic::Ordering::SeqCst) < UPDATE_COUNT,
+                "tool must be repolled before the update backlog is fully drained"
+            );
+            std::task::Poll::Ready(Ok(AgentToolResult {
+                content: vec![AgentToolResultContent::Text(text("done"))],
+                details: json!({}),
+                terminate: Some(true),
+            }))
+        }))
+    });
+    let tool_use = assistant(
+        vec![tool_call("tool-1", "echo", json!({ "value": "hello" }))],
+        StopReason::ToolUse,
+    );
+    let stream_fn = stream_from_messages(vec![tool_use]);
+    let (config, _) = config(Some(stream_fn.clone()));
+    let emit: AgentEventSink = Arc::new(move |event| {
+        let emitted = emitted.clone();
+        Box::pin(async move {
+            if matches!(event, AgentEvent::ToolExecutionUpdate { .. }) {
+                emitted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+            Ok(())
+        })
+    });
+
+    let messages = block_on(run_agent_loop(
+        vec![user("flood")],
+        context(vec![tool]),
+        config,
+        emit,
+        None,
+        Some(stream_fn),
+    ))
+    .expect("update flood must not starve tool completion");
+    assert_eq!(error_tool_result(&messages), ("done", false));
+}
+
+#[test]
 fn tool_execution_update_sink_error_is_propagated() {
     let mut tool = echo_tool(None);
     tool.execute = Arc::new(|_, _, _, on_update| {
