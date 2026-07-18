@@ -14,9 +14,8 @@ use futures::executor::block_on;
 use serde_json::Value;
 use zedflow_ai::utils::abort_signals::AbortController;
 use zedflow_ai::{
-    AssistantMessage, ImageContent, Message, Model, Models, ProviderHookError, ProviderResponse,
-    SimpleStreamOptions, TextContent, TextContentType, UserContentBlock, UserMessage,
-    UserMessageContent, UserMessageRole,
+    AssistantMessage, ImageContent, Message, Model, Models, SimpleStreamOptions, TextContent,
+    TextContentType, UserContentBlock, UserMessage, UserMessageContent, UserMessageRole,
 };
 
 use crate::agent_loop::{AgentEventSink, run_agent_loop};
@@ -31,21 +30,21 @@ use crate::harness::messages::convert_to_llm;
 use crate::harness::prompt_templates::format_prompt_template_invocation;
 use crate::harness::skills::format_skill_invocation;
 use crate::harness::types::{
-    AbortResult, AfterProviderResponseEvent, AgentHarnessEvent, AgentHarnessOptions,
-    AgentHarnessOwnEvent, AgentHarnessPhase, AgentHarnessPromptOptions, AgentHarnessResources,
-    AgentHarnessStreamOptions, AgentHarnessStreamOptionsPatch, BeforeAgentStartEvent,
-    BeforeAgentStartResult, BeforeProviderPayloadEvent, BeforeProviderPayloadResult,
-    BeforeProviderRequestEvent, BeforeProviderRequestResult, BranchSummaryDraft, CompactResult,
-    ContextEvent, ContextResult, CustomMessageContent, ExecutionEnv, ModelUpdateEvent,
-    NavigateTreeResult, PromptTemplate, QueueUpdateEvent, ResourcesUpdateEvent, RestoreSource,
-    SavePointEvent, Session, SessionBeforeCompactEvent, SessionBeforeCompactResult,
-    SessionBeforeTreeEvent, SessionBeforeTreeResult, SessionCompactEvent, SessionTreeEvent,
-    SettledEvent, Skill, SystemPrompt, SystemPromptContext, ThinkingLevelUpdateEvent,
-    ToolCallEvent, ToolCallResult, ToolResultEvent, ToolResultPatch, ToolsUpdateEvent,
+    AbortResult, AgentHarnessEvent, AgentHarnessOptions, AgentHarnessOwnEvent, AgentHarnessPhase,
+    AgentHarnessPromptOptions, AgentHarnessResources, AgentHarnessStreamOptions,
+    AgentHarnessStreamOptionsPatch, BeforeAgentStartEvent, BeforeAgentStartResult,
+    BeforeProviderPayloadEvent, BeforeProviderPayloadResult, BeforeProviderRequestEvent,
+    BeforeProviderRequestResult, BranchSummaryDraft, CompactResult, ContextEvent, ContextResult,
+    CustomMessageContent, ExecutionEnv, ModelUpdateEvent, NavigateTreeResult, Patch,
+    PromptTemplate, QueueUpdateEvent, ResourcesUpdateEvent, RestoreSource, SavePointEvent, Session,
+    SessionBeforeCompactEvent, SessionBeforeCompactResult, SessionBeforeTreeEvent,
+    SessionBeforeTreeResult, SessionCompactEvent, SessionTreeEvent, SettledEvent, Skill,
+    SystemPrompt, SystemPromptContext, ThinkingLevelUpdateEvent, ToolCallEvent, ToolCallResult,
+    ToolResultEvent, ToolResultPatch, ToolsUpdateEvent,
 };
 use crate::types::{
-    AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool, AgentToolResultContent,
-    QueueMode, ThinkingLevel, ToolExecutionMode,
+    AgentCallbackError, AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool,
+    AgentToolResultContent, QueueMode, ThinkingLevel, ToolExecutionMode,
 };
 
 /// Harness-level error codes.
@@ -1041,7 +1040,10 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
             Some(signal.clone()),
             Some(stream_fn),
         )
-        .await;
+        .await
+        .map_err(|error| {
+            AgentHarnessError::new(AgentHarnessErrorCode::Unknown, error.to_string(), None)
+        })?;
         let assistant = result.iter().rev().find_map(|message| match message {
             AgentMessage::Llm(Message::Assistant(message)) => Some(message.clone()),
             _ => None,
@@ -1113,7 +1115,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                         )
                     };
                     let _ = env;
-                    Some(crate::types::AgentLoopTurnUpdate {
+                    Ok(Some(crate::types::AgentLoopTurnUpdate {
                         context: Some(AgentContext {
                             system_prompt,
                             messages: context.messages,
@@ -1121,7 +1123,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                         }),
                         model: Some(model),
                         thinking_level: Some(thinking_level),
-                    })
+                    }))
                 })
             })),
             get_steering_messages: Some(queue_drain_fn(Arc::clone(&self.state), QueueKind::Steer)),
@@ -1148,12 +1150,13 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                         .await
                         {
                             Ok(Some(AgentHarnessHookResult::ToolCall(result))) => {
-                                Some(crate::types::BeforeToolCallResult {
+                                Ok(Some(crate::types::BeforeToolCallResult {
                                     block: result.block,
                                     reason: result.reason,
-                                })
+                                    args: None,
+                                }))
                             }
-                            _ => None,
+                            _ => Ok(None),
                         }
                     })
                 }
@@ -1179,14 +1182,14 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                         .await
                         {
                             Ok(Some(AgentHarnessHookResult::ToolResult(result))) => {
-                                Some(crate::types::AfterToolCallResult {
+                                Ok(Some(crate::types::AfterToolCallResult {
                                     content: result.content,
                                     details: result.details,
                                     is_error: result.is_error,
                                     terminate: result.terminate,
-                                })
+                                }))
                             }
-                            _ => None,
+                            _ => Ok(None),
                         }
                     })
                 }
@@ -1203,51 +1206,42 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
         let session_id = turn_state.session_id.clone();
         let harness_options = turn_state.stream_options.clone();
         Arc::new(move |model, context, loop_options| {
-            let mut options: SimpleStreamOptions = harness_options.clone().into();
-            if let Some(loop_options) = loop_options {
-                options.reasoning = loop_options.reasoning;
-                options.stream.signal = loop_options.stream.signal.clone();
-            }
-            let patched = block_on(emit_before_provider_request(
-                &state,
-                model.clone(),
-                &session_id,
-                harness_options.clone(),
-            ))
-            .unwrap_or(harness_options.clone());
-            apply_stream_options(&mut options, patched);
-            options.stream.session_id = Some(session_id.clone());
-            options.stream.on_payload = Some(Arc::new({
-                let state = Arc::clone(&state);
-                move |payload, model| {
-                    let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        emit_before_provider_payload(&state, model, payload)
-                            .await
-                            .map_err(ProviderHookError::new)
-                    })
+            let models = Arc::clone(&models);
+            let state = Arc::clone(&state);
+            let session_id = session_id.clone();
+            let harness_options = harness_options.clone();
+            let model = model.clone();
+            let context = context.clone();
+            let loop_options = loop_options.cloned();
+            Box::pin(async move {
+                let mut options: SimpleStreamOptions = harness_options.clone().into();
+                if let Some(loop_options) = loop_options {
+                    options.reasoning = loop_options.reasoning;
+                    options.stream.signal = loop_options.stream.signal;
                 }
-            }));
-            options.stream.on_response = Some(Arc::new({
-                let state = Arc::clone(&state);
-                move |response: ProviderResponse, _model| {
+                let patched = emit_before_provider_request(
+                    &state,
+                    model.clone(),
+                    &session_id,
+                    harness_options.clone(),
+                )
+                .await
+                .map_err(|error| Box::new(error) as AgentCallbackError)?;
+                apply_stream_options(&mut options, patched);
+                options.stream.session_id = Some(session_id);
+                options.stream.on_payload = Some(Arc::new({
                     let state = Arc::clone(&state);
-                    Box::pin(async move {
-                        emit_own(
-                            &state,
-                            AgentHarnessOwnEvent::AfterProviderResponse(
-                                AfterProviderResponseEvent {
-                                    status: response.status,
-                                    headers: response.headers,
-                                },
-                            ),
-                        )
-                        .await
-                        .map_err(ProviderHookError::new)
-                    })
-                }
-            }));
-            models.stream_simple(model, context, Some(&options))
+                    move |payload, model| {
+                        let state = Arc::clone(&state);
+                        Box::pin(async move {
+                            emit_before_provider_payload(&state, model, payload)
+                                .await
+                                .map_err(zedflow_ai::ProviderHookError::new)
+                        })
+                    }
+                }));
+                Ok(models.stream_simple(&model, &context, Some(&options)))
+            })
         })
     }
 
@@ -1258,9 +1252,9 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
             let state = Arc::clone(&state);
             let session = Arc::clone(&session);
             Box::pin(async move {
-                if let Err(error) = handle_agent_event(&state, &session, event).await {
-                    let _ = error;
-                }
+                handle_agent_event(&state, &session, event)
+                    .await
+                    .map_err(|error| Box::new(error) as AgentCallbackError)
             })
         })
     }
@@ -1610,44 +1604,48 @@ fn apply_stream_options_patch(
     mut base: AgentHarnessStreamOptions,
     patch: AgentHarnessStreamOptionsPatch,
 ) -> AgentHarnessStreamOptions {
-    if patch.transport.is_some() {
-        base.transport = patch.transport;
-    }
-    if patch.timeout_ms.is_some() {
-        base.timeout_ms = patch.timeout_ms;
-    }
-    if patch.max_retries.is_some() {
-        base.max_retries = patch.max_retries;
-    }
-    if patch.max_retry_delay_ms.is_some() {
-        base.max_retry_delay_ms = patch.max_retry_delay_ms;
-    }
-    if patch.cache_retention.is_some() {
-        base.cache_retention = patch.cache_retention;
-    }
-    if let Some(headers) = patch.headers {
-        let mut next = base.headers.unwrap_or_default();
-        for (key, value) in headers {
-            if let Some(value) = value {
-                next.insert(key, value);
-            } else {
-                next.remove(&key);
+    macro_rules! apply {
+        ($field:ident) => {
+            match patch.$field {
+                Patch::Unchanged => {}
+                Patch::Set(value) => base.$field = Some(value),
+                Patch::Clear => base.$field = None,
             }
-        }
-        base.headers = (!next.is_empty()).then_some(next);
+        };
     }
-    if let Some(metadata) = patch.metadata {
-        let mut next = base.metadata.unwrap_or_default();
-        for (key, value) in metadata {
-            if let Some(value) = value {
-                next.insert(key, value);
-            } else {
-                next.remove(&key);
-            }
-        }
-        base.metadata = (!next.is_empty()).then_some(next);
-    }
+    apply!(transport);
+    apply!(timeout_ms);
+    apply!(max_retries);
+    apply!(max_retry_delay_ms);
+    apply!(cache_retention);
+    apply_map_patch(&mut base.headers, patch.headers);
+    apply_map_patch(&mut base.metadata, patch.metadata);
     base
+}
+
+fn apply_map_patch<T>(
+    base: &mut Option<HashMap<String, T>>,
+    patch: Patch<HashMap<String, Patch<T>>>,
+) {
+    match patch {
+        Patch::Unchanged => {}
+        Patch::Clear => *base = None,
+        Patch::Set(patch) => {
+            let mut next = base.take().unwrap_or_default();
+            for (key, value) in patch {
+                match value {
+                    Patch::Unchanged => {}
+                    Patch::Set(value) => {
+                        next.insert(key, value);
+                    }
+                    Patch::Clear => {
+                        next.remove(&key);
+                    }
+                }
+            }
+            *base = (!next.is_empty()).then_some(next);
+        }
+    }
 }
 
 fn create_user_message(text: String, images: Option<Vec<ImageContent>>) -> AgentMessage {

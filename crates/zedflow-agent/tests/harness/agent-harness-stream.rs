@@ -18,7 +18,7 @@ use zedflow_agent::harness::session::session::Session;
 use zedflow_agent::harness::types::{
     AgentHarnessOptions, AgentHarnessOwnEvent, AgentHarnessStreamOptions,
     AgentHarnessStreamOptionsPatch, BeforeProviderPayloadResult, BeforeProviderRequestResult,
-    ExecutionEnv, Session as SessionTrait, SessionMetadata,
+    ExecutionEnv, Patch, Session as SessionTrait, SessionMetadata,
 };
 use zedflow_ai::{
     AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream,
@@ -253,11 +253,14 @@ fn snapshots_stream_options_before_provider_request_hooks() {
                     Some(AgentHarnessHookResult::BeforeProviderRequest(
                         BeforeProviderRequestResult {
                             stream_options: Some(AgentHarnessStreamOptionsPatch {
-                                headers: Some(HashMap::from([(
+                                headers: Patch::Set(HashMap::from([(
                                     "x-hook".into(),
-                                    Some("hook".into()),
+                                    Patch::Set("hook".into()),
                                 )])),
-                                metadata: Some(HashMap::from([("hook".into(), Some(json!(true)))])),
+                                metadata: Patch::Set(HashMap::from([(
+                                    "hook".into(),
+                                    Patch::Set(json!(true)),
+                                )])),
                                 ..AgentHarnessStreamOptionsPatch::default()
                             }),
                         },
@@ -333,13 +336,13 @@ fn chains_provider_request_patches_and_deletes_header_metadata_keys() {
                     Some(AgentHarnessHookResult::BeforeProviderRequest(
                         BeforeProviderRequestResult {
                             stream_options: Some(AgentHarnessStreamOptionsPatch {
-                                headers: Some(HashMap::from([
-                                    ("first".into(), Some("1".into())),
-                                    ("remove".into(), None),
+                                headers: Patch::Set(HashMap::from([
+                                    ("first".into(), Patch::Set("1".into())),
+                                    ("remove".into(), Patch::Clear),
                                 ])),
-                                metadata: Some(HashMap::from([
-                                    ("first".into(), Some(json!(1))),
-                                    ("remove".into(), None),
+                                metadata: Patch::Set(HashMap::from([
+                                    ("first".into(), Patch::Set(json!(1))),
+                                    ("remove".into(), Patch::Clear),
                                 ])),
                                 ..AgentHarnessStreamOptionsPatch::default()
                             }),
@@ -360,7 +363,10 @@ fn chains_provider_request_patches_and_deletes_header_metadata_keys() {
                     Some(AgentHarnessHookResult::BeforeProviderRequest(
                         BeforeProviderRequestResult {
                             stream_options: Some(AgentHarnessStreamOptionsPatch {
-                                headers: Some(HashMap::from([("second".into(), Some("2".into()))])),
+                                headers: Patch::Set(HashMap::from([(
+                                    "second".into(),
+                                    Patch::Set("2".into()),
+                                )])),
                                 ..AgentHarnessStreamOptionsPatch::default()
                             }),
                         },
