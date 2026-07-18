@@ -2,10 +2,11 @@
   "version": 2,
   "closed": [
     "RECONCILE-CHECKPOINT",
-    "AG-C1"
+    "AG-C1",
+    "AG-C2"
   ],
   "current": {
-    "id": "AG-C2",
+    "id": "AG-L1",
     "base": "HEAD",
     "worker": null,
     "status": "ready",

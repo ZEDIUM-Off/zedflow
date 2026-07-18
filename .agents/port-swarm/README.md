@@ -12,3 +12,7 @@ Recovery refs retained in the repository:
 - `refs/archive/pi-port-v1/source-bootstrap`
 - `refs/archive/pi-port-v1/integration`
 - `refs/archive/pi-port-v1/ag-l2-candidate`
+
+## Scheduling
+
+Hourly coordinator ticks are delivered by persistent Paseo relay `dbe0e650` through active schedule `f7c25e49`. Legacy schedule `6f738382` is paused. This relay is transport only; the DAG, Git, and runnable checks remain authoritative.
