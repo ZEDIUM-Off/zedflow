@@ -1,13 +1,15 @@
 //! Core Pi-compatible agent loop.
 //!
 //! The async `run_*` functions preserve Pi's event order while consuming the
-//! `zedflow-ai` assistant event stream directly. The stream-returning helpers are
-//! synchronous adapters: without a crate-owned runtime they run the loop to
-//! completion before returning the populated event stream.
+//! `zedflow-ai` assistant event stream directly. The stream-returning helpers
+//! dispatch the loop onto the current Tokio runtime or a private fallback runtime.
 
+use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,16 +24,15 @@ use zedflow_ai::{
     ToolResultMessageRole, validate_tool_arguments,
 };
 
+pub use crate::types::AgentEventSink;
 use crate::types::{
-    AgentContext, AgentEvent, AgentFuture, AgentLoopConfig, AgentLoopTurnUpdate, AgentMessage,
-    AgentTool, AgentToolResult, AgentToolResultContent, StreamFn, ThinkingLevel, ToolExecutionMode,
+    AgentCallbackError, AgentContext, AgentEvent, AgentLoopConfig, AgentLoopTurnUpdate,
+    AgentMessage, AgentTool, AgentToolResult, AgentToolResultContent, StreamFn, ThinkingLevel,
+    ToolExecutionMode,
 };
 
 /// Event stream returned by low-level agent-loop adapters.
 pub type AgentEventStream = EventStream<AgentEvent, Vec<AgentMessage>>;
-
-/// Async event sink used by the low-level loop.
-pub type AgentEventSink = Arc<dyn Fn(AgentEvent) -> AgentFuture<'static, ()> + Send + Sync>;
 
 /// Errors raised before a continuation can safely call a provider.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +58,7 @@ impl fmt::Display for AgentLoopError {
 
 impl Error for AgentLoopError {}
 
-/// Starts an agent loop with new prompt messages and returns a populated event stream.
+/// Starts an agent loop with new prompt messages and returns its live event stream.
 #[must_use]
 pub fn agent_loop(
     prompts: Vec<AgentMessage>,
@@ -72,13 +73,16 @@ pub fn agent_loop(
         let emit_stream = emit_stream.clone();
         Box::pin(async move {
             emit_stream.push(event);
+            Ok(())
         })
     });
+    let model = config.model.clone();
 
-    let messages = futures::executor::block_on(run_agent_loop(
-        prompts, context, config, emit, signal, stream_fn,
-    ));
-    stream.end(Some(messages));
+    spawn_agent_loop_worker(
+        stream.clone(),
+        model,
+        run_agent_loop(prompts, context, config, emit, signal, stream_fn),
+    );
     stream
 }
 
@@ -101,17 +105,24 @@ pub fn agent_loop_continue(
         let emit_stream = emit_stream.clone();
         Box::pin(async move {
             emit_stream.push(event);
+            Ok(())
         })
     });
+    let model = config.model.clone();
 
-    let messages = futures::executor::block_on(run_agent_loop_continue(
-        context, config, emit, signal, stream_fn,
-    ))?;
-    stream.end(Some(messages));
+    spawn_agent_loop_worker(
+        stream.clone(),
+        model,
+        run_agent_loop_continue(context, config, emit, signal, stream_fn),
+    );
     Ok(stream)
 }
 
 /// Runs a prompt-started agent loop.
+///
+/// # Errors
+///
+/// Returns the event sink error when an emitted lifecycle event is rejected.
 pub async fn run_agent_loop(
     prompts: Vec<AgentMessage>,
     context: AgentContext,
@@ -119,13 +130,13 @@ pub async fn run_agent_loop(
     emit: AgentEventSink,
     signal: Option<zedflow_ai::AbortSignal>,
     stream_fn: Option<StreamFn>,
-) -> Vec<AgentMessage> {
+) -> Result<Vec<AgentMessage>, AgentCallbackError> {
     let mut new_messages = prompts.clone();
     let mut current_context = context;
     current_context.messages.extend(prompts.clone());
 
-    emit_event(&emit, AgentEvent::AgentStart).await;
-    emit_event(&emit, AgentEvent::TurnStart).await;
+    emit_event(&emit, AgentEvent::AgentStart).await?;
+    emit_event(&emit, AgentEvent::TurnStart).await?;
     for prompt in prompts {
         emit_event(
             &emit,
@@ -133,8 +144,8 @@ pub async fn run_agent_loop(
                 message: prompt.clone(),
             },
         )
-        .await;
-        emit_event(&emit, AgentEvent::MessageEnd { message: prompt }).await;
+        .await?;
+        emit_event(&emit, AgentEvent::MessageEnd { message: prompt }).await?;
     }
 
     run_loop(
@@ -145,29 +156,31 @@ pub async fn run_agent_loop(
         emit,
         stream_fn,
     )
-    .await;
-    new_messages
+    .await?;
+    Ok(new_messages)
 }
 
 /// Runs a continuation from the current context without injecting prompt messages.
 ///
 /// # Errors
 ///
-/// Returns [`AgentLoopError`] when the context is empty or ends with an assistant message.
+/// Returns a boxed [`AgentLoopError`] when the context is invalid, or the event sink error when an
+/// emitted lifecycle event is rejected.
 pub async fn run_agent_loop_continue(
     context: AgentContext,
     config: AgentLoopConfig,
     emit: AgentEventSink,
     signal: Option<zedflow_ai::AbortSignal>,
     stream_fn: Option<StreamFn>,
-) -> Result<Vec<AgentMessage>, AgentLoopError> {
-    validate_continuation_context(&context)?;
+) -> Result<Vec<AgentMessage>, AgentCallbackError> {
+    validate_continuation_context(&context)
+        .map_err(|error| Box::new(error) as AgentCallbackError)?;
 
     let mut new_messages = Vec::new();
-    emit_event(&emit, AgentEvent::AgentStart).await;
-    emit_event(&emit, AgentEvent::TurnStart).await;
+    emit_event(&emit, AgentEvent::AgentStart).await?;
+    emit_event(&emit, AgentEvent::TurnStart).await?;
 
-    run_loop(context, &mut new_messages, config, signal, emit, stream_fn).await;
+    run_loop(context, &mut new_messages, config, signal, emit, stream_fn).await?;
     Ok(new_messages)
 }
 
@@ -181,6 +194,75 @@ fn create_agent_stream() -> AgentEventStream {
     )
 }
 
+fn spawn_agent_loop_worker(
+    stream: AgentEventStream,
+    model: zedflow_ai::Model,
+    task: impl Future<Output = Result<Vec<AgentMessage>, AgentCallbackError>> + Send + 'static,
+) {
+    let failure_stream = stream.clone();
+    let worker_model = model.clone();
+    let worker = async move {
+        let result = AssertUnwindSafe(task).catch_unwind().await;
+        match result {
+            Ok(Ok(messages)) => stream.end(Some(messages)),
+            Ok(Err(error)) => finish_agent_loop_error(&stream, &worker_model, error.to_string()),
+            Err(panic) => finish_agent_loop_error(
+                &stream,
+                &worker_model,
+                format!("agent loop worker panicked: {}", panic_message(&panic)),
+            ),
+        }
+    };
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(worker);
+    } else {
+        std::thread::spawn(move || {
+            match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => runtime.block_on(worker),
+                Err(error) => finish_agent_loop_error(
+                    &failure_stream,
+                    &model,
+                    format!("agent loop runtime construction failed: {error}"),
+                ),
+            }
+        });
+    }
+}
+
+fn finish_agent_loop_error(stream: &AgentEventStream, model: &zedflow_ai::Model, error: String) {
+    if stream.is_done() {
+        return;
+    }
+    let message = AgentMessage::Llm(Message::Assistant(stream_error_message(
+        model, error, false,
+    )));
+    stream.push(AgentEvent::MessageStart {
+        message: message.clone(),
+    });
+    stream.push(AgentEvent::MessageEnd {
+        message: message.clone(),
+    });
+    stream.push(AgentEvent::TurnEnd {
+        message: message.clone(),
+        tool_results: Vec::new(),
+    });
+    stream.push(AgentEvent::AgentEnd {
+        messages: vec![message],
+    });
+}
+
+fn panic_message(panic: &Box<dyn Any + Send>) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("unknown panic")
+}
+
 async fn run_loop(
     initial_context: AgentContext,
     new_messages: &mut Vec<AgentMessage>,
@@ -188,7 +270,7 @@ async fn run_loop(
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
     stream_fn: Option<StreamFn>,
-) {
+) -> Result<(), AgentCallbackError> {
     let mut current_context = initial_context;
     let mut config = initial_config;
     let mut first_turn = true;
@@ -201,7 +283,7 @@ async fn run_loop(
             if first_turn {
                 first_turn = false;
             } else {
-                emit_event(&emit, AgentEvent::TurnStart).await;
+                emit_event(&emit, AgentEvent::TurnStart).await?;
             }
 
             if !pending_messages.is_empty() {
@@ -212,14 +294,14 @@ async fn run_loop(
                             message: message.clone(),
                         },
                     )
-                    .await;
+                    .await?;
                     emit_event(
                         &emit,
                         AgentEvent::MessageEnd {
                             message: message.clone(),
                         },
                     )
-                    .await;
+                    .await?;
                     current_context.messages.push(message.clone());
                     new_messages.push(message);
                 }
@@ -232,7 +314,7 @@ async fn run_loop(
                 emit.clone(),
                 stream_fn.clone(),
             )
-            .await;
+            .await?;
             new_messages.push(AgentMessage::Llm(Message::Assistant(message.clone())));
 
             if matches!(message.stop_reason, StopReason::Error | StopReason::Aborted) {
@@ -243,15 +325,15 @@ async fn run_loop(
                         tool_results: Vec::new(),
                     },
                 )
-                .await;
+                .await?;
                 emit_event(
                     &emit,
                     AgentEvent::AgentEnd {
                         messages: new_messages.clone(),
                     },
                 )
-                .await;
-                return;
+                .await?;
+                return Ok(());
             }
 
             let tool_calls = assistant_tool_calls(&message);
@@ -266,7 +348,7 @@ async fn run_loop(
                     signal.clone(),
                     emit.clone(),
                 )
-                .await;
+                .await?;
                 tool_results.extend(executed.messages);
                 has_more_tool_calls = !executed.terminate;
 
@@ -285,7 +367,7 @@ async fn run_loop(
                     tool_results: tool_results.clone(),
                 },
             )
-            .await;
+            .await?;
 
             if let Some(update) = prepare_next_turn(
                 &config,
@@ -294,7 +376,7 @@ async fn run_loop(
                 current_context.clone(),
                 new_messages.clone(),
             )
-            .await
+            .await?
             {
                 apply_turn_update(&mut current_context, &mut config, update);
             }
@@ -314,8 +396,8 @@ async fn run_loop(
                         messages: new_messages.clone(),
                     },
                 )
-                .await;
-                return;
+                .await?;
+                return Ok(());
             }
 
             pending_messages = drain_queue(&config.get_steering_messages).await;
@@ -334,7 +416,8 @@ async fn run_loop(
             messages: new_messages.clone(),
         },
     )
-    .await;
+    .await?;
+    Ok(())
 }
 
 async fn stream_assistant_response(
@@ -343,7 +426,7 @@ async fn stream_assistant_response(
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
     stream_fn: Option<StreamFn>,
-) -> AssistantMessage {
+) -> Result<AssistantMessage, AgentCallbackError> {
     let mut messages = context.messages.clone();
     if let Some(transform) = &config.transform_context {
         messages = transform(messages, signal.clone()).await;
@@ -372,7 +455,10 @@ async fn stream_assistant_response(
 
     let default_stream_fn = default_stream_fn();
     let stream_function = stream_fn.unwrap_or(default_stream_fn);
-    let mut response = stream_function(&config.model, &llm_context, Some(&options));
+    let mut response = match stream_function(&config.model, &llm_context, Some(&options)).await {
+        Ok(response) => response,
+        Err(error) => error_assistant_stream(&config.model, error.to_string(), false),
+    };
 
     let mut partial_message = None;
     let mut added_partial = false;
@@ -392,7 +478,7 @@ async fn stream_assistant_response(
                         message: AgentMessage::Llm(Message::Assistant(snapshot)),
                     },
                 )
-                .await;
+                .await?;
             }
             AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. } => {
                 let final_message = response.result().await;
@@ -404,7 +490,7 @@ async fn stream_assistant_response(
                             message: AgentMessage::Llm(Message::Assistant(final_message.clone())),
                         },
                     )
-                    .await;
+                    .await?;
                 }
                 emit_event(
                     &emit,
@@ -412,8 +498,8 @@ async fn stream_assistant_response(
                         message: AgentMessage::Llm(Message::Assistant(final_message.clone())),
                     },
                 )
-                .await;
-                return final_message;
+                .await?;
+                return Ok(final_message);
             }
             _ => {
                 if let Some(partial) = partial_from_event(&event) {
@@ -429,7 +515,7 @@ async fn stream_assistant_response(
                             message: AgentMessage::Llm(Message::Assistant(snapshot)),
                         },
                     )
-                    .await;
+                    .await?;
                 }
             }
         }
@@ -444,7 +530,7 @@ async fn stream_assistant_response(
                 message: AgentMessage::Llm(Message::Assistant(final_message.clone())),
             },
         )
-        .await;
+        .await?;
     }
     if partial_message.is_some() || !added_partial {
         emit_event(
@@ -453,9 +539,9 @@ async fn stream_assistant_response(
                 message: AgentMessage::Llm(Message::Assistant(final_message.clone())),
             },
         )
-        .await;
+        .await?;
     }
-    final_message
+    Ok(final_message)
 }
 
 fn replace_or_push_assistant(
@@ -509,7 +595,7 @@ async fn execute_tool_calls(
     config: &AgentLoopConfig,
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
-) -> ExecutedToolCallBatch {
+) -> Result<ExecutedToolCallBatch, AgentCallbackError> {
     let has_sequential_tool_call = tool_calls.iter().any(|tool_call| {
         current_context
             .tools
@@ -554,12 +640,12 @@ async fn execute_tool_calls_sequential(
     config: &AgentLoopConfig,
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
-) -> ExecutedToolCallBatch {
+) -> Result<ExecutedToolCallBatch, AgentCallbackError> {
     let mut finalized_calls = Vec::new();
     let mut messages = Vec::new();
 
     for tool_call in tool_calls {
-        emit_tool_execution_start(&tool_call, &emit).await;
+        emit_tool_execution_start(&tool_call, &emit).await?;
 
         let preparation = prepare_tool_call(
             current_context,
@@ -590,9 +676,9 @@ async fn execute_tool_calls_sequential(
             }
         };
 
-        emit_tool_execution_end(&finalized, &emit).await;
+        emit_tool_execution_end(&finalized, &emit).await?;
         let tool_result_message = create_tool_result_message(&finalized);
-        emit_tool_result_message(tool_result_message.clone(), &emit).await;
+        emit_tool_result_message(tool_result_message.clone(), &emit).await?;
         finalized_calls.push(finalized);
         messages.push(tool_result_message);
 
@@ -604,10 +690,10 @@ async fn execute_tool_calls_sequential(
         }
     }
 
-    ExecutedToolCallBatch {
+    Ok(ExecutedToolCallBatch {
         messages,
         terminate: should_terminate_tool_batch(&finalized_calls),
-    }
+    })
 }
 
 async fn execute_tool_calls_parallel(
@@ -617,11 +703,11 @@ async fn execute_tool_calls_parallel(
     config: &AgentLoopConfig,
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
-) -> ExecutedToolCallBatch {
+) -> Result<ExecutedToolCallBatch, AgentCallbackError> {
     let mut finalized_entries = Vec::new();
 
     for tool_call in tool_calls {
-        emit_tool_execution_start(&tool_call, &emit).await;
+        emit_tool_execution_start(&tool_call, &emit).await?;
 
         let preparation = prepare_tool_call(
             current_context,
@@ -638,8 +724,8 @@ async fn execute_tool_calls_parallel(
                     result,
                     is_error,
                 };
-                emit_tool_execution_end(&finalized, &emit).await;
-                finalized_entries.push(ready(finalized).boxed());
+                emit_tool_execution_end(&finalized, &emit).await?;
+                finalized_entries.push(ready(Ok(finalized)).boxed());
             }
             PreparedToolCallOutcome::Prepared(prepared) => {
                 let context = current_context.clone();
@@ -656,8 +742,8 @@ async fn execute_tool_calls_parallel(
                             &context, &assistant, prepared, executed, &cfg, signal,
                         )
                         .await;
-                        emit_tool_execution_end(&finalized, &emit).await;
-                        finalized
+                        emit_tool_execution_end(&finalized, &emit).await?;
+                        Ok(finalized)
                     }
                     .boxed(),
                 );
@@ -672,18 +758,21 @@ async fn execute_tool_calls_parallel(
         }
     }
 
-    let ordered_finalized_calls: Vec<FinalizedToolCallOutcome> = join_all(finalized_entries).await;
+    let ordered_finalized_calls = join_all(finalized_entries)
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, AgentCallbackError>>()?;
     let mut messages = Vec::new();
     for finalized in &ordered_finalized_calls {
         let tool_result_message = create_tool_result_message(finalized);
-        emit_tool_result_message(tool_result_message.clone(), &emit).await;
+        emit_tool_result_message(tool_result_message.clone(), &emit).await?;
         messages.push(tool_result_message);
     }
 
-    ExecutedToolCallBatch {
+    Ok(ExecutedToolCallBatch {
         messages,
         terminate: should_terminate_tool_batch(&ordered_finalized_calls),
-    }
+    })
 }
 
 #[derive(Clone)]
@@ -720,21 +809,21 @@ fn should_terminate_tool_batch(finalized_calls: &[FinalizedToolCallOutcome]) -> 
             .all(|finalized| finalized.result.terminate == Some(true))
 }
 
-fn prepare_tool_call_arguments(tool: &AgentTool, tool_call: &ToolCall) -> ToolCall {
+fn prepare_tool_call_arguments(tool: &AgentTool, tool_call: &ToolCall) -> Result<ToolCall, String> {
     let Some(prepare_arguments) = &tool.prepare_arguments else {
-        return tool_call.clone();
+        return Ok(tool_call.clone());
     };
-    let prepared_arguments = prepare_arguments(arguments_to_value(&tool_call.arguments));
-    let Some(arguments) = value_to_arguments(prepared_arguments) else {
-        return tool_call.clone();
-    };
+    let prepared_arguments = prepare_arguments(arguments_to_value(&tool_call.arguments))
+        .map_err(|error| error.to_string())?;
+    let arguments = value_to_arguments(prepared_arguments)
+        .ok_or_else(|| "Prepared tool arguments must be an object".to_owned())?;
     if arguments == tool_call.arguments {
-        return tool_call.clone();
+        return Ok(tool_call.clone());
     }
-    ToolCall {
+    Ok(ToolCall {
         arguments,
         ..tool_call.clone()
-    }
+    })
 }
 
 async fn prepare_tool_call(
@@ -753,8 +842,11 @@ async fn prepare_tool_call(
         return immediate_error_tool_result(format!("Tool {} not found", tool_call.name));
     };
 
-    let prepared_tool_call = prepare_tool_call_arguments(&tool, &tool_call);
-    let validated_args = match validate_tool_arguments(&tool.tool, &prepared_tool_call) {
+    let prepared_tool_call = match prepare_tool_call_arguments(&tool, &tool_call) {
+        Ok(tool_call) => tool_call,
+        Err(error) => return immediate_error_tool_result(error),
+    };
+    let mut validated_args = match validate_tool_arguments(&tool.tool, &prepared_tool_call) {
         Ok(args) => args,
         Err(error) => return immediate_error_tool_result(error.to_string()),
     };
@@ -771,6 +863,11 @@ async fn prepare_tool_call(
         )
         .await;
 
+        let before_result = match before_result {
+            Ok(before_result) => before_result,
+            Err(error) => return immediate_error_tool_result(error.to_string()),
+        };
+
         if signal
             .as_ref()
             .is_some_and(zedflow_ai::AbortSignal::aborted)
@@ -785,6 +882,9 @@ async fn prepare_tool_call(
                         .reason
                         .unwrap_or_else(|| "Tool execution was blocked".to_string()),
                 );
+            }
+            if let Some(args) = before_result.args {
+                validated_args = args;
             }
         }
     }
@@ -808,16 +908,6 @@ async fn execute_prepared_tool_call(
     signal: Option<zedflow_ai::AbortSignal>,
     emit: AgentEventSink,
 ) -> ExecutedToolCallOutcome {
-    let Some(execute) = &prepared.tool.execute else {
-        return ExecutedToolCallOutcome {
-            result: create_error_tool_result(format!(
-                "Tool {} cannot execute",
-                prepared.tool_call.name
-            )),
-            is_error: true,
-        };
-    };
-
     let accepting_updates = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let (update_sender, update_receiver) = mpsc::unbounded();
     let update_flag = accepting_updates.clone();
@@ -838,7 +928,7 @@ async fn execute_prepared_tool_call(
     });
 
     let mut update_receiver = update_receiver.fuse();
-    let tool_future = execute(
+    let tool_future = (prepared.tool.execute)(
         &prepared.tool_call.id,
         prepared.args.clone(),
         signal,
@@ -846,24 +936,39 @@ async fn execute_prepared_tool_call(
     )
     .fuse();
     futures::pin_mut!(tool_future);
+    let mut update_error = None;
     let result = loop {
         futures::select! {
             result = tool_future => break result,
             update = update_receiver.next() => {
                 if let Some(event) = update {
-                    emit(event).await;
+                    if let Err(error) = emit(event).await {
+                        update_error.get_or_insert_with(|| error.to_string());
+                    }
                 }
             }
         }
     };
     accepting_updates.store(false, std::sync::atomic::Ordering::SeqCst);
     while let Some(Some(event)) = update_receiver.next().now_or_never() {
-        emit(event).await;
+        if let Err(error) = emit(event).await {
+            update_error.get_or_insert_with(|| error.to_string());
+        }
     }
 
-    ExecutedToolCallOutcome {
-        result,
-        is_error: false,
+    match result {
+        Ok(result) if update_error.is_none() => ExecutedToolCallOutcome {
+            result,
+            is_error: false,
+        },
+        Ok(_) => ExecutedToolCallOutcome {
+            result: create_error_tool_result(update_error.expect("update error was checked")),
+            is_error: true,
+        },
+        Err(error) => ExecutedToolCallOutcome {
+            result: create_error_tool_result(error.to_string()),
+            is_error: true,
+        },
     }
 }
 
@@ -879,7 +984,7 @@ async fn finalize_executed_tool_call(
     let mut is_error = executed.is_error;
 
     if let Some(after_tool_call) = &config.after_tool_call {
-        let after_result = after_tool_call(
+        match after_tool_call(
             crate::types::AfterToolCallContext {
                 assistant_message: assistant_message.clone(),
                 tool_call: prepared.tool_call.clone(),
@@ -890,19 +995,26 @@ async fn finalize_executed_tool_call(
             },
             signal,
         )
-        .await;
-        if let Some(after_result) = after_result {
-            if let Some(content) = after_result.content {
-                result.content = content;
+        .await
+        {
+            Ok(Some(after_result)) => {
+                if let Some(content) = after_result.content {
+                    result.content = content;
+                }
+                if let Some(details) = after_result.details {
+                    result.details = details;
+                }
+                if after_result.terminate.is_some() {
+                    result.terminate = after_result.terminate;
+                }
+                if let Some(next_is_error) = after_result.is_error {
+                    is_error = next_is_error;
+                }
             }
-            if let Some(details) = after_result.details {
-                result.details = details;
-            }
-            if after_result.terminate.is_some() {
-                result.terminate = after_result.terminate;
-            }
-            if let Some(next_is_error) = after_result.is_error {
-                is_error = next_is_error;
+            Ok(None) => {}
+            Err(error) => {
+                result = create_error_tool_result(error.to_string());
+                is_error = true;
             }
         }
     }
@@ -933,7 +1045,10 @@ fn create_error_tool_result(message: impl Into<String>) -> AgentToolResult {
     }
 }
 
-async fn emit_tool_execution_start(tool_call: &ToolCall, emit: &AgentEventSink) {
+async fn emit_tool_execution_start(
+    tool_call: &ToolCall,
+    emit: &AgentEventSink,
+) -> Result<(), AgentCallbackError> {
     emit_event(
         emit,
         AgentEvent::ToolExecutionStart {
@@ -942,10 +1057,13 @@ async fn emit_tool_execution_start(tool_call: &ToolCall, emit: &AgentEventSink) 
             args: arguments_to_value(&tool_call.arguments),
         },
     )
-    .await;
+    .await
 }
 
-async fn emit_tool_execution_end(finalized: &FinalizedToolCallOutcome, emit: &AgentEventSink) {
+async fn emit_tool_execution_end(
+    finalized: &FinalizedToolCallOutcome,
+    emit: &AgentEventSink,
+) -> Result<(), AgentCallbackError> {
     emit_event(
         emit,
         AgentEvent::ToolExecutionEnd {
@@ -955,7 +1073,7 @@ async fn emit_tool_execution_end(finalized: &FinalizedToolCallOutcome, emit: &Ag
             is_error: finalized.is_error,
         },
     )
-    .await;
+    .await
 }
 
 fn create_tool_result_message(finalized: &FinalizedToolCallOutcome) -> ToolResultMessage {
@@ -976,7 +1094,10 @@ fn create_tool_result_message(finalized: &FinalizedToolCallOutcome) -> ToolResul
     }
 }
 
-async fn emit_tool_result_message(tool_result_message: ToolResultMessage, emit: &AgentEventSink) {
+async fn emit_tool_result_message(
+    tool_result_message: ToolResultMessage,
+    emit: &AgentEventSink,
+) -> Result<(), AgentCallbackError> {
     let message = AgentMessage::Llm(Message::ToolResult(tool_result_message));
     emit_event(
         emit,
@@ -984,8 +1105,8 @@ async fn emit_tool_result_message(tool_result_message: ToolResultMessage, emit: 
             message: message.clone(),
         },
     )
-    .await;
-    emit_event(emit, AgentEvent::MessageEnd { message }).await;
+    .await?;
+    emit_event(emit, AgentEvent::MessageEnd { message }).await
 }
 
 fn tool_result_content(content: AgentToolResultContent) -> ToolResultContentBlock {
@@ -1001,8 +1122,10 @@ async fn prepare_next_turn(
     tool_results: Vec<ToolResultMessage>,
     context: AgentContext,
     new_messages: Vec<AgentMessage>,
-) -> Option<AgentLoopTurnUpdate> {
-    let prepare_next_turn = config.prepare_next_turn.as_ref()?;
+) -> Result<Option<AgentLoopTurnUpdate>, AgentCallbackError> {
+    let Some(prepare_next_turn) = config.prepare_next_turn.as_ref() else {
+        return Ok(None);
+    };
     prepare_next_turn(crate::types::PrepareNextTurnContext {
         message,
         tool_results,
@@ -1099,19 +1222,16 @@ fn value_to_arguments(value: Value) -> Option<HashMap<String, Value>> {
     Some(object.into_iter().collect())
 }
 
-async fn emit_event(emit: &AgentEventSink, event: AgentEvent) {
-    emit(event).await;
+async fn emit_event(emit: &AgentEventSink, event: AgentEvent) -> Result<(), AgentCallbackError> {
+    emit(event).await
 }
 
 fn default_stream_fn() -> StreamFn {
-    Arc::new(
-        |model: &zedflow_ai::Model,
-         context: &AiContext,
-         options: Option<&SimpleStreamOptions>|
-         -> AssistantMessageEventStream {
-            zedflow_ai::create_models().stream_simple(model, context, options)
-        },
-    )
+    Arc::new(|model, context, options| {
+        Box::pin(
+            async move { Ok(zedflow_ai::create_models().stream_simple(model, context, options)) },
+        )
+    })
 }
 
 fn now_millis() -> u64 {
