@@ -14,8 +14,8 @@
     "id": "AG-H4",
     "base": "HEAD",
     "worker": null,
-    "status": "ready",
+    "status": "blocked",
     "result": null,
-    "blocker": null
+    "blocker": "Declared cargo check --workspace --all-targets fails on exact base before AG-H4 edits: zedflow-ai image tests reference missing references/pi/packages/ai/test/data/red-circle.png. Worker also reports unowned AG-T1 tests retain pre-AG-C1 contracts."
   }
 }
