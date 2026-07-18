@@ -4,10 +4,11 @@
     "RECONCILE-CHECKPOINT",
     "AG-C1",
     "AG-C2",
-    "AG-L1"
+    "AG-L1",
+    "AG-L2"
   ],
   "current": {
-    "id": "AG-L2",
+    "id": "AG-H1",
     "base": "HEAD",
     "worker": null,
     "status": "ready",
