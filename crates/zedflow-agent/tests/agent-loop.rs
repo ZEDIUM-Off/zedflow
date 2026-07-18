@@ -913,19 +913,17 @@ fn ignores_assistant_updates_before_start_without_overwriting_context() {
 
 #[test]
 fn pending_tool_that_ignores_updates_completes() {
+    let (release, wait) = oneshot::channel();
+    let wait = Arc::new(Mutex::new(Some(wait)));
     let mut tool = echo_tool(None);
-    tool.execute = Arc::new(|_, _, _, _on_update| {
-        Box::pin(async {
-            let mut first_poll = true;
-            futures::future::poll_fn(move |cx| {
-                if std::mem::take(&mut first_poll) {
-                    cx.waker().wake_by_ref();
-                    std::task::Poll::Pending
-                } else {
-                    std::task::Poll::Ready(())
-                }
-            })
-            .await;
+    tool.execute = Arc::new(move |_, _, _, _on_update| {
+        let wait = wait
+            .lock()
+            .expect("tool wait lock")
+            .take()
+            .expect("single tool execution");
+        Box::pin(async move {
+            wait.await.expect("release pending tool");
             Ok(AgentToolResult {
                 content: vec![AgentToolResultContent::Text(text("done"))],
                 details: json!({}),
@@ -937,10 +935,24 @@ fn pending_tool_that_ignores_updates_completes() {
         vec![tool_call("tool-1", "echo", json!({ "value": "hello" }))],
         StopReason::ToolUse,
     );
-    let (config, stream_fn) = config(Some(stream_from_messages(vec![tool_use])));
+    let stream_fn = stream_from_messages(vec![tool_use]);
+    let (config, _) = config(Some(stream_fn.clone()));
+    let emit: AgentEventSink = Arc::new(|_| Box::pin(async { Ok(()) }));
 
-    let (_, messages) = collect_stream(vec![user("run")], context(vec![tool]), config, stream_fn);
+    let (result, released) = block_on(futures::future::join(
+        run_agent_loop(
+            vec![user("run")],
+            context(vec![tool]),
+            config,
+            emit,
+            None,
+            Some(stream_fn),
+        ),
+        async { release.send(()) },
+    ));
+    let messages = result.expect("agent loop completes after update callback is dropped");
 
+    assert!(released.is_ok(), "pending tool receiver remains available");
     assert_eq!(error_tool_result(&messages), ("done", false));
 }
 
