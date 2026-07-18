@@ -18,15 +18,18 @@ use zedflow_ai::{
 use crate::agent_loop::{AgentEventSink, AgentLoopError, run_agent_loop, run_agent_loop_continue};
 use crate::harness::messages;
 use crate::types::{
-    AfterToolCallFn, AgentContext, AgentEvent, AgentFuture, AgentLoopConfig, AgentLoopTurnUpdate,
-    AgentMessage, AgentState, AgentTool, BeforeToolCallFn, ConvertToLlmFn, GetApiKeyFn,
-    PrepareNextTurnContext, PrepareNextTurnFn, QueueMode, StreamFn, ThinkingLevel,
+    AfterToolCallFn, AgentCallbackError, AgentContext, AgentEvent, AgentFuture, AgentLoopConfig,
+    AgentLoopTurnUpdate, AgentMessage, AgentState, AgentTool, BeforeToolCallFn, ConvertToLlmFn,
+    GetApiKeyFn, PrepareNextTurnContext, PrepareNextTurnFn, QueueMode, StreamFn, ThinkingLevel,
     ToolExecutionMode, TransformContextFn,
 };
 
 /// Event listener registered on [`Agent`].
-pub type AgentEventListener =
-    Arc<dyn Fn(AgentEvent, AbortSignal) -> AgentFuture<'static, ()> + Send + Sync>;
+pub type AgentEventListener = Arc<
+    dyn Fn(AgentEvent, AbortSignal) -> AgentFuture<'static, Result<(), AgentCallbackError>>
+        + Send
+        + Sync,
+>;
 
 /// Options for constructing an [`Agent`].
 #[derive(Clone)]
@@ -50,7 +53,10 @@ pub struct AgentOptions {
     /// Optional no-context next-turn hook.
     pub prepare_next_turn: Option<
         Arc<
-            dyn Fn(Option<AbortSignal>) -> AgentFuture<'static, Option<AgentLoopTurnUpdate>>
+            dyn Fn(
+                    Option<AbortSignal>,
+                )
+                    -> AgentFuture<'static, Result<Option<AgentLoopTurnUpdate>, AgentCallbackError>>
                 + Send
                 + Sync,
         >,
@@ -61,7 +67,8 @@ pub struct AgentOptions {
             dyn Fn(
                     PrepareNextTurnContext,
                     Option<AbortSignal>,
-                ) -> AgentFuture<'static, Option<AgentLoopTurnUpdate>>
+                )
+                    -> AgentFuture<'static, Result<Option<AgentLoopTurnUpdate>, AgentCallbackError>>
                 + Send
                 + Sync,
         >,
@@ -116,6 +123,10 @@ pub enum AgentError {
     Loop(AgentLoopError),
     /// Listener was invoked after active-run state disappeared.
     ListenerOutsideActiveRun,
+    /// An event listener rejected a lifecycle event.
+    Listener(String),
+    /// A fallible runtime callback rejected the run.
+    Callback(String),
 }
 
 impl fmt::Display for AgentError {
@@ -130,6 +141,7 @@ impl fmt::Display for AgentError {
             Self::ListenerOutsideActiveRun => {
                 formatter.write_str("Agent listener invoked outside active run")
             }
+            Self::Listener(error) | Self::Callback(error) => formatter.write_str(error),
         }
     }
 }
@@ -221,14 +233,73 @@ impl From<Vec<AgentMessage>> for AgentPromptInput {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunSettlement {
+    Running,
+    TerminalListeners,
+}
+
+struct ActiveRun {
+    id: u64,
+    controller: AbortController,
+    settlement: RunSettlement,
+}
+
+#[derive(Default)]
+struct LifecycleState {
+    next_run_id: u64,
+    active: Option<ActiveRun>,
+    idle_waiters: Vec<oneshot::Sender<()>>,
+}
+
+struct RunGuard {
+    id: u64,
+    signal: AbortSignal,
+    state: Arc<Mutex<AgentState>>,
+    lifecycle: Arc<Mutex<LifecycleState>>,
+}
+
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        {
+            let mut state = lock(&self.state);
+            state.is_streaming = false;
+            state.streaming_message = None;
+            state.pending_tool_calls.clear();
+        }
+
+        let waiters = {
+            let mut lifecycle = lock(&self.lifecycle);
+            if lifecycle.active.as_ref().map(|run| run.id) != Some(self.id) {
+                return;
+            }
+            lifecycle.active = None;
+            std::mem::take(&mut lifecycle.idle_waiters)
+        };
+        for waiter in waiters {
+            let _ = waiter.send(());
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AgentListenerFailure(String);
+
+impl fmt::Display for AgentListenerFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl Error for AgentListenerFailure {}
+
 /// Stateful wrapper around the low-level agent loop.
 pub struct Agent {
     state: Arc<Mutex<AgentState>>,
     listeners: Arc<Mutex<Vec<AgentEventListener>>>,
     steering_queue: Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
-    active_signal: Arc<Mutex<Option<AbortController>>>,
-    idle_waiters: Arc<Mutex<Vec<oneshot::Sender<()>>>>,
+    lifecycle: Arc<Mutex<LifecycleState>>,
     convert_to_llm: ConvertToLlmFn,
     transform_context: Option<TransformContextFn>,
     stream_fn: StreamFn,
@@ -238,7 +309,10 @@ pub struct Agent {
     after_tool_call: Option<AfterToolCallFn>,
     prepare_next_turn: Option<
         Arc<
-            dyn Fn(Option<AbortSignal>) -> AgentFuture<'static, Option<AgentLoopTurnUpdate>>
+            dyn Fn(
+                    Option<AbortSignal>,
+                )
+                    -> AgentFuture<'static, Result<Option<AgentLoopTurnUpdate>, AgentCallbackError>>
                 + Send
                 + Sync,
         >,
@@ -248,7 +322,8 @@ pub struct Agent {
             dyn Fn(
                     PrepareNextTurnContext,
                     Option<AbortSignal>,
-                ) -> AgentFuture<'static, Option<AgentLoopTurnUpdate>>
+                )
+                    -> AgentFuture<'static, Result<Option<AgentLoopTurnUpdate>, AgentCallbackError>>
                 + Send
                 + Sync,
         >,
@@ -269,8 +344,7 @@ impl Agent {
             listeners: Arc::new(Mutex::new(Vec::new())),
             steering_queue: Arc::new(Mutex::new(PendingMessageQueue::new(options.steering_mode))),
             follow_up_queue: Arc::new(Mutex::new(PendingMessageQueue::new(options.follow_up_mode))),
-            active_signal: Arc::new(Mutex::new(None)),
-            idle_waiters: Arc::new(Mutex::new(Vec::new())),
+            lifecycle: Arc::new(Mutex::new(LifecycleState::default())),
             convert_to_llm: options
                 .convert_to_llm
                 .unwrap_or_else(default_convert_to_llm),
@@ -382,27 +456,29 @@ impl Agent {
     /// Returns active abort signal, if any.
     #[must_use]
     pub fn signal(&self) -> Option<AbortSignal> {
-        lock(&self.active_signal)
+        lock(&self.lifecycle)
+            .active
             .as_ref()
-            .map(AbortController::signal)
+            .map(|run| run.controller.signal())
     }
 
     /// Aborts the current run, if active.
     pub fn abort(&self) {
-        if let Some(controller) = lock(&self.active_signal).as_ref() {
-            controller.abort();
+        if let Some(run) = lock(&self.lifecycle).active.as_ref() {
+            run.controller.abort();
         }
     }
 
     /// Resolves after the current run becomes idle.
     pub async fn wait_for_idle(&self) {
         let receiver = {
-            let mut waiters = lock(&self.idle_waiters);
-            if lock(&self.active_signal).is_none() {
-                return;
+            let mut lifecycle = lock(&self.lifecycle);
+            match lifecycle.active.as_ref().map(|run| run.settlement) {
+                None => return,
+                Some(RunSettlement::Running | RunSettlement::TerminalListeners) => {}
             }
             let (sender, receiver) = oneshot::channel();
-            waiters.push(sender);
+            lifecycle.idle_waiters.push(sender);
             receiver
         };
         let _ = receiver.await;
@@ -426,14 +502,11 @@ impl Agent {
     ///
     /// Returns [`AgentError::AlreadyProcessing`] when another run is active.
     pub async fn prompt(&self, input: impl Into<AgentPromptInput>) -> Result<(), AgentError> {
-        if lock(&self.active_signal).is_some() {
-            return Err(AgentError::AlreadyProcessing(
-                "Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion."
-                    .to_string(),
-            ));
-        }
+        let run = self.admit_run(
+            "Agent is already processing a prompt. Use steer() or followUp() to queue messages, or wait for completion.",
+        )?;
         let messages = normalize_prompt_input(input.into());
-        self.run_prompt_messages(messages, false).await
+        self.run_prompt_messages(messages, false, run).await
     }
 
     /// Starts a text prompt with images.
@@ -459,10 +532,10 @@ impl Agent {
     ///
     /// Returns an error when already running, empty, or ending on an assistant without queued work.
     pub async fn r#continue(&self) -> Result<(), AgentError> {
-        if lock(&self.active_signal).is_some() {
-            return Err(AgentError::AlreadyProcessing(
-                "Agent is already processing. Wait for completion before continuing.".to_string(),
-            ));
+        const ALREADY_PROCESSING: &str =
+            "Agent is already processing. Wait for completion before continuing.";
+        if lock(&self.lifecycle).active.is_some() {
+            return Err(AgentError::AlreadyProcessing(ALREADY_PROCESSING.to_owned()));
         }
 
         let last_message = lock(&self.state).messages.last().cloned();
@@ -470,33 +543,42 @@ impl Agent {
             return Err(AgentError::NoMessagesToContinue);
         };
 
+        if is_assistant_message(&last_message) && !self.has_queued_messages() {
+            return Err(AgentError::CannotContinueFromAssistant);
+        }
+
+        let run = self.admit_run(ALREADY_PROCESSING)?;
+
         if is_assistant_message(&last_message) {
             let queued_steering = lock(&self.steering_queue).drain();
             if !queued_steering.is_empty() {
-                return self.run_prompt_messages(queued_steering, true).await;
+                return self.run_prompt_messages(queued_steering, true, run).await;
             }
 
             let queued_follow_ups = lock(&self.follow_up_queue).drain();
             if !queued_follow_ups.is_empty() {
-                return self.run_prompt_messages(queued_follow_ups, false).await;
+                return self
+                    .run_prompt_messages(queued_follow_ups, false, run)
+                    .await;
             }
 
             return Err(AgentError::CannotContinueFromAssistant);
         }
 
-        self.run_continuation().await
+        self.run_continuation(run).await
     }
 
     async fn run_prompt_messages(
         &self,
         messages: Vec<AgentMessage>,
         skip_initial_steering_poll: bool,
+        run: RunGuard,
     ) -> Result<(), AgentError> {
-        self.run_with_lifecycle(|signal| {
+        self.run_with_lifecycle(run, |signal, run_id| {
             let context = self.create_context_snapshot();
             let config = self.create_loop_config(skip_initial_steering_poll);
             let stream_fn = self.stream_fn.clone();
-            let emit = self.event_sink();
+            let emit = self.event_sink(run_id);
             Box::pin(async move {
                 run_agent_loop(
                     messages,
@@ -506,23 +588,25 @@ impl Agent {
                     Some(signal),
                     Some(stream_fn),
                 )
-                .await;
-                Ok(())
+                .await
+                .map(|_| ())
+                .map_err(callback_error)
             })
         })
         .await
     }
 
-    async fn run_continuation(&self) -> Result<(), AgentError> {
-        self.run_with_lifecycle(|signal| {
+    async fn run_continuation(&self, run: RunGuard) -> Result<(), AgentError> {
+        self.run_with_lifecycle(run, |signal, run_id| {
             let context = self.create_context_snapshot();
             let config = self.create_loop_config(false);
             let stream_fn = self.stream_fn.clone();
-            let emit = self.event_sink();
+            let emit = self.event_sink(run_id);
             Box::pin(async move {
                 run_agent_loop_continue(context, config, emit, Some(signal), Some(stream_fn))
-                    .await?;
-                Ok(())
+                    .await
+                    .map(|_| ())
+                    .map_err(callback_error)
             })
         })
         .await
@@ -547,7 +631,7 @@ impl Agent {
         let steering_queue = self.steering_queue.clone();
         let follow_up_queue = self.follow_up_queue.clone();
         let skip = Arc::new(Mutex::new(skip_initial_steering_poll));
-        let active_signal = self.active_signal.clone();
+        let lifecycle = self.lifecycle.clone();
         let prepare_next_turn = self.prepare_next_turn.clone();
         let prepare_next_turn_with_context = self.prepare_next_turn_with_context.clone();
 
@@ -562,19 +646,24 @@ impl Agent {
                 || prepare_next_turn_with_context.is_some()
             {
                 Some(Arc::new(move |context| {
-                    let signal = lock(&active_signal).as_ref().map(AbortController::signal);
+                    let signal = lock(&lifecycle)
+                        .active
+                        .as_ref()
+                        .map(|run| run.controller.signal());
                     let with_context = prepare_next_turn_with_context.clone();
                     let without_context = prepare_next_turn.clone();
-                    let future: AgentFuture<'static, Option<AgentLoopTurnUpdate>> =
-                        Box::pin(async move {
-                            if let Some(with_context) = with_context {
-                                return with_context(context, signal).await;
-                            }
-                            if let Some(without_context) = without_context {
-                                return without_context(signal).await;
-                            }
-                            None
-                        });
+                    let future: AgentFuture<
+                        'static,
+                        Result<Option<AgentLoopTurnUpdate>, AgentCallbackError>,
+                    > = Box::pin(async move {
+                        if let Some(with_context) = with_context {
+                            return with_context(context, signal).await;
+                        }
+                        if let Some(without_context) = without_context {
+                            return without_context(signal).await;
+                        }
+                        Ok(None)
+                    });
                     future
                 }) as PrepareNextTurnFn)
             } else {
@@ -603,19 +692,24 @@ impl Agent {
         }
     }
 
-    async fn run_with_lifecycle(
-        &self,
-        executor: impl FnOnce(AbortSignal) -> AgentFuture<'static, Result<(), AgentError>>,
-    ) -> Result<(), AgentError> {
-        if lock(&self.active_signal).is_some() {
-            return Err(AgentError::AlreadyProcessing(
-                "Agent is already processing.".to_string(),
-            ));
-        }
+    fn admit_run(&self, already_processing: &str) -> Result<RunGuard, AgentError> {
+        let (id, signal) = {
+            let mut lifecycle = lock(&self.lifecycle);
+            if lifecycle.active.is_some() {
+                return Err(AgentError::AlreadyProcessing(already_processing.to_owned()));
+            }
 
-        let abort_controller = AbortController::new();
-        let signal = abort_controller.signal();
-        *lock(&self.active_signal) = Some(abort_controller);
+            lifecycle.next_run_id = lifecycle.next_run_id.wrapping_add(1);
+            let id = lifecycle.next_run_id;
+            let controller = AbortController::new();
+            let signal = controller.signal();
+            lifecycle.active = Some(ActiveRun {
+                id,
+                controller,
+                settlement: RunSettlement::Running,
+            });
+            (id, signal)
+        };
 
         {
             let mut state = lock(&self.state);
@@ -624,16 +718,37 @@ impl Agent {
             state.error_message = None;
         }
 
-        let result = executor(signal.clone()).await;
-        if let Err(error) = &result {
-            self.handle_run_failure(error.to_string(), signal.aborted())
-                .await?;
-        }
-        self.finish_run();
-        Ok(())
+        Ok(RunGuard {
+            id,
+            signal,
+            state: self.state.clone(),
+            lifecycle: self.lifecycle.clone(),
+        })
     }
 
-    async fn handle_run_failure(&self, error: String, aborted: bool) -> Result<(), AgentError> {
+    async fn run_with_lifecycle(
+        &self,
+        run: RunGuard,
+        executor: impl FnOnce(AbortSignal, u64) -> AgentFuture<'static, Result<(), AgentError>>,
+    ) -> Result<(), AgentError> {
+        let result = executor(run.signal.clone(), run.id).await;
+        match result {
+            Ok(()) => Ok(()),
+            Err(error @ AgentError::Listener(_))
+            | Err(error @ AgentError::ListenerOutsideActiveRun) => Err(error),
+            Err(error) => {
+                self.handle_run_failure(run.id, error.to_string(), run.signal.aborted())
+                    .await
+            }
+        }
+    }
+
+    async fn handle_run_failure(
+        &self,
+        run_id: u64,
+        error: String,
+        aborted: bool,
+    ) -> Result<(), AgentError> {
         let state = lock(&self.state);
         let failure_message = AssistantMessage {
             role: AssistantMessageRole::Assistant,
@@ -660,72 +775,76 @@ impl Agent {
         drop(state);
 
         let message = AgentMessage::Llm(Message::Assistant(failure_message));
-        self.process_event(AgentEvent::MessageStart {
-            message: message.clone(),
-        })
-        .await?;
-        self.process_event(AgentEvent::MessageEnd {
-            message: message.clone(),
-        })
-        .await?;
-        self.process_event(AgentEvent::TurnEnd {
-            message: message.clone(),
-            tool_results: Vec::new(),
-        })
-        .await?;
-        self.process_event(AgentEvent::AgentEnd {
-            messages: vec![message],
-        })
+        self.process_event(
+            run_id,
+            AgentEvent::MessageStart {
+                message: message.clone(),
+            },
+        )
         .await
+        .map_err(callback_error)?;
+        self.process_event(
+            run_id,
+            AgentEvent::MessageEnd {
+                message: message.clone(),
+            },
+        )
+        .await
+        .map_err(callback_error)?;
+        self.process_event(
+            run_id,
+            AgentEvent::TurnEnd {
+                message: message.clone(),
+                tool_results: Vec::new(),
+            },
+        )
+        .await
+        .map_err(callback_error)?;
+        self.process_event(
+            run_id,
+            AgentEvent::AgentEnd {
+                messages: vec![message],
+            },
+        )
+        .await
+        .map_err(callback_error)
     }
 
-    fn finish_run(&self) {
-        let mut state = lock(&self.state);
-        state.is_streaming = false;
-        state.streaming_message = None;
-        state.pending_tool_calls = HashSet::new();
-        drop(state);
-
-        let waiters = {
-            let mut waiters = lock(&self.idle_waiters);
-            *lock(&self.active_signal) = None;
-            std::mem::take(&mut *waiters)
-        };
-        for waiter in waiters {
-            let _ = waiter.send(());
-        }
-    }
-
-    fn event_sink(&self) -> AgentEventSink {
+    fn event_sink(&self, run_id: u64) -> AgentEventSink {
         let state = self.state.clone();
         let listeners = self.listeners.clone();
-        let active_signal = self.active_signal.clone();
+        let lifecycle = self.lifecycle.clone();
         Arc::new(move |event| {
             let state = state.clone();
             let listeners = listeners.clone();
-            let active_signal = active_signal.clone();
-            Box::pin(async move { process_event(state, listeners, active_signal, event).await })
+            let lifecycle = lifecycle.clone();
+            Box::pin(process_event(state, listeners, lifecycle, run_id, event))
         })
     }
 
-    async fn process_event(&self, event: AgentEvent) -> Result<(), AgentError> {
+    async fn process_event(
+        &self,
+        run_id: u64,
+        event: AgentEvent,
+    ) -> Result<(), AgentCallbackError> {
         process_event(
             self.state.clone(),
             self.listeners.clone(),
-            self.active_signal.clone(),
+            self.lifecycle.clone(),
+            run_id,
             event,
         )
-        .await;
-        Ok(())
+        .await
     }
 }
 
 async fn process_event(
     state: Arc<Mutex<AgentState>>,
     listeners: Arc<Mutex<Vec<AgentEventListener>>>,
-    active_signal: Arc<Mutex<Option<AbortController>>>,
+    lifecycle: Arc<Mutex<LifecycleState>>,
+    run_id: u64,
     event: AgentEvent,
-) {
+) -> Result<(), AgentCallbackError> {
     {
         let mut state = lock(&state);
         match &event {
@@ -758,12 +877,35 @@ async fn process_event(
         }
     }
 
-    let Some(signal) = lock(&active_signal).as_ref().map(AbortController::signal) else {
-        return;
+    let signal = {
+        let mut lifecycle = lock(&lifecycle);
+        let Some(run) = lifecycle.active.as_mut().filter(|run| run.id == run_id) else {
+            return Err(Box::new(AgentError::ListenerOutsideActiveRun));
+        };
+        if matches!(event, AgentEvent::AgentEnd { .. }) {
+            run.settlement = RunSettlement::TerminalListeners;
+        }
+        run.controller.signal()
     };
+
     let listeners = lock(&listeners).clone();
     for listener in listeners {
-        listener(event.clone(), signal.clone()).await;
+        listener(event.clone(), signal.clone())
+            .await
+            .map_err(|error| {
+                Box::new(AgentListenerFailure(error.to_string())) as AgentCallbackError
+            })?;
+    }
+    Ok(())
+}
+
+fn callback_error(error: AgentCallbackError) -> AgentError {
+    match error.downcast::<AgentListenerFailure>() {
+        Ok(error) => AgentError::Listener(error.0),
+        Err(error) => match error.downcast::<AgentError>() {
+            Ok(error) => *error,
+            Err(error) => AgentError::Callback(error.to_string()),
+        },
     }
 }
 
@@ -813,7 +955,9 @@ fn default_convert_to_llm() -> ConvertToLlmFn {
 
 fn default_stream_fn() -> StreamFn {
     Arc::new(|model, context, options| {
-        zedflow_ai::create_models().stream_simple(model, context, options)
+        Box::pin(
+            async move { Ok(zedflow_ai::create_models().stream_simple(model, context, options)) },
+        )
     })
 }
 

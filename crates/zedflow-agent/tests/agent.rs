@@ -1,14 +1,14 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Barrier, Mutex, mpsc};
 
 use futures::FutureExt;
 use futures::channel::oneshot;
 use futures::executor::block_on;
 use serde_json::{Value, json};
-use zedflow_agent::agent::{Agent, AgentOptions};
+use zedflow_agent::agent::{Agent, AgentError, AgentOptions};
 use zedflow_agent::types::{
-    AgentEvent, AgentMessage, AgentTool, AgentToolResult, AgentToolResultContent,
-    AgentToolUpdateCallback, AssistantMessageEventStream, Message, Model, StreamFn, TextContent,
-    ThinkingLevel, Tool,
+    AgentCallbackError, AgentEvent, AgentMessage, AgentTool, AgentToolResult,
+    AgentToolResultContent, AgentToolUpdateCallback, AssistantMessageEventStream, Message, Model,
+    StreamFn, TextContent, ThinkingLevel, Tool,
 };
 use zedflow_ai::types::{
     AbortSignal, AssistantContentBlock, AssistantMessage, AssistantMessageEvent,
@@ -101,13 +101,16 @@ fn done_stream(message: AssistantMessage) -> AssistantMessageEventStream {
 fn stream_from_messages(messages: Vec<AssistantMessage>) -> StreamFn {
     let index = Arc::new(Mutex::new(0usize));
     Arc::new(move |_model, _context, _options| {
-        let mut index = index.lock().expect("stream index lock");
-        let message = messages
-            .get(*index)
-            .cloned()
-            .unwrap_or_else(|| assistant_text("extra"));
-        *index += 1;
-        done_stream(message)
+        let message = {
+            let mut index = index.lock().expect("stream index lock");
+            let message = messages
+                .get(*index)
+                .cloned()
+                .unwrap_or_else(|| assistant_text("extra"));
+            *index += 1;
+            message
+        };
+        Box::pin(async move { Ok(done_stream(message)) })
     })
 }
 
@@ -144,15 +147,15 @@ fn noop_tool(name: &str) -> AgentTool {
         },
         label: name.to_owned(),
         prepare_arguments: None,
-        execute: Some(Arc::new(|_id, _args, _signal, _on_update| {
+        execute: Arc::new(|_id, _args, _signal, _on_update| {
             Box::pin(async move {
-                AgentToolResult {
+                Ok(AgentToolResult {
                     content: vec![AgentToolResultContent::Text(text("ok"))],
                     details: json!({}),
                     terminate: Some(true),
-                }
+                })
             })
-        })),
+        }),
         execution_mode: None,
     }
 }
@@ -164,6 +167,7 @@ fn collect_events(agent: &Agent) -> Arc<Mutex<Vec<AgentEvent>>> {
         let capture = capture.clone();
         Box::pin(async move {
             capture.lock().expect("events lock").push(event);
+            Ok(())
         })
     }));
     events
@@ -213,6 +217,7 @@ fn subscribe_does_not_emit_for_state_mutators_and_unsubscribes() {
         let count_listener = count_listener.clone();
         Box::pin(async move {
             *count_listener.lock().expect("count lock") += 1;
+            Ok(())
         })
     }));
 
@@ -267,7 +272,7 @@ fn provider_error_event_emits_lifecycle_and_sets_error_state() {
             reason: ErrorStopReason::Error,
             error: error_assistant("provider exploded", StopReason::Error),
         });
-        stream
+        Box::pin(async move { Ok(stream) })
     });
     let agent = Agent::new(AgentOptions {
         stream_fn: Some(stream_fn),
@@ -302,6 +307,73 @@ fn provider_error_event_emits_lifecycle_and_sets_error_state() {
 }
 
 #[test]
+fn rejected_continue_from_provider_error_preserves_state() {
+    let stream_fn: StreamFn = Arc::new(|_model, _context, _options| {
+        let stream = AssistantMessageEventStream::new();
+        stream.push(AssistantMessageEvent::Error {
+            reason: ErrorStopReason::Error,
+            error: error_assistant("provider exploded", StopReason::Error),
+        });
+        Box::pin(async move { Ok(stream) })
+    });
+    let agent = Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn),
+        ..AgentOptions::default()
+    });
+
+    block_on(agent.prompt("hello")).expect("provider error run completes");
+    let prior_state = agent.state();
+
+    let error = block_on(agent.r#continue()).expect_err("assistant tail rejects continuation");
+
+    assert_eq!(error, AgentError::CannotContinueFromAssistant);
+    let state = agent.state();
+    assert_eq!(state.error_message, prior_state.error_message);
+    assert_eq!(state.messages, prior_state.messages);
+}
+
+#[test]
+fn stream_setup_failure_emits_terminal_lifecycle_and_cleans_up() {
+    let stream_fn: StreamFn = Arc::new(|_model, _context, _options| {
+        Box::pin(async move {
+            Err(Box::new(std::io::Error::other("provider rejected")) as AgentCallbackError)
+        })
+    });
+    let agent = Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn),
+        ..AgentOptions::default()
+    });
+    let events = collect_events(&agent);
+
+    block_on(agent.prompt("hello")).expect("provider rejection becomes failure lifecycle");
+
+    assert_eq!(
+        events
+            .lock()
+            .expect("events lock")
+            .iter()
+            .map(event_type)
+            .collect::<Vec<_>>(),
+        [
+            "agent_start",
+            "turn_start",
+            "message_start",
+            "message_end",
+            "message_start",
+            "message_end",
+            "turn_end",
+            "agent_end",
+        ]
+    );
+    assert_eq!(
+        agent.state().error_message.as_deref(),
+        Some("provider rejected")
+    );
+    assert!(agent.signal().is_none());
+    assert!(!agent.state().is_streaming);
+}
+
+#[test]
 fn awaits_async_subscribers_before_prompt_resolves() {
     let (tx, rx) = oneshot::channel::<()>();
     let rx = Arc::new(Mutex::new(Some(rx)));
@@ -325,6 +397,7 @@ fn awaits_async_subscribers_before_prompt_resolves() {
                 let _ = rx.await;
                 *finished_listener.lock().expect("finished lock") = true;
             }
+            Ok(())
         })
     }));
 
@@ -363,6 +436,7 @@ fn wait_for_idle_waits_for_async_subscribers() {
                 let _ = rx.await;
                 *finished_listener.lock().expect("finished lock") = true;
             }
+            Ok(())
         })
     }));
 
@@ -381,6 +455,126 @@ fn wait_for_idle_waits_for_async_subscribers() {
 }
 
 #[test]
+fn listener_failures_propagate_and_release_idle_waiters() {
+    let (release_tx, release_rx) = oneshot::channel::<()>();
+    let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+    let agent = Agent::new(AgentOptions {
+        stream_fn: Some(stream_from_messages(vec![assistant_text("ok")])),
+        ..AgentOptions::default()
+    });
+    agent.subscribe(Arc::new(move |event, _signal| {
+        let release_rx = release_rx.clone();
+        Box::pin(async move {
+            if matches!(event, AgentEvent::AgentEnd { .. }) {
+                let receiver = release_rx
+                    .lock()
+                    .expect("release lock")
+                    .take()
+                    .expect("listener barrier");
+                let _ = receiver.await;
+                return Err(
+                    Box::new(std::io::Error::other("listener rejected")) as AgentCallbackError
+                );
+            }
+            Ok(())
+        })
+    }));
+
+    let mut prompt = Box::pin(agent.prompt("hello"));
+    assert!(prompt.as_mut().now_or_never().is_none());
+    let mut idle = Box::pin(agent.wait_for_idle());
+    assert!(idle.as_mut().now_or_never().is_none());
+
+    release_tx.send(()).expect("release listener");
+    let error = block_on(prompt).expect_err("listener rejection propagates");
+    assert_eq!(error.to_string(), "listener rejected");
+    block_on(idle);
+    assert!(!agent.state().is_streaming);
+    assert!(agent.signal().is_none());
+}
+
+#[test]
+fn atomic_admission_allows_only_one_concurrent_prompt() {
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = oneshot::channel::<()>();
+    let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+    let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
+        let entered_tx = entered_tx.clone();
+        let release_rx = release_rx.clone();
+        Box::pin(async move {
+            entered_tx.send(()).expect("report admitted run");
+            let receiver = release_rx
+                .lock()
+                .expect("release lock")
+                .take()
+                .expect("single admitted stream");
+            let _ = receiver.await;
+            Ok(done_stream(assistant_text("ok")))
+        })
+    });
+    let agent = Arc::new(Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn),
+        ..AgentOptions::default()
+    }));
+    let start = Arc::new(Barrier::new(3));
+    let (result_tx, result_rx) = mpsc::channel();
+    let mut workers = Vec::new();
+    for prompt in ["first", "second"] {
+        let agent = agent.clone();
+        let start = start.clone();
+        let result_tx = result_tx.clone();
+        workers.push(std::thread::spawn(move || {
+            start.wait();
+            result_tx
+                .send(block_on(agent.prompt(prompt)))
+                .expect("send prompt result");
+        }));
+    }
+
+    start.wait();
+    entered_rx.recv().expect("one run admitted");
+    let rejected = result_rx.recv().expect("receive rejected run");
+    assert!(rejected.is_err());
+    release_tx.send(()).expect("release admitted run");
+    assert!(result_rx.recv().expect("receive admitted run").is_ok());
+    for worker in workers {
+        worker.join().expect("prompt worker");
+    }
+    assert!(!agent.state().is_streaming);
+}
+
+#[test]
+fn dropping_a_pending_prompt_cleans_up_the_run() {
+    let (_release_tx, release_rx) = oneshot::channel::<()>();
+    let release_rx = Arc::new(Mutex::new(Some(release_rx)));
+    let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
+        let release_rx = release_rx.clone();
+        Box::pin(async move {
+            let receiver = release_rx
+                .lock()
+                .expect("release lock")
+                .take()
+                .expect("stream barrier");
+            let _ = receiver.await;
+            Ok(done_stream(assistant_text("unreachable")))
+        })
+    });
+    let agent = Agent::new(AgentOptions {
+        stream_fn: Some(stream_fn),
+        ..AgentOptions::default()
+    });
+
+    let mut prompt = Box::pin(agent.prompt("hello"));
+    assert!(prompt.as_mut().now_or_never().is_none());
+    assert!(agent.state().is_streaming);
+    drop(prompt);
+
+    assert!(!agent.state().is_streaming);
+    assert!(agent.signal().is_none());
+    assert!(agent.wait_for_idle().now_or_never().is_some());
+}
+
+#[test]
 fn passes_active_abort_signal_to_subscribers() {
     let held_stream = Arc::new(Mutex::new(None::<AssistantMessageEventStream>));
     let held_stream_fn = held_stream.clone();
@@ -390,7 +584,7 @@ fn passes_active_abort_signal_to_subscribers() {
             partial: assistant_text("").into(),
         });
         *held_stream_fn.lock().expect("held stream lock") = Some(stream.clone());
-        stream
+        Box::pin(async move { Ok(stream) })
     });
     let signal = Arc::new(Mutex::new(None::<AbortSignal>));
     let signal_listener = signal.clone();
@@ -404,6 +598,7 @@ fn passes_active_abort_signal_to_subscribers() {
             if matches!(event, AgentEvent::AgentStart) {
                 *signal_listener.lock().expect("signal lock") = Some(signal);
             }
+            Ok(())
         })
     }));
 
@@ -438,6 +633,8 @@ fn passes_active_abort_signal_to_subscribers() {
             .expect("signal")
             .aborted()
     );
+    assert!(agent.signal().is_none());
+    assert!(!agent.state().is_streaming);
 }
 
 #[test]
@@ -445,7 +642,7 @@ fn ignores_tool_updates_after_tool_execution_settles() {
     let delayed_update = Arc::new(Mutex::new(None::<AgentToolUpdateCallback>));
     let delayed_update_tool = delayed_update.clone();
     let mut tool = noop_tool("delayed_tool");
-    tool.execute = Some(Arc::new(move |_id, _args, _signal, on_update| {
+    tool.execute = Arc::new(move |_id, _args, _signal, on_update| {
         let delayed_update_tool = delayed_update_tool.clone();
         Box::pin(async move {
             if let Some(on_update) = on_update {
@@ -454,13 +651,13 @@ fn ignores_tool_updates_after_tool_execution_settles() {
                     .expect("update lock")
                     .replace(on_update);
             }
-            AgentToolResult {
+            Ok(AgentToolResult {
                 content: vec![AgentToolResultContent::Text(text("ok"))],
                 details: json!({ "status": "done" }),
                 terminate: Some(true),
-            }
+            })
         })
-    }));
+    });
     let agent = Agent::new(AgentOptions {
         initial_state: Some(zedflow_agent::types::AgentState {
             tools: vec![tool],
@@ -500,7 +697,7 @@ fn ignores_tool_updates_after_tool_execution_settles() {
 #[test]
 fn forwards_tool_execution_updates_before_tool_settles() {
     let mut tool = noop_tool("progress_tool");
-    tool.execute = Some(Arc::new(move |_id, _args, _signal, on_update| {
+    tool.execute = Arc::new(move |_id, _args, _signal, on_update| {
         Box::pin(async move {
             if let Some(on_update) = on_update {
                 on_update(AgentToolResult {
@@ -509,13 +706,13 @@ fn forwards_tool_execution_updates_before_tool_settles() {
                     terminate: None,
                 });
             }
-            AgentToolResult {
+            Ok(AgentToolResult {
                 content: vec![AgentToolResultContent::Text(text("ok"))],
                 details: json!({ "status": "done" }),
                 terminate: Some(true),
-            }
+            })
         })
-    }));
+    });
     let agent = Agent::new(AgentOptions {
         initial_state: Some(zedflow_agent::types::AgentState {
             tools: vec![tool],
@@ -565,7 +762,7 @@ fn ignores_settled_parallel_tool_update_while_another_tool_runs() {
 
     let mut settled = noop_tool("settled_tool");
     let settled_update_tool = settled_update.clone();
-    settled.execute = Some(Arc::new(move |_id, _args, _signal, on_update| {
+    settled.execute = Arc::new(move |_id, _args, _signal, on_update| {
         let settled_update_tool = settled_update_tool.clone();
         Box::pin(async move {
             if let Some(on_update) = on_update {
@@ -574,17 +771,17 @@ fn ignores_settled_parallel_tool_update_while_another_tool_runs() {
                     .expect("update lock")
                     .replace(on_update);
             }
-            AgentToolResult {
+            Ok(AgentToolResult {
                 content: vec![AgentToolResultContent::Text(text("done"))],
                 details: json!({}),
                 terminate: Some(true),
-            }
+            })
         })
-    }));
+    });
 
     let mut slow = noop_tool("slow_tool");
     let rx_tool = rx.clone();
-    slow.execute = Some(Arc::new(move |_id, _args, _signal, _on_update| {
+    slow.execute = Arc::new(move |_id, _args, _signal, _on_update| {
         let rx_tool = rx_tool.clone();
         Box::pin(async move {
             let rx = rx_tool
@@ -593,13 +790,13 @@ fn ignores_settled_parallel_tool_update_while_another_tool_runs() {
                 .take()
                 .expect("slow receiver");
             let _ = rx.await;
-            AgentToolResult {
+            Ok(AgentToolResult {
                 content: vec![AgentToolResultContent::Text(text("done"))],
                 details: json!({}),
                 terminate: Some(true),
-            }
+            })
         })
-    }));
+    });
 
     let agent = Agent::new(AgentOptions {
         initial_state: Some(zedflow_agent::types::AgentState {
@@ -680,7 +877,7 @@ fn prompt_and_continue_reject_while_streaming() {
             partial: assistant_text("").into(),
         });
         *held_stream_fn.lock().expect("held stream lock") = Some(stream.clone());
-        stream
+        Box::pin(async move { Ok(stream) })
     });
     let agent = Agent::new(AgentOptions {
         stream_fn: Some(stream_fn),
@@ -741,9 +938,12 @@ fn continue_keeps_one_at_a_time_steering_from_assistant_tail() {
     let responses = Arc::new(Mutex::new(0usize));
     let responses_stream = responses.clone();
     let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
-        let mut responses = responses_stream.lock().expect("responses lock");
-        *responses += 1;
-        done_stream(assistant_text(&format!("processed {}", responses)))
+        let response = {
+            let mut responses = responses_stream.lock().expect("responses lock");
+            *responses += 1;
+            assistant_text(&format!("processed {}", responses))
+        };
+        Box::pin(async move { Ok(done_stream(response)) })
     });
     let agent = Agent::new(AgentOptions {
         stream_fn: Some(stream_fn),
@@ -779,27 +979,30 @@ fn prepare_next_turn_receives_active_signal() {
     let request_count = Arc::new(Mutex::new(0usize));
     let request_count_stream = request_count.clone();
     let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
-        let mut count = request_count_stream.lock().expect("count lock");
-        *count += 1;
-        if *count == 1 {
-            done_stream(assistant(
-                vec![tool_call("tool-1", "noop", json!({}))],
-                StopReason::ToolUse,
-            ))
-        } else {
-            done_stream(assistant_text("done"))
-        }
+        let message = {
+            let mut count = request_count_stream.lock().expect("count lock");
+            *count += 1;
+            if *count == 1 {
+                assistant(
+                    vec![tool_call("tool-1", "noop", json!({}))],
+                    StopReason::ToolUse,
+                )
+            } else {
+                assistant_text("done")
+            }
+        };
+        Box::pin(async move { Ok(done_stream(message)) })
     });
     let mut tool = noop_tool("noop");
-    tool.execute = Some(Arc::new(|_id, _args, _signal, _on_update| {
+    tool.execute = Arc::new(|_id, _args, _signal, _on_update| {
         Box::pin(async move {
-            AgentToolResult {
+            Ok(AgentToolResult {
                 content: vec![AgentToolResultContent::Text(text("ok"))],
                 details: json!({}),
                 terminate: None,
-            }
+            })
         })
-    }));
+    });
     let agent = Agent::new(AgentOptions {
         initial_state: Some(zedflow_agent::types::AgentState {
             tools: vec![tool],
@@ -809,7 +1012,7 @@ fn prepare_next_turn_receives_active_signal() {
             let saw_signal_hook = saw_signal_hook.clone();
             Box::pin(async move {
                 *saw_signal_hook.lock().expect("signal lock") = signal.is_some();
-                None
+                Ok(None)
             })
         })),
         stream_fn: Some(stream_fn),
@@ -831,7 +1034,7 @@ fn forwards_session_id_to_stream_options() {
             .lock()
             .expect("received lock")
             .push(options.and_then(|options| options.stream.session_id.clone()));
-        done_stream(assistant_text("ok"))
+        Box::pin(async move { Ok(done_stream(assistant_text("ok"))) })
     });
     let agent = Agent::new(AgentOptions {
         session_id: Some("session-abc".to_owned()),
