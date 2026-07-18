@@ -7,10 +7,11 @@
     "AG-L1",
     "AG-L2",
     "AG-H1",
-    "AG-H2"
+    "AG-H2",
+    "AG-H3"
   ],
   "current": {
-    "id": "AG-H3",
+    "id": "AG-H4",
     "base": "HEAD",
     "worker": null,
     "status": "ready",
