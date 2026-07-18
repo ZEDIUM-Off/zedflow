@@ -395,6 +395,44 @@ impl AssistantMessageEventStream {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         state.result.clone()
     }
+
+    fn fail(&self, model: &Model, message: String) {
+        let (state, _) = &*self.inner;
+        let mut output = {
+            let state = state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if state.done {
+                return;
+            }
+            state
+                .events
+                .iter()
+                .rev()
+                .map(|event| match event {
+                    AssistantMessageEvent::Start { partial }
+                    | AssistantMessageEvent::TextStart { partial, .. }
+                    | AssistantMessageEvent::TextDelta { partial, .. }
+                    | AssistantMessageEvent::TextEnd { partial, .. }
+                    | AssistantMessageEvent::ThinkingStart { partial, .. }
+                    | AssistantMessageEvent::ThinkingDelta { partial, .. }
+                    | AssistantMessageEvent::ThinkingEnd { partial, .. }
+                    | AssistantMessageEvent::ToolcallStart { partial, .. }
+                    | AssistantMessageEvent::ToolcallDelta { partial, .. }
+                    | AssistantMessageEvent::ToolcallEnd { partial, .. } => partial.clone(),
+                    AssistantMessageEvent::Done { message, .. } => message.clone(),
+                    AssistantMessageEvent::Error { error, .. } => error.clone(),
+                })
+                .next()
+        }
+        .unwrap_or_else(|| create_output(model));
+        output.stop_reason = StopReason::Error;
+        output.error_message = Some(message);
+        self.push(AssistantMessageEvent::Error {
+            reason: StopReason::Error,
+            error: output,
+        });
+    }
 }
 
 /// Options specific to Pi's Mistral Conversations stream implementation.
@@ -739,9 +777,14 @@ pub fn stream(
     let model = model.clone();
     let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
-        run_stream_worker(worker_stream, model, context, options).await;
-    });
+    let failure_stream = stream.clone();
+    let failure_model = model.clone();
+    crate::utils::runtime::spawn_supervised_worker(
+        async move {
+            run_stream_worker(worker_stream, model, context, options).await;
+        },
+        move |message| failure_stream.fail(&failure_model, message),
+    );
     Ok(stream)
 }
 
@@ -1987,10 +2030,15 @@ pub fn stream_registered(
 ) -> crate::types::AssistantMessageEventStream {
     let stream = crate::types::AssistantMessageEventStream::new();
     let worker_stream = stream.clone();
+    let context = crate::api::transform_messages::transform_context(context, model, None);
     let model = model.clone();
-    let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_registered_worker(worker_stream, model, context, options).await;
     });
     stream
@@ -2274,9 +2322,7 @@ async fn await_registered_or_abort<T>(
 }
 
 async fn wait_registered_abort(signal: crate::types::AbortSignal) {
-    while !signal.aborted() {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    signal.cancelled().await;
 }
 
 fn check_registered_abort(
@@ -2515,7 +2561,7 @@ fn emit_registered_events(
         let event = match event {
             AssistantMessageEvent::Start { partial } => {
                 crate::types::AssistantMessageEvent::Start {
-                    partial: canonical_message(model, partial),
+                    partial: canonical_message(model, partial).into(),
                 }
             }
             AssistantMessageEvent::TextStart {
@@ -2523,7 +2569,7 @@ fn emit_registered_events(
                 partial,
             } => crate::types::AssistantMessageEvent::TextStart {
                 content_index: *content_index,
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::TextDelta {
                 content_index,
@@ -2532,7 +2578,7 @@ fn emit_registered_events(
             } => crate::types::AssistantMessageEvent::TextDelta {
                 content_index: *content_index,
                 delta: delta.clone(),
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::TextEnd {
                 content_index,
@@ -2541,14 +2587,14 @@ fn emit_registered_events(
             } => crate::types::AssistantMessageEvent::TextEnd {
                 content_index: *content_index,
                 content: content.clone(),
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::ThinkingStart {
                 content_index,
                 partial,
             } => crate::types::AssistantMessageEvent::ThinkingStart {
                 content_index: *content_index,
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::ThinkingDelta {
                 content_index,
@@ -2557,7 +2603,7 @@ fn emit_registered_events(
             } => crate::types::AssistantMessageEvent::ThinkingDelta {
                 content_index: *content_index,
                 delta: delta.clone(),
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::ThinkingEnd {
                 content_index,
@@ -2566,14 +2612,14 @@ fn emit_registered_events(
             } => crate::types::AssistantMessageEvent::ThinkingEnd {
                 content_index: *content_index,
                 content: content.clone(),
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::ToolcallStart {
                 content_index,
                 partial,
             } => crate::types::AssistantMessageEvent::ToolcallStart {
                 content_index: *content_index,
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::ToolcallDelta {
                 content_index,
@@ -2582,7 +2628,7 @@ fn emit_registered_events(
             } => crate::types::AssistantMessageEvent::ToolcallDelta {
                 content_index: *content_index,
                 delta: delta.clone(),
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::ToolcallEnd {
                 content_index,
@@ -2591,7 +2637,7 @@ fn emit_registered_events(
             } => crate::types::AssistantMessageEvent::ToolcallEnd {
                 content_index: *content_index,
                 tool_call: canonical_tool_call(tool_call),
-                partial: canonical_message(model, partial),
+                partial: canonical_message(model, partial).into(),
             },
             AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. } => continue,
         };

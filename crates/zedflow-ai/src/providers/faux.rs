@@ -17,8 +17,9 @@ use crate::models::{CreateProviderOptions, Provider, ProviderApi, ProviderAuth, 
 use crate::types::{
     AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream,
     AssistantMessageRole, Context, DoneStopReason, ErrorStopReason, Model, ModelCost, ModelInput,
-    ProviderStreams, SimpleStreamOptions, StopReason, StreamOptions, TextContent, TextContentType,
-    ThinkingContent, ThinkingContentType, ToolCall, ToolCallType, Usage, UsageCost,
+    ProviderStreams, SharedAssistantMessage, SimpleStreamOptions, StopReason, StreamOptions,
+    TextContent, TextContentType, ThinkingContent, ThinkingContentType, ToolCall, ToolCallType,
+    Usage, UsageCost,
 };
 
 /// Default faux API prefix used by Pi.
@@ -537,8 +538,13 @@ fn stream_next_response(
     let context = context.clone();
     let options = options.cloned();
     let prompt_cache = Arc::clone(prompt_cache);
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        api.clone(),
+        provider.clone(),
+        request_model.id.clone(),
+    );
 
-    crate::utils::runtime::spawn_worker(async move {
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         let resolved = match step {
             Some(FauxResponseStep::Message(message)) => Ok(Some(message)),
             Some(FauxResponseStep::Factory(factory)) => {
@@ -745,8 +751,9 @@ async fn stream_with_deltas(
     tokens_per_second: Option<f64>,
     signal: Option<crate::types::AbortSignal>,
 ) {
-    let mut partial = message.clone();
-    partial.content.clear();
+    let mut initial = message.clone();
+    initial.content.clear();
+    let partial = SharedAssistantMessage::new(initial);
 
     if abort_stream_if_requested(&stream, &signal, &partial) {
         return;
@@ -761,13 +768,15 @@ async fn stream_with_deltas(
         }
         match block {
             AssistantContentBlock::Text(text) => {
-                partial
-                    .content
-                    .push(AssistantContentBlock::Text(TextContent {
-                        content_type: TextContentType::Text,
-                        text: String::new(),
-                        text_signature: text.text_signature.clone(),
-                    }));
+                partial.with_mut(|message| {
+                    message
+                        .content
+                        .push(AssistantContentBlock::Text(TextContent {
+                            content_type: TextContentType::Text,
+                            text: String::new(),
+                            text_signature: text.text_signature.clone(),
+                        }));
+                });
                 stream.push(AssistantMessageEvent::TextStart {
                     content_index: index,
                     partial: partial.clone(),
@@ -777,9 +786,13 @@ async fn stream_with_deltas(
                     if abort_stream_if_requested(&stream, &signal, &partial) {
                         return;
                     }
-                    if let AssistantContentBlock::Text(partial_text) = &mut partial.content[index] {
-                        partial_text.text.push_str(chunk);
-                    }
+                    partial.with_mut(|message| {
+                        if let AssistantContentBlock::Text(partial_text) =
+                            &mut message.content[index]
+                        {
+                            partial_text.text.push_str(chunk);
+                        }
+                    });
                     stream.push(AssistantMessageEvent::TextDelta {
                         content_index: index,
                         delta: chunk.to_owned(),
@@ -793,14 +806,16 @@ async fn stream_with_deltas(
                 });
             }
             AssistantContentBlock::Thinking(thinking) => {
-                partial
-                    .content
-                    .push(AssistantContentBlock::Thinking(ThinkingContent {
-                        content_type: ThinkingContentType::Thinking,
-                        thinking: String::new(),
-                        thinking_signature: thinking.thinking_signature.clone(),
-                        redacted: thinking.redacted,
-                    }));
+                partial.with_mut(|message| {
+                    message
+                        .content
+                        .push(AssistantContentBlock::Thinking(ThinkingContent {
+                            content_type: ThinkingContentType::Thinking,
+                            thinking: String::new(),
+                            thinking_signature: thinking.thinking_signature.clone(),
+                            redacted: thinking.redacted,
+                        }));
+                });
                 stream.push(AssistantMessageEvent::ThinkingStart {
                     content_index: index,
                     partial: partial.clone(),
@@ -810,11 +825,13 @@ async fn stream_with_deltas(
                     if abort_stream_if_requested(&stream, &signal, &partial) {
                         return;
                     }
-                    if let AssistantContentBlock::Thinking(partial_thinking) =
-                        &mut partial.content[index]
-                    {
-                        partial_thinking.thinking.push_str(chunk);
-                    }
+                    partial.with_mut(|message| {
+                        if let AssistantContentBlock::Thinking(partial_thinking) =
+                            &mut message.content[index]
+                        {
+                            partial_thinking.thinking.push_str(chunk);
+                        }
+                    });
                     stream.push(AssistantMessageEvent::ThinkingDelta {
                         content_index: index,
                         delta: chunk.to_owned(),
@@ -828,15 +845,17 @@ async fn stream_with_deltas(
                 });
             }
             AssistantContentBlock::ToolCall(tool_call) => {
-                partial
-                    .content
-                    .push(AssistantContentBlock::ToolCall(ToolCall {
-                        content_type: ToolCallType::ToolCall,
-                        id: tool_call.id.clone(),
-                        name: tool_call.name.clone(),
-                        arguments: HashMap::new(),
-                        thought_signature: tool_call.thought_signature.clone(),
-                    }));
+                partial.with_mut(|message| {
+                    message
+                        .content
+                        .push(AssistantContentBlock::ToolCall(ToolCall {
+                            content_type: ToolCallType::ToolCall,
+                            id: tool_call.id.clone(),
+                            name: tool_call.name.clone(),
+                            arguments: HashMap::new(),
+                            thought_signature: tool_call.thought_signature.clone(),
+                        }));
+                });
                 stream.push(AssistantMessageEvent::ToolcallStart {
                     content_index: index,
                     partial: partial.clone(),
@@ -854,11 +873,13 @@ async fn stream_with_deltas(
                         partial: partial.clone(),
                     });
                 }
-                if let AssistantContentBlock::ToolCall(partial_tool_call) =
-                    &mut partial.content[index]
-                {
-                    partial_tool_call.arguments = tool_call.arguments.clone();
-                }
+                partial.with_mut(|message| {
+                    if let AssistantContentBlock::ToolCall(partial_tool_call) =
+                        &mut message.content[index]
+                    {
+                        partial_tool_call.arguments = tool_call.arguments.clone();
+                    }
+                });
                 stream.push(AssistantMessageEvent::ToolcallEnd {
                     content_index: index,
                     tool_call: tool_call.clone(),
@@ -884,7 +905,7 @@ async fn stream_with_deltas(
 fn abort_stream_if_requested(
     stream: &AssistantMessageEventStream,
     signal: &Option<crate::types::AbortSignal>,
-    partial: &AssistantMessage,
+    partial: &SharedAssistantMessage,
 ) -> bool {
     if signal
         .as_ref()
@@ -892,7 +913,7 @@ fn abort_stream_if_requested(
     {
         stream.push(AssistantMessageEvent::Error {
             reason: ErrorStopReason::Aborted,
-            error: aborted_message(partial.clone()),
+            error: aborted_message(partial.snapshot()),
         });
         true
     } else {

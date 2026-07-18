@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -9,19 +9,36 @@ use zedflow_ai::auth::types::{
 };
 use zedflow_ai::images_models::{
     AssistantImages, CreateImagesProviderOptions, ImagesContext, ImagesModel, ImagesOptions,
-    ImagesProvider, ModelsError, create_images_models, create_images_provider,
+    ImagesProvider, ImagesStopReason, ModelsError, create_images_models, create_images_provider,
 };
 use zedflow_ai::providers::all::{builtin_images_models, builtin_images_models_with_auth_context};
+use zedflow_ai::types::{
+    ModelCost, ModelInput, ModelOutput, TextContent, TextContentType, ToolResultContentBlock,
+    UserContentBlock,
+};
 
 type ImageCalls = Arc<Mutex<Vec<(ImagesModel, Option<ImagesOptions>)>>>;
 
 fn test_image_model(provider: &str, id: &str) -> ImagesModel {
     ImagesModel {
         id: id.to_string(),
+        name: id.to_string(),
         api: "test-images".to_string(),
         provider: provider.to_string(),
-        base_url: Some("https://example.test/v1".to_string()),
+        base_url: "https://example.test/v1".to_string(),
+        input: vec![ModelInput::Text],
+        output: vec![ModelOutput::Image],
+        cost: ModelCost::default(),
+        headers: None,
     }
+}
+
+fn text_block(text: impl Into<String>) -> ToolResultContentBlock {
+    ToolResultContentBlock::Text(TextContent {
+        content_type: TextContentType::Text,
+        text: text.into(),
+        text_signature: None,
+    })
 }
 
 fn ok_result(model: ImagesModel) -> AssistantImages {
@@ -29,17 +46,22 @@ fn ok_result(model: ImagesModel) -> AssistantImages {
         api: model.api,
         provider: model.provider,
         model: model.id,
-        output: vec!["aGk=".to_string()],
-        stop_reason: "stop".to_string(),
+        output: vec![text_block("ok")],
+        response_id: Some("response-1".to_string()),
+        usage: None,
+        stop_reason: ImagesStopReason::Stop,
         error_message: None,
+        timestamp: 1,
     }
 }
 
 fn test_context() -> ImagesContext {
     ImagesContext {
-        input: vec![zedflow_ai::images_models::ImagesContent::Text {
+        input: vec![UserContentBlock::Text(TextContent {
+            content_type: TextContentType::Text,
             text: "a red circle".to_string(),
-        }],
+            text_signature: None,
+        })],
     }
 }
 
@@ -126,7 +148,7 @@ fn explicit_image_options_are_forwarded_to_generation() {
         }),
     ));
 
-    assert_eq!(result.stop_reason, "stop");
+    assert_eq!(result.stop_reason, ImagesStopReason::Stop);
     assert_eq!(
         calls
             .lock()
@@ -146,7 +168,7 @@ fn returns_error_for_unknown_provider_and_dispatches_without_auth() {
         test_context(),
         None,
     ));
-    assert_eq!(ghost.stop_reason, "error");
+    assert_eq!(ghost.stop_reason, ImagesStopReason::Error);
     assert!(
         ghost
             .error_message
@@ -194,7 +216,7 @@ fn builtin_images_models_registers_openrouter_catalog() {
     assert!(list.iter().all(|model| model.api == "openrouter-images"));
     assert!(
         list.iter()
-            .all(|model| model.base_url.as_deref() == Some("https://openrouter.ai/api/v1"))
+            .all(|model| model.base_url == "https://openrouter.ai/api/v1")
     );
 }
 
@@ -278,27 +300,45 @@ fn resolves_auth_through_provider_and_merges_it_into_requests() {
         test_context(),
         Some(ImagesOptions {
             api_key: Some("explicit".to_string()),
-            headers: ProviderHeaders::from([("x-explicit".to_string(), Some("yes".to_string()))]),
-            env: ProviderEnv::from([("AUTH_ENV".to_string(), "explicit".to_string())]),
+            headers: Some(HashMap::from([(
+                "x-explicit".to_string(),
+                Some("yes".to_string()),
+            )])),
+            env: Some(HashMap::from([(
+                "AUTH_ENV".to_string(),
+                "explicit".to_string(),
+            )])),
             ..ImagesOptions::default()
         }),
     ));
 
-    assert_eq!(result.stop_reason, "stop");
+    assert_eq!(result.stop_reason, ImagesStopReason::Stop);
     let call = &calls.lock().expect("recorded calls")[0];
-    assert_eq!(call.0.base_url.as_deref(), Some("https://auth.example/v1"));
+    assert_eq!(call.0.base_url, "https://auth.example/v1");
     let options = call.1.as_ref().expect("auth creates request options");
     assert_eq!(options.api_key.as_deref(), Some("explicit"));
     assert_eq!(
-        options.headers.get("x-auth").and_then(Option::as_deref),
+        options
+            .headers
+            .as_ref()
+            .and_then(|headers| headers.get("x-auth"))
+            .and_then(Option::as_deref),
         Some("resolved")
     );
     assert_eq!(
-        options.headers.get("x-explicit").and_then(Option::as_deref),
+        options
+            .headers
+            .as_ref()
+            .and_then(|headers| headers.get("x-explicit"))
+            .and_then(Option::as_deref),
         Some("yes")
     );
     assert_eq!(
-        options.env.get("AUTH_ENV").map(String::as_str),
+        options
+            .env
+            .as_ref()
+            .and_then(|env| env.get("AUTH_ENV"))
+            .map(String::as_str),
         Some("explicit")
     );
 }
@@ -326,10 +366,10 @@ fn merges_provider_resolved_env_into_image_options() {
         model,
         test_context(),
         Some(ImagesOptions {
-            env: ProviderEnv::from([
+            env: Some(HashMap::from([
                 ("SHARED".to_string(), "explicit".to_string()),
                 ("REQUEST_ONLY".to_string(), "yes".to_string()),
-            ]),
+            ])),
             ..ImagesOptions::default()
         }),
     ));
@@ -339,15 +379,27 @@ fn merges_provider_resolved_env_into_image_options() {
         .clone()
         .expect("auth creates request options");
     assert_eq!(
-        options.env.get("SHARED").map(String::as_str),
+        options
+            .env
+            .as_ref()
+            .and_then(|env| env.get("SHARED"))
+            .map(String::as_str),
         Some("explicit")
     );
     assert_eq!(
-        options.env.get("AUTH_ONLY").map(String::as_str),
+        options
+            .env
+            .as_ref()
+            .and_then(|env| env.get("AUTH_ONLY"))
+            .map(String::as_str),
         Some("yes")
     );
     assert_eq!(
-        options.env.get("REQUEST_ONLY").map(String::as_str),
+        options
+            .env
+            .as_ref()
+            .and_then(|env| env.get("REQUEST_ONLY"))
+            .map(String::as_str),
         Some("yes")
     );
 }

@@ -68,6 +68,7 @@ fn model(id: &str) -> Model {
         thinking_level_map: HashMap::new(),
         headers: HashMap::new(),
         max_tokens: Some(128_000),
+        cost: zedflow_ai::types::ModelCost::default(),
     }
 }
 

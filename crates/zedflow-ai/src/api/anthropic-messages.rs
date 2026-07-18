@@ -969,9 +969,7 @@ fn messages_url(base_url: &str) -> String {
 }
 
 async fn wait_for_abort(signal: crate::types::AbortSignal) {
-    while !signal.aborted() {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    signal.cancelled().await;
 }
 
 /// Sends an Anthropic Messages request via raw reqwest and returns the raw SSE body.
@@ -1099,10 +1097,19 @@ pub fn stream_registered(
 ) -> AssistantMessageEventStream {
     let stream = AssistantMessageEventStream::new();
     let worker_stream = stream.clone();
+    let context = crate::api::transform_messages::transform_context(
+        context,
+        model,
+        Some(&|id, _, _| normalize_tool_call_id(id)),
+    );
     let model = model.clone();
-    let context = context.clone();
     let options = anthropic_options_from_stream(options.cloned().unwrap_or_default());
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_registered_worker(worker_stream, model, context, options).await;
     });
     stream
@@ -1167,9 +1174,18 @@ fn stream_registered_with_options(
 ) -> AssistantMessageEventStream {
     let stream = AssistantMessageEventStream::new();
     let worker_stream = stream.clone();
+    let context = crate::api::transform_messages::transform_context(
+        context,
+        model,
+        Some(&|id, _, _| normalize_tool_call_id(id)),
+    );
     let model = model.clone();
-    let context = context.clone();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_registered_worker(worker_stream, model, context, options).await;
     });
     stream
@@ -1331,34 +1347,80 @@ async fn execute_registered_stream(
     {
         builder = builder.proxy(proxy);
     }
-    let request = builder
-        .build()?
-        .post(messages_url(&model.base_url))
-        .headers(provider_headers_to_headermap(&headers)?)
-        .body(payload.to_string())
-        .send();
-    let mut response = await_or_abort(request, signal.clone()).await??;
-    let status = response.status().as_u16();
-    let response_headers = response
-        .headers()
-        .iter()
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|value| (name.to_string(), value.to_owned()))
-        })
-        .collect();
-    if let Some(hook) = options.stream.on_response.as_ref() {
-        hook(
-            ProviderResponse {
-                status,
-                headers: response_headers,
-            },
-            model.clone(),
+    let client = builder.build()?;
+    let request_headers = provider_headers_to_headermap(&headers)?;
+    let request_body = payload.to_string();
+    let max_retries = options.stream.max_retries.unwrap_or(0);
+    let mut attempts = 0;
+    let mut response = loop {
+        let response = await_or_abort(
+            client
+                .post(messages_url(&model.base_url))
+                .headers(request_headers.clone())
+                .body(request_body.clone())
+                .send(),
+            signal.clone(),
         )
         .await?;
-    }
+        match response {
+            Ok(response) => {
+                if let Some(hook) = options.stream.on_response.as_ref() {
+                    hook(
+                        ProviderResponse {
+                            status: response.status().as_u16(),
+                            headers: response
+                                .headers()
+                                .iter()
+                                .filter_map(|(name, value)| {
+                                    value
+                                        .to_str()
+                                        .ok()
+                                        .map(|value| (name.to_string(), value.to_owned()))
+                                })
+                                .collect(),
+                        },
+                        model.clone(),
+                    )
+                    .await?;
+                }
+                if matches!(response.status().as_u16(), 408 | 409 | 429 | 500..=599)
+                    && attempts < max_retries
+                {
+                    let delay = crate::utils::retry::retry_after_delay(
+                        response.headers(),
+                        SystemTime::now(),
+                    )
+                    .unwrap_or_else(|| {
+                        crate::utils::retry::retry_delay(
+                            Duration::from_millis(500),
+                            attempts,
+                            Some(Duration::from_secs(8)),
+                        )
+                    });
+                    if !crate::utils::retry::wait_or_abort(delay, signal.as_ref()).await {
+                        return Err(AnthropicError::Aborted);
+                    }
+                    attempts += 1;
+                    continue;
+                }
+                break response;
+            }
+            Err(error) if attempts < max_retries => {
+                let delay = crate::utils::retry::retry_delay(
+                    Duration::from_millis(500),
+                    attempts,
+                    Some(Duration::from_secs(8)),
+                );
+                if !crate::utils::retry::wait_or_abort(delay, signal.as_ref()).await {
+                    return Err(AnthropicError::Aborted);
+                }
+                attempts += 1;
+                drop(error);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    };
+    let status = response.status().as_u16();
     if !(200..300).contains(&status) {
         let mut body = Vec::new();
         while let Some(chunk) = await_or_abort(response.chunk(), signal.clone()).await?? {
@@ -1372,7 +1434,7 @@ async fn execute_registered_stream(
 
     abort_if_requested(signal.as_ref())?;
     stream.push(AssistantMessageEvent::Start {
-        partial: output.clone(),
+        partial: output.clone().into(),
     });
     let mut parser = IncrementalAnthropicSse {
         signal: signal.clone(),
@@ -1852,7 +1914,7 @@ fn apply_anthropic_event(
                         }));
                     Some(AssistantMessageEvent::TextStart {
                         content_index,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 Some("thinking") => {
@@ -1866,7 +1928,7 @@ fn apply_anthropic_event(
                         }));
                     Some(AssistantMessageEvent::ThinkingStart {
                         content_index,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 Some("redacted_thinking") => {
@@ -1883,7 +1945,7 @@ fn apply_anthropic_event(
                         }));
                     Some(AssistantMessageEvent::ThinkingStart {
                         content_index,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 Some("tool_use") => {
@@ -1916,7 +1978,7 @@ fn apply_anthropic_event(
                         }));
                     Some(AssistantMessageEvent::ToolcallStart {
                         content_index,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 _ => None,
@@ -1956,7 +2018,7 @@ fn apply_anthropic_event(
                     Some(AssistantMessageEvent::TextDelta {
                         content_index: block.content_index,
                         delta,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 Some("thinking_delta") => {
@@ -1973,7 +2035,7 @@ fn apply_anthropic_event(
                     Some(AssistantMessageEvent::ThinkingDelta {
                         content_index: block.content_index,
                         delta,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 Some("signature_delta") => {
@@ -2005,7 +2067,7 @@ fn apply_anthropic_event(
                     Some(AssistantMessageEvent::ToolcallDelta {
                         content_index: block.content_index,
                         delta,
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 _ => None,
@@ -2027,13 +2089,13 @@ fn apply_anthropic_event(
                 Some(AssistantContentBlock::Text(text)) => Some(AssistantMessageEvent::TextEnd {
                     content_index: block.content_index,
                     content: text.text.clone(),
-                    partial: output.clone(),
+                    partial: output.clone().into(),
                 }),
                 Some(AssistantContentBlock::Thinking(thinking)) => {
                     Some(AssistantMessageEvent::ThinkingEnd {
                         content_index: block.content_index,
                         content: thinking.thinking.clone(),
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 Some(AssistantContentBlock::ToolCall(tool_call)) => {
@@ -2043,7 +2105,7 @@ fn apply_anthropic_event(
                     Some(AssistantMessageEvent::ToolcallEnd {
                         content_index: block.content_index,
                         tool_call: tool_call.clone(),
-                        partial: output.clone(),
+                        partial: output.clone().into(),
                     })
                 }
                 None => None,

@@ -261,16 +261,49 @@ fn provider_api_for_models(models: &[Model]) -> ProviderApi {
     apis.dedup();
 
     if apis.len() <= 1 {
-        return ProviderApi::Single(unavailable_streams(
-            apis.first().copied().unwrap_or("unknown"),
-        ));
+        let api = apis.first().copied().unwrap_or("unknown");
+        return ProviderApi::Single(
+            ready_builtin_provider_streams(api).unwrap_or_else(|| unavailable_streams(api)),
+        );
     }
 
     ProviderApi::ByApi(
         apis.into_iter()
-            .map(|api| (api.to_owned(), unavailable_streams(api)))
+            .map(|api| {
+                (
+                    api.to_owned(),
+                    ready_builtin_provider_streams(api).unwrap_or_else(|| unavailable_streams(api)),
+                )
+            })
             .collect::<HashMap<_, _>>(),
     )
+}
+
+pub(crate) fn ready_builtin_provider_streams(api: &str) -> Option<ProviderStreams> {
+    match api {
+        "anthropic-messages" => Some(crate::api::anthropic_messages_lazy::anthropic_messages_api()),
+        "openai-completions" => {
+            Some(crate::api::openai_completions_lazy::open_ai_completions_api())
+        }
+        "openai-responses" => Some(crate::api::openai_responses_lazy::open_ai_responses_api()),
+        "openai-codex-responses" => {
+            Some(crate::api::openai_codex_responses_lazy::open_ai_codex_responses_api())
+        }
+        "azure-openai-responses" => {
+            Some(crate::api::azure_openai_responses_lazy::azure_open_ai_responses_api())
+        }
+        "google-generative-ai" => {
+            Some(crate::api::google_generative_ai_lazy::google_generative_ai_api())
+        }
+        "google-vertex" => Some(crate::api::google_vertex_lazy::google_vertex_api()),
+        "mistral-conversations" => {
+            Some(crate::api::mistral_conversations_lazy::mistral_conversations_api())
+        }
+        "bedrock-converse-stream" => {
+            Some(crate::api::bedrock_converse_stream_lazy::bedrock_converse_stream_api())
+        }
+        _ => None,
+    }
 }
 
 fn unavailable_streams(api: &str) -> ProviderStreams {
@@ -385,3 +418,35 @@ impl_catalog_model!(
     crate::providers::xai_models::XaiModel,
     crate::providers::xiaomi_models::XiaomiModel,
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_ready_builtin_model_resolves_in_the_dispatch_table() {
+        for provider in crate::providers::all::builtin_providers() {
+            for model in provider.get_models() {
+                assert!(
+                    ready_builtin_provider_streams(&model.api).is_some(),
+                    "{} model {} has no transport for {}",
+                    provider.id,
+                    model.id,
+                    model.api
+                );
+                if let ProviderApi::ByApi(apis) = &provider.api {
+                    assert!(
+                        apis.contains_key(&model.api),
+                        "{} does not dispatch {}",
+                        provider.id,
+                        model.api
+                    );
+                }
+            }
+        }
+
+        assert!(ready_builtin_provider_streams("openai-codex-responses").is_some());
+        assert!(ready_builtin_provider_streams("bedrock-converse-stream").is_some());
+        assert!(ready_builtin_provider_streams("custom-api").is_none());
+    }
+}

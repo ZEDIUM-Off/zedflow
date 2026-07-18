@@ -190,7 +190,7 @@ const BRANCH_SUMMARY_PROMPT: &str = "Create a structured summary of this convers
 /// # Errors
 ///
 /// Returns [`BranchSummaryError`] when the model call aborts or reports an error.
-pub fn generate_branch_summary(
+pub async fn generate_branch_summary(
     entries: &[SessionTreeEntry],
     options: GenerateBranchSummaryOptions<'_>,
 ) -> Result<BranchSummaryResult, BranchSummaryError> {
@@ -226,15 +226,18 @@ pub fn generate_branch_summary(
     stream_options.stream.max_tokens = Some(2_048);
     stream_options.stream.signal = options.signal;
 
-    let response = options.models.complete_simple(
-        options.model,
-        &Context {
-            system_prompt: Some(SUMMARIZATION_SYSTEM_PROMPT.to_string()),
-            messages: vec![summary_user_message(prompt_text)],
-            tools: None,
-        },
-        Some(&stream_options),
-    );
+    let response = options
+        .models
+        .complete_simple(
+            options.model,
+            &Context {
+                system_prompt: Some(SUMMARIZATION_SYSTEM_PROMPT.to_string()),
+                messages: vec![summary_user_message(prompt_text)],
+                tools: None,
+            },
+            Some(&stream_options),
+        )
+        .await;
 
     if response.stop_reason == StopReason::Aborted {
         return Err(branch_error(

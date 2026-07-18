@@ -387,7 +387,7 @@ fn passes_active_abort_signal_to_subscribers() {
     let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
         let stream = AssistantMessageEventStream::new();
         stream.push(AssistantMessageEvent::Start {
-            partial: assistant_text(""),
+            partial: assistant_text("").into(),
         });
         *held_stream_fn.lock().expect("held stream lock") = Some(stream.clone());
         stream
@@ -677,7 +677,7 @@ fn prompt_and_continue_reject_while_streaming() {
     let stream_fn: StreamFn = Arc::new(move |_model, _context, _options| {
         let stream = AssistantMessageEventStream::new();
         stream.push(AssistantMessageEvent::Start {
-            partial: assistant_text(""),
+            partial: assistant_text("").into(),
         });
         *held_stream_fn.lock().expect("held stream lock") = Some(stream.clone());
         stream

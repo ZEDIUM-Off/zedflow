@@ -15,94 +15,9 @@ use crate::auth::types::{
 };
 
 pub use crate::auth::types::ProviderAuth;
-
-/// Image API identifier.
-pub type ImagesApi = String;
-
-/// Minimal image model shape used by the image model collection.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImagesModel {
-    /// Model id.
-    pub id: String,
-    /// API id.
-    pub api: ImagesApi,
-    /// Owning provider id.
-    pub provider: String,
-    /// Optional provider base URL override.
-    pub base_url: Option<String>,
-}
-
-/// Canonical image request content and hook types.
-pub use crate::api::openrouter_images::{
-    ImagesContent, ImagesContext, ImagesPayloadHook, ImagesResponseHook,
+pub use crate::types::{
+    AssistantImages, ImagesApi, ImagesContext, ImagesModel, ImagesOptions, ImagesStopReason,
 };
-
-/// Image generation options plus provider-auth environment values.
-#[derive(Clone, Default)]
-pub struct ImagesOptions {
-    /// Explicit API key; wins over resolved auth.
-    pub api_key: Option<String>,
-    /// Explicit request headers; win over resolved auth per key.
-    pub headers: AuthProviderHeaders,
-    /// Explicit request environment values; win over resolved auth per key.
-    pub env: AuthProviderEnv,
-    /// Optional request payload hook.
-    pub on_payload: Option<ImagesPayloadHook>,
-    /// Optional response metadata hook.
-    pub on_response: Option<ImagesResponseHook>,
-    /// Optional transport timeout in milliseconds.
-    pub timeout_ms: Option<u64>,
-    /// Optional transport retry count.
-    pub max_retries: Option<u32>,
-    /// Request cancellation signal.
-    pub signal: Option<crate::types::AbortSignal>,
-}
-
-impl std::fmt::Debug for ImagesOptions {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("ImagesOptions")
-            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
-            .field("headers", &self.headers)
-            .field("env", &self.env)
-            .field("on_payload", &self.on_payload.as_ref().map(|_| "<hook>"))
-            .field("on_response", &self.on_response.as_ref().map(|_| "<hook>"))
-            .field("timeout_ms", &self.timeout_ms)
-            .field("max_retries", &self.max_retries)
-            .field("signal", &self.signal)
-            .finish()
-    }
-}
-
-impl PartialEq for ImagesOptions {
-    fn eq(&self, other: &Self) -> bool {
-        self.api_key == other.api_key
-            && self.headers == other.headers
-            && self.env == other.env
-            && self.on_payload.is_some() == other.on_payload.is_some()
-            && self.on_response.is_some() == other.on_response.is_some()
-            && self.timeout_ms == other.timeout_ms
-            && self.max_retries == other.max_retries
-            && self.signal == other.signal
-    }
-}
-
-/// Image generation result used by runtime provider collections.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AssistantImages {
-    /// API id.
-    pub api: ImagesApi,
-    /// Provider id.
-    pub provider: String,
-    /// Model id.
-    pub model: String,
-    /// Output payloads (text or image data URLs).
-    pub output: Vec<String>,
-    /// Stop reason.
-    pub stop_reason: String,
-    /// Optional error message.
-    pub error_message: Option<String>,
-}
 
 /// Error kind used by image model operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -483,18 +398,20 @@ fn auth_model(model: &ImagesModel) -> AuthModel {
         provider: model.provider.clone(),
         api: model.api.clone(),
         id: model.id.clone(),
-        base_url: model
-            .base_url
-            .clone()
-            .filter(|base_url| !base_url.is_empty()),
+        base_url: (!model.base_url.is_empty()).then(|| model.base_url.clone()),
     }
 }
 
 fn auth_overrides(options: Option<&ImagesOptions>) -> Option<AuthResolutionOverrides> {
     let options = options?;
-    (options.api_key.is_some() || !options.env.is_empty()).then(|| AuthResolutionOverrides {
+    let env = options.env.as_ref().filter(|env| !env.is_empty());
+    (options.api_key.is_some() || env.is_some()).then(|| AuthResolutionOverrides {
         api_key: options.api_key.clone(),
-        env: (!options.env.is_empty()).then(|| options.env.clone()),
+        env: env.map(|env| {
+            env.iter()
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        }),
     })
 }
 
@@ -513,7 +430,7 @@ fn merge_resolved_auth(
         .base_url
         .filter(|base_url| !base_url.is_empty())
     {
-        request_model.base_url = Some(base_url);
+        request_model.base_url = base_url;
     }
 
     let mut request_options = options.unwrap_or_default();
@@ -521,10 +438,13 @@ fn merge_resolved_auth(
         request_options.api_key = resolution.auth.api_key;
     }
     if let Some(headers) = resolution.auth.headers {
-        request_options.headers = merge_headers(headers, request_options.headers);
+        request_options.headers = Some(merge_headers(
+            headers,
+            request_options.headers.unwrap_or_default(),
+        ));
     }
     if let Some(env) = resolution.env {
-        request_options.env = merge_env(env, request_options.env);
+        request_options.env = Some(merge_env(env, request_options.env.unwrap_or_default()));
     }
 
     (request_model, Some(request_options))
@@ -532,15 +452,18 @@ fn merge_resolved_auth(
 
 fn merge_headers(
     resolved: AuthProviderHeaders,
-    explicit: AuthProviderHeaders,
-) -> AuthProviderHeaders {
-    let mut headers = resolved;
+    explicit: crate::types::ProviderHeaders,
+) -> crate::types::ProviderHeaders {
+    let mut headers: crate::types::ProviderHeaders = resolved.into_iter().collect();
     headers.extend(explicit);
     headers
 }
 
-fn merge_env(resolved: AuthProviderEnv, explicit: AuthProviderEnv) -> AuthProviderEnv {
-    let mut env = resolved;
+fn merge_env(
+    resolved: AuthProviderEnv,
+    explicit: crate::types::ProviderEnv,
+) -> crate::types::ProviderEnv {
+    let mut env: crate::types::ProviderEnv = resolved.into_iter().collect();
     env.extend(explicit);
     env
 }
@@ -551,9 +474,20 @@ fn error_images(model: &ImagesModel, message: String) -> AssistantImages {
         provider: model.provider.clone(),
         model: model.id.clone(),
         output: Vec::new(),
-        stop_reason: "error".to_string(),
+        response_id: None,
+        usage: None,
+        stop_reason: ImagesStopReason::Error,
         error_message: Some(message),
+        timestamp: unix_timestamp_ms(),
     }
+}
+
+fn unix_timestamp_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 fn default_file_exists(path: &str) -> bool {
@@ -575,9 +509,14 @@ mod tests {
     fn model(provider: &str, id: &str) -> ImagesModel {
         ImagesModel {
             id: id.to_string(),
+            name: id.to_string(),
             api: "api".to_string(),
             provider: provider.to_string(),
-            base_url: None,
+            base_url: String::new(),
+            input: vec![crate::types::ModelInput::Text],
+            output: vec![crate::types::ModelOutput::Text],
+            cost: crate::types::ModelCost::default(),
+            headers: None,
         }
     }
 
@@ -596,9 +535,18 @@ mod tests {
                         api: model.api,
                         provider: model.provider,
                         model: model.id,
-                        output: vec!["ok".into()],
-                        stop_reason: "stop".into(),
+                        output: vec![crate::types::ToolResultContentBlock::Text(
+                            crate::types::TextContent {
+                                content_type: crate::types::TextContentType::Text,
+                                text: "ok".into(),
+                                text_signature: None,
+                            },
+                        )],
+                        response_id: Some("response".into()),
+                        usage: None,
+                        stop_reason: ImagesStopReason::Stop,
                         error_message: None,
+                        timestamp: 1,
                     }
                 })
             }),
@@ -616,7 +564,7 @@ mod tests {
             None,
         ));
 
-        assert_eq!(result.stop_reason, "error");
+        assert_eq!(result.stop_reason, ImagesStopReason::Error);
         assert_eq!(
             result.error_message,
             Some("Unknown provider: missing".into())

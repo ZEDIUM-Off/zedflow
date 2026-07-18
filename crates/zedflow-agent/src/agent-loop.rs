@@ -381,14 +381,15 @@ async fn stream_assistant_response(
         match &event {
             AssistantMessageEvent::Start { partial } => {
                 partial_message = Some(partial.clone());
+                let snapshot = partial.snapshot();
                 context
                     .messages
-                    .push(AgentMessage::Llm(Message::Assistant(partial.clone())));
+                    .push(AgentMessage::Llm(Message::Assistant(snapshot.clone())));
                 added_partial = true;
                 emit_event(
                     &emit,
                     AgentEvent::MessageStart {
-                        message: AgentMessage::Llm(Message::Assistant(partial.clone())),
+                        message: AgentMessage::Llm(Message::Assistant(snapshot)),
                     },
                 )
                 .await;
@@ -417,14 +418,15 @@ async fn stream_assistant_response(
             _ => {
                 if let Some(partial) = partial_from_event(&event) {
                     partial_message = Some(partial.clone());
+                    let snapshot = partial.snapshot();
                     if let Some(last) = context.messages.last_mut() {
-                        *last = AgentMessage::Llm(Message::Assistant(partial.clone()));
+                        *last = AgentMessage::Llm(Message::Assistant(snapshot.clone()));
                     }
                     emit_event(
                         &emit,
                         AgentEvent::MessageUpdate {
                             assistant_message_event: event.clone(),
-                            message: AgentMessage::Llm(Message::Assistant(partial.clone())),
+                            message: AgentMessage::Llm(Message::Assistant(snapshot)),
                         },
                     )
                     .await;
@@ -472,7 +474,9 @@ fn replace_or_push_assistant(
         .push(AgentMessage::Llm(Message::Assistant(final_message)));
 }
 
-fn partial_from_event(event: &AssistantMessageEvent) -> Option<&AssistantMessage> {
+fn partial_from_event(
+    event: &AssistantMessageEvent,
+) -> Option<&zedflow_ai::types::SharedAssistantMessage> {
     match event {
         AssistantMessageEvent::TextStart { partial, .. }
         | AssistantMessageEvent::TextDelta { partial, .. }
