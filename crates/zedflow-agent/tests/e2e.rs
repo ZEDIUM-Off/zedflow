@@ -63,7 +63,11 @@ fn faux_agent_with_options(
                     .expect("context capture lock poisoned")
                     .push(context.clone());
             }
-            provider.stream_simple(model, context, options)
+            let provider = provider.clone();
+            let model = model.clone();
+            let context = context.clone();
+            let options = options.cloned();
+            Box::pin(async move { Ok(provider.stream_simple(&model, &context, options.as_ref())) })
         },
     );
 
@@ -125,7 +129,7 @@ fn calculate_tool() -> AgentTool {
         },
         label: "Calculate".to_string(),
         prepare_arguments: None,
-        execute: Some(Arc::new(|_, args: Value, _, _| {
+        execute: Arc::new(|_, args: Value, _, _| {
             Box::pin(async move {
                 let expression = args
                     .get("expression")
@@ -136,7 +140,7 @@ fn calculate_tool() -> AgentTool {
                     "5 + 3" => "8",
                     _ => "unsupported expression",
                 };
-                AgentToolResult {
+                Ok(AgentToolResult {
                     content: vec![AgentToolResultContent::Text(TextContent {
                         content_type: TextContentType::Text,
                         text: format!("{expression} = {answer}"),
@@ -144,9 +148,9 @@ fn calculate_tool() -> AgentTool {
                     })],
                     details: json!({}),
                     terminate: None,
-                }
+                })
             })
-        })),
+        }),
         execution_mode: None,
     }
 }
@@ -288,7 +292,7 @@ fn faux_provider_executes_tools_and_tracks_pending_tool_calls() {
                 .expect("pending capture lock poisoned")
                 .push((event_name(&event), ids));
         }
-        Box::pin(async {})
+        Box::pin(async { Ok(()) })
     });
     let _unsubscribe = agent.subscribe(listener);
 
@@ -331,7 +335,7 @@ fn faux_provider_emits_lifecycle_updates_while_streaming() {
             .lock()
             .expect("event capture lock poisoned")
             .push(event_name(&event));
-        Box::pin(async {})
+        Box::pin(async { Ok(()) })
     });
     let _unsubscribe = agent.subscribe(listener);
 

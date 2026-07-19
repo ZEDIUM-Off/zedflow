@@ -27,12 +27,18 @@ pub fn calculate_tool() -> AgentTool<()> {
             .unwrap_or_default()
             .to_string();
         Box::pin(async move {
-            calculate(&expression).unwrap_or_else(|message| AgentToolResult {
-                content: vec![text(message)],
-                details: (),
-                terminate: Some(true),
-            })
-        }) as AgentFuture<'_, AgentToolResult<()>>
+            Ok(
+                calculate(&expression).unwrap_or_else(|message| AgentToolResult {
+                    content: vec![text(message)],
+                    details: (),
+                    terminate: Some(true),
+                }),
+            )
+        })
+            as AgentFuture<
+                '_,
+                Result<AgentToolResult<()>, zedflow_agent::types::AgentCallbackError>,
+            >
     });
 
     AgentTool {
@@ -52,7 +58,7 @@ pub fn calculate_tool() -> AgentTool<()> {
             }),
         },
         prepare_arguments: None,
-        execute: Some(execute),
+        execute,
         execution_mode: None,
     }
 }
@@ -185,12 +191,15 @@ fn exposes_calculate_tool_metadata_and_executor() {
     let tool = calculate_tool();
     assert_eq!(tool.label, "Calculator");
     assert_eq!(tool.tool.name, "calculate");
-    let execute = tool.execute.expect("calculate executor");
+    let execute = tool.execute;
     let result = futures::executor::block_on(execute(
         "call-1",
         json!({ "expression": "(2 + 3) * 4" }),
         None,
         None,
     ));
-    assert_eq!(result.content, vec![text("(2 + 3) * 4 = 20")]);
+    assert_eq!(
+        result.expect("tool result").content,
+        vec![text("(2 + 3) * 4 = 20")]
+    );
 }

@@ -42,12 +42,23 @@ pub fn get_current_time_tool() -> AgentTool<GetCurrentTimeDetails> {
                 .and_then(Value::as_str)
                 .map(str::to_string);
             Box::pin(async move {
-                get_current_time(timezone.as_deref()).unwrap_or_else(|message| AgentToolResult {
-                    content: vec![text(message)],
-                    details: GetCurrentTimeDetails { utc_timestamp: 0 },
-                    terminate: Some(true),
-                })
-            }) as AgentFuture<'_, AgentToolResult<GetCurrentTimeDetails>>
+                Ok(
+                    get_current_time(timezone.as_deref()).unwrap_or_else(|message| {
+                        AgentToolResult {
+                            content: vec![text(message)],
+                            details: GetCurrentTimeDetails { utc_timestamp: 0 },
+                            terminate: Some(true),
+                        }
+                    }),
+                )
+            })
+                as AgentFuture<
+                    '_,
+                    Result<
+                        AgentToolResult<GetCurrentTimeDetails>,
+                        zedflow_agent::types::AgentCallbackError,
+                    >,
+                >
         });
 
     AgentTool {
@@ -66,7 +77,7 @@ pub fn get_current_time_tool() -> AgentTool<GetCurrentTimeDetails> {
             }),
         },
         prepare_arguments: None,
-        execute: Some(execute),
+        execute,
         execution_mode: None,
     }
 }
@@ -111,12 +122,12 @@ fn exposes_current_time_tool_metadata_and_executor() {
     let tool = get_current_time_tool();
     assert_eq!(tool.label, "Current Time");
     assert_eq!(tool.tool.name, "get_current_time");
-    let execute = tool.execute.expect("current time executor");
+    let execute = tool.execute;
     let result = futures::executor::block_on(execute(
         "call-1",
         json!({ "timezone": "Etc/UTC" }),
         None,
         None,
     ));
-    assert!(result.details.utc_timestamp > 0);
+    assert!(result.expect("tool result").details.utc_timestamp > 0);
 }
