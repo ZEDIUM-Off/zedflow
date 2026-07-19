@@ -6,6 +6,8 @@ The port uses two long-lived Pi sessions: `zedflow-port-coordinator` and `zedflo
 
 Assignments and completion reports use `send`. `ask`/`reply` is reserved for blocking decisions. There are no acceptance reports, child-run IDs, lifecycle-artifact checks, external state machine, or one-shot Pi process per task.
 
+API-breaking contract units must be followed by a compilation-propagation unit before any broad integration gate. Independent leaf units share their real prerequisite in the DAG; `max_active_writers` controls serialization instead of false dependency edges.
+
 Recovery refs retained in the repository:
 
 - `refs/archive/pi-port-v1/source-worktree`

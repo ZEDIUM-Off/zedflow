@@ -7,4 +7,6 @@
 - Git ancestry, owned diffs, and declared commands are the acceptance evidence.
 - Independent fidelity and Rust reviews happen at wave boundaries, not after every micro-task.
 - The Pi gitlink remains frozen at the value in the DAG.
-- Paseo remains paused until the manual two-session pilot succeeds.
+- `AG-T0` owns mechanical compilation propagation for the three fixtures broken by AG-C1; `AG-T1` retains later semantic parity closure.
+- `AG-P1` through `AG-P4` depend independently on `AG-H4`; the single-writer runtime serializes them without inventing false dependency edges.
+- Paseo schedule `f7c25e49` is active and delivers hourly ticks through relay `dbe0e650`; legacy schedule `6f738382` remains paused.

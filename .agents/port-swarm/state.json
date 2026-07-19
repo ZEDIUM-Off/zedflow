@@ -11,11 +11,11 @@
     "AG-H3"
   ],
   "current": {
-    "id": "AG-H4",
+    "id": "AG-T0",
     "base": "HEAD",
     "worker": null,
-    "status": "blocked",
+    "status": "ready",
     "result": null,
-    "blocker": "Declared cargo check --workspace --all-targets fails on exact worker base 613151c9: unowned AG-T1 test paths tests/e2e.rs, tests/utils/calculate.rs, and tests/utils/get-current-time.rs still use pre-AG-C1 fallible callback/tool contracts. AG-T1 depends on AG-H4, so the current DAG validation/ownership is blocked."
+    "blocker": null
   }
 }
