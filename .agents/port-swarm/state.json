@@ -16,8 +16,8 @@
     "id": "AG-P1",
     "base": "HEAD",
     "worker": null,
-    "status": "ready",
+    "status": "blocked",
     "result": null,
-    "blocker": null
+    "blocker": "Declared cargo test -p zedflow-agent --test session-uuid fails on the exact worker result: zedflow-agent has no session-uuid Cargo test target. The owned test is compiled through harness and is ignored."
   }
 }
