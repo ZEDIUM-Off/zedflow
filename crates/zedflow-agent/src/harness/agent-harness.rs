@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::executor::block_on;
+use futures::{FutureExt, channel::oneshot};
 use serde_json::Value;
 use zedflow_ai::utils::abort_signals::AbortController;
 use zedflow_ai::{
@@ -168,6 +169,8 @@ struct AgentHarnessState<TSkill = Skill, TPromptTemplate = crate::harness::types
     hooks: HashMap<String, Vec<AgentHarnessHook>>,
     subscribers: Vec<AgentHarnessSubscriber>,
     abort_controller: Option<AbortController>,
+    settlement: Option<futures::future::Shared<oneshot::Receiver<()>>>,
+    settlement_sender: Option<oneshot::Sender<()>>,
 }
 
 /// Integrated Pi-style agent harness.
@@ -220,6 +223,8 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                 hooks: HashMap::new(),
                 subscribers: Vec::new(),
                 abort_controller: None,
+                settlement: None,
+                settlement_sender: None,
             })),
         })
     }
@@ -880,6 +885,9 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
             signal.abort();
         }
         emit_queue_update(&self.state).await?;
+        if let Some(settlement) = lock_state(&self.state).settlement.clone() {
+            let _ = settlement.await;
+        }
         emit_own(
             &self.state,
             AgentHarnessOwnEvent::Abort(crate::harness::types::AbortEvent {
@@ -911,6 +919,11 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
             ));
         }
         state.phase = phase;
+        if phase == AgentHarnessPhase::Turn {
+            let (sender, receiver) = oneshot::channel();
+            state.settlement = Some(receiver.shared());
+            state.settlement_sender = Some(sender);
+        }
         Ok(())
     }
 
@@ -919,6 +932,10 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
         let mut state = lock_state(&self.state);
         state.phase = AgentHarnessPhase::Idle;
         state.abort_controller = None;
+        state.settlement = None;
+        if let Some(sender) = state.settlement_sender.take() {
+            let _ = sender.send(());
+        }
     }
 
     async fn create_turn_state(
