@@ -3,24 +3,311 @@
   "source_gitlink": "references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd",
   "max_active_writers": 1,
   "units": [
-    {"id":"RECONCILE-CHECKPOINT","kind":"checkpoint","depends_on":[],"ownership":["tools/pi-port-swarm/dag.json",".agents/port-swarm","docs/porting/pi-fidelity-decisions"],"validation":["git diff --check"],"intent":"Compare current code and checks with archived refs; record the proven resume point without editing Rust source."},
-    {"id":"AG-C1","kind":"writer","depends_on":["RECONCILE-CHECKPOINT"],"ownership":["crates/zedflow-agent/src/types.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Fallible callback and stream contracts."},
-    {"id":"AG-C2","kind":"writer","depends_on":["AG-C1"],"ownership":["crates/zedflow-agent/src/harness/types.rs","crates/zedflow-agent/src/harness/session/memory-storage.rs","crates/zedflow-agent/src/harness/session/jsonl-storage.rs","crates/zedflow-agent/src/harness/session/repo-utils.rs","crates/zedflow-agent/src/harness/session/session.rs","crates/zedflow-agent/tests/harness/storage.rs","crates/zedflow-agent/tests/harness/session.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Persistence tri-state and errors."},
-    {"id":"AG-L1","kind":"writer","depends_on":["AG-C2"],"ownership":["crates/zedflow-agent/src/agent-loop.rs","crates/zedflow-agent/tests/agent-loop.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Incremental loop streaming and cancellation."},
-    {"id":"AG-L2","kind":"writer","depends_on":["AG-L1"],"ownership":["crates/zedflow-agent/src/agent.rs","crates/zedflow-agent/tests/agent.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Atomic agent lifecycle."},
-    {"id":"AG-H1","kind":"writer","depends_on":["AG-L2"],"ownership":["crates/zedflow-agent/src/harness/agent-harness.rs","crates/zedflow-agent/tests/harness/agent-harness.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Persistence ordering."},
-    {"id":"AG-H2","kind":"writer","depends_on":["AG-H1"],"ownership":["crates/zedflow-agent/src/harness/agent-harness.rs","crates/zedflow-agent/tests/harness/agent-harness-stream.rs","crates/zedflow-agent/tests/harness/agent-harness.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Hook and stream options."},
-    {"id":"AG-H3","kind":"writer","depends_on":["AG-H2"],"ownership":["crates/zedflow-agent/src/harness/agent-harness.rs","crates/zedflow-agent/src/harness/compaction","crates/zedflow-agent/tests/harness/compaction.rs","crates/zedflow-agent/tests/harness/agent-harness.rs"],"validation":["cargo fmt --package zedflow-agent --check"],"intent":"Compaction provenance."},
-    {"id":"AG-T0","kind":"writer","depends_on":["AG-H3"],"ownership":["crates/zedflow-agent/tests/e2e.rs","crates/zedflow-agent/tests/utils/calculate.rs","crates/zedflow-agent/tests/utils/get-current-time.rs"],"validation":["cargo fmt --package zedflow-agent --check","cargo check -p zedflow-agent --all-targets"],"intent":"Mechanically propagate the accepted async/fallible AG-C1 contracts through out-of-scope fixtures without changing fidelity assertions."},
-    {"id":"AG-H4","kind":"writer","depends_on":["AG-T0"],"ownership":["crates/zedflow-agent/src/harness/agent-harness.rs","crates/zedflow-agent/tests/harness/agent-harness.rs"],"validation":["cargo check --workspace --all-targets"],"intent":"Abort, settlement, and staged contract integration."},
-    {"id":"AG-P1","kind":"writer","depends_on":["AG-H4"],"ownership":["crates/zedflow-agent/src/harness/session/uuid.rs","crates/zedflow-agent/tests/harness/session-uuid.rs"],"validation":["cargo test -p zedflow-agent --test harness session_uuid::uses_rfc_9562_layout_and_preserves_monotonic_order"],"intent":"Monotonic UUID."},
-    {"id":"AG-P2","kind":"writer","depends_on":["AG-H4"],"ownership":["crates/zedflow-agent/src/harness/env/nodejs.rs","crates/zedflow-agent/tests/harness/nodejs-env.rs"],"validation":["cargo test -p zedflow-agent --test nodejs-env"],"intent":"Process-tree termination."},
-    {"id":"AG-P3","kind":"writer","depends_on":["AG-H4"],"ownership":["crates/zedflow-agent/src/proxy.rs","crates/zedflow-agent/src/index.rs","crates/zedflow-agent/src/node.rs","crates/zedflow-agent/tests/proxy.rs"],"validation":["cargo test -p zedflow-agent --test proxy"],"intent":"HTTP and SSE proxy transport."},
-    {"id":"AG-P4","kind":"writer","depends_on":["AG-H4"],"ownership":["crates/zedflow-agent/tests/utils/get-current-time.rs"],"validation":["cargo test -p zedflow-agent get_current_time"],"intent":"After AG-T0 compilation propagation, restore exact IANA timezone semantics and assertions."},
-    {"id":"AG-T1","kind":"writer","depends_on":["AG-P1","AG-P2","AG-P3","AG-P4"],"ownership":["crates/zedflow-agent/tests"],"validation":["cargo test -p zedflow-agent --all-targets --no-run"],"intent":"Close semantic parity across the explicit Agent test manifest without reopening completed production behavior."},
-    {"id":"V1","kind":"validator","depends_on":["AG-T1"],"ownership":[],"validation":["cargo fmt --all --check","cargo check --workspace --all-targets","cargo test --workspace --all-targets --no-run"],"intent":"Mechanical wave acceptance."},
-    {"id":"RV-FID","kind":"reviewer","depends_on":["V1"],"ownership":[],"validation":[],"intent":"Read-only Pi fidelity review of the accepted wave SHA."},
-    {"id":"RV-RUST","kind":"reviewer","depends_on":["V1"],"ownership":[],"validation":[],"intent":"Read-only Rust correctness review of the accepted wave SHA."},
-    {"id":"NEXT-PORT-DAG","kind":"checkpoint","depends_on":["RV-FID","RV-RUST"],"ownership":["tools/pi-port-swarm/dag.json",".agents/port-swarm/state.json","docs/porting"],"validation":["git diff --check"],"intent":"Extend the graph only after both wave reviews pass."}
+    {
+      "id": "RECONCILE-CHECKPOINT",
+      "kind": "checkpoint",
+      "depends_on": [],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm",
+        "docs/porting/pi-fidelity-decisions"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Compare current code and checks with archived refs; record the proven resume point without editing Rust source."
+    },
+    {
+      "id": "AG-C1",
+      "kind": "writer",
+      "depends_on": [
+        "RECONCILE-CHECKPOINT"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/types.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Fallible callback and stream contracts."
+    },
+    {
+      "id": "AG-C2",
+      "kind": "writer",
+      "depends_on": [
+        "AG-C1"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/types.rs",
+        "crates/zedflow-agent/src/harness/session/memory-storage.rs",
+        "crates/zedflow-agent/src/harness/session/jsonl-storage.rs",
+        "crates/zedflow-agent/src/harness/session/repo-utils.rs",
+        "crates/zedflow-agent/src/harness/session/session.rs",
+        "crates/zedflow-agent/tests/harness/storage.rs",
+        "crates/zedflow-agent/tests/harness/session.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Persistence tri-state and errors."
+    },
+    {
+      "id": "AG-L1",
+      "kind": "writer",
+      "depends_on": [
+        "AG-C2"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/agent-loop.rs",
+        "crates/zedflow-agent/tests/agent-loop.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Incremental loop streaming and cancellation."
+    },
+    {
+      "id": "AG-L2",
+      "kind": "writer",
+      "depends_on": [
+        "AG-L1"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/agent.rs",
+        "crates/zedflow-agent/tests/agent.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Atomic agent lifecycle."
+    },
+    {
+      "id": "AG-H1",
+      "kind": "writer",
+      "depends_on": [
+        "AG-L2"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/agent-harness.rs",
+        "crates/zedflow-agent/tests/harness/agent-harness.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Persistence ordering."
+    },
+    {
+      "id": "AG-H2",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H1"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/agent-harness.rs",
+        "crates/zedflow-agent/tests/harness/agent-harness-stream.rs",
+        "crates/zedflow-agent/tests/harness/agent-harness.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Hook and stream options."
+    },
+    {
+      "id": "AG-H3",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H2"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/agent-harness.rs",
+        "crates/zedflow-agent/src/harness/compaction",
+        "crates/zedflow-agent/tests/harness/compaction.rs",
+        "crates/zedflow-agent/tests/harness/agent-harness.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check"
+      ],
+      "intent": "Compaction provenance."
+    },
+    {
+      "id": "AG-T0",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H3"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/tests/e2e.rs",
+        "crates/zedflow-agent/tests/utils/calculate.rs",
+        "crates/zedflow-agent/tests/utils/get-current-time.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check",
+        "cargo check -p zedflow-agent --all-targets"
+      ],
+      "intent": "Mechanically propagate the accepted async/fallible AG-C1 contracts through out-of-scope fixtures without changing fidelity assertions."
+    },
+    {
+      "id": "AG-H4",
+      "kind": "writer",
+      "depends_on": [
+        "AG-T0"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/agent-harness.rs",
+        "crates/zedflow-agent/tests/harness/agent-harness.rs"
+      ],
+      "validation": [
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Abort, settlement, and staged contract integration."
+    },
+    {
+      "id": "AG-P1",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H4"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/session/uuid.rs",
+        "crates/zedflow-agent/tests/harness/session-uuid.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-agent --test harness session_uuid::uses_rfc_9562_layout_and_preserves_monotonic_order"
+      ],
+      "intent": "Monotonic UUID."
+    },
+    {
+      "id": "AG-R1-JSONL-LEAF-ERROR",
+      "kind": "writer",
+      "depends_on": [
+        "AG-P1"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/session/jsonl-storage.rs",
+        "crates/zedflow-agent/tests/harness/storage.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check",
+        "cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context"
+      ],
+      "intent": "Restore Pi-specific JSONL leaf append failure context found during the worktree audit; preserve general append-entry context."
+    },
+    {
+      "id": "AG-P2",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H4",
+        "AG-R1-JSONL-LEAF-ERROR"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/env/nodejs.rs",
+        "crates/zedflow-agent/tests/harness/nodejs-env.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-agent --test nodejs-env"
+      ],
+      "intent": "Process-tree termination."
+    },
+    {
+      "id": "AG-P3",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H4",
+        "AG-R1-JSONL-LEAF-ERROR"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/proxy.rs",
+        "crates/zedflow-agent/src/index.rs",
+        "crates/zedflow-agent/src/node.rs",
+        "crates/zedflow-agent/tests/proxy.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-agent --test proxy"
+      ],
+      "intent": "HTTP and SSE proxy transport."
+    },
+    {
+      "id": "AG-P4",
+      "kind": "writer",
+      "depends_on": [
+        "AG-H4",
+        "AG-R1-JSONL-LEAF-ERROR"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/tests/utils/get-current-time.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-agent get_current_time"
+      ],
+      "intent": "After AG-T0 compilation propagation, restore exact IANA timezone semantics and assertions."
+    },
+    {
+      "id": "AG-T1",
+      "kind": "writer",
+      "depends_on": [
+        "AG-P1",
+        "AG-P2",
+        "AG-P3",
+        "AG-P4"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/tests"
+      ],
+      "validation": [
+        "cargo test -p zedflow-agent --all-targets --no-run"
+      ],
+      "intent": "Close semantic parity across the explicit Agent test manifest without reopening completed production behavior."
+    },
+    {
+      "id": "V1",
+      "kind": "validator",
+      "depends_on": [
+        "AG-T1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --workspace --all-targets --no-run"
+      ],
+      "intent": "Mechanical wave acceptance."
+    },
+    {
+      "id": "RV-FID",
+      "kind": "reviewer",
+      "depends_on": [
+        "V1"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only Pi fidelity review of the accepted wave SHA."
+    },
+    {
+      "id": "RV-RUST",
+      "kind": "reviewer",
+      "depends_on": [
+        "V1"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only Rust correctness review of the accepted wave SHA."
+    },
+    {
+      "id": "NEXT-PORT-DAG",
+      "kind": "checkpoint",
+      "depends_on": [
+        "RV-FID",
+        "RV-RUST"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Extend the graph only after both wave reviews pass."
+    }
   ]
 }

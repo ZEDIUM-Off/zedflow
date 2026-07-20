@@ -13,3 +13,7 @@ This checkpoint changes no Rust source, dependency, frozen reference, or DAG nod
 ## Proven resume point
 
 `RECONCILE-CHECKPOINT` is complete. **AG-C1** is the next dependency-ready unit; AG-C2 and later remain blocked by its dependency chain. Assign AG-C1 only from the committed checkpoint HEAD, with its DAG-owned path `crates/zedflow-agent/src/types.rs` and declared `cargo fmt --package zedflow-agent --check` validation.
+
+## Addendum — 2026-07-20 baseline realignment
+
+The historical resume point above was superseded by the clean crate-based `main` baseline at `9afd0e047933bd6c1b046a42a7176ac2ec7c42af`. AG-C1 through AG-P1 are accepted in the tracked seed. The worktree audit found one remaining, narrowly scoped JSONL error-context discrepancy, recorded as `AG-R1-JSONL-LEAF-ERROR`; it must close before AG-P2, AG-P3, or AG-P4 dispatch. See `WORKTREE-AUDIT-2026-07-20.md`.
