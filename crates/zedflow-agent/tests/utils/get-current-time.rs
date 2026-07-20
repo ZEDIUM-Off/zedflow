@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use jiff::{Timestamp, tz::TimeZone};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use zedflow_agent::types::{
@@ -17,18 +18,20 @@ pub struct GetCurrentTimeDetails {
 pub type GetCurrentTimeResult = AgentToolResult<GetCurrentTimeDetails>;
 
 pub fn get_current_time(timezone: Option<&str>) -> Result<GetCurrentTimeResult, String> {
-    if let Some(timezone) = timezone {
-        if timezone != "UTC" && timezone != "Etc/UTC" {
-            return Err(format!(
-                "Invalid timezone: {timezone}. Current UTC time: {}",
-                now_millis()
-            ));
-        }
-    }
+    let now = Timestamp::now();
+    let time_zone = match timezone {
+        Some(name) => TimeZone::get(name)
+            .map_err(|_| format!("Invalid timezone: {name}. Current UTC time: {now}"))?,
+        None => TimeZone::system(),
+    };
+    let utc_timestamp = now.as_millisecond().try_into().unwrap_or(0);
+    let time_str = now
+        .to_zoned(time_zone)
+        .strftime("%A, %B %-d, %Y at %-I:%M:%S %p %Z")
+        .to_string();
 
-    let utc_timestamp = now_millis();
     Ok(AgentToolResult {
-        content: vec![text(format!("Current UTC time: {utc_timestamp}"))],
+        content: vec![text(time_str)],
         details: GetCurrentTimeDetails { utc_timestamp },
         terminate: None,
     })
@@ -107,14 +110,22 @@ fn returns_current_utc_time_details() {
     assert!(result.details.utc_timestamp <= after);
     assert!(matches!(
         &result.content[0],
-        AgentToolResultContent::Text(content) if content.text.starts_with("Current UTC time: ")
+        AgentToolResultContent::Text(content) if content.text.ends_with(" UTC")
     ));
 }
 
 #[test]
-fn rejects_unsupported_timezones_without_adding_timezone_dependencies() {
+fn formats_iana_timezone_and_rejects_invalid_timezone() {
+    let result = get_current_time(Some("America/New_York")).unwrap();
+    assert!(matches!(
+        &result.content[0],
+        AgentToolResultContent::Text(content)
+            if content.text.ends_with(" EST") || content.text.ends_with(" EDT")
+    ));
+
     let error = get_current_time(Some("Mars/Base")).unwrap_err();
-    assert!(error.starts_with("Invalid timezone: Mars/Base."));
+    assert!(error.starts_with("Invalid timezone: Mars/Base. Current UTC time: "));
+    assert!(error.ends_with('Z'));
 }
 
 #[test]
