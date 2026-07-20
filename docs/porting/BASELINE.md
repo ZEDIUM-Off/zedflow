@@ -24,12 +24,11 @@ The repository originally published an inherited monolithic Rust port. Zedflow l
 
 During the 2026-07-20 stabilization:
 
-- the former GitHub `main` at `052ed642659202538b10d02d718158d1c642d50f` was preserved as `archive/pi-rust-main-052ed642`;
-- the crate-based Zedflow lineage was selected as the canonical `main` lineage;
-- local uncommitted work was preserved under `recovery/pre-main-realignment-20260720` before reconstruction;
-- unrelated histories were not merged.
+- the crate-based Zedflow lineage became the canonical `main` lineage;
+- local uncommitted Zedflow work was preserved under `recovery/pre-main-realignment-20260720` before reconstruction;
+- the unrelated inherited repository history was not merged and its remote branches were deleted.
 
-The archive is historical evidence, not an upstream. New port work continues only on the crate-based lineage.
+New port work continues only on the independent crate-based Zedflow history.
 
 ## Swarm status
 
