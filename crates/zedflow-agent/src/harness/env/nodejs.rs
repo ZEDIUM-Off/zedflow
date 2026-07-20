@@ -8,17 +8,16 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use command_group::{CommandGroup, GroupChild};
+use futures::channel::oneshot;
 use uuid::Uuid;
-use wait_timeout::ChildExt;
 
 use crate::harness::types::{
     CreateDirOptions, CreateTempFileOptions, ExecutionError, ExecutionErrorCode, FileContent,
@@ -437,14 +436,22 @@ impl Shell for NodeExecutionEnv {
                 .as_deref()
                 .map_or_else(|| PathBuf::from(&self.cwd), |cwd| self.resolve_path(cwd));
             let shell_config = get_shell_config(self.shell_path.as_deref())?;
-            exec_blocking(
-                command,
-                &cwd,
-                &shell_config,
-                self.shell_env.as_ref(),
-                options,
-                timeout,
-            )
+            let command = command.to_string();
+            let shell_env = self.shell_env.clone();
+            let (sender, receiver) = oneshot::channel();
+            thread::spawn(move || {
+                let _ = sender.send(exec_blocking(
+                    &command,
+                    &cwd,
+                    &shell_config,
+                    shell_env.as_ref(),
+                    options,
+                    timeout,
+                ));
+            });
+            receiver.await.map_err(|_| {
+                ExecutionError::new(ExecutionErrorCode::Unknown, "command worker stopped", None)
+            })?
         })
     }
 
@@ -471,8 +478,6 @@ fn exec_blocking(
         process.envs(extra_env);
     }
     process.stdout(Stdio::piped()).stderr(Stdio::piped());
-    #[cfg(unix)]
-    process.process_group(0);
 
     match shell_config.command_transport {
         CommandTransport::Argv => {
@@ -485,7 +490,7 @@ fn exec_blocking(
         }
     }
 
-    let mut child = process.spawn().map_err(|error| {
+    let mut child = process.group_spawn().map_err(|error| {
         ExecutionError::new(
             ExecutionErrorCode::SpawnError,
             error.to_string(),
@@ -494,7 +499,7 @@ fn exec_blocking(
     })?;
 
     if shell_config.command_transport == CommandTransport::Stdin {
-        if let Some(mut stdin) = child.stdin.take() {
+        if let Some(mut stdin) = child.inner().stdin.take() {
             let _ = stdin.write_all(command.as_bytes());
         }
     }
@@ -503,7 +508,7 @@ fn exec_blocking(
     let stderr = Arc::new(Mutex::new(String::new()));
     let callback_failed = Arc::new(AtomicBool::new(false));
 
-    let stdout_thread = child.stdout.take().map(|stream| {
+    let stdout_thread = child.inner().stdout.take().map(|stream| {
         read_stream_thread(
             stream,
             Arc::clone(&stdout),
@@ -511,7 +516,7 @@ fn exec_blocking(
             Arc::clone(&callback_failed),
         )
     });
-    let stderr_thread = child.stderr.take().map(|stream| {
+    let stderr_thread = child.inner().stderr.take().map(|stream| {
         read_stream_thread(
             stream,
             Arc::clone(&stderr),
@@ -561,7 +566,7 @@ fn exec_blocking(
 }
 
 fn wait_child(
-    child: &mut Child,
+    child: &mut GroupChild,
     timeout: Option<Duration>,
     abort_signal: Option<&zedflow_ai::AbortSignal>,
     callback_failed: &AtomicBool,
@@ -569,7 +574,7 @@ fn wait_child(
     let mut remaining = timeout;
     loop {
         if abort_signal.is_some_and(zedflow_ai::AbortSignal::aborted) {
-            kill_child(child);
+            let _ = child.kill();
             let _ = child.wait();
             return Err(ExecutionError::new(
                 ExecutionErrorCode::Aborted,
@@ -578,29 +583,31 @@ fn wait_child(
             ));
         }
         if callback_failed.load(Ordering::SeqCst) {
-            kill_child(child);
+            let _ = child.kill();
             return child.wait().map_err(to_execution_unknown);
+        }
+
+        if let Some(status) = child.try_wait().map_err(to_execution_unknown)? {
+            return Ok(status);
         }
 
         let poll_for = remaining.map_or(Duration::from_millis(PROCESS_POLL_MS), |left| {
             left.min(Duration::from_millis(PROCESS_POLL_MS))
         });
-
-        match child.wait_timeout(poll_for).map_err(to_execution_unknown)? {
-            Some(status) => return Ok(status),
-            None => {
-                if let Some(left) = remaining.as_mut() {
-                    if *left <= poll_for {
-                        kill_child(child);
-                        let _ = child.wait();
-                        return Err(ExecutionError::new(
-                            ExecutionErrorCode::Timeout,
-                            "timeout",
-                            None,
-                        ));
-                    }
-                    *left -= poll_for;
+        thread::sleep(poll_for);
+        if let Some(left) = remaining.as_mut() {
+            if *left <= poll_for {
+                if child.try_wait().map_err(to_execution_unknown)?.is_none() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(ExecutionError::new(
+                        ExecutionErrorCode::Timeout,
+                        "timeout",
+                        None,
+                    ));
                 }
+            } else {
+                *left -= poll_for;
             }
         }
     }
@@ -852,26 +859,6 @@ fn aborted_file(
         .as_ref()
         .filter(|signal| signal.aborted())
         .map(|_| FileError::new(FileErrorCode::Aborted, "aborted", path, None))
-}
-
-fn kill_child(child: &mut Child) {
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .args(["-KILL", "--", &format!("-{}", child.id())])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    #[cfg(windows)]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/F", "/T", "/PID", &child.id().to_string()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill();
 }
 
 fn take_string(value: &Arc<Mutex<String>>) -> String {

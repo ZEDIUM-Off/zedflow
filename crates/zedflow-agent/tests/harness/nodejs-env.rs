@@ -370,13 +370,30 @@ fn reports_nonzero_timeout_callback_and_shell_errors() {
     );
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
+fn assert_process_gone(pid_file: &Path) {
+    let pid = fs::read_to_string(pid_file).unwrap();
+    let process = Path::new("/proc").join(pid.trim());
+    for _ in 0..20 {
+        if !process.exists() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("process {} survived", pid.trim());
+}
+
+#[cfg(target_os = "linux")]
+fn process_tree_command() -> &'static str {
+    "sh -c 'sleep 30 & echo $! > grandchild.pid; wait' & echo $! > child.pid; wait"
+}
+
+#[cfg(target_os = "linux")]
 #[test]
 fn timeout_kills_the_shell_process_tree() {
     let temp = TempDir::new();
-    let env = temp.env();
-    let error = block_on(env.exec(
-        "sleep 30 & echo $! > child.pid; wait",
+    let error = block_on(temp.env().exec(
+        process_tree_command(),
         Some(ShellExecOptions {
             timeout: Some(1),
             ..ShellExecOptions::default()
@@ -387,16 +404,35 @@ fn timeout_kills_the_shell_process_tree() {
         error.code,
         zedflow_agent::harness::types::ExecutionErrorCode::Timeout
     );
+    assert_process_gone(&temp.path().join("child.pid"));
+    assert_process_gone(&temp.path().join("grandchild.pid"));
+}
 
-    let pid = fs::read_to_string(temp.path().join("child.pid")).unwrap();
-    assert!(
-        !std::process::Command::new("kill")
-            .args(["-0", pid.trim()])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .unwrap()
-            .success()
+#[cfg(target_os = "linux")]
+#[test]
+fn abort_kills_the_shell_process_tree() {
+    let temp = TempDir::new();
+    let controller = AbortController::new();
+    let aborter = controller.clone();
+    let abort_thread = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        aborter.abort();
+    });
+    let error = block_on(temp.env().exec(
+        process_tree_command(),
+        Some(ShellExecOptions {
+            abort_signal: Some(controller.signal()),
+            ..ShellExecOptions::default()
+        }),
+    ))
+    .unwrap_err();
+    abort_thread.join().unwrap();
+    assert_eq!(
+        error.code,
+        zedflow_agent::harness::types::ExecutionErrorCode::Aborted
     );
+    assert_process_gone(&temp.path().join("child.pid"));
+    assert_process_gone(&temp.path().join("grandchild.pid"));
 }
 
 #[cfg(unix)]
