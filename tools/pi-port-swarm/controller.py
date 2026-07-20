@@ -361,6 +361,7 @@ def create_worktree(source: Path, state_dir: Path, base: str, unit: dict[str, An
     branch = f"automation/pi-port-unit/{unit['id'].lower()}-{attempt}-{nonce}"
     worktree.parent.mkdir(parents=True, exist_ok=True)
     git(source, "worktree", "add", "-b", branch, str(worktree), base)
+    git(worktree, "config", "submodule.references/pi.url", str(source / "references/pi"))
     git(worktree, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--no-fetch", "references/pi")
     verify_gitlink(worktree, "HEAD", pin)
     return worktree, state_dir / "sessions" / f"{unit['id'].lower()}-{attempt}-{nonce}"
