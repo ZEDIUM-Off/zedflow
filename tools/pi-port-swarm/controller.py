@@ -358,7 +358,7 @@ def validate_candidate(source: Path, worktree: Path, base: str, candidate: str, 
 def create_worktree(source: Path, state_dir: Path, base: str, unit: dict[str, Any], attempt: int, pin: str) -> tuple[Path, Path]:
     nonce = uuid.uuid4().hex[:12]
     worktree = state_dir / "worktrees" / f"{unit['id'].lower()}-{attempt}-{nonce}"
-    branch = f"automation/pi-port/{unit['id'].lower()}-{attempt}-{nonce}"
+    branch = f"automation/pi-port-unit/{unit['id'].lower()}-{attempt}-{nonce}"
     worktree.parent.mkdir(parents=True, exist_ok=True)
     git(source, "worktree", "add", "-b", branch, str(worktree), base)
     git(worktree, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--no-fetch", "references/pi")
