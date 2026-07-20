@@ -8,7 +8,7 @@ Zedflow builds a Rust execution gateway around a graph-native Root Flow hosted b
 
 The product goal is not merely to bolt LangGraph onto Pi. Zedflow shifts agent behavior from prompt-driven autonomy toward explicit, composable harness control: specialized flows decide action order, model invocation points, exposed context, tool exposure, error paths, interrupts, and parallel routing.
 
-This document is a living MVP product brief. It supersedes earlier JSON-first planning language.
+This document is the **stage-2 product brief**. Stage 2 begins only after the complete Pi TypeScript-to-Rust port has passed the stage-1 fidelity gate defined in `docs/porting/BASELINE.md`. Until then, this document is a target architecture, not the current implementation roadmap.
 
 ---
 
@@ -419,30 +419,32 @@ Zedflow should provide commands/APIs to:
 
 ---
 
-## MVP phases
+## Stage-2 MVP milestones
 
-### Phase 1 — Root Flow and Zedflow API foundation
+These milestones are deferred until the stage-1 Pi fidelity port is complete.
+
+### Milestone 1 — Root Flow and Zedflow API foundation
 
 - Define Root Flow as graph-native Pi loop.
 - Define Zedflow API / Flow Composition API core.
 - Define Flow Bundle, Flow Bridge, Runtime Graph Scope Resolution.
 - Add Bundle Validation and Flow Diagram generation stubs.
 
-### Phase 2 — LangGraph Sidecar Server and Runtime Adapter
+### Milestone 2 — LangGraph Sidecar Server and Runtime Adapter
 
 - Manage local LangGraph Sidecar Server.
 - Compile Runtime Graph from Zedflow API output.
 - Add Runtime Adapter for start/resume/fork/replay/drain.
 - Stream events through Runtime Event Interface.
 
-### Phase 3 — Rust model/tool dispatch
+### Milestone 3 — Rust model/tool dispatch
 
 - Implement model node dispatch into Rust provider substrate.
 - Implement tool execution dispatch into Rust tool substrate.
 - Add Tool Exposure Policy.
 - Preserve Pi-compatible model/tool error surfaces.
 
-### Phase 4 — Zedflow Session integration
+### Milestone 4 — Zedflow Session integration
 
 - Add sidecar Execution Bindings.
 - Co-locate Pi sessions, bindings, and LangGraph checkpoint artifacts.
@@ -450,14 +452,14 @@ Zedflow should provide commands/APIs to:
 - Implement Resume/Fork semantics using LangGraph time travel.
 - Support unbound old Pi entries creating new Bound Ranges forward.
 
-### Phase 5 — Flow composition MVP
+### Milestone 5 — Flow composition MVP
 
 - Enable Flow Bundles and Flow Bridges.
 - Implement Runtime Graph Validation across active bundles.
 - Add Branching Policy, attached paths, detached runs, wait modes.
 - Add Human Return Budget/Distance warnings and Budget Interrupt.
 
-### Phase 6 — Context, stores, extensions, polish
+### Milestone 6 — Context, stores, extensions, polish
 
 - Implement Context Assembly Policy and Context Sources.
 - Add Structured Response support.

@@ -9,4 +9,4 @@
 - The Pi gitlink remains frozen at the value in the DAG.
 - `AG-T0` owns mechanical compilation propagation for the three fixtures broken by AG-C1; `AG-T1` retains later semantic parity closure.
 - `AG-P1` through `AG-P4` depend independently on `AG-H4`; the single-writer runtime serializes them without inventing false dependency edges.
-- Paseo schedule `f7c25e49` is active and delivers hourly ticks through relay `dbe0e650`; legacy schedule `6f738382` remains paused.
+- Paseo scheduling is paused during main-baseline reconciliation; resume only after a successful manual coordinator/worker pilot against the current DAG and state.

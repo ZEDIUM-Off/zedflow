@@ -1,44 +1,31 @@
 ---
 name: zedflow
 description: >-
-  Product-intent and repo-context skill for Zedflow. Use when you need to understand
-  the repo's identity, canonical LangGraph baseline, and graph-native replacement seams before planning or editing.
+  Product and repository context for Zedflow. Use before planning or editing
+  Pi-port, orchestration, flow, runtime graph, or LangGraph surfaces.
 disable-model-invocation: true
 ---
 
 # Zedflow
 
-## Use This Skill When
+## Required development order
 
-- You are working in this repo and need the product-intent context before making changes.
-- You are planning or reviewing work that may affect orchestration, flows, interrupts, subgraphs, or repo identity.
-- You need the canonical reference baseline for this repo.
+1. **Current:** port the frozen Pi TypeScript packages completely and faithfully into matching `crates/zedflow-*` crates.
+2. **Deferred:** after stage-1 fidelity is accepted on one SHA, implement the graph-native Zedflow product and LangGraph integration.
 
-## Read First
+Do not introduce stage-2 product behavior while completing stage 1.
+
+## Read first
 
 1. `AGENTS.md`
 2. `docs/planning/ZEDFLOW_MIGRATION_INTENT.md`
-3. This skill
+3. `docs/planning/PI_RUST_PORTING_RULES.md`
+4. `docs/porting/BASELINE.md`
 
-## Product Identity
+## Stage-1 mental model
 
-Zedflow is a standalone, graph-native coding-agent harness. It is not Pi Rust, not a drop-in Pi replacement, and not a fork-maintenance project.
+The frozen `references/pi` gitlink is the semantic authority. Preserve package boundaries, runtime behavior, public contracts, errors, streaming, cancellation, sessions, tools, TUI behavior, and deterministic tests. Use explicit documented placeholders only where the porting rules permit them.
 
-Canonical reference baseline:
-- `langgraph v1.2.6` — <https://github.com/langchain-ai/langgraph/tree/1.2.6>
+## Stage-2 product target
 
-## Default Mental Model
-
-Prefer small changes that strengthen Zedflow's own flow/runtime graph model.
-
-## Surface Map
-
-| Surface | Default stance |
-| --- | --- |
-| Providers and auth | Build only what Zedflow needs |
-| Model registry and config loading | Keep minimal until flows require more |
-| Built-in tools and execution guards | Prefer explicit runtime boundaries |
-| Sessions and persistence | Align with graph-runtime durability needs |
-| CLI / TUI / RPC substrate | Add seams only when flow UX needs them |
-| Agent loop and orchestration | Target-kernel zone |
-| Subgraphs / interrupts / flow composition | Target-kernel zone |
+Zedflow remains a standalone graph-native coding-agent harness, not a maintained fork of the inherited Rust port. `CONTEXT.md` and `ZEDFLOW_MVP_PRD.md` describe this deferred target. The selected orchestration reference is LangGraph v1.2.6.

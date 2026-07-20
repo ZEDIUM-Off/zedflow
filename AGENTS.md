@@ -2,9 +2,14 @@
 
 Guidelines for AI coding agents working in this repository.
 
-## Product identity
+## Product identity and development order
 
-Zedflow is a standalone, graph-native coding-agent harness. It moves orchestration toward explicit Flow/Runtime Graph composition with LangGraph as the reference runtime.
+Zedflow is a standalone, graph-native coding-agent harness developed in two strict stages:
+
+1. **Current — Pi fidelity port:** port `references/pi/packages/` completely and faithfully into the matching `crates/zedflow-*` Rust crates.
+2. **Deferred — Zedflow product:** only after the Pi port is complete and validated, implement Flow/Runtime Graph composition and LangGraph integration.
+
+During stage 1, preserve Pi TypeScript runtime semantics. Do not introduce stage-2 behavior into ported crates.
 
 Canonical references:
 
@@ -15,7 +20,7 @@ Canonical references:
 
 ## Ground rules
 
-- Do not describe this repo as Pi Rust or as a drop-in Pi replacement.
+- Distinguish the current Pi-to-Rust implementation stage from the final Zedflow product identity.
 - Prefer small, verified changes.
 - Do not delete files unless the user explicitly approves deletion.
 - Never run destructive git commands such as `git reset --hard`, `git clean -fd`, or broad filesystem removal unless the user gives exact, explicit approval.
@@ -41,15 +46,11 @@ export TMPDIR="/tmp/zedflow-tmp"
 mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR"
 ```
 
-## Cleanup direction
-
-This repo is being cleaned from an inherited Pi Rust port workspace into a focused Zedflow base. Treat old drop-in certification, parity ledgers, swarm/operator automation, extension-corpus artifacts, and port-management docs as removable unless they are directly needed by the runtime or current tests.
-
 ## Pi port coordination
 
 The active port uses persistent Pi sessions named `zedflow-port-coordinator` and `zedflow-port-worker`. They communicate with pi-intercom; use `send` for assignments, progress, and completion, and `ask` only for blocking decisions. A session may use subagents internally, but a DAG task must not create a new top-level Pi process. Read `tools/pi-port-swarm/dag.json` and `.agents/port-swarm/state.json`; Git and runnable checks are authoritative.
 
-The root crate is now a temporary quarry. New product code should land in `crates/`, following the package split in `references/pi/packages/`:
+Port each Pi package into its matching crate, following the package split in `references/pi/packages/`:
 
 - `zedflow-core`
 - `zedflow-ai`

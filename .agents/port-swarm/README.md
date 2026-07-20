@@ -17,4 +17,4 @@ Recovery refs retained in the repository:
 
 ## Scheduling
 
-Hourly coordinator ticks are delivered by persistent Paseo relay `dbe0e650` through active schedule `f7c25e49`. Legacy schedule `6f738382` is paused. This relay is transport only; the DAG, Git, and runnable checks remain authoritative.
+Paseo scheduling is paused during main-baseline reconciliation. Resume only after a manual coordinator/worker pilot validates the current DAG and state. Any future relay is transport only; the DAG, Git, and runnable checks remain authoritative.

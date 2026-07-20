@@ -1,8 +1,11 @@
 # Zedflow
 
-Zedflow is a graph-native coding-agent harness.
+Zedflow is a graph-native coding-agent harness developed in two ordered stages:
 
-It uses explicit Flow and Runtime Graph composition. LangGraph is the reference graph runtime; Rust remains the product runtime and execution gateway.
+1. **Current:** port the Pi TypeScript runtime completely and faithfully into matching Rust crates under `crates/`.
+2. **After fidelity is proven:** build the Zedflow Flow/Runtime Graph product with LangGraph.
+
+Stage 2 does not begin until the stage-1 port and its deterministic tests are complete. See [`docs/porting/BASELINE.md`](docs/porting/BASELINE.md) for the current baseline.
 
 ## Current references
 

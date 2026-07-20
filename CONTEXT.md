@@ -1,5 +1,14 @@
 # Zedflow
 
+## Development sequence
+
+Zedflow is developed in two non-overlapping stages:
+
+1. **Current stage — faithful Pi port.** Port the frozen Pi TypeScript runtime package by package into matching Rust crates. Pi behavior and deterministic tests are authoritative; Zedflow-specific runtime behavior is out of scope.
+2. **Deferred stage — Zedflow product.** After the port is complete and fidelity is validated on one recorded SHA, implement the graph-native product described below with LangGraph.
+
+The language in this document defines the stage-2 product target. It must not be read as authorization to skip or redesign the stage-1 Pi runtime port.
+
 Zedflow is a graph-native coding-agent harness for controlling agentic behavior through specialized flows, while preserving Pi session semantics through LangGraph bindings.
 
 ## Language

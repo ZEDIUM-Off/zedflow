@@ -1,23 +1,28 @@
 # Zedflow Rust workspace architecture
 
-Zedflow is being rebuilt as a clean Rust workspace instead of continuing the inherited monolithic Pi Rust port.
+Zedflow is rebuilding Pi TypeScript as a clean Rust workspace instead of continuing the inherited monolithic Rust port.
 
-The source-of-truth architecture follows the package separation in `references/pi/packages/` and maps it to small Rust crates:
+## Stage 1 mapping — current
 
-| Pi reference package | Zedflow crate | Purpose |
+The package split in `references/pi/packages/` is the source of truth:
+
+| Pi reference package | Zedflow crate | Stage-1 responsibility |
 | --- | --- | --- |
-| `packages/ai` | `crates/zedflow-ai` | Providers, model registry, message streaming, auth-facing model APIs |
-| `packages/agent` | `crates/zedflow-agent` | Agent loop primitives and model/tool turn coordination |
-| `packages/coding-agent` | `crates/zedflow-coding-agent` | Coding-agent product assembly and CLI-facing harness behavior |
-| `packages/orchestrator` | `crates/zedflow-orchestrator` | Flow orchestration, graph composition, Root Flow planning |
-| `packages/tui` | `crates/zedflow-tui` | Terminal UI widgets and interaction surface |
+| `packages/ai` | `crates/zedflow-ai` | Providers, model registry, messages, streaming, auth |
+| `packages/agent` | `crates/zedflow-agent` | Agent loop, harness, session semantics used by the agent package |
+| `packages/coding-agent` | `crates/zedflow-coding-agent` | Coding-agent assembly and CLI behavior |
+| `packages/orchestrator` | `crates/zedflow-orchestrator` | Faithful port of the Pi orchestrator package |
+| `packages/tui` | `crates/zedflow-tui` | Terminal UI primitives and behavior |
 | shared substrate | `crates/zedflow-core` | Shared errors, IDs, config primitives, common types |
-| shared substrate | `crates/zedflow-tools` | Built-in tool definitions and execution guards |
-| shared substrate | `crates/zedflow-session` | Sessions, persistence, checkpoint/session binding |
-| LangGraph reference | `crates/zedflow-langgraph` | LangGraph sidecar adapter and runtime event bridge |
+| coding-agent tools | `crates/zedflow-tools` | Built-in tool definitions and execution behavior |
+| coding-agent sessions | `crates/zedflow-session` | Session persistence and tree behavior |
 
-## Migration rule
+Current status:
 
-The old root crate remains temporarily as a compiling quarry. New work should go into `crates/` unless it is explicitly preserving or extracting a piece of the old runtime.
+- `zedflow-ai` and `zedflow-agent` contain substantial ports.
+- `zedflow-coding-agent`, `zedflow-orchestrator`, `zedflow-tui`, `zedflow-tools`, and `zedflow-session` are workspace skeletons awaiting their package ports.
+- New stage-1 code belongs in the matching crate. Do not recreate a monolithic root crate.
 
-Do not add new features to the monolith unless they are needed to keep validation green during extraction.
+## Stage 2 mapping — deferred
+
+`crates/zedflow-langgraph` and Zedflow-specific orchestration, Runtime Graph, Flow, checkpoint binding, and sidecar behavior are stage 2. They remain skeletons until the complete Pi port passes the stage-1 exit gate.
