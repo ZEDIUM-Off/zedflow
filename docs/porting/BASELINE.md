@@ -30,6 +30,8 @@ During the 2026-07-20 stabilization:
 
 New port work continues only on the independent crate-based Zedflow history.
 
-## Swarm status
+## Port controller status
 
-Automated scheduling is paused while the clean baseline and DAG state are reconciled. The persistent coordinator/worker model remains the intended port mechanism. Scheduling may resume only after a manual pilot proves task selection, one-writer ownership, exact-SHA validation, review, and compare-and-swap integration.
+The V2 controller runs fresh, bounded Pi contexts per DAG unit and stores operational state outside the repository. It advances a dedicated automation integration ref only after ownership, exact-SHA, frozen-gitlink, validation, and compare-and-swap checks. `--continuous` chains accepted units immediately; no cron, Paseo, systemd service, or daemon schedules execution.
+
+An optional external timer may invoke the read-only `monitor` command for progress reporting. The first live controller pilot is `AG-R1-JSONL-LEAF-ERROR`, followed by `AG-P2`; it must prove the acceptance chain before remaining automated work proceeds.

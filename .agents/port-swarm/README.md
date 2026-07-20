@@ -1,20 +1,9 @@
-# Persistent Pi port coordination
+# Pi port control state
 
-The port uses two long-lived Pi sessions: `zedflow-port-coordinator` and `zedflow-port-worker`. They communicate through pi-intercom; either session may use subagents internally, but only the worker edits product code and only one writer is active.
+The committed DAG and seed state define intended work. Runtime state is external at `$XDG_STATE_HOME/zedflow-pi-port/state.json`; it records immutable bases, result SHAs, attempts, worktrees, sessions, and command outcomes. Git and runnable checks are authoritative.
 
-`tools/pi-port-swarm/dag.json` defines dependencies, ownership, and validation. `state.json` contains only closed units and the current unit; `HEAD` is the integration head. Git and runnable checks prove completion; intercom is transport, not durable state.
+`tools/pi-port-swarm/controller.py` permits one active writer. It creates a fresh Pi context per unit, validates the candidate, and CAS-advances `refs/heads/automation/pi-port`. A worker may not change the plan; an evidenced `PLAN_CHANGE` invokes one fresh coordinator limited to DAG/state/docs control ownership.
 
-Assignments and completion reports use `send`. `ask`/`reply` is reserved for blocking decisions. There are no acceptance reports, child-run IDs, lifecycle-artifact checks, external state machine, or one-shot Pi process per task.
+No execution schedule is active. `monitor` is read-only and may be run by an external observer only.
 
-API-breaking contract units must be followed by a compilation-propagation unit before any broad integration gate. Independent leaf units share their real prerequisite in the DAG; `max_active_writers` controls serialization instead of false dependency edges.
-
-Recovery refs retained in the repository:
-
-- `refs/archive/pi-port-v1/source-worktree`
-- `refs/archive/pi-port-v1/source-bootstrap`
-- `refs/archive/pi-port-v1/integration`
-- `refs/archive/pi-port-v1/ag-l2-candidate`
-
-## Scheduling
-
-Paseo scheduling is paused during main-baseline reconciliation. Resume only after a manual coordinator/worker pilot validates the current DAG and state. Any future relay is transport only; the DAG, Git, and runnable checks remain authoritative.
+Archive refs are audit inputs only; they are never merged wholesale.

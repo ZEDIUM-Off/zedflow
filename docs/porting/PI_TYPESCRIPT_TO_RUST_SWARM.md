@@ -1,15 +1,11 @@
-# Persistent Pi TypeScript → Rust port coordination
+# Pi TypeScript → Rust port controller
 
-The swarm automates **stage 1**, the faithful port of frozen Pi TypeScript packages into matching Rust crates. It must not implement stage-2 Zedflow/LangGraph behavior.
+The stage-1 port uses `tools/pi-port-swarm/controller.py`. It creates a fresh `pi -p` worker context for one ready DAG unit, verifies the committed result deterministically, then either stops or immediately selects the next ready unit with `--continuous`.
 
-The port is coordinated by two long-lived Pi sessions rather than one `pi -p` process per DAG unit. `zedflow-port-coordinator` owns task selection and acceptance; `zedflow-port-worker` is the sole product-code writer. Both may use subagents inside their existing sessions.
+The controller records runtime state outside the repository under `$XDG_STATE_HOME/zedflow-pi-port` and advances only `refs/heads/automation/pi-port` through compare-and-swap. `main` is never updated behind a checked-out worktree.
 
-The sessions communicate through pi-intercom. Assignments and completion reports use `send`; blocking decisions use `ask`/`reply`. Durable truth remains the Git branch, `tools/pi-port-swarm/dag.json`, `.agents/port-swarm/state.json`, and runnable validation commands.
+Workers receive only an immutable assignment capsule. They cannot edit DAG/state or use persistent intercom coordination. A worker reporting `PLAN_CHANGE` causes one fresh, control-plane-only coordinator to propose a committed DAG/state/docs update; generic failure never silently replans.
 
-## Current status
+There is no scheduled execution. `monitor` emits deterministic, read-only progress for an optional external monitoring timer. It cannot launch Pi or mutate Git/state.
 
-Automated Paseo scheduling is paused during main-baseline reconciliation. Resume it only after a manual coordinator/worker pilot succeeds against the current DAG and state. A restored schedule must target the persistent coordinator rather than create a new process per tick.
-
-## Stage-1 completion
-
-The swarm is finished only when the exit gate in `docs/porting/BASELINE.md` passes on one recorded SHA. Closing the current DAG wave is not equivalent to completing the Pi port.
+Stage-1 completion remains the exit gate in `BASELINE.md`; closing a DAG wave is not equivalent to completing the Pi port.

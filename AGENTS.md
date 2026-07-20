@@ -48,7 +48,9 @@ mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR"
 
 ## Pi port coordination
 
-The active port uses persistent Pi sessions named `zedflow-port-coordinator` and `zedflow-port-worker`. They communicate with pi-intercom; use `send` for assignments, progress, and completion, and `ask` only for blocking decisions. A session may use subagents internally, but a DAG task must not create a new top-level Pi process. Read `tools/pi-port-swarm/dag.json` and `.agents/port-swarm/state.json`; Git and runnable checks are authoritative.
+`tools/pi-port-swarm/controller.py` is the stage-1 controller. Each unit runs in a fresh `pi -p` session and short-lived worktree; runtime state lives under `$XDG_STATE_HOME/zedflow-pi-port`. The controller alone selects units, verifies ownership/ancestry/gitlink/validations, and advances `refs/heads/automation/pi-port` by compare-and-swap. Workers never edit plan state; only an evidenced `PLAN_CHANGE` launches a fresh control-plane coordinator.
+
+There is no scheduled port execution. `controller.py monitor` is deterministic and read-only; a separately managed timer may invoke it, but it must never dispatch work.
 
 Port each Pi package into its matching crate, following the package split in `references/pi/packages/`:
 
