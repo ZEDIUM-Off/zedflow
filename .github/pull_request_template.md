@@ -1,33 +1,20 @@
 ## Summary
+
 - What changed:
-- Why:
+- Pi TypeScript source/tests mirrored:
 - Risk level (low/medium/high):
 
-## Definition of Done Evidence
-- [ ] Unit evidence linked
-- [ ] E2E evidence linked
-- [ ] Extension evidence linked
-- [ ] Failing paths include artifact links and repro commands
+## Stage-1 fidelity evidence
 
-### Unit Evidence
-- Primary run link(s):
-- Notes:
+- Frozen Pi source path(s):
+- Rust target path(s):
+- Exact candidate SHA:
+- Fidelity review:
+- Rust review:
 
-### E2E Evidence
-- Primary run link(s):
-- Notes:
+## Validation
 
-### Extension Evidence
-- Primary run link(s):
-- Notes:
-
-## Reproduction Commands
-```bash
-cargo test --all-targets
-cargo test --all-targets --features ext-conformance
-./scripts/e2e/run_all.sh --profile ci
-```
-
-## Migration Guidance (Existing Feature Branches)
-- If this branch was created before the DoD gate rollout, replace the PR body with this template before requesting merge.
-- For historical failing runs, include direct artifact links plus the exact rerun command used to validate the fix.
+- [ ] `cargo fmt --all --check`
+- [ ] `cargo check --workspace --all-targets`
+- [ ] `cargo test --workspace --all-targets`
+- [ ] Ignored tests and `PORT PLACEHOLDER` changes are explained
