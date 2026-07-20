@@ -188,7 +188,7 @@
       ],
       "validation": [
         "cargo fmt --package zedflow-agent --check",
-        "cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context"
+        "cargo test -p zedflow-agent --test harness -- --list | grep -Fqx 'storage::jsonl_set_leaf_id_reports_leaf_append_context: test' && cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context -- --exact"
       ],
       "intent": "Restore Pi-specific JSONL leaf append failure context found during the worktree audit; preserve general append-entry context."
     },
