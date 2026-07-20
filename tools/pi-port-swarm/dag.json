@@ -209,6 +209,22 @@
       "intent": "Process-tree termination."
     },
     {
+      "id": "AG-P2-R1-PROCESS-TREE",
+      "kind": "writer",
+      "depends_on": [
+        "AG-P2"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/env/nodejs.rs",
+        "crates/zedflow-agent/tests/harness/nodejs-env.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check",
+        "cargo test -p zedflow-agent --test nodejs-env"
+      ],
+      "intent": "Repair AG-P2 review blockers: use the existing command-group facility without blocking the async executor or PATH-resolved kill; prove timeout and active-abort terminate child and grandchild processes while normal exit remains correct."
+    },
+    {
       "id": "AG-P3",
       "kind": "writer",
       "depends_on": [
@@ -248,7 +264,8 @@
         "AG-P1",
         "AG-P2",
         "AG-P3",
-        "AG-P4"
+        "AG-P4",
+        "AG-P2-R1-PROCESS-TREE"
       ],
       "ownership": [
         "crates/zedflow-agent/tests"
