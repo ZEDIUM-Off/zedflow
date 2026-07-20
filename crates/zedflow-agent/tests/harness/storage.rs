@@ -339,6 +339,32 @@ fn jsonl_loads_existing_entries_and_reconstructs_leaf() {
 }
 
 #[test]
+fn jsonl_set_leaf_id_reports_leaf_append_context() {
+    run(async {
+        let temp = TempDir::new();
+        let file = temp.path().join("session.jsonl");
+        let storage = create_jsonl(&temp, &file).await;
+        storage
+            .append_entry(message_entry("root", None, user_message("root")))
+            .await
+            .unwrap();
+        std::fs::remove_file(&file).unwrap();
+        std::fs::create_dir(&file).unwrap();
+
+        let error = storage
+            .set_leaf_id(Some("root".to_string()))
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, SessionErrorCode::Storage);
+        assert!(
+            error.message.starts_with("Failed to append session leaf "),
+            "{}",
+            error.message
+        );
+    });
+}
+
+#[test]
 fn jsonl_finds_entries_by_type_and_maintains_labels() {
     run(async {
         let temp = TempDir::new();

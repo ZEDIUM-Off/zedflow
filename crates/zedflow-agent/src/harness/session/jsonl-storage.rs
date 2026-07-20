@@ -179,7 +179,7 @@ impl SessionStorage for JsonlSessionStorage {
                     target_id: leaf_id.clone(),
                 })
             };
-            append_jsonl_entry(self.fs.as_ref(), &self.file_path, &entry).await?;
+            append_jsonl_entry(self.fs.as_ref(), &self.file_path, &entry, "leaf").await?;
             let mut state = self.state.lock().expect("jsonl session storage lock");
             state
                 .by_id
@@ -202,7 +202,7 @@ impl SessionStorage for JsonlSessionStorage {
         entry: SessionTreeEntry,
     ) -> crate::harness::types::HarnessFuture<'a, Result<(), SessionError>> {
         Box::pin(async move {
-            append_jsonl_entry(self.fs.as_ref(), &self.file_path, &entry).await?;
+            append_jsonl_entry(self.fs.as_ref(), &self.file_path, &entry, "entry").await?;
             let mut state = self.state.lock().expect("jsonl session storage lock");
             update_label_cache(&mut state.labels_by_id, &entry);
             state.current_leaf_id = leaf_id_after_entry(&entry);
@@ -511,6 +511,7 @@ async fn append_jsonl_entry(
     fs: &dyn FileSystem,
     file_path: &str,
     entry: &SessionTreeEntry,
+    context: &str,
 ) -> Result<(), SessionError> {
     let line = serde_json::to_string(entry).map_err(|error| {
         SessionError::new(
@@ -522,7 +523,7 @@ async fn append_jsonl_entry(
     get_file_system_result_or_throw(
         fs.append_file(file_path, FileContent::Text(format!("{line}\n")), None)
             .await,
-        &format!("Failed to append session entry {}", entry_id(entry)),
+        &format!("Failed to append session {context} {}", entry_id(entry)),
     )
 }
 
