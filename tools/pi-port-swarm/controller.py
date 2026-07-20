@@ -38,7 +38,10 @@ class ControllerError(RuntimeError):
 
 
 def run_cmd(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check)
+    try:
+        return subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check)
+    except OSError as error:
+        raise ControllerError(f"failed to run {args[0]}: {error}") from error
 
 
 def git(source: Path, *args: str, check: bool = True) -> str:
