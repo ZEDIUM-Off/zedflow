@@ -15,3 +15,13 @@ Runtime state, logs, sessions, and worktrees live under `$XDG_STATE_HOME/zedflow
 A worker can return `PLAN_CHANGE`, which alone starts a fresh coordinator permitted to modify only DAG/state/docs control files. The controller validates the plan, frozen Pi gitlink, owned diff, declared commands, ancestry, and CAS before accepting any candidate.
 
 A monitoring timer may call `monitor` only. It must be read-only and must not call `run`. Its manifest counts are explicitly mechanical target-presence inventory, never fidelity-completion claims.
+
+The local installation uses two user units outside the repository:
+
+```bash
+systemctl --user start zedflow-pi-port.service          # continuous until blocker/completion
+systemctl --user status zedflow-pi-port.service
+systemctl --user status zedflow-pi-port-monitor.timer   # hourly and read-only
+```
+
+The execution service has no timer and no automatic retry. It shares `CARGO_TARGET_DIR=/tmp/zedflow-target`; every unit still gets a fresh Pi session and worktree. Monitoring writes `~/.local/state/zedflow-pi-port/monitor/latest.json` without invoking a model.

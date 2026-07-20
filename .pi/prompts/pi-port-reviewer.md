@@ -12,4 +12,4 @@ Print exactly one final JSON line:
 {"status":"DONE","unit":"<id>","base":"<40-hex>","summary":"no owned blocker"}
 ```
 
-Return `BLOCKED` with concrete file/line evidence and no candidate. Never return a candidate or `PLAN_CHANGE`.
+Return `PLAN_CHANGE` with concrete file/line evidence, `reason`, and `blocker` when a repair unit or dependency change can represent the finding safely. Return `BLOCKED` only when a human product decision is required. Never return a candidate.
