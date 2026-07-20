@@ -358,6 +358,22 @@
         "git diff --check"
       ],
       "intent": "Extend the graph only after both wave reviews pass."
+    },
+    {
+      "id": "CA-RECONCILE-CHECKPOINT",
+      "kind": "checkpoint",
+      "depends_on": [
+        "NEXT-PORT-DAG"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Compare the frozen Pi coding-agent package with zedflow-coding-agent, record the proven resume point, and extend the DAG into bounded fidelity units without editing Rust source."
     }
   ]
 }

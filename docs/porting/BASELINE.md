@@ -34,4 +34,4 @@ New port work continues only on the independent crate-based Zedflow history.
 
 The V2 controller runs fresh, bounded Pi contexts per DAG unit and stores operational state outside the repository. It advances a dedicated automation integration ref only after ownership, exact-SHA, frozen-gitlink, validation, and compare-and-swap checks. `--continuous` chains accepted units immediately; no cron, Paseo, systemd service, or daemon schedules execution.
 
-An optional external timer may invoke the read-only `monitor` command for progress reporting. The first live controller pilot is `AG-R1-JSONL-LEAF-ERROR`, followed by `AG-P2`; it must prove the acceptance chain before remaining automated work proceeds.
+An optional external timer may invoke the read-only `monitor` command for progress reporting. The agent wave has passed its fidelity and Rust reviews; the next bounded step is reconciliation of the frozen `coding-agent` package before any Rust source is assigned.
