@@ -307,10 +307,26 @@
       "intent": "Mechanical wave acceptance."
     },
     {
+      "id": "AG-H2-R1-SAVE-POINT-OPTIONS",
+      "kind": "writer",
+      "depends_on": [
+        "V1"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/agent-harness.rs",
+        "crates/zedflow-agent/tests/harness/agent-harness-stream.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check",
+        "cargo test -p zedflow-agent --test harness agent_harness_stream::updated_stream_options_apply_at_save_point -- --exact"
+      ],
+      "intent": "Repair RV-FID blocker: refresh stream options at the save point so updates made during tool execution affect the next provider request in the same prompt, and cover that frozen Pi behavior directly."
+    },
+    {
       "id": "RV-FID",
       "kind": "reviewer",
       "depends_on": [
-        "V1"
+        "AG-H2-R1-SAVE-POINT-OPTIONS"
       ],
       "ownership": [],
       "validation": [],
@@ -320,7 +336,7 @@
       "id": "RV-RUST",
       "kind": "reviewer",
       "depends_on": [
-        "V1"
+        "AG-H2-R1-SAVE-POINT-OPTIONS"
       ],
       "ownership": [],
       "validation": [],
