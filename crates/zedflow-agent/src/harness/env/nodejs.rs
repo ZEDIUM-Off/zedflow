@@ -61,6 +61,19 @@ enum CommandTransport {
     Stdin,
 }
 
+struct CancelOnDrop {
+    cancelled: Arc<AtomicBool>,
+    armed: bool,
+}
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        if self.armed {
+            self.cancelled.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
 impl NodeExecutionEnv {
     /// Create a new local execution environment.
     #[must_use]
@@ -438,6 +451,12 @@ impl Shell for NodeExecutionEnv {
             let shell_config = get_shell_config(self.shell_path.as_deref())?;
             let command = command.to_string();
             let shell_env = self.shell_env.clone();
+            let cancelled = Arc::new(AtomicBool::new(false));
+            let worker_cancelled = Arc::clone(&cancelled);
+            let mut cancel_on_drop = CancelOnDrop {
+                cancelled,
+                armed: true,
+            };
             let (sender, receiver) = oneshot::channel();
             thread::spawn(move || {
                 let _ = sender.send(exec_blocking(
@@ -447,11 +466,14 @@ impl Shell for NodeExecutionEnv {
                     shell_env.as_ref(),
                     options,
                     timeout,
+                    &worker_cancelled,
                 ));
             });
-            receiver.await.map_err(|_| {
+            let result = receiver.await.map_err(|_| {
                 ExecutionError::new(ExecutionErrorCode::Unknown, "command worker stopped", None)
-            })?
+            });
+            cancel_on_drop.armed = false;
+            result?
         })
     }
 
@@ -467,6 +489,7 @@ fn exec_blocking(
     shell_env: Option<&HashMap<String, String>>,
     options: ShellExecOptions,
     timeout: Option<Duration>,
+    cancelled: &AtomicBool,
 ) -> Result<ShellExecOutput, ExecutionError> {
     let mut process = Command::new(&shell_config.shell);
     process.current_dir(cwd);
@@ -530,6 +553,7 @@ fn exec_blocking(
         timeout,
         options.abort_signal.as_ref(),
         &callback_failed,
+        cancelled,
     )?;
 
     if let Some(thread) = stdout_thread {
@@ -570,9 +594,14 @@ fn wait_child(
     timeout: Option<Duration>,
     abort_signal: Option<&zedflow_ai::AbortSignal>,
     callback_failed: &AtomicBool,
+    cancelled: &AtomicBool,
 ) -> Result<std::process::ExitStatus, ExecutionError> {
     let mut remaining = timeout;
     loop {
+        if cancelled.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            return child.wait().map_err(to_execution_unknown);
+        }
         if abort_signal.is_some_and(zedflow_ai::AbortSignal::aborted) {
             let _ = child.kill();
             let _ = child.wait();

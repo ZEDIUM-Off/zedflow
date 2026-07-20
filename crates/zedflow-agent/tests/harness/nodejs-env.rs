@@ -3,8 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use futures::executor::block_on;
+use futures::task::noop_waker;
 use zedflow_agent::harness::env::nodejs::{NodeExecutionEnv, NodeExecutionEnvOptions};
 use zedflow_agent::harness::types::{
     CreateDirOptions, CreateTempFileOptions, FileContent, FileErrorCode, FileKind, FileSystem,
@@ -404,6 +406,31 @@ fn timeout_kills_the_shell_process_tree() {
         error.code,
         zedflow_agent::harness::types::ExecutionErrorCode::Timeout
     );
+    assert_process_gone(&temp.path().join("child.pid"));
+    assert_process_gone(&temp.path().join("grandchild.pid"));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn dropping_exec_future_kills_the_shell_process_tree() {
+    let temp = TempDir::new();
+    let env = temp.env();
+    let mut future = env.exec(process_tree_command(), None);
+    let waker = noop_waker();
+    assert!(matches!(
+        future.as_mut().poll(&mut Context::from_waker(&waker)),
+        Poll::Pending
+    ));
+
+    for _ in 0..20 {
+        if temp.path().join("grandchild.pid").exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(temp.path().join("grandchild.pid").exists());
+    drop(future);
+
     assert_process_gone(&temp.path().join("child.pid"));
     assert_process_gone(&temp.path().join("grandchild.pid"));
 }
