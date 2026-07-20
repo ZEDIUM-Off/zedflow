@@ -1,6 +1,5 @@
 use zedflow_agent::harness::session::uuidv7;
 
-#[ignore = "source blocker: A2/A8 intentionally use approved uuid v4 replacement; Pi UUIDv7 layout and monotonic order are not implemented"]
 #[test]
 fn uses_rfc_9562_layout_and_preserves_monotonic_order() {
     let first = uuidv7();

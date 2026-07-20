@@ -10,10 +10,11 @@
     "AG-H2",
     "AG-H3",
     "AG-T0",
-    "AG-H4"
+    "AG-H4",
+    "AG-P1"
   ],
   "current": {
-    "id": "AG-P1",
+    "id": "AG-P2",
     "base": "HEAD",
     "worker": null,
     "status": "ready",
