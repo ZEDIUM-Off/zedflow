@@ -1,26 +1,64 @@
-//! Proxy assistant-event parsing seam ported from Pi `proxy.ts`.
-//!
-//! The network `fetch` wrapper is intentionally not ported here; Rust callers feed the
-//! server-sent JSON event payloads into this module and receive canonical `zedflow-ai`
-//! assistant message events.
-//!
-//! PORT PLACEHOLDER: Pi's `streamProxy` owns HTTP fetch, abort wiring, and SSE body
-//! decoding. No HTTP client/runtime dependency is approved for `zedflow-agent`; add a
-//! real stream wrapper only after that dependency decision is made.
+//! Pi-compatible proxy HTTP and server-sent event transport.
 
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt;
+use std::io::{BufRead, BufReader};
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zedflow_ai::{
-    AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageRole,
-    DoneStopReason, ErrorStopReason, Model, SharedAssistantMessage, StopReason, TextContent,
-    TextContentType, ThinkingContent, ThinkingContentType, ToolCall, ToolCallType, Usage,
-    parse_streaming_json,
+    AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream,
+    AssistantMessageRole, CacheRetention, Context, DoneStopReason, ErrorStopReason, Model,
+    ProviderHeaders, SharedAssistantMessage, SimpleStreamOptions, StopReason, TextContent,
+    TextContentType, ThinkingBudgets, ThinkingContent, ThinkingContentType, ThinkingLevel,
+    ToolCall, ToolCallType, Transport, Usage, parse_streaming_json,
 };
+
+/// Options for [`stream_proxy`].
+#[derive(Clone)]
+pub struct ProxyStreamOptions {
+    /// Options forwarded to the proxy server.
+    pub stream: SimpleStreamOptions,
+    /// Bearer token used to authenticate to the proxy.
+    pub auth_token: String,
+    /// Proxy base URL, without `/api/stream`.
+    pub proxy_url: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProxyRequestOptions<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning: Option<ThinkingLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_retention: Option<CacheRetention>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_id: &'a Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    headers: &'a Option<ProviderHeaders>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: &'a Option<HashMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transport: Option<Transport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking_budgets: &'a Option<ThinkingBudgets>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_retry_delay_ms: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct ProxyRequest<'a> {
+    model: &'a Model,
+    context: &'a Context,
+    options: ProxyRequestOptions<'a>,
+}
 
 /// Proxy event types sent by the Pi proxy server without bulky partial messages.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -100,6 +138,127 @@ impl fmt::Display for ProxyEventError {
 }
 
 impl StdError for ProxyEventError {}
+
+/// POST a request to the proxy and stream its SSE assistant events.
+#[must_use]
+pub fn stream_proxy(
+    model: &Model,
+    context: &Context,
+    options: ProxyStreamOptions,
+) -> AssistantMessageEventStream {
+    let stream = AssistantMessageEventStream::new();
+    let output = stream.clone();
+    let model = model.clone();
+    let context = context.clone();
+
+    thread::spawn(move || run_proxy_request(&model, &context, &options, &output));
+    stream
+}
+
+fn run_proxy_request(
+    model: &Model,
+    context: &Context,
+    options: &ProxyStreamOptions,
+    stream: &AssistantMessageEventStream,
+) {
+    let partial = initial_proxy_assistant_message(model);
+    let mut state = ProxyEventState::default();
+    let result = (|| -> Result<(), Box<dyn StdError + Send + Sync>> {
+        if options
+            .stream
+            .stream
+            .signal
+            .as_ref()
+            .is_some_and(|signal| signal.aborted())
+        {
+            return Err("Request aborted by user".into());
+        }
+        let base = options.proxy_url.trim_end_matches('/');
+        let request_options = ProxyRequestOptions {
+            temperature: options.stream.stream.temperature,
+            max_tokens: options.stream.stream.max_tokens,
+            reasoning: options.stream.reasoning,
+            cache_retention: options.stream.stream.cache_retention,
+            session_id: &options.stream.stream.session_id,
+            headers: &options.stream.stream.headers,
+            metadata: &options.stream.stream.metadata,
+            transport: options.stream.stream.transport,
+            thinking_budgets: &options.stream.thinking_budgets,
+            max_retry_delay_ms: options.stream.stream.max_retry_delay_ms,
+        };
+        let response = reqwest::blocking::Client::new()
+            .post(format!("{base}/api/stream"))
+            .bearer_auth(&options.auth_token)
+            .json(&ProxyRequest {
+                model,
+                context,
+                options: request_options,
+            })
+            .send()?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let fallback = format!(
+                "Proxy error: {} {}",
+                status.as_u16(),
+                status.canonical_reason().unwrap_or("")
+            )
+            .trim_end()
+            .to_owned();
+            let message = response
+                .json::<Value>()
+                .ok()
+                .and_then(|body| body.get("error").and_then(Value::as_str).map(str::to_owned))
+                .map_or(fallback, |error| format!("Proxy error: {error}"));
+            return Err(message.into());
+        }
+
+        for line in BufReader::new(response).lines() {
+            if options
+                .stream
+                .stream
+                .signal
+                .as_ref()
+                .is_some_and(|signal| signal.aborted())
+            {
+                return Err("Request aborted by user".into());
+            }
+            let line = line?;
+            let Some(data) = line
+                .strip_prefix("data: ")
+                .map(str::trim)
+                .filter(|data| !data.is_empty())
+            else {
+                continue;
+            };
+            if let Some(event) = process_proxy_event_json(data, &partial, &mut state)? {
+                stream.push(event);
+            }
+        }
+        stream.end(None);
+        Ok(())
+    })();
+
+    if let Err(error) = result {
+        let aborted = options
+            .stream
+            .stream
+            .signal
+            .as_ref()
+            .is_some_and(|signal| signal.aborted());
+        let reason = if aborted {
+            ErrorStopReason::Aborted
+        } else {
+            ErrorStopReason::Error
+        };
+        let error = partial.with_mut(|message| {
+            message.stop_reason = error_reason(reason);
+            message.error_message = Some(error.to_string());
+            message.clone()
+        });
+        stream.push(AssistantMessageEvent::Error { reason, error });
+        stream.end(None);
+    }
+}
 
 /// Build the initial partial assistant message used by proxy event reconstruction.
 #[must_use]
