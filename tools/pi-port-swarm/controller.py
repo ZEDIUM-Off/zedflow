@@ -244,7 +244,10 @@ def reconcile_runtime(source: Path, dag: dict[str, Any], state: dict[str, Any], 
             continue
         base, candidate = record.get("base"), record.get("candidate")
         if record.get("status") == "ACCEPTING" and candidate and ref == candidate:
-            record["status"] = "SUPERSEDED" if record.get("plan_change") else "ACCEPTED"
+            if record.get("plan_change"):
+                record["status"] = "RETRY" if record.get("replan_retry") else "SUPERSEDED"
+            else:
+                record["status"] = "ACCEPTED"
             record["blocker"] = None
         elif ref == base:
             record["status"] = "FAILED"
@@ -384,17 +387,18 @@ def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any]
     return result_line(completed.stdout)
 
 
-def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, reason: Any, revised_hash: str) -> None:
+def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, reason: Any, revised_hash: str, replan_retry: bool) -> None:
     state.setdefault("units", {}).setdefault(unit_id, {}).update(
         status="ACCEPTING",
         candidate=candidate,
         plan_change=reason,
+        replan_retry=replan_retry,
         revised_dag_sha256=revised_hash,
     )
     state["dag_sha256"] = revised_hash
 
 
-def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any], state_path: Path) -> str:
+def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any], state_path: Path) -> tuple[str, bool]:
     require_integration_ref(integration_ref)
     control = {"id": f"REPLAN-{unit['id']}", "kind": "checkpoint", "depends_on": [], "ownership": list(CONTROL_OWNERSHIP), "validation": ["python3 tools/pi-port-swarm/controller.py validate"], "intent": result.get("reason", "evidence-backed plan mutation")}
     worktree, session = create_worktree(source, state_dir, base, control, 1, pin)
@@ -411,14 +415,15 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
     if pinned_gitlink(revised) != pin:
         raise ControllerError("coordinator changed the frozen Pi gitlink")
     revised_hash = dag_hash(revised)
+    replan_retry = any(revised_unit["id"] == unit["id"] for revised_unit in revised_units)
     prospective = json.loads(json.dumps(state))
-    prospective.setdefault("units", {})[unit["id"]] = {"status": "SUPERSEDED"}
+    prospective.setdefault("units", {})[unit["id"]] = {"status": "RETRY" if replan_retry else "SUPERSEDED"}
     if not ready_units(revised_units, prospective) and not graph_complete(revised_units, prospective):
         raise ControllerError("PLAN_CHANGE leaves no reachable replacement or ready unit")
-    mark_plan_acceptance(state, unit["id"], candidate, result.get("reason"), revised_hash)
+    mark_plan_acceptance(state, unit["id"], candidate, result.get("reason"), revised_hash, replan_retry)
     atomic_json(state_path, state)
     git(source, "update-ref", integration_ref, candidate, base)
-    return candidate
+    return candidate, replan_retry
 
 
 def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
@@ -447,8 +452,8 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
         elif result["status"] == "PLAN_CHANGE":
             record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "plan change requested")
             atomic_json(state_path, state)
-            candidate = accept_plan_change(source, state_dir, base, unit, result, pin, integration_ref, state, state_path)
-            record.update(status="SUPERSEDED", candidate=candidate, plan_change=result.get("reason"))
+            candidate, replan_retry = accept_plan_change(source, state_dir, base, unit, result, pin, integration_ref, state, state_path)
+            record.update(status="RETRY" if replan_retry else "SUPERSEDED", candidate=candidate, plan_change=result.get("reason"), replan_retry=replan_retry)
         else:
             candidate = result.get("candidate")
             if unit["kind"] in MUTATING_KINDS:
@@ -468,7 +473,7 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
                 record.update(status="ACCEPTED")
         state.setdefault("history", []).append({"unit": unit["id"], "status": record["status"], "base": base, "candidate": record.get("candidate"), "at": int(time.time())})
         atomic_json(state_path, state)
-        return "replanned" if record["status"] == "SUPERSEDED" else record["status"].lower()
+        return "replanned" if record.get("plan_change") else record["status"].lower()
     except ControllerError as error:
         record.update(status="FAILED", blocker=str(error))
         atomic_json(state_path, state)
@@ -559,8 +564,8 @@ def main() -> int:
                 atomic_json(state_path, state)
             if args.command == "retry":
                 record = state.get("units", {}).get(args.unit)
-                if not record or record.get("status") not in {"FAILED", "BLOCKED"}:
-                    raise ControllerError("retry requires a FAILED or BLOCKED unit")
+                if not record or record.get("status") not in {"FAILED", "BLOCKED", "SUPERSEDED"}:
+                    raise ControllerError("retry requires a FAILED, BLOCKED, or SUPERSEDED unit")
                 record.update(status="RETRY", candidate=None, blocker=None)
                 atomic_json(state_path, state)
                 print(json.dumps({"status": "retry-ready", **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))

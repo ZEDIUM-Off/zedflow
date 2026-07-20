@@ -230,7 +230,7 @@ class ControllerTests(unittest.TestCase):
             controller.atomic_json(path, state)
             with self.assertRaises(controller.ControllerError):
                 controller.load_runtime(ROOT, revised, path)
-            controller.mark_plan_acceptance(state, "AG-R1-JSONL-LEAF-ERROR", "b" * 40, "repair order", controller.dag_hash(revised))
+            controller.mark_plan_acceptance(state, "AG-R1-JSONL-LEAF-ERROR", "b" * 40, "repair order", controller.dag_hash(revised), True)
             controller.atomic_json(path, state)
             self.assertEqual(controller.load_runtime(ROOT, revised, path)["dag_sha256"], controller.dag_hash(revised))
 
