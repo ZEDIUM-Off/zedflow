@@ -226,7 +226,7 @@ def reconcile_runtime(source: Path, state: dict[str, Any], integration_ref: str)
             continue
         base, candidate = record.get("base"), record.get("candidate")
         if record.get("status") == "ACCEPTING" and candidate and ref == candidate:
-            record["status"] = "ACCEPTED"
+            record["status"] = "SUPERSEDED" if record.get("plan_change") else "ACCEPTED"
             record["blocker"] = None
         elif ref == base:
             record["status"] = "FAILED"
@@ -328,7 +328,7 @@ def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any]
     return result_line(completed.stdout)
 
 
-def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any]) -> str:
+def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any], state_path: Path) -> str:
     require_integration_ref(integration_ref)
     control = {"id": f"REPLAN-{unit['id']}", "kind": "checkpoint", "depends_on": [], "ownership": list(CONTROL_OWNERSHIP), "validation": ["python3 tools/pi-port-swarm/controller.py validate"], "intent": result.get("reason", "evidence-backed plan mutation")}
     worktree, session = create_worktree(source, state_dir, base, control, 1, pin)
@@ -347,6 +347,8 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
     prospective.setdefault("units", {})[unit["id"]] = {"status": "SUPERSEDED"}
     if not ready_units(revised_units, prospective) and not graph_complete(revised_units, prospective):
         raise ControllerError("PLAN_CHANGE leaves no reachable replacement or ready unit")
+    state.setdefault("units", {})[unit["id"]].update(status="ACCEPTING", candidate=candidate, plan_change=result.get("reason"))
+    atomic_json(state_path, state)
     git(source, "update-ref", integration_ref, candidate, base)
     return candidate
 
@@ -378,7 +380,7 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
         elif result["status"] == "PLAN_CHANGE":
             record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "plan change requested")
             atomic_json(state_path, state)
-            candidate = accept_plan_change(source, state_dir, base, unit, result, pin, integration_ref, state)
+            candidate = accept_plan_change(source, state_dir, base, unit, result, pin, integration_ref, state, state_path)
             record.update(status="SUPERSEDED", candidate=candidate, plan_change=result.get("reason"))
         else:
             candidate = result.get("candidate")
