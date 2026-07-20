@@ -214,8 +214,9 @@ class ControllerTests(unittest.TestCase):
             controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base}, base)
             with self.assertRaises(controller.ControllerError):
                 controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base, "candidate": base}, base)
-            with self.assertRaises(controller.ControllerError):
-                controller.validate_result(unit, {"status": "PLAN_CHANGE", "unit": unit["id"], "base": base}, base)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_result(units[2], {"status": "PLAN_CHANGE", "unit": "V1", "base": base}, base)
+        controller.validate_result(units[3], {"status": "PLAN_CHANGE", "unit": "RV-FID", "base": base}, base)
         with self.assertRaises(controller.ControllerError):
             controller.validate_result(units[0], {"status": "DONE", "unit": "W", "base": base}, base)
 

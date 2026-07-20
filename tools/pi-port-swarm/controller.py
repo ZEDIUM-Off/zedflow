@@ -316,7 +316,8 @@ def result_schema(unit: dict[str, Any]) -> dict[str, str]:
     base = {"unit": unit["id"], "base": "40-hex"}
     if unit["kind"] in MUTATING_KINDS:
         return {"status": "DONE|BLOCKED|PLAN_CHANGE", **base, "candidate": "40-hex for DONE"}
-    return {"status": "DONE|BLOCKED", **base, "candidate": "absent"}
+    statuses = "DONE|BLOCKED|PLAN_CHANGE" if unit["kind"] == "reviewer" else "DONE|BLOCKED"
+    return {"status": statuses, **base, "candidate": "absent"}
 
 
 def validate_result(unit: dict[str, Any], result: dict[str, Any], base: str) -> None:
@@ -325,8 +326,8 @@ def validate_result(unit: dict[str, Any], result: dict[str, Any], base: str) -> 
     status, candidate = result.get("status"), result.get("candidate")
     if status not in {"DONE", "BLOCKED", "PLAN_CHANGE"}:
         raise ControllerError("result has an invalid status")
-    if status == "PLAN_CHANGE" and unit["kind"] not in MUTATING_KINDS:
-        raise ControllerError("read-only unit cannot request a plan change")
+    if status == "PLAN_CHANGE" and unit["kind"] not in MUTATING_KINDS | {"reviewer"}:
+        raise ControllerError("this unit kind cannot request a plan change")
     if status == "DONE" and unit["kind"] in MUTATING_KINDS:
         if not is_full_sha(candidate):
             raise ControllerError("mutating unit must return a full candidate SHA")
