@@ -8,6 +8,8 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, BufReader, Read, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -469,6 +471,8 @@ fn exec_blocking(
         process.envs(extra_env);
     }
     process.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    process.process_group(0);
 
     match shell_config.command_transport {
         CommandTransport::Argv => {
@@ -851,9 +855,22 @@ fn aborted_file(
 }
 
 fn kill_child(child: &mut Child) {
-    // PORT PLACEHOLDER: std::process can kill the spawned child, but not Pi's exact process-tree
-    // kill (`taskkill /T` on Windows and process-group SIGKILL on Unix) without platform-specific
-    // unsafe/pre-exec code or a process-supervisor crate. Add that only if AT3 proves it required.
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-KILL", "--", &format!("-{}", child.id())])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/F", "/T", "/PID", &child.id().to_string()])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _ = child.kill();
 }
 

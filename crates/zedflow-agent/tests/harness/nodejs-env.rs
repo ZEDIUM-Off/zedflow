@@ -372,6 +372,35 @@ fn reports_nonzero_timeout_callback_and_shell_errors() {
 
 #[cfg(unix)]
 #[test]
+fn timeout_kills_the_shell_process_tree() {
+    let temp = TempDir::new();
+    let env = temp.env();
+    let error = block_on(env.exec(
+        "sleep 30 & echo $! > child.pid; wait",
+        Some(ShellExecOptions {
+            timeout: Some(1),
+            ..ShellExecOptions::default()
+        }),
+    ))
+    .unwrap_err();
+    assert_eq!(
+        error.code,
+        zedflow_agent::harness::types::ExecutionErrorCode::Timeout
+    );
+
+    let pid = fs::read_to_string(temp.path().join("child.pid")).unwrap();
+    assert!(
+        !std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn reports_spawn_error_for_non_executable_custom_shell() {
     use std::os::unix::fs::PermissionsExt;
 
