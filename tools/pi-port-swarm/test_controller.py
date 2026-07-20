@@ -164,12 +164,12 @@ class ControllerTests(unittest.TestCase):
     def test_reconcile_accepting_and_interrupted_running(self) -> None:
         repo, base, candidate = self.port_repo()
         controller.git(repo, "update-ref", controller.INTEGRATION_REF, candidate)
-        state = {"units": {"A": {"status": "ACCEPTING", "base": base, "candidate": candidate}}}
-        self.assertTrue(controller.reconcile_runtime(repo, state, controller.INTEGRATION_REF))
+        state = {"dag_sha256": controller.dag_hash(dag()), "units": {"A": {"status": "ACCEPTING", "base": base, "candidate": candidate}}}
+        self.assertTrue(controller.reconcile_runtime(repo, dag(), state, controller.INTEGRATION_REF))
         self.assertEqual(state["units"]["A"]["status"], "ACCEPTED")
         controller.git(repo, "update-ref", controller.INTEGRATION_REF, base, candidate)
-        state = {"units": {"A": {"status": "RUNNING", "base": base, "candidate": None}}}
-        controller.reconcile_runtime(repo, state, controller.INTEGRATION_REF)
+        state = {"dag_sha256": controller.dag_hash(dag()), "units": {"A": {"status": "RUNNING", "base": base, "candidate": None}}}
+        controller.reconcile_runtime(repo, dag(), state, controller.INTEGRATION_REF)
         self.assertEqual(state["units"]["A"]["status"], "FAILED")
 
     def test_candidate_rejects_outside_ownership(self) -> None:
@@ -196,6 +196,60 @@ class ControllerTests(unittest.TestCase):
         (repo / "references/pi" / "dirty").write_text("dirty")
         with self.assertRaises(controller.ControllerError):
             controller.validate_candidate(repo, repo, base, candidate, unit, pin)
+
+    def test_kind_specific_prompts_and_results(self) -> None:
+        source = ROOT
+        base = "a" * 40
+        units = [
+            {"id": "W", "kind": "writer", "ownership": ["owned"], "validation": []},
+            {"id": "C", "kind": "checkpoint", "ownership": ["docs"], "validation": []},
+            {"id": "V1", "kind": "validator", "ownership": [], "validation": []},
+            {"id": "RV-FID", "kind": "reviewer", "ownership": [], "validation": []},
+        ]
+        expected = ["pi-port-worker-session.md", "pi-port-checkpoint.md", "pi-port-validator.md", "pi-port-reviewer.md"]
+        self.assertEqual([controller.prompt_for(source, unit).name for unit in units], expected)
+        for unit in units[:2]:
+            controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base, "candidate": base}, base)
+        for unit in units[2:]:
+            controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base}, base)
+            with self.assertRaises(controller.ControllerError):
+                controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base, "candidate": base}, base)
+            with self.assertRaises(controller.ControllerError):
+                controller.validate_result(unit, {"status": "PLAN_CHANGE", "unit": unit["id"], "base": base}, base)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_result(units[0], {"status": "DONE", "unit": "W", "base": base}, base)
+
+    def test_runtime_dag_revision_and_pending_plan_acceptance(self) -> None:
+        actual = json.loads((ROOT / "tools/pi-port-swarm/dag.json").read_text())
+        state = controller.seed_runtime(ROOT, actual)
+        revised = copy.deepcopy(actual)
+        revised["units"][0]["intent"] = "revised"
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            controller.atomic_json(path, state)
+            with self.assertRaises(controller.ControllerError):
+                controller.load_runtime(ROOT, revised, path)
+            controller.mark_plan_acceptance(state, "AG-R1-JSONL-LEAF-ERROR", "b" * 40, "repair order", controller.dag_hash(revised))
+            controller.atomic_json(path, state)
+            self.assertEqual(controller.load_runtime(ROOT, revised, path)["dag_sha256"], controller.dag_hash(revised))
+
+    def test_continuous_replan_reaches_later_read_only_units(self) -> None:
+        revised = {
+            "version": 2,
+            "source_gitlink": "references/pi@" + "a" * 40,
+            "max_active_writers": 1,
+            "units": [
+                {"id": "OLD", "kind": "writer", "depends_on": [], "ownership": ["old"], "validation": []},
+                {"id": "REPAIR", "kind": "writer", "depends_on": [], "ownership": ["repair"], "validation": []},
+                {"id": "RV-FID", "kind": "reviewer", "depends_on": ["REPAIR"], "ownership": [], "validation": []},
+                {"id": "V1", "kind": "validator", "depends_on": ["RV-FID"], "ownership": [], "validation": []},
+            ],
+        }
+        state = {"units": {"OLD": {"status": "SUPERSEDED"}, "REPAIR": {"status": "ACCEPTED"}, "RV-FID": {"status": "ACCEPTED"}}}
+        self.assertTrue(controller.should_continue("replanned", True))
+        self.assertTrue(controller.should_continue("accepted", True))
+        self.assertFalse(controller.should_continue("blocked", True))
+        self.assertEqual([unit["id"] for unit in controller.ready_units(revised["units"], state)], ["V1"])
 
     def test_nonblocking_lock_semantics(self) -> None:
         # The controller uses LOCK_NB and returns 75; the primitive is explicit and portable.

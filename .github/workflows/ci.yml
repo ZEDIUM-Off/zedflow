@@ -17,6 +17,7 @@ jobs:
           toolchain: 1.96.1
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
+      - run: python3 -m unittest tools/pi-port-swarm/test_controller.py
       - run: cargo fmt --all --check
       - run: cargo check --workspace --all-targets
       - run: cargo test --workspace --all-targets

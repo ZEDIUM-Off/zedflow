@@ -25,6 +25,12 @@ MUTATING_KINDS = {"writer", "checkpoint"}
 INTEGRATION_REF = "refs/heads/automation/pi-port"
 NULL_OID = "0" * 40
 CONTROL_OWNERSHIP = ("tools/pi-port-swarm/dag.json", ".agents/port-swarm/state.json", "docs/porting")
+PROMPTS = {
+    "writer": "pi-port-worker-session.md",
+    "checkpoint": "pi-port-checkpoint.md",
+    "validator": "pi-port-validator.md",
+    "reviewer": "pi-port-reviewer.md",
+}
 
 
 class ControllerError(RuntimeError):
@@ -202,6 +208,13 @@ def seed_runtime(source: Path, dag: dict[str, Any], integration_ref: str = INTEG
     }
 
 
+def pending_plan_change(state: dict[str, Any]) -> bool:
+    return any(
+        record.get("status") == "ACCEPTING" and record.get("plan_change") and record.get("candidate")
+        for record in state.get("units", {}).values()
+    )
+
+
 def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integration_ref: str = INTEGRATION_REF, write: bool = False) -> dict[str, Any]:
     require_integration_ref(integration_ref)
     if state_path.exists():
@@ -210,6 +223,8 @@ def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integratio
             raise ControllerError("runtime state does not match this controller integration ref")
         if state.get("pi_gitlink") != pinned_gitlink(dag):
             raise ControllerError("runtime state Pi gitlink differs from DAG")
+        if state.get("dag_sha256") != dag_hash(dag) and not pending_plan_change(state):
+            raise ControllerError("runtime state DAG revision differs from the integration DAG")
         return state
     state = seed_runtime(source, dag, integration_ref)
     if write:
@@ -217,7 +232,7 @@ def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integratio
     return state
 
 
-def reconcile_runtime(source: Path, state: dict[str, Any], integration_ref: str) -> bool:
+def reconcile_runtime(source: Path, dag: dict[str, Any], state: dict[str, Any], integration_ref: str) -> bool:
     """Resolve interrupted acceptance without guessing or retrying an agent."""
     changed = False
     ref = integration_sha(source, integration_ref)
@@ -231,10 +246,14 @@ def reconcile_runtime(source: Path, state: dict[str, Any], integration_ref: str)
         elif ref == base:
             record["status"] = "FAILED"
             record["blocker"] = "interrupted before CAS; use retry --unit <id>"
+            if record.get("plan_change"):
+                state["dag_sha256"] = dag_hash(dag)
         else:
             record["status"] = "FAILED"
             record["blocker"] = "integration ref changed while recovering interrupted unit"
         changed = True
+    if state.get("dag_sha256") != dag_hash(dag) and not pending_plan_change(state):
+        raise ControllerError("runtime state DAG revision differs from the integration DAG")
     return changed
 
 
@@ -280,6 +299,38 @@ def pi_command(prompt: Path, session_dir: Path, name: str, message: str) -> list
     return ["pi", "-p", "--session-dir", str(session_dir), "--name", name, "--approve", f"@{prompt}", message]
 
 
+def prompt_for(source: Path, unit: dict[str, Any], coordinator: bool = False) -> Path:
+    if coordinator:
+        return source / ".pi/prompts/pi-port-coordinator.md"
+    return source / ".pi/prompts" / PROMPTS[unit["kind"]]
+
+
+def is_full_sha(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 40 and all(char in "0123456789abcdef" for char in value)
+
+
+def result_schema(unit: dict[str, Any]) -> dict[str, str]:
+    base = {"unit": unit["id"], "base": "40-hex"}
+    if unit["kind"] in MUTATING_KINDS:
+        return {"status": "DONE|BLOCKED|PLAN_CHANGE", **base, "candidate": "40-hex for DONE"}
+    return {"status": "DONE|BLOCKED", **base, "candidate": "absent"}
+
+
+def validate_result(unit: dict[str, Any], result: dict[str, Any], base: str) -> None:
+    if result.get("unit") != unit["id"] or result.get("base") != base:
+        raise ControllerError("result unit/base does not match dispatch capsule")
+    status, candidate = result.get("status"), result.get("candidate")
+    if status not in {"DONE", "BLOCKED", "PLAN_CHANGE"}:
+        raise ControllerError("result has an invalid status")
+    if status == "PLAN_CHANGE" and unit["kind"] not in MUTATING_KINDS:
+        raise ControllerError("read-only unit cannot request a plan change")
+    if status == "DONE" and unit["kind"] in MUTATING_KINDS:
+        if not is_full_sha(candidate):
+            raise ControllerError("mutating unit must return a full candidate SHA")
+    elif candidate is not None:
+        raise ControllerError("non-mutating result must not return a candidate")
+
+
 def allowed_changes(source: Path, base: str, candidate: str, ownership: list[str]) -> list[str]:
     changed = [line for line in git(source, "diff", "--name-only", f"{base}..{candidate}").splitlines() if line]
     if not changed:
@@ -291,7 +342,7 @@ def allowed_changes(source: Path, base: str, candidate: str, ownership: list[str
 
 
 def validate_candidate(source: Path, worktree: Path, base: str, candidate: str, unit: dict[str, Any], pin: str) -> None:
-    if not isinstance(candidate, str) or len(candidate) != 40:
+    if not is_full_sha(candidate):
         raise ControllerError("candidate must be a full SHA")
     if not git_ok(source, "merge-base", "--is-ancestor", base, candidate):
         raise ControllerError("candidate is not a descendant of its immutable base")
@@ -316,8 +367,8 @@ def create_worktree(source: Path, state_dir: Path, base: str, unit: dict[str, An
 
 
 def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any], base: str, coordinator: bool = False) -> dict[str, Any]:
-    prompt = source / ".pi/prompts" / ("pi-port-coordinator.md" if coordinator else "pi-port-worker-session.md")
-    capsule = {"unit": unit, "base": base, "ownership": unit["ownership"], "validation": unit["validation"], "intent": unit.get("intent", ""), "result_schema": {"status": "DONE|BLOCKED|PLAN_CHANGE", "unit": unit["id"], "base": base, "candidate": "40-hex SHA for DONE"}}
+    prompt = prompt_for(source, unit, coordinator)
+    capsule = {"unit": unit, "base": base, "ownership": unit["ownership"], "validation": unit["validation"], "intent": unit.get("intent", ""), "result_schema": result_schema(unit)}
     session_dir.mkdir(parents=True, exist_ok=True)
     command = pi_command(prompt, session_dir, f"pi-port-{unit['id'].lower()}-{uuid.uuid4().hex[:8]}", json.dumps(capsule, separators=(",", ":")))
     completed = run_cmd(command, worktree, check=False)
@@ -328,13 +379,24 @@ def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any]
     return result_line(completed.stdout)
 
 
+def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, reason: Any, revised_hash: str) -> None:
+    state.setdefault("units", {}).setdefault(unit_id, {}).update(
+        status="ACCEPTING",
+        candidate=candidate,
+        plan_change=reason,
+        revised_dag_sha256=revised_hash,
+    )
+    state["dag_sha256"] = revised_hash
+
+
 def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any], state_path: Path) -> str:
     require_integration_ref(integration_ref)
     control = {"id": f"REPLAN-{unit['id']}", "kind": "checkpoint", "depends_on": [], "ownership": list(CONTROL_OWNERSHIP), "validation": ["python3 tools/pi-port-swarm/controller.py validate"], "intent": result.get("reason", "evidence-backed plan mutation")}
     worktree, session = create_worktree(source, state_dir, base, control, 1, pin)
     coordinator_result = launch(source, worktree, session, control, base, coordinator=True)
+    validate_result(control, coordinator_result, base)
     candidate = coordinator_result.get("candidate")
-    if coordinator_result.get("status") != "DONE" or not isinstance(candidate, str):
+    if coordinator_result.get("status") != "DONE":
         raise ControllerError("coordinator did not return a plan-mutation candidate")
     validate_candidate(source, worktree, base, candidate, control, pin)
     if git_ok(source, "diff", "--quiet", f"{base}..{candidate}", "--", "tools/pi-port-swarm/dag.json"):
@@ -343,11 +405,12 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
     revised_units = validate_dag(revised)
     if pinned_gitlink(revised) != pin:
         raise ControllerError("coordinator changed the frozen Pi gitlink")
+    revised_hash = dag_hash(revised)
     prospective = json.loads(json.dumps(state))
     prospective.setdefault("units", {})[unit["id"]] = {"status": "SUPERSEDED"}
     if not ready_units(revised_units, prospective) and not graph_complete(revised_units, prospective):
         raise ControllerError("PLAN_CHANGE leaves no reachable replacement or ready unit")
-    state.setdefault("units", {})[unit["id"]].update(status="ACCEPTING", candidate=candidate, plan_change=result.get("reason"))
+    mark_plan_acceptance(state, unit["id"], candidate, result.get("reason"), revised_hash)
     atomic_json(state_path, state)
     git(source, "update-ref", integration_ref, candidate, base)
     return candidate
@@ -373,8 +436,7 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
     atomic_json(state_path, state)
     try:
         result = launch(source, worktree, session, unit, base)
-        if result.get("unit") != unit["id"] or result.get("base") != base:
-            raise ControllerError("result unit/base does not match dispatch capsule")
+        validate_result(unit, result, base)
         if result["status"] == "BLOCKED":
             record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "worker blocked")
         elif result["status"] == "PLAN_CHANGE":
@@ -385,8 +447,6 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
         else:
             candidate = result.get("candidate")
             if unit["kind"] in MUTATING_KINDS:
-                if not isinstance(candidate, str):
-                    raise ControllerError("mutating unit must return candidate SHA")
                 validate_candidate(source, worktree, base, candidate, unit, pin)
                 # Persist the exact candidate before CAS so startup can recover a crash.
                 record.update(status="ACCEPTING", candidate=candidate)
@@ -444,6 +504,10 @@ def snapshot(source: Path, dag: dict[str, Any], state: dict[str, Any], integrati
     return {"integration_sha": integration_sha(source, integration_ref), "dag_sha256": dag_hash(dag), "current": next((identifier for identifier, record in state.get("units", {}).items() if record.get("status") in {"RUNNING", "ACCEPTING"}), None), "ready": [unit["id"] for unit in ready_units(units, state)], "units": state.get("units", {}), "dag_progress": progress(units, state), "mechanical_port_inventory": mechanical_manifest_progress(source, integration_ref)}
 
 
+def should_continue(outcome: str, continuous: bool) -> bool:
+    return continuous and outcome in {"accepted", "replanned"}
+
+
 def paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
     source = Path(args.source).resolve()
     root = Path(git(source, "rev-parse", "--show-toplevel"))
@@ -486,7 +550,7 @@ def main() -> int:
             except BlockingIOError:
                 return 75
             state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=True)
-            if reconcile_runtime(source, state, INTEGRATION_REF):
+            if reconcile_runtime(source, dag, state, INTEGRATION_REF):
                 atomic_json(state_path, state)
             if args.command == "retry":
                 record = state.get("units", {}).get(args.unit)
@@ -498,7 +562,7 @@ def main() -> int:
                 return 0
             while True:
                 outcome = run_one(source, dag, state, state_path, INTEGRATION_REF, state_dir, args.unit)
-                if outcome in {"blocked", "failed", "complete"} or not args.continuous:
+                if not should_continue(outcome, args.continuous):
                     print(json.dumps({"status": outcome, **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))
                     return 0 if outcome in {"accepted", "replanned", "complete"} else 1
                 dag = load_dag(source, dag_path, INTEGRATION_REF)
