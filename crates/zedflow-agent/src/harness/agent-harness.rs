@@ -1222,16 +1222,15 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
         let models = Arc::clone(&self.models);
         let state = Arc::clone(&self.state);
         let session_id = turn_state.session_id.clone();
-        let harness_options = turn_state.stream_options.clone();
         Arc::new(move |model, context, loop_options| {
             let models = Arc::clone(&models);
             let state = Arc::clone(&state);
             let session_id = session_id.clone();
-            let harness_options = harness_options.clone();
             let model = model.clone();
             let context = context.clone();
             let loop_options = loop_options.cloned();
             Box::pin(async move {
+                let harness_options = lock_state(&state).stream_options.clone();
                 let mut options: SimpleStreamOptions = harness_options.clone().into();
                 if let Some(loop_options) = loop_options {
                     options.reasoning = loop_options.reasoning;

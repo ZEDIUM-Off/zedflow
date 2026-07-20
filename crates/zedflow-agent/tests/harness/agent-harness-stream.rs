@@ -20,11 +20,13 @@ use zedflow_agent::harness::types::{
     AgentHarnessStreamOptionsPatch, BeforeProviderPayloadResult, BeforeProviderRequestResult,
     ExecutionEnv, Patch, Session as SessionTrait, SessionMetadata,
 };
+use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
 use zedflow_ai::{
     AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageEventStream,
     AssistantMessageRole, CacheRetention, Context, DoneStopReason, Model, ModelInput, Models,
     ProviderApi, ProviderAuth, ProviderStreams, SimpleStreamOptions, StopReason, TextContent,
-    TextContentType, Usage, UsageCost, create_models, create_provider,
+    TextContentType, Tool, ToolCall, ToolCallType, Usage, UsageCost, create_models,
+    create_provider,
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -194,12 +196,28 @@ fn assistant_text(model: &Model, text: &str) -> AssistantMessage {
     }
 }
 
+fn assistant_tool_call(model: &Model) -> AssistantMessage {
+    AssistantMessage {
+        content: vec![AssistantContentBlock::ToolCall(ToolCall {
+            content_type: ToolCallType::ToolCall,
+            id: "call-1".into(),
+            name: "update-options".into(),
+            arguments: HashMap::new(),
+            thought_signature: None,
+        })],
+        stop_reason: StopReason::ToolUse,
+        ..assistant_text(model, "")
+    }
+}
+
 fn done_stream(message: AssistantMessage) -> AssistantMessageEventStream {
     let stream = AssistantMessageEventStream::new();
-    stream.push(AssistantMessageEvent::Done {
-        reason: DoneStopReason::Stop,
-        message,
-    });
+    let reason = if message.stop_reason == StopReason::ToolUse {
+        DoneStopReason::ToolUse
+    } else {
+        DoneStopReason::Stop
+    };
+    stream.push(AssistantMessageEvent::Done { reason, message });
     stream
 }
 
@@ -396,6 +414,73 @@ fn chains_provider_request_patches_and_deletes_header_metadata_keys() {
                 ("first".into(), json!(1))
             ]))
         );
+    });
+}
+
+#[test]
+fn updated_stream_options_apply_at_save_point() {
+    run(async {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let response_model = test_model("model-1", true);
+        let (models, model) = models_with_capture(
+            vec![
+                assistant_tool_call(&response_model),
+                assistant_text(&response_model, "done"),
+            ],
+            Arc::clone(&captured),
+            None,
+        );
+        let harness = Arc::new(harness(
+            models,
+            model,
+            memory_session(None),
+            AgentHarnessStreamOptions {
+                timeout_ms: Some(1000),
+                ..AgentHarnessStreamOptions::default()
+            },
+        ));
+        let weak_harness = Arc::downgrade(&harness);
+        harness
+            .set_tools(
+                vec![AgentTool {
+                    tool: Tool {
+                        name: "update-options".into(),
+                        description: "update stream options".into(),
+                        parameters: json!({ "type": "object" }),
+                    },
+                    label: "Update options".into(),
+                    prepare_arguments: None,
+                    execute: Arc::new(move |_id, _args, _signal, _update| {
+                        let harness = weak_harness.upgrade().expect("harness");
+                        Box::pin(async move {
+                            harness.set_stream_options(AgentHarnessStreamOptions {
+                                timeout_ms: Some(2000),
+                                ..AgentHarnessStreamOptions::default()
+                            });
+                            Ok(AgentToolResult {
+                                content: vec![AgentToolResultContent::Text(TextContent {
+                                    content_type: TextContentType::Text,
+                                    text: "updated".into(),
+                                    text_signature: None,
+                                })],
+                                details: Value::Null,
+                                terminate: None,
+                            })
+                        })
+                    }),
+                    execution_mode: None,
+                }],
+                Some(vec!["update-options".into()]),
+            )
+            .await
+            .expect("set tool");
+
+        harness.prompt("hello", None).await.expect("prompt");
+
+        let captured = captured.lock().expect("captured");
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0].timeout_ms, Some(1000));
+        assert_eq!(captured[1].timeout_ms, Some(2000));
     });
 }
 
