@@ -70,6 +70,16 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(controller.ControllerError):
             controller.result_line('{"status":"DONE"}\n{"status":"BLOCKED"}')
 
+    def test_fixed_integration_ref(self) -> None:
+        controller.require_integration_ref(controller.INTEGRATION_REF)
+        with self.assertRaises(controller.ControllerError):
+            controller.require_integration_ref("refs/heads/main")
+
+    def test_graph_is_not_complete_with_active_or_failed_state(self) -> None:
+        units = dag()["units"]
+        state = {"units": {"A": {"status": "ACCEPTED"}, "B": {"status": "FAILED"}, "C": {"status": "ACCEPTED"}}}
+        self.assertFalse(controller.graph_complete(units, state))
+
     def test_assignment_command_is_fresh_and_has_no_resume(self) -> None:
         first = controller.pi_command(Path("worker.md"), Path("/tmp/session-one"), "one", "capsule")
         second = controller.pi_command(Path("worker.md"), Path("/tmp/session-two"), "two", "capsule")
@@ -100,7 +110,8 @@ class ControllerTests(unittest.TestCase):
             for command in ("status", "monitor"):
                 completed = subprocess.run([sys.executable, str(ROOT / "tools/pi-port-swarm/controller.py"), "--source", str(ROOT), "--state-dir", str(state_home), command], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 self.assertEqual(completed.returncode, 0, completed.stderr)
-                self.assertIn("progress", completed.stdout)
+                self.assertIn("dag_progress", completed.stdout)
+                self.assertIn("mechanical_port_inventory", completed.stdout)
             self.assertEqual(before, list(state_home.rglob("*")))
 
     def port_repo(self) -> tuple[Path, str, str]:
@@ -114,7 +125,15 @@ class ControllerTests(unittest.TestCase):
         git("config", "user.name", "test")
         (repo / "owned").mkdir()
         (repo / "owned" / "one").write_text("base")
-        pin = "b" * 40
+        submodule = repo / "references/pi"
+        submodule.mkdir(parents=True)
+        subprocess.check_call(["git", "init", "-q"], cwd=submodule)
+        subprocess.check_call(["git", "config", "user.email", "test@example.invalid"], cwd=submodule)
+        subprocess.check_call(["git", "config", "user.name", "test"], cwd=submodule)
+        (submodule / "pin").write_text("pin")
+        subprocess.check_call(["git", "add", "pin"], cwd=submodule)
+        subprocess.check_call(["git", "commit", "-qm", "pin"], cwd=submodule)
+        pin = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=submodule, text=True).strip()
         git("update-index", "--add", "--cacheinfo", f"160000,{pin},references/pi")
         git("add", "owned/one")
         git("commit", "-qm", "base")
@@ -127,12 +146,31 @@ class ControllerTests(unittest.TestCase):
     def test_candidate_acceptance_and_cas_shape(self) -> None:
         repo, base, candidate = self.port_repo()
         unit = {"id": "A", "kind": "writer", "ownership": ["owned"], "validation": []}
-        controller.validate_candidate(repo, repo, base, candidate, unit, "b" * 40)
+        pin = controller.git(repo / "references/pi", "rev-parse", "HEAD")
+        controller.validate_candidate(repo, repo, base, candidate, unit, pin)
         controller.git(repo, "update-ref", "refs/heads/automation/pi-port", base)
         controller.git(repo, "update-ref", "refs/heads/automation/pi-port", candidate, base)
         self.assertEqual(controller.integration_sha(repo, "refs/heads/automation/pi-port"), candidate)
         with self.assertRaises(controller.ControllerError):
             controller.git(repo, "update-ref", "refs/heads/automation/pi-port", base, base)
+
+    def test_integration_ref_is_created_only_from_null_oid(self) -> None:
+        repo, base, candidate = self.port_repo()
+        controller.ensure_integration_ref(repo, controller.INTEGRATION_REF, base)
+        self.assertEqual(controller.integration_sha(repo), base)
+        controller.ensure_integration_ref(repo, controller.INTEGRATION_REF, candidate)
+        self.assertEqual(controller.integration_sha(repo), base)
+
+    def test_reconcile_accepting_and_interrupted_running(self) -> None:
+        repo, base, candidate = self.port_repo()
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, candidate)
+        state = {"units": {"A": {"status": "ACCEPTING", "base": base, "candidate": candidate}}}
+        self.assertTrue(controller.reconcile_runtime(repo, state, controller.INTEGRATION_REF))
+        self.assertEqual(state["units"]["A"]["status"], "ACCEPTED")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base, candidate)
+        state = {"units": {"A": {"status": "RUNNING", "base": base, "candidate": None}}}
+        controller.reconcile_runtime(repo, state, controller.INTEGRATION_REF)
+        self.assertEqual(state["units"]["A"]["status"], "FAILED")
 
     def test_candidate_rejects_outside_ownership(self) -> None:
         repo, base, _candidate = self.port_repo()
@@ -141,8 +179,23 @@ class ControllerTests(unittest.TestCase):
         subprocess.check_call(["git", "commit", "-qm", "outside"], cwd=repo)
         candidate = controller.git(repo, "rev-parse", "HEAD")
         unit = {"id": "A", "kind": "writer", "ownership": ["owned"], "validation": []}
+        pin = controller.git(repo / "references/pi", "rev-parse", "HEAD")
         with self.assertRaises(controller.ControllerError):
-            controller.validate_candidate(repo, repo, base, candidate, unit, "b" * 40)
+            controller.validate_candidate(repo, repo, base, candidate, unit, pin)
+
+    def test_candidate_rejects_head_mismatch_and_dirty_worktree(self) -> None:
+        repo, base, candidate = self.port_repo()
+        unit = {"id": "A", "kind": "writer", "ownership": ["owned"], "validation": []}
+        pin = controller.git(repo / "references/pi", "rev-parse", "HEAD")
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_candidate(repo, repo, base, base, unit, pin)
+        (repo / "untracked").write_text("dirty")
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_candidate(repo, repo, base, candidate, unit, pin)
+        (repo / "untracked").unlink()
+        (repo / "references/pi" / "dirty").write_text("dirty")
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_candidate(repo, repo, base, candidate, unit, pin)
 
     def test_nonblocking_lock_semantics(self) -> None:
         # The controller uses LOCK_NB and returns 75; the primitive is explicit and portable.

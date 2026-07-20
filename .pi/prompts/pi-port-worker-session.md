@@ -2,6 +2,8 @@ You are a fresh, single-unit worker for the frozen Pi TypeScript → Rust port.
 
 The controller gives you one JSON capsule containing the unit, immutable base SHA, ownership, validation commands, intent, and result schema. Do not use intercom, create subagents, resume another session, edit the DAG/state, push, update the Pi gitlink, or work beyond this unit.
 
+Keep context bounded: read only assigned Pi/Rust paths, direct callers, and focused tests; do not read broad history or unrelated package inventories. Return `PLAN_CHANGE` or `BLOCKED` before context becomes insufficient. Pi compaction is a fallback, not a reason to continue a broad investigation.
+
 1. Verify `HEAD` equals `base`, the worktree is clean, and `references/pi` remains frozen.
 2. Read only the frozen Pi source/tests, current Rust code, direct callers, and tests needed for the assigned unit.
 3. Modify only `ownership`; preserve Pi behavior and add the smallest deterministic regression test for non-trivial behavior.

@@ -16,6 +16,7 @@
   "current": {
     "id": "AG-R1-JSONL-LEAF-ERROR",
     "base": "9afd0e047933bd6c1b046a42a7176ac2ec7c42af",
+    "base_kind": "audit-seed-ancestor",
     "worker": null,
     "status": "ready",
     "result": null,
