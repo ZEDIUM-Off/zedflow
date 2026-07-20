@@ -538,10 +538,15 @@ pub fn stream_registered(
 ) -> crate::types::AssistantMessageEventStream {
     let stream = crate::types::AssistantMessageEventStream::new();
     let worker_stream = stream.clone();
+    let context = crate::api::transform_messages::transform_context(context, model, None);
     let model = model.clone();
-    let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_registered_worker(worker_stream, model, context, options).await;
     });
     stream
@@ -942,6 +947,7 @@ async fn execute_registered_request(
     let body =
         serde_json::to_vec(&body).map_err(|error| RegisteredLiveError::new(error.to_string()))?;
     let mut attempts = 0;
+    let max_retries = options.max_retries.unwrap_or(0);
     let response = loop {
         let response = await_or_abort(
             client
@@ -953,42 +959,61 @@ async fn execute_registered_request(
         )
         .await;
         match response {
-            Ok(response)
-                if is_retryable_azure_status(response.status().as_u16())
-                    && attempts < options.max_retries.unwrap_or(0) =>
-            {
-                attempts += 1;
+            Ok(response) => {
+                if let Some(hook) = options.on_response.as_ref() {
+                    hook(
+                        crate::types::ProviderResponse {
+                            status: response.status().as_u16(),
+                            headers: response
+                                .headers()
+                                .iter()
+                                .filter_map(|(name, value)| {
+                                    value
+                                        .to_str()
+                                        .ok()
+                                        .map(|value| (name.to_string(), value.to_owned()))
+                                })
+                                .collect(),
+                        },
+                        model.clone(),
+                    )
+                    .await
+                    .map_err(|error| RegisteredLiveError::new(error.to_string()))?;
+                }
+                if is_retryable_azure_status(response.status().as_u16()) && attempts < max_retries {
+                    let delay = crate::utils::retry::retry_after_delay(
+                        response.headers(),
+                        std::time::SystemTime::now(),
+                    )
+                    .unwrap_or_else(|| {
+                        crate::utils::retry::retry_delay(
+                            Duration::from_millis(500),
+                            attempts,
+                            Some(Duration::from_secs(8)),
+                        )
+                    });
+                    if !crate::utils::retry::wait_or_abort(delay, options.signal.as_ref()).await {
+                        return Err(RegisteredLiveError::new("Request was aborted"));
+                    }
+                    attempts += 1;
+                    continue;
+                }
+                break response;
             }
-            Ok(response) => break response,
-            Err(error)
-                if error != "Request was aborted"
-                    && attempts < options.max_retries.unwrap_or(0) =>
-            {
+            Err(error) if error != "Request was aborted" && attempts < max_retries => {
+                let delay = crate::utils::retry::retry_delay(
+                    Duration::from_millis(500),
+                    attempts,
+                    Some(Duration::from_secs(8)),
+                );
+                if !crate::utils::retry::wait_or_abort(delay, options.signal.as_ref()).await {
+                    return Err(RegisteredLiveError::new("Request was aborted"));
+                }
                 attempts += 1;
             }
             Err(error) => return Err(RegisteredLiveError::new(error)),
         }
     };
-    if let Some(hook) = options.on_response.as_ref() {
-        hook(
-            crate::types::ProviderResponse {
-                status: response.status().as_u16(),
-                headers: response
-                    .headers()
-                    .iter()
-                    .filter_map(|(name, value)| {
-                        value
-                            .to_str()
-                            .ok()
-                            .map(|value| (name.to_string(), value.to_owned()))
-                    })
-                    .collect(),
-            },
-            model.clone(),
-        )
-        .await
-        .map_err(|error| RegisteredLiveError::new(error.to_string()))?;
-    }
     if !response.status().is_success() {
         let status = response.status().as_u16();
         let body = await_or_abort(response.text(), options.signal.clone())
@@ -999,7 +1024,7 @@ async fn execute_registered_request(
 
     let initial = empty_shared_message(model);
     stream.push(crate::types::AssistantMessageEvent::Start {
-        partial: canonical_message(&initial, model, None),
+        partial: canonical_message(&initial, model, None).into(),
     });
     let mut decoder = AzureSseDecoder::default();
     let mut bytes = response.bytes_stream();
@@ -1110,9 +1135,7 @@ where
 }
 
 async fn wait_abort(signal: crate::types::AbortSignal) {
-    while !signal.aborted() {
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
+    signal.cancelled().await;
 }
 
 fn check_abort(signal: Option<&crate::types::AbortSignal>) -> std::result::Result<(), String> {
@@ -1234,7 +1257,7 @@ fn push_canonical_event(
             partial,
         } => stream.push(crate::types::AssistantMessageEvent::ThinkingStart {
             content_index: *content_index,
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::ThinkingDelta {
             content_index,
@@ -1243,7 +1266,7 @@ fn push_canonical_event(
         } => stream.push(crate::types::AssistantMessageEvent::ThinkingDelta {
             content_index: *content_index,
             delta: delta.clone(),
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::ThinkingEnd {
             content_index,
@@ -1252,14 +1275,14 @@ fn push_canonical_event(
         } => stream.push(crate::types::AssistantMessageEvent::ThinkingEnd {
             content_index: *content_index,
             content: content.clone(),
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::TextStart {
             content_index,
             partial,
         } => stream.push(crate::types::AssistantMessageEvent::TextStart {
             content_index: *content_index,
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::TextDelta {
             content_index,
@@ -1268,7 +1291,7 @@ fn push_canonical_event(
         } => stream.push(crate::types::AssistantMessageEvent::TextDelta {
             content_index: *content_index,
             delta: delta.clone(),
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::TextEnd {
             content_index,
@@ -1277,14 +1300,14 @@ fn push_canonical_event(
         } => stream.push(crate::types::AssistantMessageEvent::TextEnd {
             content_index: *content_index,
             content: content.clone(),
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::ToolCallStart {
             content_index,
             partial,
         } => stream.push(crate::types::AssistantMessageEvent::ToolcallStart {
             content_index: *content_index,
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::ToolCallDelta {
             content_index,
@@ -1293,7 +1316,7 @@ fn push_canonical_event(
         } => stream.push(crate::types::AssistantMessageEvent::ToolcallDelta {
             content_index: *content_index,
             delta: delta.clone(),
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
         Shared::ToolCallEnd {
             content_index,
@@ -1302,7 +1325,7 @@ fn push_canonical_event(
         } => stream.push(crate::types::AssistantMessageEvent::ToolcallEnd {
             content_index: *content_index,
             tool_call: canonical_tool_call(tool_call),
-            partial: canonical_message(partial, model, None),
+            partial: canonical_message(partial, model, None).into(),
         }),
     }
 }

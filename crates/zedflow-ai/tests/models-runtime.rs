@@ -127,6 +127,32 @@ impl AuthContext for FakeAuthContext {
     }
 }
 
+#[derive(Debug)]
+struct DelayedAuth;
+
+impl ApiKeyAuth for DelayedAuth {
+    fn name(&self) -> &str {
+        "delayed auth"
+    }
+
+    fn resolve<'a>(
+        &'a self,
+        _input: ApiKeyResolveInput<'a>,
+    ) -> AuthFuture<'a, zedflow_ai::auth::types::AuthResult<Option<ResolvedAuth>>> {
+        Box::pin(async {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            Ok(Some(ResolvedAuth {
+                auth: ModelAuth {
+                    api_key: Some("delayed-key".to_owned()),
+                    ..ModelAuth::default()
+                },
+                env: None,
+                source: Some("delayed auth".to_owned()),
+            }))
+        })
+    }
+}
+
 fn oauth_credential(access: &str) -> Credential {
     Credential::OAuth(OAuthCredential {
         refresh: "refresh".to_owned(),
@@ -515,8 +541,8 @@ fn models_runtime_swallows_provider_source_failures_for_listing() {
     );
 }
 
-#[test]
-fn models_runtime_refresh_updates_dynamic_providers_and_rejects_single_failures() {
+#[tokio::test]
+async fn models_runtime_refresh_updates_dynamic_providers_and_rejects_single_failures() {
     let refreshes = Arc::new(AtomicUsize::new(0));
     let refreshes_for_provider = Arc::clone(&refreshes);
     let mut models = create_models();
@@ -536,13 +562,16 @@ fn models_runtime_refresh_updates_dynamic_providers_and_rejects_single_failures(
     models.set_provider(test_provider("static", vec![test_model("static", "s1")]));
 
     assert!(models.get_model("dyn", "before").is_some());
-    models.refresh(Some("dyn")).expect("dyn refresh");
+    models.refresh(Some("dyn")).await.expect("dyn refresh");
     assert_eq!(refreshes.load(Ordering::SeqCst), 1);
     assert!(models.get_model("dyn", "after").is_some());
     assert!(models.get_model("dyn", "before").is_none());
 
-    models.refresh(Some("static")).expect("static refresh noop");
-    models.refresh(None).expect("refresh all best effort");
+    models
+        .refresh(Some("static"))
+        .await
+        .expect("static refresh noop");
+    models.refresh(None).await.expect("refresh all best effort");
     assert_eq!(refreshes.load(Ordering::SeqCst), 2);
 
     models.set_provider(create_provider(CreateProviderOptions {
@@ -560,15 +589,19 @@ fn models_runtime_refresh_updates_dynamic_providers_and_rejects_single_failures(
     assert_eq!(
         models
             .refresh(Some("flaky"))
+            .await
             .expect_err("flaky refresh")
             .code(),
         ModelsErrorCode::ModelSource
     );
-    models.refresh(None).expect("refresh all swallows failure");
+    models
+        .refresh(None)
+        .await
+        .expect("refresh all swallows failure");
 }
 
-#[test]
-fn models_runtime_dedupes_concurrent_provider_refreshes() {
+#[tokio::test]
+async fn models_runtime_dedupes_concurrent_provider_refreshes() {
     let refreshes = Arc::new(AtomicUsize::new(0));
     let refreshes_for_provider = Arc::clone(&refreshes);
     let mut models = create_models();
@@ -597,20 +630,23 @@ fn models_runtime_dedupes_concurrent_provider_refreshes() {
     }));
 
     let (first, second) = block_on(join(
-        models.refresh_async(Some("dyn")),
-        models.refresh_async(Some("dyn")),
+        models.refresh(Some("dyn")),
+        models.refresh(Some("dyn")),
     ));
     first.expect("first refresh");
     second.expect("second refresh");
     assert_eq!(refreshes.load(Ordering::SeqCst), 1);
     assert!(models.get_model("dyn", "after").is_some());
 
-    block_on(models.refresh_async(Some("dyn"))).expect("later refresh retries");
+    models
+        .refresh(Some("dyn"))
+        .await
+        .expect("later refresh retries");
     assert_eq!(refreshes.load(Ordering::SeqCst), 2);
 }
 
-#[test]
-fn models_runtime_resolves_auth_stored_credential_beats_ambient() {
+#[tokio::test]
+async fn models_runtime_resolves_auth_stored_credential_beats_ambient() {
     let mut ambient = create_models_with_auth_context_and_credentials(
         FakeAuthContext::new([("ANTHROPIC_API_KEY", "env-key")]),
         InMemoryCredentialStore::new(),
@@ -623,6 +659,7 @@ fn models_runtime_resolves_auth_stored_credential_beats_ambient() {
     assert_eq!(
         ambient
             .get_auth(&model)
+            .await
             .expect("ambient auth")
             .expect("configured")
             .auth
@@ -638,6 +675,7 @@ fn models_runtime_resolves_auth_stored_credential_beats_ambient() {
     oauth.set_provider(zedflow_ai::providers::anthropic::anthropic_provider().expect("provider"));
     let oauth_resolution = oauth
         .get_auth(&model)
+        .await
         .expect("oauth auth")
         .expect("configured");
     assert_eq!(
@@ -654,6 +692,7 @@ fn models_runtime_resolves_auth_stored_credential_beats_ambient() {
         .set_provider(zedflow_ai::providers::anthropic::anthropic_provider().expect("provider"));
     let api_key_resolution = stored_key
         .get_auth(&model)
+        .await
         .expect("api key auth")
         .expect("configured");
     assert_eq!(
@@ -666,8 +705,8 @@ fn models_runtime_resolves_auth_stored_credential_beats_ambient() {
     );
 }
 
-#[test]
-fn models_runtime_stored_credential_without_matching_handler_blocks_ambient_fallback() {
+#[tokio::test]
+async fn models_runtime_stored_credential_without_matching_handler_blocks_ambient_fallback() {
     let mut models = create_models_with_auth_context_and_credentials(
         FakeAuthContext::new([("AWS_PROFILE", "dev")]),
         credential_store("amazon-bedrock", oauth_credential("stale-token")),
@@ -679,11 +718,17 @@ fn models_runtime_stored_credential_without_matching_handler_blocks_ambient_fall
         .next()
         .expect("bedrock model");
 
-    assert!(models.get_auth(&model).expect("auth resolves").is_none());
+    assert!(
+        models
+            .get_auth(&model)
+            .await
+            .expect("auth resolves")
+            .is_none()
+    );
 }
 
-#[test]
-fn models_runtime_refreshes_expired_oauth_credentials_and_persists_rotation() {
+#[tokio::test]
+async fn models_runtime_refreshes_expired_oauth_credentials_and_persists_rotation() {
     let refreshes = Arc::new(AtomicUsize::new(0));
     let store = credential_store("oauth", expired_oauth_credential("old-token"));
     let mut models =
@@ -693,6 +738,7 @@ fn models_runtime_refreshes_expired_oauth_credentials_and_persists_rotation() {
 
     let resolved = models
         .get_auth(&model)
+        .await
         .expect("oauth refresh resolves")
         .expect("configured");
     assert_eq!(resolved.auth.api_key.as_deref(), Some("new-1"));
@@ -705,8 +751,8 @@ fn models_runtime_refreshes_expired_oauth_credentials_and_persists_rotation() {
     assert!(matches!(stored, Some(Credential::OAuth(credential)) if credential.access == "new-1"));
 }
 
-#[test]
-fn models_runtime_rejects_with_oauth_code_and_preserves_stored_credential() {
+#[tokio::test]
+async fn models_runtime_rejects_with_oauth_code_and_preserves_stored_credential() {
     let refreshes = Arc::new(AtomicUsize::new(0));
     let store = credential_store("oauth", expired_oauth_credential("old-token"));
     let mut models =
@@ -714,7 +760,7 @@ fn models_runtime_rejects_with_oauth_code_and_preserves_stored_credential() {
     models.set_provider(oauth_provider(Arc::clone(&refreshes), true));
     let model = test_model("oauth", "model-a");
 
-    let error = models.get_auth(&model).expect_err("oauth fails");
+    let error = models.get_auth(&model).await.expect_err("oauth fails");
     assert_eq!(error.code(), ModelsErrorCode::OAuth);
     assert_eq!(
         error.source().map(ToString::to_string).as_deref(),
@@ -730,8 +776,8 @@ fn models_runtime_rejects_with_oauth_code_and_preserves_stored_credential() {
     );
 }
 
-#[test]
-fn models_runtime_serializes_concurrent_oauth_refreshes_through_store_modify() {
+#[tokio::test]
+async fn models_runtime_serializes_concurrent_oauth_refreshes_through_store_modify() {
     let refreshes = Arc::new(AtomicUsize::new(0));
     let store = credential_store("oauth", expired_oauth_credential("old-token"));
     let mut models =
@@ -739,10 +785,7 @@ fn models_runtime_serializes_concurrent_oauth_refreshes_through_store_modify() {
     models.set_provider(oauth_provider(Arc::clone(&refreshes), false));
     let model = test_model("oauth", "model-a");
 
-    let (first, second) = block_on(join(
-        models.get_auth_async(&model),
-        models.get_auth_async(&model),
-    ));
+    let (first, second) = block_on(join(models.get_auth(&model), models.get_auth(&model)));
     assert_eq!(
         first
             .expect("first auth")
@@ -764,8 +807,8 @@ fn models_runtime_serializes_concurrent_oauth_refreshes_through_store_modify() {
     assert_eq!(refreshes.load(Ordering::SeqCst), 1);
 }
 
-#[test]
-fn models_runtime_valid_oauth_tokens_resolve_without_touching_modify() {
+#[tokio::test]
+async fn models_runtime_valid_oauth_tokens_resolve_without_touching_modify() {
     let refreshes = Arc::new(AtomicUsize::new(0));
     let mut models = create_models_with_auth_context_and_credentials(
         FakeAuthContext::default(),
@@ -777,6 +820,7 @@ fn models_runtime_valid_oauth_tokens_resolve_without_touching_modify() {
     assert_eq!(
         models
             .get_auth(&model)
+            .await
             .expect("valid oauth resolves")
             .expect("configured")
             .auth
@@ -787,8 +831,8 @@ fn models_runtime_valid_oauth_tokens_resolve_without_touching_modify() {
     assert_eq!(refreshes.load(Ordering::SeqCst), 0);
 }
 
-#[test]
-fn models_runtime_wraps_credential_store_failures_in_models_error() {
+#[tokio::test]
+async fn models_runtime_wraps_credential_store_failures_in_models_error() {
     let mut models = create_models_with_auth_context_and_credentials(
         FakeAuthContext::default(),
         FailingCredentialStore,
@@ -800,6 +844,7 @@ fn models_runtime_wraps_credential_store_failures_in_models_error() {
 
     let error = models
         .get_auth(&test_model("store-failure", "model-a"))
+        .await
         .expect_err("credential-store read fails");
     assert_eq!(error.code(), ModelsErrorCode::Auth);
     assert_eq!(
@@ -808,13 +853,14 @@ fn models_runtime_wraps_credential_store_failures_in_models_error() {
     );
 }
 
-#[test]
-fn models_runtime_wraps_api_key_auth_failures_in_models_error() {
+#[tokio::test]
+async fn models_runtime_wraps_api_key_auth_failures_in_models_error() {
     let mut models = create_models();
     models.set_provider(failing_api_key_provider());
 
     let error = models
         .get_auth(&test_model("failing-api-key", "model-a"))
+        .await
         .expect_err("api-key resolver fails");
     assert_eq!(error.code(), ModelsErrorCode::Auth);
     assert_eq!(
@@ -823,8 +869,8 @@ fn models_runtime_wraps_api_key_auth_failures_in_models_error() {
     );
 }
 
-#[test]
-fn models_runtime_uses_explicit_request_api_key_and_env_during_provider_auth_resolution() {
+#[tokio::test]
+async fn models_runtime_uses_explicit_request_api_key_and_env_during_provider_auth_resolution() {
     let seen = Arc::new(Mutex::new(None));
     let mut models = create_models_with_auth_context_and_credentials(
         FakeAuthContext::default(),
@@ -840,7 +886,11 @@ fn models_runtime_uses_explicit_request_api_key_and_env_during_provider_auth_res
 
     let model = test_model("scoped", "model-a");
     assert_eq!(
-        assistant_text(&models.complete_simple(&model, &Context::default(), Some(&options))),
+        assistant_text(
+            &models
+                .complete_simple(&model, &Context::default(), Some(&options))
+                .await
+        ),
         "ok"
     );
 
@@ -857,8 +907,8 @@ fn models_runtime_uses_explicit_request_api_key_and_env_during_provider_auth_res
     );
 }
 
-#[test]
-fn models_runtime_merges_resolved_auth_into_stream_options_with_explicit_fields_winning() {
+#[tokio::test]
+async fn models_runtime_merges_resolved_auth_into_stream_options_with_explicit_fields_winning() {
     let seen = Arc::new(Mutex::new(None));
     let mut models = create_models_with_auth_context_and_credentials(
         FakeAuthContext::new([("ACCOUNT_ID", "ambient-account")]),
@@ -880,7 +930,11 @@ fn models_runtime_merges_resolved_auth_into_stream_options_with_explicit_fields_
 
     let model = test_model("scoped", "model-a");
     assert_eq!(
-        assistant_text(&models.complete(&model, &Context::default(), Some(&options))),
+        assistant_text(
+            &models
+                .complete(&model, &Context::default(), Some(&options))
+                .await
+        ),
         "ok"
     );
     assert!(
@@ -901,27 +955,52 @@ fn models_runtime_merges_resolved_auth_into_stream_options_with_explicit_fields_
     );
 }
 
-#[test]
-fn models_runtime_produces_error_stream_for_unknown_providers_instead_of_throwing() {
+#[tokio::test]
+async fn models_runtime_produces_error_stream_for_unknown_providers_instead_of_throwing() {
     let models = create_models();
-    let result = models.complete(&test_model("ghost", "model-a"), &Context::default(), None);
+    let result = models
+        .complete(&test_model("ghost", "model-a"), &Context::default(), None)
+        .await;
     assert!(assistant_text(&result).contains("Unknown provider: ghost"));
 }
 
-#[test]
-fn models_runtime_streams_through_the_provider() {
+#[tokio::test(flavor = "current_thread")]
+async fn models_runtime_current_thread_does_not_block_on_delayed_auth() {
+    let model = test_model("delayed", "model-a");
+    let mut provider = test_provider("delayed", vec![model.clone()]);
+    provider.auth.api_key = Some(Arc::new(DelayedAuth));
+    let mut models = create_models();
+    models.set_provider(provider);
+
+    let stream = models.stream(&model, &Context::default(), None);
+    assert!(!stream.is_done(), "stream returns before auth resolves");
+    let heartbeat = tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        true
+    });
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1), stream.result())
+        .await
+        .expect("stream completes without deadlock");
+    assert!(heartbeat.await.expect("heartbeat task"));
+    assert_eq!(assistant_text(&result), "ok");
+
+    let completed = models.complete(&model, &Context::default(), None).await;
+    assert_eq!(assistant_text(&completed), "ok");
+}
+
+#[tokio::test]
+async fn models_runtime_streams_through_the_provider() {
     let mut models = create_models();
     models.set_provider(test_provider("p1", vec![test_model("p1", "model-a")]));
     let model = test_model("p1", "model-a");
 
-    let result = block_on(
-        models
-            .stream(&model, &Context::default(), Option::<&StreamOptions>::None)
-            .result(),
-    );
+    let result = models
+        .stream(&model, &Context::default(), Option::<&StreamOptions>::None)
+        .result()
+        .await;
     assert_eq!(assistant_text(&result), "ok");
     assert_eq!(
-        assistant_text(&models.complete(&model, &Context::default(), None)),
+        assistant_text(&models.complete(&model, &Context::default(), None).await),
         "ok"
     );
 }

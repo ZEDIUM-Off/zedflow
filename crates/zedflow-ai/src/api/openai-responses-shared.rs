@@ -1383,7 +1383,7 @@ impl ResponsesStreamProcessor {
         Ok(self.saw_terminal_response_event)
     }
 
-    fn finish(&self) -> Result<()> {
+    pub(crate) fn finish(&self) -> Result<()> {
         if self.saw_terminal_response_event {
             Ok(())
         } else {

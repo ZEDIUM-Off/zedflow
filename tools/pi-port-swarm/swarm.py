@@ -20,11 +20,20 @@ MODELS = {"openai-codex/gpt-5.6-luna", "openai-codex/gpt-5.6-terra", "openai-cod
 MUTATING_ROLES = {"writer", "reconcile"}
 STATES = {"CLAIMED", "IMPLEMENTED", "REVIEWED", "VALIDATED", "INTEGRATED", "CLOSED", "FAILED", "BLOCKED"}
 TERMINAL = {"CLOSED", "BLOCKED"}
-MAX_SLOTS, MAX_RECOVERY_SLOTS, MAX_SUBAGENTS, MAX_ATTEMPTS = 3, 3, 18, 2
+EVIDENCE_ERROR_PREFIXES = (
+    "parent session ",
+    "persisted parent session ",
+    "subagent ",
+    "result lacks subagent ",
+    "review and validator run IDs ",
+    "writer result requires persisted parent-session ",
+)
+MAX_SLOTS, MAX_RECOVERY_SLOTS, MAX_SUBAGENTS, MAX_ATTEMPTS = 3, 3, 18, 4
 RUN_SECONDS, PI_RUN_SECONDS = 2 * 3600 + 45 * 60, 2 * 3600 + 35 * 60
 ROOT = Path(os.environ.get("ZEDFLOW_SOURCE", "/home/zedium/workspaces/zedflow")).resolve()
 DATA = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local/share")) / "zedflow-pi-port-swarm"
 STATE = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "zedflow-pi-port-swarm"
+SWARM_TMP = Path("/tmp/zedflow-pi-port-swarm-tmp")
 
 
 class DagError(ValueError):
@@ -256,9 +265,57 @@ def allowed_files(unit, changed):
     return all(any(path == prefix or path.startswith(prefix.rstrip("/") + "/") for prefix in unit["ownership"]) for path in changed)
 
 
+def retryable_candidate(repo, unit, result, expected_head):
+    """Keep a reviewed-but-rejected owned descendant as the next repair base."""
+    commit = result.get("commit") if isinstance(result, dict) else None
+    if not commit or result.get("status") not in {"DONE", "BLOCKED"}:
+        return False
+    if git(repo, "merge-base", "--is-ancestor", expected_head, commit, check=False).returncode != 0:
+        return False
+    changed = git(repo, "diff", "--name-only", expected_head, commit).stdout.splitlines()
+    return bool(changed) and allowed_files(unit, changed)
+
+
+def owned_compile_errors(repo, unit, timeout=15 * 60):
+    """Return compiler errors whose primary span belongs to this DAG unit."""
+    completed = run(
+        ["cargo", "check", "-p", "zedflow-agent", "--all-targets", "--message-format=json"],
+        cwd=repo,
+        env=run_environment(),
+        check=False,
+        timeout=timeout,
+    )
+    found = []
+    for line in completed.stdout.splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        message = entry.get("message", {})
+        if entry.get("reason") != "compiler-message" or message.get("level") != "error":
+            continue
+        for span in message.get("spans", []):
+            path = span.get("file_name")
+            if span.get("is_primary") and path and allowed_files(unit, [path]):
+                diagnostic = f"{path}:{span.get('line_start', 0)}: {message.get('message', 'compiler error')}"
+                if diagnostic not in found:
+                    found.append(diagnostic)
+                break
+    return found
+
+
 def require_done(result):
     if result.get("status") != "DONE":
-        raise DagError("only a structured DONE result may close a unit")
+        failed = [
+            review.get("kind", "review")
+            for review in result.get("reviews", [])
+            if isinstance(review, dict) and review.get("status") == "FAIL"
+        ]
+        if result.get("validation", {}).get("status") == "FAIL":
+            failed.append("validation")
+        detail = result.get("summary") or "no summary returned"
+        gates = f"; failed gates: {', '.join(failed)}" if failed else ""
+        raise DagError(f"unit reported {result.get('status', 'no status')}: {detail}{gates}")
     orchestration = result.get("orchestration", {})
     if orchestration.get("listed_agents") is not True or orchestration.get("waited_for_all") is not True:
         raise DagError("result lacks subagent list/wait evidence")
@@ -293,15 +350,19 @@ def session_file(session_dir, name):
     return max(matches, key=lambda path: path.stat().st_mtime_ns)
 
 
-def child_artifact(run_id, expected_sha):
+def child_artifact(run_id, expected_sha, expected_agent=None, parent_session=None):
     if not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f-]{8,36}", run_id):
         raise DagError(f"invalid subagent run id: {run_id!r}")
-    candidates = list(Path("/tmp").glob(f"pi-subagents-uid-*/async-subagent-runs/{run_id}*"))
+    candidates = list(SWARM_TMP.glob(f"pi-subagents-uid-*/async-subagent-runs/{run_id}*"))
     if len(candidates) != 1:
         raise DagError(f"subagent artifact not uniquely found for {run_id}")
     status = load_json(candidates[0] / "status.json")
     if status.get("state") != "complete":
         raise DagError(f"subagent {run_id} did not complete successfully")
+    if parent_session is not None and status.get("sessionId") != str(parent_session):
+        raise DagError(f"subagent {run_id} is not bound to parent session")
+    if expected_agent is not None and not any(step.get("agent") == expected_agent for step in status.get("steps", [])):
+        raise DagError(f"subagent {run_id} is not bound to {expected_agent}")
     output = candidates[0] / "output-0.log"
     child = parse_result(output.read_text(encoding="utf-8"))
     if child.get("status") != "PASS" or child.get("sha") != expected_sha:
@@ -348,9 +409,9 @@ def verify_session_evidence(path, result, commit):
     if len(set(expected.values())) != len(expected):
         raise DagError("review and validator run IDs must be distinct")
     for agent, run_id in expected.items():
-        if not any(run_id in text for text in launched.get(agent, [])):
-            raise DagError(f"parent session does not bind {run_id} to {agent}")
-        child_artifact(run_id, commit)
+        # Resume/async result wording is not stable across harness versions;
+        # the lifecycle artifact is the authoritative parent/agent binding.
+        child_artifact(run_id, commit, agent, path)
 
 
 def accept_result(repo, unit, result, expected_head, parent_session=None):
@@ -384,12 +445,19 @@ def accept_result(repo, unit, result, expected_head, parent_session=None):
     return True
 
 
-def invocation(unit, session_dir, worktree):
+def invocation(unit, session_dir, worktree, source=ROOT):
     """Use Terra normally and Sol only for checkpoint reconciliation."""
-    prompt = worktree / ".pi/prompts/pi-port-swarm.md"
+    source = Path(source).resolve()
+    prompt = source / ".pi/prompts/pi-port-swarm.md"
     name = f"pi-port-{unit['id'].lower()}-{time.time_ns()}"
     supervisor_model = "openai-codex/gpt-5.6-sol" if unit["id"] == "RECONCILE-CHECKPOINT" else "openai-codex/gpt-5.6-terra"
-    message = f"Execute unit {unit['id']} only in {worktree}. The DAG assigns {unit['model']} to the unit; apply the role routing policy and return one JSON result line."
+    repair = ""
+    if unit.get("_retry_head"):
+        repair = f" This worktree starts at retained candidate {unit['_retry_head']}; repair only its reported blockers instead of reimplementing the unit: {unit.get('_retry_error', 'review failure')}."
+    owned_check = ""
+    if unit["role"] == "writer":
+        owned_check = f" Before reviewers, run `python3 {source}/tools/pi-port-swarm/swarm.py --source {worktree} check-owned {unit['id']}` and fix every owned compiler diagnostic until it exits 0."
+    message = f"Execute unit {unit['id']} only in {worktree}. The DAG assigns {unit['model']} to the unit; apply the role routing policy and return one JSON result line. Use acceptance:none for read-only evidence children, run only the DAG-declared validation, and never block a staged unit for propagation owned by a later unit.{repair}{owned_check}"
     return ["pi", "-p", "--session-dir", str(session_dir), "--name", name, "--model", supervisor_model, "--thinking", "high", "--approve", f"@{prompt}", message], name
 
 
@@ -397,7 +465,7 @@ def run_environment():
     environment = os.environ.copy()
     environment.update({
         "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0", "PI_SUBAGENT_MAX_SPAWNS_PER_SESSION": str(MAX_SUBAGENTS),
-        "PI_SUBAGENT_WAIT_TOOL_ENABLED": "true", "CARGO_TARGET_DIR": "/tmp/zedflow-pi-port-swarm-target", "TMPDIR": "/tmp/zedflow-pi-port-swarm-tmp",
+        "PI_SUBAGENT_WAIT_TOOL_ENABLED": "true", "CARGO_TARGET_DIR": "/tmp/zedflow-pi-port-swarm-target", "TMPDIR": str(SWARM_TMP),
     })
     Path(environment["CARGO_TARGET_DIR"]).mkdir(parents=True, exist_ok=True)
     Path(environment["TMPDIR"]).mkdir(parents=True, exist_ok=True)
@@ -408,15 +476,25 @@ def parse_result(output):
     for line in reversed(output.splitlines()):
         try:
             value = json.loads(line)
-            if isinstance(value, dict):
+            if isinstance(value, dict) and value.get("status") in {"DONE", "BLOCKED", "PASS", "FAIL"}:
                 return value
         except json.JSONDecodeError:
             pass
     raise DagError("pi output has no JSON result")
 
 
+def report(event, **fields):
+    """Emit one flush-safe JSON line for Paseo and local tick observers."""
+    print(json.dumps({"event": event, **fields}, sort_keys=True), flush=True)
+
+
 def mark_failure(record, error):
     record.update(status="FAILED" if record.get("attempts", 0) < MAX_ATTEMPTS else "BLOCKED", error=str(error))
+
+
+def is_evidence_error(error):
+    """Return true for proof-transport failures that must not spend an implementation retry."""
+    return str(error).startswith(EVIDENCE_ERROR_PREFIXES)
 
 
 def recover_claims(state):
@@ -427,10 +505,10 @@ def recover_claims(state):
 
 
 def reconcile_pending(state, state_path):
-    """Finish a CAS transaction that may have been interrupted after ref movement."""
+    """Finish an interrupted or evidence-delayed integration without rerunning implementation."""
     pending = state.get("pending_integration")
     if not pending:
-        return
+        return False
     repo = DATA / "repo"
     current = sha(repo, "automation/pi-port")
     unit, result = pending["unit"], pending["result"]
@@ -441,17 +519,25 @@ def reconcile_pending(state, state_path):
         elif current != result["commit"]:
             raise DagError(f"integration ref diverged during recovery: {current}")
         record.update(result, status="CLOSED")
+        record.pop("error", None)
         state.pop("pending_integration", None)
     except (DagError, KeyError) as error:
+        if is_evidence_error(error):
+            pending["retries"] = pending.get("retries", 0) + 1
+            record.update(status="FAILED", error=f"integration evidence pending: {error}")
+            atomic_json(state_path, state)
+            return True
         mark_failure(record, error)
         state.pop("pending_integration", None)
     atomic_json(state_path, state)
+    return False
 
 
-def execute_pi(unit, session_dir, slot):
-    command, name = invocation(unit, session_dir, slot)
+def execute_pi(unit, session_dir, slot, timeout=PI_RUN_SECONDS, source=ROOT):
+    command, name = invocation(unit, session_dir, slot, source)
+    started = time.monotonic()
     try:
-        completed = run(command, cwd=slot, env=run_environment(), check=False, timeout=PI_RUN_SECONDS)
+        completed = run(command, cwd=slot, env=run_environment(), check=False, timeout=min(timeout, PI_RUN_SECONDS))
     except subprocess.TimeoutExpired as error:
         completed = subprocess.CompletedProcess(error.cmd, 124, error.stdout or "", (error.stderr or "") + "\npi run timed out\n")
     except OSError as error:
@@ -460,7 +546,129 @@ def execute_pi(unit, session_dir, slot):
         persisted = session_file(session_dir, name)
     except DagError:
         persisted = None
-    return completed, persisted
+    return completed, persisted, round(time.monotonic() - started, 3)
+
+
+def run_batch(args, dag, state, state_path, started, launched, pin, session_dir):
+    """Run one ready batch; the caller recomputes readiness for successors."""
+    jobs, reserved_slots, failed = [], set(), False
+    ready = ready_units(dag, state)
+    if {unit["id"] for unit in ready} >= {"RV-FID", "RV-RUST"}:
+        ready = [unit for unit in ready if unit["id"] in {"RV-FID", "RV-RUST"}]
+    else:
+        ready = ready[:1]
+    for unit in ready:
+        if time.monotonic() - started >= RUN_SECONDS or launched >= MAX_SUBAGENTS:
+            break
+        uid = unit["id"]
+        record = state["units"].setdefault(uid, {})
+        expected_head = sha(DATA / "repo", "automation/pi-port")
+        start_head = record.get("retry_head", expected_head)
+        launch_unit = dict(unit)
+        if start_head != expected_head:
+            launch_unit.update(_retry_head=start_head, _retry_error=record.get("retry_error") or record.get("error"))
+        attempt = record.get("attempts", 0) + 1
+        slot = prepare_slot(launch_unit, start_head, attempt, args.source, pin, state, reserved_slots)
+        if slot is None:
+            record.update(attempts=attempt)
+            mark_failure(record, "no clean persistent worktree slot")
+            atomic_json(state_path, state)
+            report("unit_finished", unit=uid, attempt=attempt, status=record["status"], error=record["error"])
+            failed = True
+            continue
+        record.pop("error", None)
+        record.update(status="CLAIMED", attempts=attempt, expected_head=expected_head, idempotence=f"{uid}+{expected_head}+{plan_hash(dag)}")
+        jobs.append((launch_unit, record, expected_head, slot))
+        launched += 1
+        atomic_json(state_path, state)
+        report(
+            "unit_started",
+            unit=uid,
+            role=unit["role"],
+            attempt=attempt,
+            max_attempts=MAX_ATTEMPTS,
+            expected_head=expected_head,
+            start_head=start_head,
+            repair=start_head != expected_head,
+            dependencies=unit["depends_on"],
+            ownership=unit["ownership"],
+            validation=unit.get("validation"),
+            slot=str(slot),
+        )
+    parallel_reviews = len(jobs) == 2 and {job[0]["id"] for job in jobs} == {"RV-FID", "RV-RUST"} and all(job[0]["role"] == "reviewer" for job in jobs)
+    timeout = int(RUN_SECONDS - (time.monotonic() - started))
+    if timeout <= 0:
+        for _, record, _, _ in jobs:
+            record["attempts"] -= 1
+            if record["attempts"]:
+                record["status"] = "FAILED"
+            else:
+                record.clear()
+        atomic_json(state_path, state)
+        return launched - len(jobs), False, failed
+    if parallel_reviews:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            completed_runs = list(executor.map(lambda job: execute_pi(job[0], session_dir, job[3], timeout, args.source), jobs))
+    else:
+        completed_runs = [execute_pi(unit, session_dir, slot, timeout, args.source) for unit, _, _, slot in jobs]
+    for (unit, record, expected_head, slot), (completed, parent_session, duration) in zip(jobs, completed_runs):
+        uid = unit["id"]
+        log = STATE / "logs" / f"{uid}-{int(time.time())}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text(completed.stdout + completed.stderr)
+        result = None
+        with contextlib.suppress(DagError):
+            result = parse_result(completed.stdout)
+        try:
+            if completed.returncode != 0:
+                detail = f": {result.get('summary')}" if result and result.get("summary") else ""
+                raise DagError(f"pi exited {completed.returncode}{detail}")
+            if result is None:
+                raise DagError("pi output has no JSON result")
+            if unit["role"] == "writer" and result.get("commit"):
+                compile_errors = owned_compile_errors(slot, unit)
+                if compile_errors:
+                    raise DagError("owned compiler errors: " + " | ".join(compile_errors[:10]))
+            if unit["role"] in MUTATING_ROLES:
+                state["pending_integration"] = {"unit": unit, "result": result, "expected_head": expected_head, "parent_session": str(parent_session) if parent_session else None}
+                atomic_json(state_path, state)
+            accept_result(DATA / "repo", unit, result, expected_head, parent_session)
+            record.update(result, status="CLOSED")
+            record.pop("retry_head", None)
+            record.pop("retry_error", None)
+            state.pop("pending_integration", None)
+        except (DagError, KeyError) as error:
+            if result and result.get("status") == "DONE" and is_evidence_error(error):
+                record["attempts"] = max(0, record.get("attempts", 1) - 1)
+                record.update(status="FAILED", error=f"integration evidence pending: {error}")
+                # Keep pending_integration: the next tick retries the exact green
+                # candidate and proof artifacts before spending another model token.
+            else:
+                if result and retryable_candidate(DATA / "repo", unit, result, expected_head):
+                    record["retry_head"] = result["commit"]
+                    record["retry_error"] = str(error)
+                mark_failure(record, error)
+                if sha(DATA / "repo", "automation/pi-port") == expected_head:
+                    state.pop("pending_integration", None)
+            failed = True
+        run_record = {
+            "unit": uid,
+            "role": unit["role"],
+            "attempt": record.get("attempts"),
+            "status": record.get("status"),
+            "exit": completed.returncode,
+            "duration_seconds": duration,
+            "expected_head": expected_head,
+            "candidate_sha": (result or {}).get("sha") or (result or {}).get("commit"),
+            "summary": (result or {}).get("summary"),
+            "error": record.get("error"),
+            "log": str(log),
+            "session": str(parent_session) if parent_session else None,
+        }
+        state["runs"].append(run_record)
+        atomic_json(state_path, state)
+        report("unit_finished", **run_record)
+    return launched, bool(jobs), failed
 
 
 def tick(args):
@@ -474,57 +682,62 @@ def tick(args):
         atomic_json(state_path, state)
         dag = runtime_dag(args.dag)
         validate_dag(dag)
-    reconcile_pending(state, state_path)
+    evidence_pending = reconcile_pending(state, state_path)
     recover_claims(state)
     atomic_json(state_path, state)
-    started, launched, pin, jobs, reserved_slots = time.monotonic(), 0, pinned_pi(dag), [], set()
-    for unit in ready_units(dag, state):
-        if time.monotonic() - started >= RUN_SECONDS or launched >= MAX_SUBAGENTS:
-            break
-        uid = unit["id"]
-        record = state["units"].setdefault(uid, {})
-        expected_head = sha(DATA / "repo", "automation/pi-port")
-        attempt = record.get("attempts", 0) + 1
-        slot = prepare_slot(unit, expected_head, attempt, args.source, pin, state, reserved_slots)
-        if slot is None:
-            record.update(attempts=attempt)
-            mark_failure(record, "no clean persistent worktree slot")
-            atomic_json(state_path, state)
-            continue
-        record.update(status="CLAIMED", attempts=attempt, expected_head=expected_head, idempotence=f"{uid}+{expected_head}+{plan_hash(dag)}")
-        jobs.append((unit, record, expected_head, slot))
-        launched += 1
-        atomic_json(state_path, state)
+    if evidence_pending:
+        pending = state["pending_integration"]
+        report(
+            "integration_pending",
+            unit=pending["unit"]["id"],
+            candidate_sha=pending["result"].get("sha") or pending["result"].get("commit"),
+            retries=pending.get("retries", 0),
+            error=state["units"][pending["unit"]["id"]].get("error"),
+            state=str(state_path),
+        )
+        raise DagError("green candidate retained; integration evidence is pending")
+    started, launched, pin = time.monotonic(), 0, pinned_pi(dag)
     session_dir = STATE / "sessions"
     session_dir.mkdir(parents=True, exist_ok=True)
-    parallel_reviews = len(jobs) == 2 and {job[0]["id"] for job in jobs} == {"RV-FID", "RV-RUST"} and all(job[0]["role"] == "reviewer" for job in jobs)
-    if parallel_reviews:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-            completed_runs = list(executor.map(lambda job: execute_pi(job[0], session_dir, job[3]), jobs))
-    else:
-        completed_runs = [execute_pi(unit, session_dir, slot) for unit, _, _, slot in jobs]
-    for (unit, record, expected_head, _), (completed, parent_session) in zip(jobs, completed_runs):
-        uid = unit["id"]
-        log = STATE / "logs" / f"{uid}-{int(time.time())}.log"
-        log.parent.mkdir(parents=True, exist_ok=True)
-        log.write_text(completed.stdout + completed.stderr)
+    report(
+        "tick_started",
+        integration_sha=sha(DATA / "repo", "automation/pi-port"),
+        plan_hash=plan_hash(dag),
+        closed=sum(record.get("status") == "CLOSED" for record in state["units"].values()),
+        total=len(dag["units"]),
+        ready=[unit["id"] for unit in ready_units(dag, state)],
+        state=str(state_path),
+    )
+    failed = False
+    while time.monotonic() - started < RUN_SECONDS and launched < MAX_SUBAGENTS:
+        launched, ran, batch_failed = run_batch(args, runtime_dag(args.dag), state, state_path, started, launched, pin, session_dir)
+        failed |= batch_failed
+        if not ran or batch_failed:
+            break
+    dag = runtime_dag(args.dag)
+    ready = [unit["id"] for unit in ready_units(dag, state)]
+    blocked = [uid for uid, record in state["units"].items() if record.get("status") == "BLOCKED"]
+    statuses = {status: sum(record.get("status") == status for record in state["units"].values()) for status in STATES}
+    report(
+        "tick_finished",
+        duration_seconds=round(time.monotonic() - started, 3),
+        launched=launched,
+        integration_sha=sha(DATA / "repo", "automation/pi-port"),
+        progress={"closed": statuses["CLOSED"], "total": len(dag["units"]), "statuses": statuses},
+        ready=ready,
+        blocked=blocked,
+        failed=failed,
+        state=str(state_path),
+    )
+    if blocked and not ready:
         try:
-            if completed.returncode != 0:
-                raise DagError(f"pi exited {completed.returncode}")
-            result = parse_result(completed.stdout)
-            if unit["role"] in MUTATING_ROLES:
-                state["pending_integration"] = {"unit": unit, "result": result, "expected_head": expected_head, "parent_session": str(parent_session) if parent_session else None}
-                atomic_json(state_path, state)
-            accept_result(DATA / "repo", unit, result, expected_head, parent_session)
-            record.update(result, status="CLOSED")
-            state.pop("pending_integration", None)
-        except (DagError, KeyError) as error:
-            mark_failure(record, error)
-            if sha(DATA / "repo", "automation/pi-port") == expected_head:
-                state.pop("pending_integration", None)
-        state["runs"].append({"unit": uid, "exit": completed.returncode, "log": str(log)})
-        atomic_json(state_path, state)
-    print(json.dumps({"ready": [unit["id"] for unit in ready_units(runtime_dag(args.dag), state)], "state": str(state_path)}))
+            paused = pause_paseo_schedule()
+            report("circuit_breaker", action="schedule_paused", schedule=paused, blocked=blocked)
+        except (DagError, subprocess.CalledProcessError, OSError) as error:
+            report("circuit_breaker", action="pause_failed", error=str(error), blocked=blocked)
+    if failed or blocked:
+        details = [f"{uid}: {state['units'][uid].get('error', 'blocked')}" for uid in blocked]
+        raise DagError("swarm blocked or failed: " + "; ".join(details or ready))
 
 
 def paseo_connection():
@@ -538,6 +751,18 @@ def paseo_connection():
     if password_file.exists():
         environment["PASEO_PASSWORD"] = password_file.read_text(encoding="utf-8").strip()
     return host, environment
+
+
+def pause_paseo_schedule():
+    """Open the circuit after terminal blockage so idle hourly launchers spend no tokens."""
+    host, environment = paseo_connection()
+    listed = run(["paseo", "--json", "schedule", "ls", "--host", host], env=environment)
+    schedules = json.loads(listed.stdout)
+    schedule = next((item for item in schedules if item.get("name") == "zedflow-pi-port-swarm"), None)
+    if not schedule:
+        raise DagError("Paseo swarm schedule not found")
+    run(["paseo", "schedule", "pause", schedule["id"], "--host", host], env=environment)
+    return schedule["id"]
 
 
 def install(args):
@@ -567,6 +792,8 @@ def parser():
     subcommands = result.add_subparsers(dest="command", required=True)
     for command in ("validate-dag", "status", "tick", "install"):
         subcommands.add_parser(command)
+    check_owned = subcommands.add_parser("check-owned")
+    check_owned.add_argument("unit")
     return result
 
 
@@ -579,6 +806,13 @@ def main():
     if args.command == "status":
         print(json.dumps(load_json(STATE / "state.json") if (STATE / "state.json").exists() else {}, indent=2))
         return 0
+    if args.command == "check-owned":
+        graph = validate_dag(runtime_dag(args.dag))
+        if args.unit not in graph:
+            raise DagError(f"unknown unit {args.unit}")
+        errors = owned_compile_errors(Path(args.source).resolve(), graph[args.unit])
+        print(json.dumps({"unit": args.unit, "owned_compiler_errors": errors}))
+        return 1 if errors else 0
     lock = STATE / "swarm.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
     with open(lock, "w") as file:

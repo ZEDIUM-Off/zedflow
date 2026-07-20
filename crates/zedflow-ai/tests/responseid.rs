@@ -219,6 +219,7 @@ fn complete_openai_codex(
             thinking_level_map: HashMap::new(),
             headers: HashMap::new(),
             max_tokens: Some(128_000),
+            cost: zedflow_ai::types::ModelCost::default(),
         },
         &openai_codex_responses::Context {
             system_prompt: Some(context.system_prompt.to_owned()),
@@ -572,6 +573,7 @@ fn openai_codex_sse_live_transport_exposes_response_id() {
         thinking_level_map: HashMap::new(),
         headers: HashMap::new(),
         max_tokens: Some(128_000),
+        cost: zedflow_ai::types::ModelCost::default(),
     };
     let token = "aaa.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjX3Rlc3QifX0.bbb";
     let stream = openai_codex_responses::stream_live(

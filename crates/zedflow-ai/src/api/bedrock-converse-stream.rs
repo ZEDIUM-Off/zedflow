@@ -1,17 +1,14 @@
 //! Amazon Bedrock Converse Stream API ported from Pi.
 
 use std::collections::HashMap;
-use std::fs;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use futures::future::BoxFuture;
 
 use base64::Engine;
-use reqwest::blocking::Client;
-use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{HeaderName, HeaderValue};
 use serde_json::{Map, Value, json};
-use sha2::{Digest, Sha256};
 use url::Url;
 use zedflow_core::error::Result;
 
@@ -143,6 +140,8 @@ pub struct BedrockOptions {
     pub temperature: Option<f64>,
     /// Maximum output tokens requested by the caller.
     pub max_tokens: Option<u32>,
+    /// Request cancellation signal.
+    pub signal: Option<crate::types::AbortSignal>,
     /// Prompt cache retention preference.
     pub cache_retention: Option<CacheRetention>,
     /// Optional custom HTTP headers.
@@ -184,17 +183,7 @@ pub struct BedrockClientConfig {
     pub region: Option<String>,
 }
 
-/// Why genai's Bedrock adapters are not used for Pi-compatible Bedrock.
-#[cfg(test)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BedrockGenaiParityReport {
-    /// Whether genai can preserve all Pi-observable Bedrock behavior.
-    pub(crate) can_preserve_pi_behavior: bool,
-    /// Missing behaviors that force the Bedrock fallback path.
-    pub(crate) blockers: Vec<&'static str>,
-}
-
-/// Bedrock authentication mode selected for the fallback client.
+/// Bedrock authentication mode selected for the SDK client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BedrockAuthMode {
     /// Use the AWS SDK default credential chain.
@@ -214,7 +203,7 @@ pub enum BedrockAuthMode {
     BearerToken(String),
 }
 
-/// Deterministic request plan for the narrow Bedrock Runtime fallback.
+/// Deterministic Bedrock Runtime SDK request plan.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BedrockRuntimeRequestPlan {
     /// SDK client region/profile/endpoint resolution.
@@ -223,7 +212,7 @@ pub struct BedrockRuntimeRequestPlan {
     pub auth_mode: BedrockAuthMode,
     /// Pi proxy URL selected for the target endpoint, if any.
     pub proxy_url: Option<String>,
-    /// Whether HTTP/1 should be forced for custom endpoints/proxies.
+    /// Whether Pi requests HTTP/1-only handling for custom endpoints/proxies.
     pub force_http1: bool,
     /// Caller headers that are safe to inject before SigV4 signing.
     pub custom_signed_headers: ProviderHeaders,
@@ -340,26 +329,7 @@ pub fn resolve_bedrock_client_config_with_env(
     }
 }
 
-/// Returns the local proof used by U5 to choose the fallback over genai Bedrock.
-#[cfg(test)]
-#[must_use]
-pub(crate) fn genai_bedrock_parity_report() -> BedrockGenaiParityReport {
-    BedrockGenaiParityReport {
-        can_preserve_pi_behavior: false,
-        blockers: vec![
-            "genai bedrock_sigv4 resolves only AWS_REGION/AWS_DEFAULT_REGION/default chain and has no per-request AWS profile or skip-auth dummy credentials seam",
-            "genai bedrock_sigv4 has no AWS_BEARER_TOKEN_BEDROCK/httpBearerAuth path; genai bedrock_api uses a different BEDROCK_API_KEY convention",
-            "genai signs only host/content-type in its SigV4 helper, so Pi caller headers cannot be injected at the Smithy build step and covered by SigV4",
-            "genai chat options do not expose Pi onPayload payload replacement or onResponse AWS metadata callback",
-            "genai hides the SDK requestHandler choice needed for Pi proxy/force-HTTP1 behavior",
-        ],
-    }
-}
-
-/// Resolves the Bedrock Runtime fallback request without making a network call.
-///
-/// This is the seam the live AWS SDK sender consumes: everything here is deterministic and
-/// mirrors Pi's client setup before `BedrockRuntimeClient.send(new ConverseStreamCommand(...))`.
+/// Resolves the Bedrock Runtime SDK request without making a network call.
 #[must_use]
 pub fn resolve_bedrock_runtime_request_plan(
     model: &Model,
@@ -370,7 +340,7 @@ pub fn resolve_bedrock_runtime_request_plan(
     resolve_bedrock_runtime_request_plan_with_env(model, context, options, &ambient)
 }
 
-/// Resolves the Bedrock Runtime fallback request using an explicit ambient environment map.
+/// Resolves the Bedrock Runtime SDK request using an explicit ambient environment map.
 #[must_use]
 pub fn resolve_bedrock_runtime_request_plan_with_env(
     model: &Model,
@@ -773,6 +743,34 @@ fn convert_messages(
     messages
 }
 
+fn build_tool_config(context: &Value, choice: Option<&BedrockToolChoice>) -> Option<Value> {
+    let tools = context.get("tools")?.as_array()?;
+    if tools.is_empty() || matches!(choice, Some(BedrockToolChoice::None)) {
+        return None;
+    }
+    let tools = tools
+        .iter()
+        .filter_map(|tool| {
+            Some(json!({
+                "toolSpec": {
+                    "name": tool.get("name")?.as_str()?,
+                    "description": tool.get("description").and_then(Value::as_str).unwrap_or_default(),
+                    "inputSchema": { "json": tool.get("parameters").cloned().unwrap_or_else(|| json!({ "type": "object" })) },
+                }
+            }))
+        })
+        .collect::<Vec<_>>();
+    if tools.is_empty() {
+        return None;
+    }
+    let tool_choice = match choice {
+        Some(BedrockToolChoice::Any) => json!({ "any": {} }),
+        Some(BedrockToolChoice::Tool { name }) => json!({ "tool": { "name": name } }),
+        _ => json!({ "auto": {} }),
+    };
+    Some(json!({ "tools": tools, "toolChoice": tool_choice }))
+}
+
 /// Builds the local ConverseStream command input payload.
 #[must_use]
 pub fn build_bedrock_converse_payload(
@@ -801,6 +799,9 @@ pub fn build_bedrock_converse_payload(
     }
     payload["inferenceConfig"] = Value::Object(inference);
 
+    if let Some(tool_config) = build_tool_config(context, options.tool_choice.as_ref()) {
+        payload["toolConfig"] = tool_config;
+    }
     if let Some(additional) = build_additional_model_request_fields(model, options) {
         payload["additionalModelRequestFields"] = additional;
     }
@@ -935,10 +936,207 @@ pub fn has_bedrock_live_capability_with_env(ambient: &ProviderEnv) -> bool {
             == Some("1")
         || (provider_env_value("AWS_ACCESS_KEY_ID", &ProviderEnv::new(), ambient).is_some()
             && provider_env_value("AWS_SECRET_ACCESS_KEY", &ProviderEnv::new(), ambient).is_some())
-        || provider_env_value("AWS_PROFILE", &ProviderEnv::new(), ambient)
-            .and_then(|profile| load_aws_profile(&profile))
-            .and_then(|profile| profile.access_key_id.zip(profile.secret_access_key))
-            .is_some()
+        || provider_env_value("AWS_PROFILE", &ProviderEnv::new(), ambient).is_some()
+}
+
+/// Returns the canonical Bedrock Converse Stream implementation.
+#[must_use]
+pub fn provider_streams() -> crate::types::ProviderStreams {
+    crate::types::ProviderStreams {
+        stream: Arc::new(stream_registered),
+        stream_simple: Arc::new(stream_simple_registered),
+    }
+}
+
+#[must_use]
+fn stream_registered(
+    model: &crate::types::Model,
+    context: &crate::types::Context,
+    options: Option<&crate::types::StreamOptions>,
+) -> crate::types::AssistantMessageEventStream {
+    let transformed = crate::api::transform_messages::transform_context(
+        context,
+        model,
+        Some(&|id, _, _| normalize_tool_call_id(id)),
+    );
+    let local_model = registered_model(model);
+    let local_options = registered_options(model, options);
+    let context = serde_json::to_value(transformed).unwrap_or_else(|_| json!({ "messages": [] }));
+    stream_with_context_value_and_cost(
+        &local_model,
+        &context,
+        Some(&local_options),
+        model.cost.clone(),
+    )
+    .unwrap_or_else(|error| crate::models::terminal_stream_error(model, error.to_string()))
+}
+
+#[must_use]
+fn stream_simple_registered(
+    model: &crate::types::Model,
+    context: &crate::types::Context,
+    options: Option<&crate::types::SimpleStreamOptions>,
+) -> crate::types::AssistantMessageEventStream {
+    let mut stream_options = options
+        .map(|options| options.stream.clone())
+        .unwrap_or_default();
+    if let Some(reasoning) = options.and_then(|options| options.reasoning) {
+        stream_options.extra.insert(
+            "reasoning".to_owned(),
+            Value::String(
+                match reasoning {
+                    crate::types::ThinkingLevel::Minimal => "minimal",
+                    crate::types::ThinkingLevel::Low => "low",
+                    crate::types::ThinkingLevel::Medium => "medium",
+                    crate::types::ThinkingLevel::High => "high",
+                    crate::types::ThinkingLevel::XHigh => "xhigh",
+                }
+                .to_owned(),
+            ),
+        );
+    }
+    stream_registered(model, context, Some(&stream_options))
+}
+
+fn registered_model(model: &crate::types::Model) -> Model {
+    Model {
+        id: model.id.clone(),
+        provider: model.provider.clone(),
+        name: Some(model.name.clone()),
+        base_url: (!model.base_url.is_empty()).then(|| model.base_url.clone()),
+        max_tokens: u32::try_from(model.max_tokens).unwrap_or(u32::MAX),
+        reasoning: model.reasoning,
+        thinking_level_map: HashMap::new(),
+    }
+}
+
+fn registered_options(
+    model: &crate::types::Model,
+    options: Option<&crate::types::StreamOptions>,
+) -> BedrockOptions {
+    let options = options.cloned().unwrap_or_default();
+    let canonical_model = model.clone();
+    let payload_model = canonical_model.clone();
+    BedrockOptions {
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
+        signal: options.signal,
+        cache_retention: options.cache_retention.map(|value| match value {
+            crate::types::CacheRetention::None => CacheRetention::None,
+            crate::types::CacheRetention::Short => CacheRetention::Short,
+            crate::types::CacheRetention::Long => CacheRetention::Long,
+        }),
+        headers: options
+            .headers
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(key, value)| value.map(|value| (key, value)))
+            .collect(),
+        env: options.env.unwrap_or_default(),
+        region: options
+            .extra
+            .get("region")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        profile: options
+            .extra
+            .get("profile")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        tool_choice: bedrock_tool_choice(options.extra.get("toolChoice")),
+        reasoning: options
+            .extra
+            .get("reasoning")
+            .and_then(Value::as_str)
+            .and_then(parse_thinking_level),
+        thinking_budgets: HashMap::new(),
+        interleaved_thinking: options
+            .extra
+            .get("interleavedThinking")
+            .and_then(Value::as_bool),
+        thinking_display: options
+            .extra
+            .get("thinkingDisplay")
+            .and_then(Value::as_str)
+            .and_then(|value| match value {
+                "summarized" => Some(BedrockThinkingDisplay::Summarized),
+                "omitted" => Some(BedrockThinkingDisplay::Omitted),
+                _ => None,
+            }),
+        request_metadata: options
+            .extra
+            .get("requestMetadata")
+            .and_then(Value::as_object)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|(key, value)| {
+                        value.as_str().map(|value| (key.clone(), value.to_owned()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        bearer_token: options
+            .extra
+            .get("bearerToken")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        on_payload: options.on_payload.map(|hook| {
+            Arc::new(move |payload, _| hook(payload, payload_model.clone())) as BedrockPayloadHook
+        }),
+        on_response: options.on_response.map(|hook| {
+            Arc::new(move |response: BedrockResponseMetadata, _: Model| {
+                hook(
+                    crate::types::ProviderResponse {
+                        status: response.status,
+                        headers: response.headers,
+                    },
+                    canonical_model.clone(),
+                )
+            }) as BedrockResponseHook
+        }),
+    }
+}
+
+fn parse_thinking_level(value: &str) -> Option<ThinkingLevel> {
+    match value {
+        "minimal" => Some(ThinkingLevel::Minimal),
+        "low" => Some(ThinkingLevel::Low),
+        "medium" => Some(ThinkingLevel::Medium),
+        "high" => Some(ThinkingLevel::High),
+        "xhigh" => Some(ThinkingLevel::XHigh),
+        _ => None,
+    }
+}
+
+fn bedrock_tool_choice(value: Option<&Value>) -> Option<BedrockToolChoice> {
+    match value {
+        Some(Value::String(value)) if value == "auto" => Some(BedrockToolChoice::Auto),
+        Some(Value::String(value)) if value == "any" => Some(BedrockToolChoice::Any),
+        Some(Value::String(value)) if value == "none" => Some(BedrockToolChoice::None),
+        Some(Value::Object(value)) => {
+            value
+                .get("name")
+                .and_then(Value::as_str)
+                .map(|name| BedrockToolChoice::Tool {
+                    name: name.to_owned(),
+                })
+        }
+        _ => None,
+    }
+}
+
+fn normalize_tool_call_id(id: &str) -> String {
+    id.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(64)
+        .collect()
 }
 
 /// Starts a Bedrock Converse stream from an already converted Pi context value.
@@ -947,13 +1145,27 @@ pub fn stream_with_context_value(
     context: &Value,
     options: Option<&BedrockOptions>,
 ) -> Result<AssistantMessageEventStream> {
+    stream_with_context_value_and_cost(model, context, options, crate::types::ModelCost::default())
+}
+
+fn stream_with_context_value_and_cost(
+    model: &Model,
+    context: &Value,
+    options: Option<&BedrockOptions>,
+    cost: crate::types::ModelCost,
+) -> Result<AssistantMessageEventStream> {
     let stream = AssistantMessageEventStream::new();
     let worker_stream = stream.clone();
     let model = model.clone();
     let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
-        run_bedrock_live_worker(worker_stream, model, context, options).await;
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        "bedrock-converse-stream",
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
+        run_bedrock_live_worker(worker_stream, model, context, options, cost).await;
     });
     Ok(stream)
 }
@@ -976,126 +1188,638 @@ pub fn stream_simple(
     stream(model, context, options)
 }
 
+fn json_document(value: &Value) -> aws_smithy_types::Document {
+    use aws_smithy_types::{Document, Number};
+    match value {
+        Value::Null => Document::Null,
+        Value::Bool(value) => Document::Bool(*value),
+        Value::String(value) => Document::String(value.clone()),
+        Value::Number(value) => {
+            if let Some(value) = value.as_u64() {
+                Document::Number(Number::PosInt(value))
+            } else if let Some(value) = value.as_i64() {
+                Document::Number(Number::NegInt(value))
+            } else {
+                Document::Number(Number::Float(value.as_f64().unwrap_or_default()))
+            }
+        }
+        Value::Array(values) => Document::Array(values.iter().map(json_document).collect()),
+        Value::Object(values) => Document::Object(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), json_document(value)))
+                .collect(),
+        ),
+    }
+}
+
+fn sdk_image(
+    value: &Value,
+) -> std::result::Result<aws_sdk_bedrockruntime::types::ImageBlock, String> {
+    use aws_sdk_bedrockruntime::types::{ImageBlock, ImageFormat, ImageSource};
+    let format = value
+        .get("format")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "missing image format".to_owned())?;
+    let format = match format {
+        "jpeg" => ImageFormat::Jpeg,
+        "png" => ImageFormat::Png,
+        "gif" => ImageFormat::Gif,
+        "webp" => ImageFormat::Webp,
+        other => return Err(format!("unsupported image format {other}")),
+    };
+    let bytes = value
+        .pointer("/source/bytes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "missing image bytes".to_owned())?
+        .iter()
+        .filter_map(Value::as_u64)
+        .map(|value| value as u8)
+        .collect::<Vec<_>>();
+    ImageBlock::builder()
+        .format(format)
+        .source(ImageSource::Bytes(aws_smithy_types::Blob::new(bytes)))
+        .build()
+        .map_err(|error| error.to_string())
+}
+
+fn sdk_cache_point(
+    value: &Value,
+) -> std::result::Result<aws_sdk_bedrockruntime::types::CachePointBlock, String> {
+    use aws_sdk_bedrockruntime::types::{CachePointBlock, CachePointType, CacheTtl};
+    let mut builder = CachePointBlock::builder().r#type(CachePointType::Default);
+    if value.get("ttl").and_then(Value::as_str) == Some("ONE_HOUR") {
+        builder = builder.ttl(CacheTtl::OneHour);
+    }
+    builder.build().map_err(|error| error.to_string())
+}
+
+fn sdk_content(
+    value: &Value,
+) -> std::result::Result<aws_sdk_bedrockruntime::types::ContentBlock, String> {
+    use aws_sdk_bedrockruntime::types::{
+        ContentBlock, ReasoningContentBlock, ReasoningTextBlock, ToolResultBlock,
+        ToolResultContentBlock, ToolResultStatus, ToolUseBlock,
+    };
+    if let Some(text) = value.get("text").and_then(Value::as_str) {
+        return Ok(ContentBlock::Text(text.to_owned()));
+    }
+    if let Some(image) = value.get("image") {
+        return Ok(ContentBlock::Image(sdk_image(image)?));
+    }
+    if let Some(cache) = value.get("cachePoint") {
+        return Ok(ContentBlock::CachePoint(sdk_cache_point(cache)?));
+    }
+    if let Some(tool) = value.get("toolUse") {
+        return Ok(ContentBlock::ToolUse(
+            ToolUseBlock::builder()
+                .tool_use_id(
+                    tool.get("toolUseId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                )
+                .name(tool.get("name").and_then(Value::as_str).unwrap_or_default())
+                .input(json_document(tool.get("input").unwrap_or(&Value::Null)))
+                .build()
+                .map_err(|error| error.to_string())?,
+        ));
+    }
+    if let Some(result) = value.get("toolResult") {
+        let mut content = Vec::new();
+        for item in result
+            .get("content")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(text) = item.get("text").and_then(Value::as_str) {
+                content.push(ToolResultContentBlock::Text(text.to_owned()));
+            } else if let Some(image) = item.get("image") {
+                content.push(ToolResultContentBlock::Image(sdk_image(image)?));
+            }
+        }
+        let status = if result.get("status").and_then(Value::as_str) == Some("error") {
+            ToolResultStatus::Error
+        } else {
+            ToolResultStatus::Success
+        };
+        return Ok(ContentBlock::ToolResult(
+            ToolResultBlock::builder()
+                .tool_use_id(
+                    result
+                        .get("toolUseId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                )
+                .set_content(Some(content))
+                .status(status)
+                .build()
+                .map_err(|error| error.to_string())?,
+        ));
+    }
+    if let Some(reasoning) = value.pointer("/reasoningContent/reasoningText") {
+        let mut builder = ReasoningTextBlock::builder().text(
+            reasoning
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
+        if let Some(signature) = reasoning.get("signature").and_then(Value::as_str) {
+            builder = builder.signature(signature);
+        }
+        return Ok(ContentBlock::ReasoningContent(
+            ReasoningContentBlock::ReasoningText(
+                builder.build().map_err(|error| error.to_string())?,
+            ),
+        ));
+    }
+    Err("unsupported Bedrock content block".to_owned())
+}
+
+fn sdk_messages(
+    payload: &Value,
+) -> std::result::Result<Vec<aws_sdk_bedrockruntime::types::Message>, String> {
+    use aws_sdk_bedrockruntime::types::{ConversationRole, Message};
+    payload
+        .get("messages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|message| {
+            let role = if message.get("role").and_then(Value::as_str) == Some("assistant") {
+                ConversationRole::Assistant
+            } else {
+                ConversationRole::User
+            };
+            let content = message
+                .get("content")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(sdk_content)
+                .collect::<std::result::Result<Vec<_>, _>>()?;
+            Message::builder()
+                .role(role)
+                .set_content(Some(content))
+                .build()
+                .map_err(|error| error.to_string())
+        })
+        .collect()
+}
+
+fn sdk_system(
+    payload: &Value,
+) -> std::result::Result<Vec<aws_sdk_bedrockruntime::types::SystemContentBlock>, String> {
+    use aws_sdk_bedrockruntime::types::SystemContentBlock;
+    payload
+        .get("system")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|value| {
+            if let Some(text) = value.get("text").and_then(Value::as_str) {
+                Ok(SystemContentBlock::Text(text.to_owned()))
+            } else if let Some(cache) = value.get("cachePoint") {
+                Ok(SystemContentBlock::CachePoint(sdk_cache_point(cache)?))
+            } else {
+                Err("unsupported Bedrock system block".to_owned())
+            }
+        })
+        .collect()
+}
+
+fn sdk_tool_config(
+    payload: &Value,
+) -> std::result::Result<Option<aws_sdk_bedrockruntime::types::ToolConfiguration>, String> {
+    use aws_sdk_bedrockruntime::types::{
+        AnyToolChoice, AutoToolChoice, SpecificToolChoice, Tool, ToolChoice, ToolConfiguration,
+        ToolInputSchema, ToolSpecification,
+    };
+    let Some(config) = payload.get("toolConfig") else {
+        return Ok(None);
+    };
+    let tools = config
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|tool| tool.get("toolSpec"))
+        .map(|spec| {
+            let mut builder = ToolSpecification::builder()
+                .name(spec.get("name").and_then(Value::as_str).unwrap_or_default());
+            if let Some(description) = spec.get("description").and_then(Value::as_str) {
+                builder = builder.description(description);
+            }
+            if let Some(schema) = spec.pointer("/inputSchema/json") {
+                builder = builder.input_schema(ToolInputSchema::Json(json_document(schema)));
+            }
+            builder
+                .build()
+                .map(Tool::ToolSpec)
+                .map_err(|error| error.to_string())
+        })
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let choice = if config.pointer("/toolChoice/any").is_some() {
+        Some(ToolChoice::Any(AnyToolChoice::builder().build()))
+    } else if let Some(name) = config
+        .pointer("/toolChoice/tool/name")
+        .and_then(Value::as_str)
+    {
+        Some(ToolChoice::Tool(
+            SpecificToolChoice::builder()
+                .name(name)
+                .build()
+                .map_err(|error| error.to_string())?,
+        ))
+    } else {
+        Some(ToolChoice::Auto(AutoToolChoice::builder().build()))
+    };
+    ToolConfiguration::builder()
+        .set_tools(Some(tools))
+        .set_tool_choice(choice)
+        .build()
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn sdk_event_value(
+    event: aws_sdk_bedrockruntime::types::ConverseStreamOutput,
+) -> std::result::Result<Value, String> {
+    use aws_sdk_bedrockruntime::types::{
+        ContentBlockDelta, ContentBlockStart, ConverseStreamOutput, ReasoningContentBlockDelta,
+    };
+    match event {
+        ConverseStreamOutput::MessageStart(event) => {
+            Ok(json!({ "messageStart": { "role": event.role().as_str() } }))
+        }
+        ConverseStreamOutput::ContentBlockStart(event) => {
+            let start = match event.start() {
+                Some(ContentBlockStart::ToolUse(tool)) => json!({ "toolUse": {
+                    "toolUseId": tool.tool_use_id(), "name": tool.name()
+                }}),
+                Some(ContentBlockStart::Image(_)) | Some(ContentBlockStart::ToolResult(_)) => {
+                    return Err("unsupported Bedrock output content block start".to_owned());
+                }
+                Some(_) | None => Value::Null,
+            };
+            Ok(json!({ "contentBlockStart": {
+                "contentBlockIndex": event.content_block_index(), "start": start
+            }}))
+        }
+        ConverseStreamOutput::ContentBlockDelta(event) => {
+            let delta = match event.delta() {
+                Some(ContentBlockDelta::Text(text)) => json!({ "text": text }),
+                Some(ContentBlockDelta::ToolUse(tool)) => {
+                    json!({ "toolUse": { "input": tool.input() } })
+                }
+                Some(ContentBlockDelta::ReasoningContent(reasoning)) => match reasoning {
+                    ReasoningContentBlockDelta::Text(text) => {
+                        json!({ "reasoningContent": { "text": text } })
+                    }
+                    ReasoningContentBlockDelta::Signature(signature) => {
+                        json!({ "reasoningContent": { "signature": signature } })
+                    }
+                    ReasoningContentBlockDelta::RedactedContent(bytes) => {
+                        json!({ "reasoningContent": { "redactedContent": base64::engine::general_purpose::STANDARD.encode(bytes.as_ref()) } })
+                    }
+                    _ => return Err("unknown Bedrock reasoning delta".to_owned()),
+                },
+                Some(_) => return Err("unsupported Bedrock output content block delta".to_owned()),
+                None => Value::Null,
+            };
+            Ok(json!({ "contentBlockDelta": {
+                "contentBlockIndex": event.content_block_index(), "delta": delta
+            }}))
+        }
+        ConverseStreamOutput::ContentBlockStop(event) => Ok(json!({ "contentBlockStop": {
+            "contentBlockIndex": event.content_block_index()
+        }})),
+        ConverseStreamOutput::MessageStop(event) => Ok(json!({ "messageStop": {
+            "stopReason": event.stop_reason().as_str()
+        }})),
+        ConverseStreamOutput::Metadata(event) => {
+            let usage = event
+                .usage()
+                .map(|usage| {
+                    json!({
+                        "inputTokens": usage.input_tokens(),
+                        "outputTokens": usage.output_tokens(),
+                        "totalTokens": usage.total_tokens(),
+                        "cacheReadInputTokens": usage.cache_read_input_tokens(),
+                        "cacheWriteInputTokens": usage.cache_write_input_tokens(),
+                    })
+                })
+                .unwrap_or_else(|| json!({}));
+            Ok(json!({ "metadata": { "usage": usage } }))
+        }
+        _ => Err("unknown Bedrock ConverseStream event".to_owned()),
+    }
+}
+
+enum BedrockExecutionError {
+    Aborted(Box<crate::types::AssistantMessage>),
+    Failed(String),
+}
+
 async fn run_bedrock_live_worker(
     stream: AssistantMessageEventStream,
     model: Model,
     context: Value,
     options: BedrockOptions,
+    cost: crate::types::ModelCost,
 ) {
-    let mut output = empty_bedrock_message(&model);
     let mut plan = resolve_bedrock_runtime_request_plan(&model, &context, &options);
     if let Err(error) = apply_bedrock_payload_hook(&mut plan, &options, &model).await {
-        output.stop_reason = crate::types::StopReason::Error;
-        output.error_message = Some(error.to_string());
-        stream.push(crate::types::AssistantMessageEvent::Error {
-            reason: crate::types::ErrorStopReason::Error,
-            error: output,
-        });
+        stream.fail(
+            "bedrock-converse-stream",
+            &model.provider,
+            &model.id,
+            error.to_string(),
+        );
         return;
     }
-    match execute_bedrock_converse_stream(&model, &plan, &options).await {
-        Ok(events) => {
-            if let Err(error) = process_bedrock_converse_stream_events(&stream, &model, events) {
-                output.stop_reason = crate::types::StopReason::Error;
-                output.error_message = Some(error);
-                stream.push(crate::types::AssistantMessageEvent::Error {
-                    reason: crate::types::ErrorStopReason::Error,
-                    error: output,
-                });
-            }
-        }
-        Err(error) => {
-            output.stop_reason = crate::types::StopReason::Error;
-            output.error_message = Some(error.to_string());
+    match execute_bedrock_converse_stream(&stream, &model, &plan, &options, cost).await {
+        Ok(()) => {}
+        Err(BedrockExecutionError::Aborted(mut output)) => {
+            output.stop_reason = crate::types::StopReason::Aborted;
+            output.error_message = Some("Request aborted".to_owned());
             stream.push(crate::types::AssistantMessageEvent::Error {
-                reason: crate::types::ErrorStopReason::Error,
-                error: output,
+                reason: crate::types::ErrorStopReason::Aborted,
+                error: *output,
             });
         }
+        Err(BedrockExecutionError::Failed(error)) => {
+            stream.fail("bedrock-converse-stream", &model.provider, &model.id, error);
+        }
     }
+}
+
+async fn bedrock_sdk_client(
+    plan: &BedrockRuntimeRequestPlan,
+) -> std::result::Result<aws_sdk_bedrockruntime::Client, String> {
+    use aws_config::BehaviorVersion;
+    use aws_sdk_bedrockruntime::config::{Credentials, Region, Token};
+
+    let mut loader = aws_config::defaults(BehaviorVersion::latest());
+    if let Some(region) = &plan.client_config.region {
+        loader = loader.region(Region::new(region.clone()));
+    }
+    if let Some(profile) = &plan.client_config.profile {
+        loader = loader.profile_name(profile);
+    }
+    match &plan.auth_mode {
+        BedrockAuthMode::ExplicitCredentials {
+            access_key_id,
+            secret_access_key,
+            session_token,
+        } => {
+            loader = loader.credentials_provider(Credentials::new(
+                access_key_id,
+                secret_access_key,
+                session_token.clone(),
+                None,
+                "zedflow-explicit",
+            ));
+        }
+        BedrockAuthMode::SkipAuthDummyCredentials => {
+            loader = loader.credentials_provider(Credentials::new(
+                "dummy-access-key",
+                "dummy-secret-key",
+                None,
+                None,
+                "zedflow-skip-auth",
+            ));
+        }
+        BedrockAuthMode::DefaultChain | BedrockAuthMode::BearerToken(_) => {}
+    }
+
+    let shared = loader.load().await;
+    let mut config = aws_sdk_bedrockruntime::config::Builder::from(&shared);
+    if let Some(endpoint) = &plan.client_config.endpoint {
+        config = config.endpoint_url(endpoint);
+    }
+    if let BedrockAuthMode::BearerToken(token) = &plan.auth_mode {
+        config = config
+            .token_provider(Token::new(token.clone(), None))
+            .auth_scheme_preference([aws_smithy_runtime_api::client::auth::AuthSchemeId::from(
+                "httpBearerAuth",
+            )]);
+    }
+    if plan.force_http1 {
+        use aws_smithy_http_client::{Builder, Connector, proxy::ProxyConfig, tls};
+        let proxy = plan
+            .proxy_url
+            .as_deref()
+            .map(ProxyConfig::http)
+            .transpose()
+            .map_err(|error| error.to_string())?;
+        // The public Smithy connector is HTTP/1-compatible, but currently enables HTTP/2
+        // ALPN too; aws-smithy-http-client exposes no public HTTP/1-only switch.
+        let http_client = Builder::new().build_with_connector_fn(move |_, _| {
+            let mut connector = Connector::builder();
+            if let Some(proxy) = proxy.clone() {
+                connector = connector.proxy_config(proxy);
+            }
+            connector
+                .tls_provider(tls::Provider::Rustls(
+                    tls::rustls_provider::CryptoMode::AwsLc,
+                ))
+                .build()
+        });
+        config = config.http_client(http_client);
+    }
+    Ok(aws_sdk_bedrockruntime::Client::from_conf(config.build()))
+}
+
+fn sdk_operation(
+    client: &aws_sdk_bedrockruntime::Client,
+    model: &Model,
+    plan: &BedrockRuntimeRequestPlan,
+) -> std::result::Result<
+    aws_sdk_bedrockruntime::operation::converse_stream::builders::ConverseStreamFluentBuilder,
+    String,
+> {
+    use aws_sdk_bedrockruntime::types::InferenceConfiguration;
+
+    let payload = &plan.payload;
+    let mut inference = InferenceConfiguration::builder();
+    if let Some(max_tokens) = payload
+        .pointer("/inferenceConfig/maxTokens")
+        .and_then(Value::as_i64)
+    {
+        inference = inference
+            .max_tokens(i32::try_from(max_tokens).map_err(|_| "maxTokens exceeds i32".to_owned())?);
+    }
+    if let Some(temperature) = payload
+        .pointer("/inferenceConfig/temperature")
+        .and_then(Value::as_f64)
+    {
+        inference = inference.temperature(temperature as f32);
+    }
+    let inference = inference.build();
+
+    let model_id = payload
+        .get("modelId")
+        .and_then(Value::as_str)
+        .unwrap_or(&model.id);
+    let mut operation = client
+        .converse_stream()
+        .model_id(model_id)
+        .set_messages(Some(sdk_messages(payload)?))
+        .set_system(Some(sdk_system(payload)?))
+        .set_inference_config(Some(inference))
+        .set_tool_config(sdk_tool_config(payload)?);
+    if let Some(additional) = payload.get("additionalModelRequestFields") {
+        operation = operation.additional_model_request_fields(json_document(additional));
+    }
+    if let Some(metadata) = payload.get("requestMetadata").and_then(Value::as_object) {
+        operation = operation.set_request_metadata(Some(
+            metadata
+                .iter()
+                .filter_map(|(key, value)| {
+                    value.as_str().map(|value| (key.clone(), value.to_owned()))
+                })
+                .collect(),
+        ));
+    }
+    Ok(operation)
+}
+
+fn format_bedrock_send_error(
+    error: &aws_smithy_runtime_api::client::result::SdkError<
+        aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamError,
+        aws_smithy_runtime_api::client::orchestrator::HttpResponse,
+    >,
+) -> String {
+    let response = error.raw_response();
+    let service_error = error.as_service_error();
+    format_bedrock_error(
+        service_error.and_then(aws_smithy_types::error::metadata::ProvideErrorMetadata::code),
+        SdkErrorShape {
+            message: service_error
+                .and_then(aws_smithy_types::error::metadata::ProvideErrorMetadata::message)
+                .map(str::to_owned)
+                .unwrap_or_else(|| error.to_string()),
+            metadata_http_status_code: response.map(|response| response.status().as_u16() as f64),
+            response_body: response
+                .and_then(|response| response.body().bytes())
+                .map(|body| Value::String(String::from_utf8_lossy(body).into_owned())),
+            ..SdkErrorShape::default()
+        },
+    )
+}
+
+fn format_bedrock_sdk_error<E, R>(
+    error: &aws_smithy_runtime_api::client::result::SdkError<E, R>,
+) -> String
+where
+    E: aws_smithy_types::error::metadata::ProvideErrorMetadata + std::fmt::Display,
+{
+    let Some(service_error) = error.as_service_error() else {
+        return error.to_string();
+    };
+    format_bedrock_error(
+        service_error.code(),
+        SdkErrorShape {
+            message: service_error
+                .message()
+                .map(str::to_owned)
+                .unwrap_or_else(|| service_error.to_string()),
+            ..SdkErrorShape::default()
+        },
+    )
 }
 
 async fn execute_bedrock_converse_stream(
+    stream: &AssistantMessageEventStream,
     model: &Model,
     plan: &BedrockRuntimeRequestPlan,
     options: &BedrockOptions,
-) -> std::result::Result<Vec<Value>, ProviderServiceError> {
-    let endpoint = bedrock_runtime_endpoint(model, plan);
-    let region = bedrock_signing_region(plan, options).unwrap_or_else(|| "us-east-1".to_owned());
-    let url = format!(
-        "{}/model/{}/converse-stream",
-        endpoint.trim_end_matches('/'),
-        percent_encode_path_segment(&model.id)
-    );
-    let mut payload = plan.payload.clone();
-    if let Some(object) = payload.as_object_mut() {
-        object.remove("modelId");
-    }
-    let body = serde_json::to_vec(&payload).map_err(|error| {
-        ProviderServiceError::with_source(ProviderHttpErrorParts::new(error.to_string()), error)
-    })?;
-    let headers = bedrock_request_headers(&url, &region, &body, plan, options)
-        .map_err(bedrock_service_message)?;
-    let response = Client::builder()
-        .build()
-        .map_err(|error| {
-            ProviderServiceError::with_source(ProviderHttpErrorParts::new(error.to_string()), error)
-        })?
-        .post(url)
-        .headers(headers)
-        .body(body)
-        .send()
-        .map_err(|error| {
-            ProviderServiceError::with_source(ProviderHttpErrorParts::new(error.to_string()), error)
-        })?;
+    cost: crate::types::ModelCost,
+) -> std::result::Result<(), BedrockExecutionError> {
+    use aws_sdk_bedrockruntime::operation::RequestId;
+    use futures::future::{Either, select};
 
-    let status = response.status().as_u16();
-    let is_success = response.status().is_success();
-    let response_headers = response
-        .headers()
-        .iter()
-        .map(|(name, value)| {
-            (
-                name.as_str().to_owned(),
-                String::from_utf8_lossy(value.as_bytes()).into_owned(),
-            )
-        })
-        .collect::<ProviderHeaders>();
-    let request_id = response_headers.get("x-amzn-requestid").cloned();
+    let client = bedrock_sdk_client(plan)
+        .await
+        .map_err(BedrockExecutionError::Failed)?;
+    let headers = plan.custom_signed_headers.clone();
+    for (name, value) in &headers {
+        HeaderName::from_bytes(name.as_bytes())
+            .map_err(|error| BedrockExecutionError::Failed(error.to_string()))?;
+        HeaderValue::from_str(value)
+            .map_err(|error| BedrockExecutionError::Failed(error.to_string()))?;
+    }
+    let operation = sdk_operation(&client, model, plan)
+        .map_err(BedrockExecutionError::Failed)?
+        .customize()
+        .mutate_request(move |request| {
+            for (name, value) in &headers {
+                let _ = request.headers_mut().insert(name.clone(), value.clone());
+            }
+        });
+    let mut response = if let Some(signal) = options.signal.as_ref() {
+        if signal.aborted() {
+            return Err(BedrockExecutionError::Aborted(Box::new(
+                empty_bedrock_message(model),
+            )));
+        }
+        let send = Box::pin(operation.send());
+        let cancelled = Box::pin(signal.cancelled());
+        match select(send, cancelled).await {
+            Either::Left((response, _)) => response,
+            Either::Right(((), _)) => {
+                return Err(BedrockExecutionError::Aborted(Box::new(
+                    empty_bedrock_message(model),
+                )));
+            }
+        }
+    } else {
+        operation.send().await
+    }
+    .map_err(|error| BedrockExecutionError::Failed(format_bedrock_send_error(&error)))?;
+
     invoke_bedrock_on_response(
         options,
-        bedrock_response_metadata(status, request_id.as_deref()),
+        bedrock_response_metadata(200, response.request_id()),
         model,
     )
     .await
-    .map_err(|error| {
-        ProviderServiceError::with_source(ProviderHttpErrorParts::new(error.to_string()), error)
-    })?;
-    if !is_success {
-        let bytes = response.bytes().map_err(|error| {
-            ProviderServiceError::with_source(
-                ProviderHttpErrorParts::new(error.to_string())
-                    .with_status(status)
-                    .with_headers(response_headers.clone()),
-                error,
-            )
-        })?;
-        let body = String::from_utf8_lossy(bytes.as_ref()).into_owned();
-        return Err(bedrock_service_error(status, &body, response_headers));
-    }
-    let bytes = response.bytes().map_err(|error| {
-        ProviderServiceError::with_source(
-            ProviderHttpErrorParts::new(error.to_string())
-                .with_status(status)
-                .with_headers(response_headers),
-            error,
-        )
-    })?;
-    parse_aws_event_stream(bytes.as_ref()).map_err(bedrock_service_message)
-}
+    .map_err(|error| BedrockExecutionError::Failed(error.to_string()))?;
 
-fn bedrock_service_message(message: String) -> ProviderServiceError {
-    ProviderServiceError::new(ProviderHttpErrorParts::new(message))
+    let mut processor = BedrockStreamProcessor::new(model, cost);
+    loop {
+        let event = if let Some(signal) = options.signal.as_ref() {
+            let recv = Box::pin(response.stream.recv());
+            let cancelled = Box::pin(signal.cancelled());
+            match select(recv, cancelled).await {
+                Either::Left((event, _)) => event,
+                Either::Right(((), _)) => {
+                    return Err(BedrockExecutionError::Aborted(Box::new(processor.output)));
+                }
+            }
+        } else {
+            response.stream.recv().await
+        };
+        match event {
+            Ok(Some(event)) => processor
+                .push(
+                    stream,
+                    sdk_event_value(event).map_err(BedrockExecutionError::Failed)?,
+                )
+                .map_err(BedrockExecutionError::Failed)?,
+            Ok(None) => break,
+            Err(error) => {
+                return Err(BedrockExecutionError::Failed(format_bedrock_sdk_error(
+                    &error,
+                )));
+            }
+        }
+    }
+    processor
+        .finish(stream)
+        .map(|_| ())
+        .map_err(BedrockExecutionError::Failed)
 }
 
 /// Normalizes a Bedrock HTTP service failure without exposing transport dependency types.
@@ -1122,460 +1846,6 @@ pub fn bedrock_service_error(
     )
 }
 
-fn bedrock_runtime_endpoint(model: &Model, plan: &BedrockRuntimeRequestPlan) -> String {
-    plan.client_config
-        .endpoint
-        .clone()
-        .or_else(|| model.base_url.clone())
-        .or_else(|| {
-            plan.client_config
-                .region
-                .as_ref()
-                .map(|region| format!("https://bedrock-runtime.{region}.amazonaws.com"))
-        })
-        .unwrap_or_else(|| "https://bedrock-runtime.us-east-1.amazonaws.com".to_owned())
-}
-
-fn bedrock_signing_region(
-    plan: &BedrockRuntimeRequestPlan,
-    options: &BedrockOptions,
-) -> Option<String> {
-    plan.client_config
-        .region
-        .clone()
-        .or_else(|| provider_env_value("AWS_REGION", &options.env, &ProviderEnv::new()))
-        .or_else(|| provider_env_value("AWS_DEFAULT_REGION", &options.env, &ProviderEnv::new()))
-        .or_else(|| {
-            plan.client_config
-                .profile
-                .as_deref()
-                .and_then(load_aws_profile)
-                .and_then(|profile| profile.region)
-        })
-}
-
-fn bedrock_request_headers(
-    url: &str,
-    region: &str,
-    body: &[u8],
-    plan: &BedrockRuntimeRequestPlan,
-    options: &BedrockOptions,
-) -> std::result::Result<HeaderMap, String> {
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(
-        HeaderName::from_static("accept"),
-        HeaderValue::from_static("application/vnd.amazon.eventstream"),
-    );
-    for (name, value) in &plan.custom_signed_headers {
-        headers.insert(
-            HeaderName::from_bytes(name.as_bytes()).map_err(|error| error.to_string())?,
-            HeaderValue::from_str(value).map_err(|error| error.to_string())?,
-        );
-    }
-
-    match &plan.auth_mode {
-        BedrockAuthMode::BearerToken(token) => {
-            headers.insert(
-                HeaderName::from_static("authorization"),
-                HeaderValue::from_str(&format!("Bearer {token}"))
-                    .map_err(|error| error.to_string())?,
-            );
-        }
-        BedrockAuthMode::ExplicitCredentials {
-            access_key_id,
-            secret_access_key,
-            session_token,
-        } => sign_bedrock_request(
-            &mut headers,
-            url,
-            region,
-            body,
-            access_key_id,
-            secret_access_key,
-            session_token.as_deref(),
-        )?,
-        BedrockAuthMode::SkipAuthDummyCredentials => sign_bedrock_request(
-            &mut headers,
-            url,
-            region,
-            body,
-            "dummy-access-key",
-            "dummy-secret-key",
-            None,
-        )?,
-        BedrockAuthMode::DefaultChain => {
-            let profile =
-                plan.client_config.profile.clone().or_else(|| {
-                    provider_env_value("AWS_PROFILE", &options.env, &ProviderEnv::new())
-                });
-            let credentials = profile
-                .as_deref()
-                .and_then(load_aws_profile)
-                .and_then(|profile| {
-                    Some((
-                        profile.access_key_id?,
-                        profile.secret_access_key?,
-                        profile.session_token,
-                    ))
-                });
-            let Some((access_key_id, secret_access_key, session_token)) = credentials else {
-                return Err("missing AWS Bedrock live capability: set AWS_BEARER_TOKEN_BEDROCK, AWS access key credentials, AWS_BEDROCK_SKIP_AUTH=1, or a static AWS_PROFILE".to_owned());
-            };
-            sign_bedrock_request(
-                &mut headers,
-                url,
-                region,
-                body,
-                &access_key_id,
-                &secret_access_key,
-                session_token.as_deref(),
-            )?;
-        }
-    }
-    Ok(headers)
-}
-
-fn sign_bedrock_request(
-    headers: &mut HeaderMap,
-    url: &str,
-    region: &str,
-    body: &[u8],
-    access_key_id: &str,
-    secret_access_key: &str,
-    session_token: Option<&str>,
-) -> std::result::Result<(), String> {
-    let parsed = Url::parse(url).map_err(|error| error.to_string())?;
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "missing Bedrock host".to_owned())?;
-    let path = if parsed.path().is_empty() {
-        "/"
-    } else {
-        parsed.path()
-    };
-    let now = aws_timestamp();
-    let date = &now[..8];
-    headers.insert(
-        HeaderName::from_static("host"),
-        HeaderValue::from_str(host).map_err(|error| error.to_string())?,
-    );
-    headers.insert(
-        HeaderName::from_static("x-amz-date"),
-        HeaderValue::from_str(&now).map_err(|error| error.to_string())?,
-    );
-    if let Some(session_token) = session_token {
-        headers.insert(
-            HeaderName::from_static("x-amz-security-token"),
-            HeaderValue::from_str(session_token).map_err(|error| error.to_string())?,
-        );
-    }
-
-    let payload_hash = hex_sha256(body);
-    let mut signed = signed_header_values(headers)?;
-    signed.sort_by(|left, right| left.0.cmp(&right.0));
-    let canonical_headers = signed
-        .iter()
-        .map(|(name, value)| format!("{name}:{value}\n"))
-        .collect::<String>();
-    let signed_headers = signed
-        .iter()
-        .map(|(name, _)| name.as_str())
-        .collect::<Vec<_>>()
-        .join(";");
-    let canonical_request =
-        format!("POST\n{path}\n\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
-    let credential_scope = format!("{date}/{region}/bedrock/aws4_request");
-    let string_to_sign = format!(
-        "AWS4-HMAC-SHA256\n{now}\n{credential_scope}\n{}",
-        hex_sha256(canonical_request.as_bytes())
-    );
-    let signing_key = aws_signing_key(secret_access_key, date, region, "bedrock");
-    let signature = hex(&hmac_sha256(&signing_key, string_to_sign.as_bytes()));
-    let authorization = format!(
-        "AWS4-HMAC-SHA256 Credential={access_key_id}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
-    );
-    headers.insert(
-        HeaderName::from_static("authorization"),
-        HeaderValue::from_str(&authorization).map_err(|error| error.to_string())?,
-    );
-    Ok(())
-}
-
-fn signed_header_values(headers: &HeaderMap) -> std::result::Result<Vec<(String, String)>, String> {
-    headers
-        .iter()
-        .map(|(name, value)| {
-            Ok((
-                name.as_str().to_ascii_lowercase(),
-                value
-                    .to_str()
-                    .map_err(|error| error.to_string())?
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" "),
-            ))
-        })
-        .collect()
-}
-
-fn aws_timestamp() -> String {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    let days = seconds / 86_400;
-    let day_seconds = seconds % 86_400;
-    let (year, month, day) = civil_from_days(days as i64);
-    format!(
-        "{year:04}{month:02}{day:02}T{:02}{:02}{:02}Z",
-        day_seconds / 3600,
-        (day_seconds % 3600) / 60,
-        day_seconds % 60
-    )
-}
-
-fn civil_from_days(days_since_epoch: i64) -> (i32, u32, u32) {
-    let days = days_since_epoch + 719_468;
-    let era = if days >= 0 { days } else { days - 146_096 } / 146_097;
-    let doe = days - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let mut year = yoe as i32 + (era as i32) * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    year += (month <= 2) as i32;
-    (year, month as u32, day as u32)
-}
-
-fn aws_signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8> {
-    let date_key = hmac_sha256(format!("AWS4{secret}").as_bytes(), date.as_bytes());
-    let region_key = hmac_sha256(&date_key, region.as_bytes());
-    let service_key = hmac_sha256(&region_key, service.as_bytes());
-    hmac_sha256(&service_key, b"aws4_request")
-}
-
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
-    const BLOCK_SIZE: usize = 64;
-    let mut key_block = if key.len() > BLOCK_SIZE {
-        Sha256::digest(key).to_vec()
-    } else {
-        key.to_vec()
-    };
-    key_block.resize(BLOCK_SIZE, 0);
-    let mut outer = vec![0x5c; BLOCK_SIZE];
-    let mut inner = vec![0x36; BLOCK_SIZE];
-    for index in 0..BLOCK_SIZE {
-        outer[index] ^= key_block[index];
-        inner[index] ^= key_block[index];
-    }
-    let mut inner_hash = Sha256::new();
-    inner_hash.update(&inner);
-    inner_hash.update(data);
-    let inner_result = inner_hash.finalize();
-    let mut outer_hash = Sha256::new();
-    outer_hash.update(&outer);
-    outer_hash.update(inner_result);
-    outer_hash.finalize().to_vec()
-}
-
-fn hex_sha256(data: &[u8]) -> String {
-    hex(&Sha256::digest(data))
-}
-
-fn hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut output = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        output.push(HEX[(byte >> 4) as usize] as char);
-        output.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    output
-}
-
-fn percent_encode_path_segment(value: &str) -> String {
-    let mut encoded = String::new();
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            encoded.push(byte as char);
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    encoded
-}
-
-#[derive(Default)]
-struct AwsProfile {
-    access_key_id: Option<String>,
-    secret_access_key: Option<String>,
-    session_token: Option<String>,
-    region: Option<String>,
-}
-
-fn load_aws_profile(profile: &str) -> Option<AwsProfile> {
-    let mut result = AwsProfile::default();
-    merge_profile_file(&mut result, profile, aws_credentials_file()?);
-    if let Some(config) = aws_config_file() {
-        merge_profile_file(&mut result, &format!("profile {profile}"), config);
-        merge_profile_file(&mut result, profile, aws_config_file()?);
-    }
-    (result.access_key_id.is_some() || result.region.is_some()).then_some(result)
-}
-
-fn aws_credentials_file() -> Option<String> {
-    std::env::var("AWS_SHARED_CREDENTIALS_FILE")
-        .ok()
-        .or_else(|| {
-            std::env::var("HOME")
-                .ok()
-                .map(|home| format!("{home}/.aws/credentials"))
-        })
-}
-
-fn aws_config_file() -> Option<String> {
-    std::env::var("AWS_CONFIG_FILE").ok().or_else(|| {
-        std::env::var("HOME")
-            .ok()
-            .map(|home| format!("{home}/.aws/config"))
-    })
-}
-
-fn merge_profile_file(target: &mut AwsProfile, profile: &str, path: String) {
-    let Ok(contents) = fs::read_to_string(path) else {
-        return;
-    };
-    let mut in_profile = false;
-    for line in contents.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
-            continue;
-        }
-        if line.starts_with('[') && line.ends_with(']') {
-            in_profile = &line[1..line.len() - 1] == profile;
-            continue;
-        }
-        if !in_profile {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let value = value.trim().to_owned();
-        match key.trim() {
-            "aws_access_key_id" if target.access_key_id.is_none() => {
-                target.access_key_id = Some(value)
-            }
-            "aws_secret_access_key" if target.secret_access_key.is_none() => {
-                target.secret_access_key = Some(value);
-            }
-            "aws_session_token" if target.session_token.is_none() => {
-                target.session_token = Some(value)
-            }
-            "region" if target.region.is_none() => target.region = Some(value),
-            _ => {}
-        }
-    }
-}
-
-fn parse_aws_event_stream(bytes: &[u8]) -> std::result::Result<Vec<Value>, String> {
-    let mut values = Vec::new();
-    let mut offset = 0usize;
-    while offset < bytes.len() {
-        if bytes.len() - offset < 16 {
-            return Err("truncated AWS event stream frame".to_owned());
-        }
-        let total_len = u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
-        let headers_len =
-            u32::from_be_bytes(bytes[offset + 4..offset + 8].try_into().unwrap()) as usize;
-        if total_len < 16 || offset + total_len > bytes.len() || headers_len > total_len - 16 {
-            return Err("invalid AWS event stream frame".to_owned());
-        }
-        let headers_start = offset + 12;
-        let payload_start = headers_start + headers_len;
-        let payload_end = offset + total_len - 4;
-        let headers = parse_aws_event_headers(&bytes[headers_start..payload_start])?;
-        let payload = &bytes[payload_start..payload_end];
-        let message_type = headers.get(":message-type").map(String::as_str);
-        if message_type == Some("exception") {
-            let message = serde_json::from_slice::<Value>(payload)
-                .ok()
-                .and_then(|value| {
-                    value
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .map(str::to_owned)
-                })
-                .unwrap_or_else(|| String::from_utf8_lossy(payload).into_owned());
-            let name = headers.get(":exception-type").map(String::as_str);
-            return Err(format_bedrock_error(
-                name,
-                SdkErrorShape {
-                    message,
-                    ..SdkErrorShape::default()
-                },
-            ));
-        }
-        if !payload.is_empty() {
-            values.push(
-                serde_json::from_slice(payload)
-                    .map_err(|error| format!("Bedrock event JSON error: {error}"))?,
-            );
-        }
-        offset += total_len;
-    }
-    Ok(values)
-}
-
-fn parse_aws_event_headers(bytes: &[u8]) -> std::result::Result<HashMap<String, String>, String> {
-    let mut headers = HashMap::new();
-    let mut offset = 0usize;
-    while offset < bytes.len() {
-        let name_len = *bytes
-            .get(offset)
-            .ok_or_else(|| "truncated AWS event header".to_owned())?
-            as usize;
-        offset += 1;
-        let name_end = offset + name_len;
-        let name = std::str::from_utf8(
-            bytes
-                .get(offset..name_end)
-                .ok_or_else(|| "truncated AWS event header name".to_owned())?,
-        )
-        .map_err(|error| error.to_string())?
-        .to_owned();
-        offset = name_end;
-        let value_type = *bytes
-            .get(offset)
-            .ok_or_else(|| "truncated AWS event header type".to_owned())?;
-        offset += 1;
-        match value_type {
-            7 => {
-                let len = u16::from_be_bytes(
-                    bytes
-                        .get(offset..offset + 2)
-                        .ok_or_else(|| "truncated AWS event header string length".to_owned())?
-                        .try_into()
-                        .unwrap(),
-                ) as usize;
-                offset += 2;
-                let value_end = offset + len;
-                let value = std::str::from_utf8(
-                    bytes
-                        .get(offset..value_end)
-                        .ok_or_else(|| "truncated AWS event header string".to_owned())?,
-                )
-                .map_err(|error| error.to_string())?
-                .to_owned();
-                offset = value_end;
-                headers.insert(name, value);
-            }
-            _ => return Err(format!("unsupported AWS event header type {value_type}")),
-        }
-    }
-    Ok(headers)
-}
-
 #[derive(Clone)]
 enum BedrockBlock {
     Text {
@@ -1595,15 +1865,30 @@ enum BedrockBlock {
     },
 }
 
-/// Maps Bedrock ConverseStream events into Pi canonical assistant-message events.
-pub fn process_bedrock_converse_stream_events(
-    stream: &AssistantMessageEventStream,
-    model: &Model,
-    events: impl IntoIterator<Item = Value>,
-) -> std::result::Result<crate::types::AssistantMessage, String> {
-    let mut output = empty_bedrock_message(model);
-    let mut blocks: Vec<BedrockBlock> = Vec::new();
-    for event in events {
+struct BedrockStreamProcessor {
+    output: crate::types::AssistantMessage,
+    blocks: Vec<BedrockBlock>,
+    saw_start: bool,
+    saw_stop: bool,
+    cost: crate::types::ModelCost,
+}
+
+impl BedrockStreamProcessor {
+    fn new(model: &Model, cost: crate::types::ModelCost) -> Self {
+        Self {
+            output: empty_bedrock_message(model),
+            blocks: Vec::new(),
+            saw_start: false,
+            saw_stop: false,
+            cost,
+        }
+    }
+
+    fn push(
+        &mut self,
+        stream: &AssistantMessageEventStream,
+        event: Value,
+    ) -> std::result::Result<(), String> {
         if event.get("messageStart").is_some() {
             let role = event["messageStart"].get("role").and_then(Value::as_str);
             if role != Some("assistant") {
@@ -1612,34 +1897,60 @@ pub fn process_bedrock_converse_stream_events(
                         .to_owned(),
                 );
             }
+            self.saw_start = true;
             stream.push(crate::types::AssistantMessageEvent::Start {
-                partial: output.clone(),
+                partial: self.output.clone().into(),
             });
         } else if let Some(start) = event.get("contentBlockStart") {
-            handle_bedrock_content_block_start(start, &mut blocks, &mut output, stream);
+            handle_bedrock_content_block_start(start, &mut self.blocks, &mut self.output, stream);
         } else if let Some(delta) = event.get("contentBlockDelta") {
-            handle_bedrock_content_block_delta(delta, &mut blocks, &mut output, stream);
+            handle_bedrock_content_block_delta(delta, &mut self.blocks, &mut self.output, stream);
         } else if let Some(stop) = event.get("contentBlockStop") {
-            handle_bedrock_content_block_stop(stop, &mut blocks, &mut output, stream);
+            handle_bedrock_content_block_stop(stop, &mut self.blocks, &mut self.output, stream);
         } else if let Some(stop) = event.get("messageStop") {
-            output.stop_reason =
+            self.output.stop_reason =
                 map_bedrock_stop_reason(stop.get("stopReason").and_then(Value::as_str));
+            self.saw_stop = true;
         } else if let Some(metadata) = event.get("metadata") {
-            handle_bedrock_metadata(metadata, &mut output);
+            handle_bedrock_metadata(metadata, &mut self.output, &self.cost);
         } else if let Some(error) = bedrock_event_error(&event) {
             return Err(error);
         }
+        Ok(())
     }
-    if output.stop_reason == crate::types::StopReason::Error
-        || output.stop_reason == crate::types::StopReason::Aborted
-    {
-        return Err("An unknown error occurred".to_owned());
+
+    fn finish(
+        self,
+        stream: &AssistantMessageEventStream,
+    ) -> std::result::Result<crate::types::AssistantMessage, String> {
+        if !self.saw_start
+            || !self.saw_stop
+            || matches!(
+                self.output.stop_reason,
+                crate::types::StopReason::Error | crate::types::StopReason::Aborted
+            )
+        {
+            return Err("Bedrock stream ended without a valid terminal message".to_owned());
+        }
+        stream.push(crate::types::AssistantMessageEvent::Done {
+            reason: canonical_done_reason(self.output.stop_reason),
+            message: self.output.clone(),
+        });
+        Ok(self.output)
     }
-    stream.push(crate::types::AssistantMessageEvent::Done {
-        reason: canonical_done_reason(output.stop_reason),
-        message: output.clone(),
-    });
-    Ok(output)
+}
+
+/// Maps Bedrock ConverseStream events into Pi canonical assistant-message events.
+pub fn process_bedrock_converse_stream_events(
+    stream: &AssistantMessageEventStream,
+    model: &Model,
+    events: impl IntoIterator<Item = Value>,
+) -> std::result::Result<crate::types::AssistantMessage, String> {
+    let mut processor = BedrockStreamProcessor::new(model, crate::types::ModelCost::default());
+    for event in events {
+        processor.push(stream, event)?;
+    }
+    processor.finish(stream)
 }
 
 fn handle_bedrock_content_block_start(
@@ -1685,7 +1996,7 @@ fn handle_bedrock_content_block_start(
     });
     stream.push(crate::types::AssistantMessageEvent::ToolcallStart {
         content_index: index,
-        partial: output.clone(),
+        partial: output.clone().into(),
     });
 }
 
@@ -1718,7 +2029,7 @@ fn handle_bedrock_content_block_delta(
         stream.push(crate::types::AssistantMessageEvent::TextDelta {
             content_index: index,
             delta: text.to_owned(),
-            partial: output.clone(),
+            partial: output.clone().into(),
         });
     } else if let Some(tool_use) = delta.get("toolUse") {
         let delta = tool_use
@@ -1738,7 +2049,7 @@ fn handle_bedrock_content_block_delta(
             stream.push(crate::types::AssistantMessageEvent::ToolcallDelta {
                 content_index: index,
                 delta: delta.to_owned(),
-                partial: output.clone(),
+                partial: output.clone().into(),
             });
         }
     } else if let Some(reasoning) = delta.get("reasoningContent") {
@@ -1758,7 +2069,7 @@ fn handle_bedrock_content_block_delta(
             stream.push(crate::types::AssistantMessageEvent::ThinkingDelta {
                 content_index: index,
                 delta: text.to_owned(),
-                partial: output.clone(),
+                partial: output.clone().into(),
             });
         }
         if let Some(signature) = reasoning.get("signature").and_then(Value::as_str) {
@@ -1800,14 +2111,14 @@ fn handle_bedrock_content_block_stop(
             stream.push(crate::types::AssistantMessageEvent::TextEnd {
                 content_index: index,
                 content: text.clone(),
-                partial: output.clone(),
+                partial: output.clone().into(),
             })
         }
         BedrockBlock::Thinking { thinking, .. } => {
             stream.push(crate::types::AssistantMessageEvent::ThinkingEnd {
                 content_index: index,
                 content: thinking.clone(),
-                partial: output.clone(),
+                partial: output.clone().into(),
             })
         }
         BedrockBlock::ToolCall {
@@ -1831,13 +2142,17 @@ fn handle_bedrock_content_block_stop(
             stream.push(crate::types::AssistantMessageEvent::ToolcallEnd {
                 content_index: index,
                 tool_call,
-                partial: output.clone(),
+                partial: output.clone().into(),
             });
         }
     }
 }
 
-fn handle_bedrock_metadata(metadata: &Value, output: &mut crate::types::AssistantMessage) {
+fn handle_bedrock_metadata(
+    metadata: &Value,
+    output: &mut crate::types::AssistantMessage,
+    cost: &crate::types::ModelCost,
+) {
     let Some(usage) = metadata.get("usage") else {
         return;
     };
@@ -1861,6 +2176,15 @@ fn handle_bedrock_metadata(metadata: &Value, output: &mut crate::types::Assistan
         .get("totalTokens")
         .and_then(Value::as_u64)
         .unwrap_or(output.usage.input + output.usage.output);
+    output.usage.cost.input = cost.input * output.usage.input as f64 / 1_000_000.0;
+    output.usage.cost.output = cost.output * output.usage.output as f64 / 1_000_000.0;
+    output.usage.cost.cache_read = cost.cache_read * output.usage.cache_read as f64 / 1_000_000.0;
+    output.usage.cost.cache_write =
+        cost.cache_write * output.usage.cache_write as f64 / 1_000_000.0;
+    output.usage.cost.total = output.usage.cost.input
+        + output.usage.cost.output
+        + output.usage.cost.cache_read
+        + output.usage.cost.cache_write;
 }
 
 fn find_or_create_text_block(
@@ -1888,7 +2212,7 @@ fn find_or_create_text_block(
     });
     stream.push(crate::types::AssistantMessageEvent::TextStart {
         content_index: index,
-        partial: output.clone(),
+        partial: output.clone().into(),
     });
     index
 }
@@ -1920,7 +2244,7 @@ fn find_or_create_thinking_block(
     });
     stream.push(crate::types::AssistantMessageEvent::ThinkingStart {
         content_index: index,
-        partial: output.clone(),
+        partial: output.clone().into(),
     });
     index
 }
@@ -2035,25 +2359,6 @@ mod tests {
     }
 
     #[test]
-    fn genai_bedrock_parity_report_requires_fallback() {
-        let report = genai_bedrock_parity_report();
-
-        assert!(!report.can_preserve_pi_behavior);
-        assert!(
-            report
-                .blockers
-                .iter()
-                .any(|blocker| blocker.contains("onPayload"))
-        );
-        assert!(
-            report
-                .blockers
-                .iter()
-                .any(|blocker| blocker.contains("caller headers"))
-        );
-    }
-
-    #[test]
     fn request_plan_preserves_auth_proxy_headers_and_payload() {
         let mut options = BedrockOptions {
             region: Some("us-east-2".to_owned()),
@@ -2112,7 +2417,7 @@ mod tests {
     }
 
     #[test]
-    fn payload_and_response_hooks_are_preserved_by_fallback_seams() {
+    fn payload_and_response_hooks_are_preserved_by_sdk_seams() {
         let options = BedrockOptions {
             on_payload: Some(Arc::new(replace_payload)),
             ..BedrockOptions::default()
@@ -2155,9 +2460,73 @@ mod tests {
     }
 
     #[test]
-    fn stream_returns_canonical_event_stream_without_blocking_for_network() {
-        assert!(stream(&model("anthropic.claude-sonnet-4-6"), &Context, None).is_ok());
-        assert!(stream_simple(&model("anthropic.claude-sonnet-4-6"), &Context, None).is_ok());
+    fn canonical_provider_streams_are_registered_without_network() {
+        let _ = provider_streams();
+    }
+
+    #[test]
+    fn payload_includes_tools_and_specific_tool_choice() {
+        let payload = build_bedrock_converse_payload(
+            &model("anthropic.claude-sonnet-4-6"),
+            &json!({
+                "messages": [],
+                "tools": [{
+                    "name": "lookup",
+                    "description": "Look something up",
+                    "parameters": { "type": "object", "properties": { "query": { "type": "string" } } }
+                }]
+            }),
+            &BedrockOptions {
+                tool_choice: Some(BedrockToolChoice::Tool {
+                    name: "lookup".to_owned(),
+                }),
+                ..BedrockOptions::default()
+            },
+        );
+
+        assert_eq!(
+            payload["toolConfig"]["toolChoice"],
+            json!({ "tool": { "name": "lookup" } })
+        );
+        assert_eq!(
+            payload["toolConfig"]["tools"][0]["toolSpec"]["name"],
+            "lookup"
+        );
+        assert!(
+            sdk_tool_config(&payload)
+                .expect("valid SDK tool config")
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn incremental_processor_applies_model_cost() {
+        let stream = AssistantMessageEventStream::new();
+        let mut processor = BedrockStreamProcessor::new(
+            &model("anthropic.claude-sonnet-4-6"),
+            crate::types::ModelCost {
+                input: 1.0,
+                output: 2.0,
+                cache_read: 0.5,
+                cache_write: 1.5,
+            },
+        );
+        for event in [
+            json!({ "messageStart": { "role": "assistant" } }),
+            json!({ "metadata": { "usage": { "inputTokens": 1_000_000, "outputTokens": 500_000, "cacheReadInputTokens": 200_000, "cacheWriteInputTokens": 100_000 } } }),
+            json!({ "messageStop": { "stopReason": "end_turn" } }),
+        ] {
+            processor
+                .push(&stream, event)
+                .expect("valid incremental event");
+        }
+        let output = processor.finish(&stream).expect("terminal message");
+
+        assert_eq!(output.usage.cost.input, 1.0);
+        assert_eq!(output.usage.cost.output, 1.0);
+        assert_eq!(output.usage.cost.cache_read, 0.1);
+        assert_eq!(output.usage.cost.cache_write, 0.15);
+        assert_eq!(output.usage.cost.total, 2.25);
     }
 
     #[test]

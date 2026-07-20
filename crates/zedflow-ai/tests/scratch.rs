@@ -18,9 +18,9 @@ fn scratch_context() -> Context {
     }
 }
 
-#[test]
+#[tokio::test]
 #[ignore = "live Anthropic scratch script requires ANTHROPIC_API_KEY; provider/auth/completeSimple/streamSimple remain blocked"]
-fn scratch_models_api_anthropic_smoke_is_live_provider_sample() {
+async fn scratch_models_api_anthropic_smoke_is_live_provider_sample() {
     let mut context = scratch_context();
     assert_eq!(context.system_prompt.as_deref(), Some("You are terse."));
 
@@ -32,11 +32,12 @@ fn scratch_models_api_anthropic_smoke_is_live_provider_sample() {
         .expect("model not found");
     let auth = models
         .get_auth(&model)
+        .await
         .expect("auth resolution should not fail")
         .expect("auth should be configured");
     assert!(auth.source.is_some(), "auth should report its source");
 
-    let message = models.complete(&model, &context, None);
+    let message = models.complete(&model, &context, None).await;
     let text = message.content.iter().find_map(|block| match block {
         AssistantContentBlock::Text(text) => Some(text.text.as_str()),
         _ => None,

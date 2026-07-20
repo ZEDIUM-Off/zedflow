@@ -178,8 +178,8 @@ fn message_text(message: &zedflow_ai::models::AssistantMessage) -> String {
         .collect()
 }
 
-#[test]
-fn builtin_models_registers_every_builtin_provider_with_models() {
+#[tokio::test]
+async fn builtin_models_registers_every_builtin_provider_with_models() {
     let models = zedflow_ai::providers::all::builtin_models();
     let provider_ids = zedflow_ai::providers::all::get_builtin_providers();
     let providers = models.get_providers();
@@ -200,12 +200,12 @@ fn builtin_models_registers_every_builtin_provider_with_models() {
     );
 }
 
-#[test]
-fn builtin_models_route_to_their_api_and_return_terminal_transport_errors() {
+#[tokio::test]
+async fn builtin_models_route_to_their_api_and_return_terminal_transport_errors() {
     let models = zedflow_ai::providers::all::builtin_models();
     let model = models.get_model("openai", "gpt-4").expect("builtin model");
 
-    let result = models.complete(&model, &Context::default(), None);
+    let result = models.complete(&model, &Context::default(), None).await;
     assert_eq!(result.stop_reason, StopReason::Error);
     assert!(
         result
@@ -218,8 +218,8 @@ fn builtin_models_route_to_their_api_and_return_terminal_transport_errors() {
     );
 }
 
-#[test]
-fn resolves_anthropic_auth_from_env_with_oauth_token_precedence() {
+#[tokio::test]
+async fn resolves_anthropic_auth_from_env_with_oauth_token_precedence() {
     let mut models = create_models_with_auth_context(FakeAuthContext::new([
         ("ANTHROPIC_API_KEY", "key"),
         ("ANTHROPIC_OAUTH_TOKEN", "oauth-token"),
@@ -231,14 +231,15 @@ fn resolves_anthropic_auth_from_env_with_oauth_token_precedence() {
 
     let result = models
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
     assert_eq!(result.auth.api_key.as_deref(), Some("oauth-token"));
     assert_eq!(result.source.as_deref(), Some("ANTHROPIC_OAUTH_TOKEN"));
 }
 
-#[test]
-fn reports_bedrock_as_configured_from_ambient_aws_credentials_without_an_api_key() {
+#[tokio::test]
+async fn reports_bedrock_as_configured_from_ambient_aws_credentials_without_an_api_key() {
     let mut models =
         create_models_with_auth_context(FakeAuthContext::new([("AWS_PROFILE", "dev")]));
     models.set_provider(zedflow_ai::providers::amazon_bedrock::amazon_bedrock_provider());
@@ -246,6 +247,7 @@ fn reports_bedrock_as_configured_from_ambient_aws_credentials_without_an_api_key
 
     let result = models
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
     assert_eq!(result.auth, zedflow_ai::auth::types::ModelAuth::default());
@@ -256,20 +258,27 @@ fn reports_bedrock_as_configured_from_ambient_aws_credentials_without_an_api_key
     assert!(
         unconfigured
             .get_auth(&model)
+            .await
             .expect("auth resolves")
             .is_none()
     );
 }
 
-#[test]
-fn requires_cloudflare_workers_ai_account_config_and_returns_scoped_env() {
+#[tokio::test]
+async fn requires_cloudflare_workers_ai_account_config_and_returns_scoped_env() {
     let mut missing =
         create_models_with_auth_context(FakeAuthContext::new([("CLOUDFLARE_API_KEY", "cf-key")]));
     missing.set_provider(
         zedflow_ai::providers::cloudflare_workers_ai::cloudflare_workers_ai_provider(),
     );
     let model = missing.get_models(Some("cloudflare-workers-ai")).remove(0);
-    assert!(missing.get_auth(&model).expect("auth resolves").is_none());
+    assert!(
+        missing
+            .get_auth(&model)
+            .await
+            .expect("auth resolves")
+            .is_none()
+    );
 
     let mut configured = create_models_with_auth_context(FakeAuthContext::new([
         ("CLOUDFLARE_API_KEY", "cf-key"),
@@ -280,6 +289,7 @@ fn requires_cloudflare_workers_ai_account_config_and_returns_scoped_env() {
     );
     let result = configured
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
     assert_eq!(result.auth.api_key.as_deref(), Some("cf-key"));
@@ -297,8 +307,9 @@ fn requires_cloudflare_workers_ai_account_config_and_returns_scoped_env() {
     );
 }
 
-#[test]
-fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_scoped_env_headers() {
+#[tokio::test]
+async fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_scoped_env_headers()
+{
     let mut missing = create_models_with_auth_context(FakeAuthContext::new([
         ("CLOUDFLARE_API_KEY", "cf-key"),
         ("CLOUDFLARE_ACCOUNT_ID", "account-id"),
@@ -308,7 +319,13 @@ fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_scoped_
             .expect("provider"),
     );
     let model = missing.get_models(Some("cloudflare-ai-gateway")).remove(0);
-    assert!(missing.get_auth(&model).expect("auth resolves").is_none());
+    assert!(
+        missing
+            .get_auth(&model)
+            .await
+            .expect("auth resolves")
+            .is_none()
+    );
 
     let mut configured = create_models_with_auth_context(FakeAuthContext::new([
         ("CLOUDFLARE_API_KEY", "cf-key"),
@@ -321,6 +338,7 @@ fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_scoped_
     );
     let result = configured
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
     let headers = result.auth.headers.expect("headers");
@@ -338,8 +356,8 @@ fn requires_cloudflare_ai_gateway_account_and_gateway_config_and_returns_scoped_
     );
 }
 
-#[test]
-fn resolves_vertex_via_adc_file_plus_project_and_location() {
+#[tokio::test]
+async fn resolves_vertex_via_adc_file_plus_project_and_location() {
     let adc = "~/.config/gcloud/application_default_credentials.json";
     let mut context = FakeAuthContext::new([
         ("GOOGLE_CLOUD_PROJECT", "proj"),
@@ -353,6 +371,7 @@ fn resolves_vertex_via_adc_file_plus_project_and_location() {
     let model = configured.get_models(Some("google-vertex")).remove(0);
     let result = configured
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
     assert_eq!(result.auth, zedflow_ai::auth::types::ModelAuth::default());
@@ -374,6 +393,7 @@ fn resolves_vertex_via_adc_file_plus_project_and_location() {
     assert_eq!(
         keyed
             .get_auth(&model)
+            .await
             .expect("auth resolves")
             .expect("configured")
             .auth
@@ -383,8 +403,9 @@ fn resolves_vertex_via_adc_file_plus_project_and_location() {
     );
 }
 
-#[test]
-fn env_api_key_auth_prefers_the_stored_credential_key_and_falls_back_through_env_vars_in_order() {
+#[tokio::test]
+async fn env_api_key_auth_prefers_the_stored_credential_key_and_falls_back_through_env_vars_in_order()
+ {
     let auth = env_api_key_auth("Test key", ["FIRST_KEY", "SECOND_KEY"]);
 
     let stored = block_on(auth.resolve(
@@ -412,8 +433,8 @@ fn env_api_key_auth_prefers_the_stored_credential_key_and_falls_back_through_env
     );
 }
 
-#[test]
-fn env_api_key_auth_login_prompts_for_a_secret_and_returns_an_api_key_credential() {
+#[tokio::test]
+async fn env_api_key_auth_login_prompts_for_a_secret_and_returns_an_api_key_credential() {
     let auth = env_api_key_auth("Test key", ["TEST_KEY"]);
     let callbacks = CapturingLoginCallbacks::default();
 
@@ -431,8 +452,8 @@ fn env_api_key_auth_login_prompts_for_a_secret_and_returns_an_api_key_credential
     assert_eq!(prompts[0].kind, AuthPromptKind::Secret);
 }
 
-#[test]
-fn create_provider_dispatches_on_model_api_for_mixed_api_providers() {
+#[tokio::test]
+async fn create_provider_dispatches_on_model_api_for_mixed_api_providers() {
     let mut api = BTreeMap::new();
     api.insert("api-a".to_owned(), provider_streams("a"));
     api.insert("api-b".to_owned(), provider_streams("b"));
@@ -472,8 +493,8 @@ fn create_provider_dispatches_on_model_api_for_mixed_api_providers() {
     );
 }
 
-#[test]
-fn create_provider_merges_provider_resolved_env_into_stream_options() {
+#[tokio::test]
+async fn create_provider_merges_provider_resolved_env_into_stream_options() {
     let seen = Arc::new(Mutex::new(None));
     let seen_for_stream = Arc::clone(&seen);
     let provider = create_provider(CreateProviderOptions {
@@ -528,7 +549,9 @@ fn create_provider_merges_provider_resolved_env_into_stream_options() {
         ..zedflow_ai::models::StreamOptions::default()
     };
 
-    let result = models.complete(&model, &Context::default(), Some(&options));
+    let result = models
+        .complete(&model, &Context::default(), Some(&options))
+        .await;
     assert_eq!(message_text(&result), "ok");
     assert!(model.base_url.is_empty(), "catalog model remains immutable");
     assert_eq!(
@@ -542,8 +565,8 @@ fn create_provider_merges_provider_resolved_env_into_stream_options() {
     );
 }
 
-#[test]
-fn create_provider_produces_a_stream_error_for_a_model_whose_api_has_no_implementation() {
+#[tokio::test]
+async fn create_provider_produces_a_stream_error_for_a_model_whose_api_has_no_implementation() {
     let mut api = BTreeMap::new();
     api.insert("api-a".to_owned(), provider_streams("a"));
     let provider = create_provider(CreateProviderOptions {
@@ -577,8 +600,9 @@ fn create_provider_produces_a_stream_error_for_a_model_whose_api_has_no_implemen
     );
 }
 
-#[test]
-fn create_provider_supports_dynamic_providers_empty_until_refreshed_in_flight_refreshes_deduped() {
+#[tokio::test]
+async fn create_provider_supports_dynamic_providers_empty_until_refreshed_in_flight_refreshes_deduped()
+ {
     let fetches = Arc::new(AtomicUsize::new(0));
     let fetches_for_provider = Arc::clone(&fetches);
     let provider = create_provider(CreateProviderOptions {
@@ -621,8 +645,8 @@ fn create_provider_supports_dynamic_providers_empty_until_refreshed_in_flight_re
     assert_eq!(fetches.load(Ordering::SeqCst), 2);
 }
 
-#[test]
-fn faux_provider_streams_queued_responses_through_a_models_collection() {
+#[tokio::test]
+async fn faux_provider_streams_queued_responses_through_a_models_collection() {
     let faux = faux_provider(RegisterFauxProviderOptions::default());
     let provider_id = faux.provider.id.clone();
     let mut models = create_models();
@@ -636,7 +660,7 @@ fn faux_provider_streams_queued_responses_through_a_models_collection() {
         .into_iter()
         .next()
         .expect("faux model");
-    let result = models.complete(&model, &Context::default(), None);
+    let result = models.complete(&model, &Context::default(), None).await;
     let text = result
         .content
         .iter()

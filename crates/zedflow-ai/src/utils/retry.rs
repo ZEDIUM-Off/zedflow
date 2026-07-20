@@ -1,7 +1,10 @@
 //! Retry classification helpers ported from Pi's `packages/ai/src/utils/retry.ts`.
 
 use std::sync::LazyLock;
+use std::time::{Duration, SystemTime};
 
+use futures::future::{Either, select};
+use futures_timer::Delay;
 use regex::{Regex, RegexBuilder};
 
 use crate::types::{AssistantMessage, StopReason};
@@ -111,6 +114,61 @@ pub fn is_retryable_assistant_error(message: &AssistantMessage) -> bool {
     }
 
     RETRYABLE_PROVIDER_ERROR_PATTERN.is_match(error_message)
+}
+
+/// Parses provider retry headers using Pi's precedence: milliseconds, seconds, then HTTP date.
+#[must_use]
+pub fn retry_after_delay(
+    headers: &reqwest::header::HeaderMap,
+    now: SystemTime,
+) -> Option<Duration> {
+    if let Some(milliseconds) = header_number(headers, "retry-after-ms") {
+        return Some(Duration::from_secs_f64(milliseconds.max(0.0) / 1_000.0));
+    }
+    let value = headers.get("retry-after")?.to_str().ok()?;
+    if let Ok(seconds) = value.parse::<f64>()
+        && seconds.is_finite()
+    {
+        return Some(Duration::from_secs_f64(seconds.max(0.0)));
+    }
+    httpdate::parse_http_date(value)
+        .ok()
+        .map(|deadline| deadline.duration_since(now).unwrap_or_default())
+}
+
+fn header_number(headers: &reqwest::header::HeaderMap, name: &str) -> Option<f64> {
+    headers
+        .get(name)?
+        .to_str()
+        .ok()?
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+}
+
+/// Exponential retry delay, optionally capped. A zero cap means uncapped, matching Pi.
+#[must_use]
+pub fn retry_delay(base: Duration, attempt: u32, cap: Option<Duration>) -> Duration {
+    let delay = base.saturating_mul(2_u32.saturating_pow(attempt));
+    match cap {
+        Some(cap) if !cap.is_zero() => delay.min(cap),
+        _ => delay,
+    }
+}
+
+/// Waits for a retry delay or returns `false` immediately when aborted.
+pub async fn wait_or_abort(delay: Duration, signal: Option<&crate::types::AbortSignal>) -> bool {
+    let Some(signal) = signal else {
+        Delay::new(delay).await;
+        return true;
+    };
+    if signal.aborted() {
+        return false;
+    }
+    match select(Box::pin(Delay::new(delay)), Box::pin(signal.cancelled())).await {
+        Either::Left(((), _)) => true,
+        Either::Right(((), _)) => false,
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +284,47 @@ mod tests {
         assert!(!is_retryable_assistant_error(&assistant_error(
             StopReason::Error,
             Some("insufficient_quota: 429")
+        )));
+    }
+
+    #[test]
+    fn parses_retry_headers_and_caps_backoff() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert("retry-after-ms", "250".parse().expect("header"));
+        assert_eq!(
+            retry_after_delay(&headers, now),
+            Some(Duration::from_millis(250))
+        );
+        headers.remove("retry-after-ms");
+        headers.insert("retry-after", "2".parse().expect("header"));
+        assert_eq!(
+            retry_after_delay(&headers, now),
+            Some(Duration::from_secs(2))
+        );
+        headers.insert(
+            "retry-after",
+            httpdate::fmt_http_date(now + Duration::from_secs(3))
+                .parse()
+                .expect("header"),
+        );
+        assert_eq!(
+            retry_after_delay(&headers, now),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(
+            retry_delay(Duration::from_secs(1), 3, Some(Duration::from_secs(5))),
+            Duration::from_secs(5)
+        );
+    }
+
+    #[test]
+    fn retry_wait_is_abortable_without_delay() {
+        let controller = crate::utils::abort_signals::AbortController::new();
+        controller.abort();
+        assert!(!futures::executor::block_on(wait_or_abort(
+            Duration::from_secs(60),
+            Some(&controller.signal())
         )));
     }
 }

@@ -418,11 +418,11 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
         provider: "provider-id".into(),
         ..Model::default()
     };
-    let mut partial = initial_proxy_assistant_message(&model);
+    let partial = initial_proxy_assistant_message(&model);
     let mut state = ProxyEventState::default();
 
     assert!(matches!(
-        process_proxy_event_json(r#"{"type":"start"}"#, &mut partial, &mut state)
+        process_proxy_event_json(r#"{"type":"start"}"#, &partial, &mut state)
             .unwrap()
             .unwrap(),
         AssistantMessageEvent::Start { .. }
@@ -430,13 +430,13 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
 
     process_proxy_event_json(
         r#"{"type":"text_start","contentIndex":0}"#,
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap();
     let text_delta = process_proxy_event_json(
         r#"{"type":"text_delta","contentIndex":0,"delta":"hello"}"#,
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap()
@@ -447,11 +447,12 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
     ));
     process_proxy_event_json(
         r#"{"type":"text_end","contentIndex":0,"contentSignature":"sig"}"#,
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap();
-    match &partial.content[0] {
+    let snapshot = partial.snapshot();
+    match &snapshot.content[0] {
         AssistantContentBlock::Text(content) => {
             assert_eq!(content.text, "hello");
             assert_eq!(content.text_signature.as_deref(), Some("sig"));
@@ -465,7 +466,7 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
             id: "call-1".into(),
             tool_name: "calculate".into(),
         },
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap();
@@ -474,7 +475,7 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
             content_index: 1,
             delta: r#"{"expression":"#.into(),
         },
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap();
@@ -483,13 +484,13 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
             content_index: 1,
             delta: r#""2 + 2"}"#.into(),
         },
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap();
     let tool_end = process_proxy_event(
         ProxyAssistantMessageEvent::ToolcallEnd { content_index: 1 },
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap()
@@ -514,7 +515,7 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
             reason: DoneStopReason::ToolUse,
             usage: usage.clone(),
         },
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap()
@@ -532,18 +533,18 @@ fn reconstructs_proxy_text_tool_and_terminal_events() {
 #[test]
 fn rejects_proxy_deltas_for_the_wrong_content_kind_and_maps_error_events() {
     let model = Model::default();
-    let mut partial = initial_proxy_assistant_message(&model);
+    let partial = initial_proxy_assistant_message(&model);
     let mut state = ProxyEventState::default();
 
     process_proxy_event_json(
         r#"{"type":"text_start","contentIndex":0}"#,
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap();
     let error = process_proxy_event_json(
         r#"{"type":"toolcall_delta","contentIndex":0,"delta":"{}"}"#,
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap_err();
@@ -555,7 +556,7 @@ fn rejects_proxy_deltas_for_the_wrong_content_kind_and_maps_error_events() {
             error_message: Some("boom".into()),
             usage: Usage::default(),
         },
-        &mut partial,
+        &partial,
         &mut state,
     )
     .unwrap()

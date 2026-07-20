@@ -25,6 +25,7 @@ fn run_live_codex_sse_cache_affinity_request(
         thinking_level_map: Default::default(),
         headers: Default::default(),
         max_tokens: Some(128_000),
+        cost: zedflow_ai::types::ModelCost::default(),
     };
     let context = Context {
         system_prompt: Some("You are a helpful assistant. Reply exactly as requested.".to_owned()),
