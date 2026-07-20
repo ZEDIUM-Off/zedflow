@@ -400,6 +400,50 @@ fn chains_provider_request_patches_and_deletes_header_metadata_keys() {
 }
 
 #[test]
+fn updated_stream_options_apply_to_the_next_request() {
+    run(async {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let response_model = test_model("model-1", true);
+        let (models, model) = models_with_capture(
+            vec![
+                assistant_text(&response_model, "first"),
+                assistant_text(&response_model, "second"),
+            ],
+            Arc::clone(&captured),
+            None,
+        );
+        let harness = harness(
+            models,
+            model,
+            memory_session(None),
+            AgentHarnessStreamOptions {
+                timeout_ms: Some(1000),
+                headers: Some(HashMap::from([("turn".into(), "first".into())])),
+                ..AgentHarnessStreamOptions::default()
+            },
+        );
+
+        harness.prompt("first", None).await.expect("first prompt");
+        harness.set_stream_options(AgentHarnessStreamOptions {
+            timeout_ms: Some(2000),
+            headers: Some(HashMap::from([("turn".into(), "second".into())])),
+            ..AgentHarnessStreamOptions::default()
+        });
+        harness.prompt("second", None).await.expect("second prompt");
+
+        let captured = captured.lock().expect("captured");
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0].timeout_ms, Some(1000));
+        assert_eq!(captured[0].headers.get("turn"), Some(&Some("first".into())));
+        assert_eq!(captured[1].timeout_ms, Some(2000));
+        assert_eq!(
+            captured[1].headers.get("turn"),
+            Some(&Some("second".into()))
+        );
+    });
+}
+
+#[test]
 fn chains_provider_payload_hooks() {
     run(async {
         let captured_options = Arc::new(Mutex::new(Vec::new()));
