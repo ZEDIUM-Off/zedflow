@@ -1221,7 +1221,7 @@ fn normalizes_tool_pipeline_failures_as_error_results() {
             "prepare" => {
                 tool.prepare_arguments = Some(Arc::new(|_| Err(callback_error("prepare failed"))));
             }
-            "validate" => args = json!({ "value": 1 }),
+            "validate" => args = json!({}),
             "before" => {
                 config.before_tool_call = Some(Arc::new(|_, _| {
                     Box::pin(async { Err(callback_error("before failed")) })
@@ -1251,7 +1251,7 @@ fn normalizes_tool_pipeline_failures_as_error_results() {
         let (error, is_error) = error_tool_result(&messages);
         assert!(is_error, "{failure} failure must set is_error");
         let expected = if failure == "validate" {
-            "validation failed"
+            "Validation failed"
         } else {
             failure
         };
