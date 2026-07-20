@@ -225,6 +225,22 @@
       "intent": "Repair AG-P2 review blockers: use the existing command-group facility without blocking the async executor or PATH-resolved kill; prove timeout and active-abort terminate child and grandchild processes while normal exit remains correct."
     },
     {
+      "id": "AG-P2-R2-CANCEL-GROUP",
+      "kind": "writer",
+      "depends_on": [
+        "AG-P2-R1-PROCESS-TREE"
+      ],
+      "ownership": [
+        "crates/zedflow-agent/src/harness/env/nodejs.rs",
+        "crates/zedflow-agent/tests/harness/nodejs-env.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-agent --check",
+        "cargo test -p zedflow-agent --test nodejs-env"
+      ],
+      "intent": "Repair independent Rust review blocker: dropping/cancelling the exec future must terminate and reap the detached command group instead of orphaning the worker thread/process tree; preserve timeout, active-abort, grandchild, and normal-exit coverage."
+    },
+    {
       "id": "AG-P3",
       "kind": "writer",
       "depends_on": [
@@ -265,7 +281,8 @@
         "AG-P2",
         "AG-P3",
         "AG-P4",
-        "AG-P2-R1-PROCESS-TREE"
+        "AG-P2-R1-PROCESS-TREE",
+        "AG-P2-R2-CANCEL-GROUP"
       ],
       "ownership": [
         "crates/zedflow-agent/tests"

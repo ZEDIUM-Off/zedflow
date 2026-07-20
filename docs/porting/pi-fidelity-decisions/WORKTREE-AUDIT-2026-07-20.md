@@ -18,3 +18,5 @@ The audit does not reopen closed units. The repair is a new evidence-backed prer
 ## AG-P2 review repair
 
 Independent fidelity and Rust reviews of `df523c8eb62cfd62012610b853908ef8a8ab7698` found that timeout coverage omitted grandchildren and active abort, while the implementation used a synchronous wait and PATH-resolved `kill`. `AG-P2-R1-PROCESS-TREE` was inserted before `AG-T1`; later work must preserve the accepted AG-P2 evidence while closing these review blockers.
+
+A Rust review of `f24486e19188f9919397d728ec1c90dbc9c05b02` found that dropping the exec future could orphan the detached worker thread and command group. `AG-P2-R2-CANCEL-GROUP` was inserted before `AG-T1` to make future cancellation terminate and reap the process tree.
