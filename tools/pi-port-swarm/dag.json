@@ -382,6 +382,7 @@
         "CA-RECONCILE-CHECKPOINT"
       ],
       "ownership": [
+        "Cargo.lock",
         "crates/zedflow-coding-agent/Cargo.toml",
         "crates/zedflow-coding-agent/src/lib.rs",
         "crates/zedflow-coding-agent/src/utils",
