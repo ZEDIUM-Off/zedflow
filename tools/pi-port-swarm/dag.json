@@ -374,6 +374,126 @@
         "git diff --check"
       ],
       "intent": "Compare the frozen Pi coding-agent package with zedflow-coding-agent, record the proven resume point, and extend the DAG into bounded fidelity units without editing Rust source."
+    },
+    {
+      "id": "CA-U1-PURE-UTILS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-RECONCILE-CHECKPOINT"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/utils",
+        "crates/zedflow-coding-agent/tests/utils.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test utils"
+      ],
+      "intent": "Port deterministic dependency-light ansi, frontmatter, HTML, JSON, MIME, sleep, and Pi user-agent utilities with their frozen tests."
+    },
+    {
+      "id": "CA-T1-TOOL-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-U1-PURE-UTILS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/tools/path-utils.rs",
+        "crates/zedflow-coding-agent/src/core/tools/truncate.rs",
+        "crates/zedflow-coding-agent/src/core/tools/output-accumulator.rs",
+        "crates/zedflow-coding-agent/src/core/tools/file-mutation-queue.rs",
+        "crates/zedflow-coding-agent/tests/tool-primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test tool-primitives"
+      ],
+      "intent": "Port shared path, truncation, output accumulation, and file-mutation serialization semantics before concrete tools."
+    },
+    {
+      "id": "CA-T2-FILESYSTEM-TOOLS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T1-TOOL-PRIMITIVES"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/tools/read.rs",
+        "crates/zedflow-coding-agent/src/core/tools/write.rs",
+        "crates/zedflow-coding-agent/src/core/tools/find.rs",
+        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Port read, write, find, and list tool behavior on the accepted primitives, including deterministic truncation and path cases."
+    },
+    {
+      "id": "CA-T3-SEARCH-EDIT-TOOLS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T2-FILESYSTEM-TOOLS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
+        "crates/zedflow-coding-agent/src/core/tools/edit.rs",
+        "crates/zedflow-coding-agent/src/core/tools/edit-diff.rs",
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test search-edit-tools"
+      ],
+      "intent": "Port grep and exact-edit behavior, including frozen legacy-input, redraw, path, and truncation cases."
+    },
+    {
+      "id": "CA-V1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-T3-SEARCH-EDIT-TOOLS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Mechanically accept the first coding-agent utility and filesystem-tool wave."
+    },
+    {
+      "id": "CA-RV-FID",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V1"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only frozen Pi fidelity review of the first coding-agent wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record the accepted coding-agent foundation and assign the next bounded package wave."
     }
   ]
 }
