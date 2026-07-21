@@ -11,7 +11,7 @@ use std::process::Command;
 use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
 use zedflow_coding_agent::find::{FindOperations, FindTool, FindToolInput, create_find_tool};
 use zedflow_coding_agent::ls::{LsTool, LsToolInput, create_ls_tool};
-use zedflow_coding_agent::read::{ReadTool, ReadToolInput, create_read_tool};
+use zedflow_coding_agent::read::{ReadOperations, ReadTool, ReadToolInput, create_read_tool};
 use zedflow_coding_agent::write::{WriteTool, WriteToolInput, create_write_tool};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -140,6 +140,67 @@ async fn read_converts_bmp_before_attaching_it() {
         }
         AgentToolResultContent::Text(_) => panic!("expected image output"),
     }
+}
+
+#[tokio::test]
+async fn read_uses_injected_access_mime_and_file_operations() {
+    let root = std::env::temp_dir().join("zedflow-virtual-read-root");
+    let path = root.join("image.bin");
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let access_calls = Arc::clone(&calls);
+    let mime_calls = Arc::clone(&calls);
+    let read_calls = Arc::clone(&calls);
+    let image = tiny_bmp_1x1_red();
+    let operations = ReadOperations {
+        access: Arc::new(move |path| {
+            let calls = Arc::clone(&access_calls);
+            Box::pin(async move {
+                calls.lock().unwrap().push(("access", path));
+                Ok(())
+            })
+        }),
+        detect_image_mime_type: Some(Arc::new(move |path| {
+            let calls = Arc::clone(&mime_calls);
+            Box::pin(async move {
+                calls.lock().unwrap().push(("mime", path));
+                Ok(Some("image/bmp".into()))
+            })
+        })),
+        read_file: Arc::new(move |path| {
+            let calls = Arc::clone(&read_calls);
+            let image = image.clone();
+            Box::pin(async move {
+                calls.lock().unwrap().push(("read", path));
+                Ok(image)
+            })
+        }),
+    };
+
+    let result = ReadTool::with_operations(&root, operations)
+        .execute(ReadToolInput {
+            path: "image.bin".into(),
+            offset: None,
+            limit: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![
+            ("access", path.clone()),
+            ("mime", path.clone()),
+            ("read", path)
+        ]
+    );
+    assert_eq!(
+        output(&result),
+        "Read image file [image/png]\n[Image converted from image/bmp to image/png.]"
+    );
+    assert!(matches!(
+        result.content.get(1),
+        Some(AgentToolResultContent::Image(_))
+    ));
 }
 
 #[tokio::test]

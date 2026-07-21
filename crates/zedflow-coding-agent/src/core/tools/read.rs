@@ -1,5 +1,8 @@
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use zedflow_agent::types::{
@@ -13,7 +16,7 @@ use super::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, TruncationResult, format_size, truncate_head,
 };
 use crate::utils::image_process::{ProcessImageOptions, process_image};
-use crate::utils::mime::detect_supported_image_mime_type;
+use crate::utils::mime::detect_supported_image_mime_type_from_file;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReadToolInput {
@@ -28,16 +31,63 @@ pub struct ReadToolDetails {
 }
 
 pub type ReadToolResult = AgentToolResult<Option<ReadToolDetails>>;
+pub type ReadOperationFuture<T> = Pin<Box<dyn Future<Output = io::Result<T>> + Send>>;
+pub type ReadAccessOperation = Arc<dyn Fn(PathBuf) -> ReadOperationFuture<()> + Send + Sync>;
+pub type ReadFileOperation = Arc<dyn Fn(PathBuf) -> ReadOperationFuture<Vec<u8>> + Send + Sync>;
+pub type ReadDetectImageMimeTypeOperation =
+    Arc<dyn Fn(PathBuf) -> ReadOperationFuture<Option<String>> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct ReadOperations {
+    pub access: ReadAccessOperation,
+    pub read_file: ReadFileOperation,
+    pub detect_image_mime_type: Option<ReadDetectImageMimeTypeOperation>,
+}
+
+impl Default for ReadOperations {
+    fn default() -> Self {
+        Self {
+            access: Arc::new(|path| {
+                Box::pin(async move { tokio::fs::File::open(path).await.map(|_| ()) })
+            }),
+            read_file: Arc::new(|path| Box::pin(tokio::fs::read(path))),
+            detect_image_mime_type: Some(Arc::new(|path| {
+                Box::pin(async move {
+                    tokio::task::spawn_blocking(move || {
+                        detect_supported_image_mime_type_from_file(path)
+                            .map(|mime_type| mime_type.map(str::to_owned))
+                    })
+                    .await
+                    .map_err(|error| io::Error::other(error.to_string()))?
+                })
+            })),
+        }
+    }
+}
+
+impl fmt::Debug for ReadOperations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ReadOperations")
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ReadTool {
     cwd: PathBuf,
+    operations: ReadOperations,
 }
 
 impl ReadTool {
     pub fn new(cwd: impl AsRef<Path>) -> Self {
+        Self::with_operations(cwd, ReadOperations::default())
+    }
+
+    pub fn with_operations(cwd: impl AsRef<Path>, operations: ReadOperations) -> Self {
         Self {
             cwd: cwd.as_ref().to_path_buf(),
+            operations,
         }
     }
 
@@ -53,12 +103,22 @@ impl ReadTool {
         check_aborted(signal)?;
         let absolute_path = resolve_read_path_async(&input.path, &self.cwd).await?;
         check_aborted(signal)?;
-        let bytes = tokio::fs::read(absolute_path).await?;
+        (self.operations.access)(absolute_path.clone()).await?;
+        check_aborted(signal)?;
+        let mime_type =
+            if let Some(detect_image_mime_type) = &self.operations.detect_image_mime_type {
+                detect_image_mime_type(absolute_path.clone()).await?
+            } else {
+                None
+            };
+        check_aborted(signal)?;
+        let bytes = (self.operations.read_file)(absolute_path).await?;
         check_aborted(signal)?;
 
-        if let Some(mime_type) = detect_supported_image_mime_type(&bytes) {
+        if let Some(mime_type) = mime_type {
+            let processed_mime_type = mime_type.clone();
             let processed = tokio::task::spawn_blocking(move || {
-                process_image(&bytes, mime_type, ProcessImageOptions::default())
+                process_image(&bytes, &processed_mime_type, ProcessImageOptions::default())
             })
             .await
             .map_err(|error| io::Error::other(error.to_string()))?;
@@ -169,7 +229,14 @@ impl ReadTool {
 }
 
 pub fn create_read_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    let tool = ReadTool::new(cwd);
+    create_read_tool_with_operations(cwd, ReadOperations::default())
+}
+
+pub fn create_read_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: ReadOperations,
+) -> AgentTool {
+    let tool = ReadTool::with_operations(cwd, operations);
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();
         Box::pin(async move {
