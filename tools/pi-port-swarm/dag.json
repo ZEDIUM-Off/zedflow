@@ -631,14 +631,30 @@
       "intent": "Repair CA-RV-FID-R4 blocker: support injected read access, MIME detection, and file-read operations while retaining local filesystem defaults, with focused disk-independent coverage."
     },
     {
-      "id": "CA-RV-FID-R5",
-      "kind": "reviewer",
+      "id": "CA-T3-R6-INJECTED-GREP-OPERATIONS",
+      "kind": "writer",
       "depends_on": [
         "CA-T2-R2-INJECTED-READ-OPERATIONS"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test search-edit-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R4 blocker: support injected grep directory-status and context-file read operations while retaining local filesystem defaults, propagate options through the direct tool factory, and add focused disk-independent coverage."
+    },
+    {
+      "id": "CA-RV-FID-R5",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T3-R6-INJECTED-GREP-OPERATIONS"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected read operations are repaired."
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected read and grep operations are repaired."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
