@@ -660,7 +660,7 @@
       "id": "CA-T2-R3-INJECTED-LS-OPERATIONS",
       "kind": "writer",
       "depends_on": [
-        "CA-T3-R6-INJECTED-GREP-OPERATIONS"
+        "CA-RV-FID-R5"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools/ls.rs",
