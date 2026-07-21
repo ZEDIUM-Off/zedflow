@@ -533,7 +533,7 @@
       "id": "CA-T3-R1-UNICODE-NFKC",
       "kind": "writer",
       "depends_on": [
-        "CA-T1-R1-UNICODE-NFD"
+        "CA-RV-FID-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools/edit-diff.rs",
