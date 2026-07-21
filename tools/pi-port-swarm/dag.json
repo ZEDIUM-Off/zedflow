@@ -530,10 +530,36 @@
       "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after the Unicode NFD repair."
     },
     {
+      "id": "CA-T3-R1-UNICODE-NFKC",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T1-R1-UNICODE-NFD"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/edit-diff.rs",
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test search-edit-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R2 blocker: replace the partial fuzzy-edit compatibility mapping with Unicode-complete NFKC normalization and cover non-Latin canonical-equivalent matching."
+    },
+    {
+      "id": "CA-RV-FID-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T3-R1-UNICODE-NFKC"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after the Unicode NFKC fuzzy-edit repair."
+    },
+    {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-R2"
+        "CA-RV-FID-R3"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
