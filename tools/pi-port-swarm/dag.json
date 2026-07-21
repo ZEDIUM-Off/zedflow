@@ -501,10 +501,39 @@
       "intent": "Read-only frozen Pi fidelity review of the first coding-agent wave."
     },
     {
+      "id": "CA-T1-R1-UNICODE-NFD",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T2-R1-IMAGE-PROCESSING"
+      ],
+      "ownership": [
+        "Cargo.lock",
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/core/tools/path-utils.rs",
+        "crates/zedflow-coding-agent/tests/tool-primitives.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test tool-primitives --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID blocker: replace the hard-coded Latin filename decomposition with Unicode-complete NFD normalization and cover non-Latin canonical-equivalent path resolution."
+    },
+    {
+      "id": "CA-RV-FID-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T1-R1-UNICODE-NFD"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after the Unicode NFD repair."
+    },
+    {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID"
+        "CA-RV-FID-R2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
