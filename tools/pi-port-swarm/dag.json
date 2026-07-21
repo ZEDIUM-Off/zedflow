@@ -615,10 +615,36 @@
       "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search binaries, streaming grep limits, injected edit operations, and injected find operations are repaired."
     },
     {
+      "id": "CA-T2-R2-INJECTED-READ-OPERATIONS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T3-R5-INJECTED-FIND-OPERATIONS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/read.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R4 blocker: support injected read access, MIME detection, and file-read operations while retaining local filesystem defaults, with focused disk-independent coverage."
+    },
+    {
+      "id": "CA-RV-FID-R5",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T2-R2-INJECTED-READ-OPERATIONS"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected read operations are repaired."
+    },
+    {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-R4"
+        "CA-RV-FID-R5"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
