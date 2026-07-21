@@ -657,10 +657,52 @@
       "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected read and grep operations are repaired."
     },
     {
+      "id": "CA-T2-R3-INJECTED-LS-OPERATIONS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T3-R6-INJECTED-GREP-OPERATIONS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R5 blocker: support injected ls existence, stat, and directory-read operations while retaining local filesystem defaults, propagate options through the direct tool factory, and add focused disk-independent coverage."
+    },
+    {
+      "id": "CA-T2-R4-INJECTED-WRITE-OPERATIONS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T2-R3-INJECTED-LS-OPERATIONS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/write.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R5 blocker: support injected write directory-creation and file-write operations while retaining local filesystem defaults, propagate options through the direct tool factory, and add focused disk-independent coverage."
+    },
+    {
+      "id": "CA-RV-FID-R6",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T2-R4-INJECTED-WRITE-OPERATIONS"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected ls and write operations are repaired."
+    },
+    {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-R5"
+        "CA-RV-FID-R6"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
