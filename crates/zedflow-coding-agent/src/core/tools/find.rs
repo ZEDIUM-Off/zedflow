@@ -14,6 +14,7 @@ use super::read::truncation_details;
 use super::truncate::{
     DEFAULT_MAX_BYTES, TruncationOptions, TruncationResult, format_size, truncate_head,
 };
+use crate::utils::tools_manager::ensure_tool;
 
 pub const DEFAULT_FIND_LIMIT: usize = 1_000;
 
@@ -56,6 +57,21 @@ impl FindTool {
         check_aborted(signal)?;
         let search_path = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
         let effective_limit = input.limit.unwrap_or(DEFAULT_FIND_LIMIT);
+        let ensure_fd = ensure_tool("fd", true);
+        let fd_path = if let Some(signal) = signal {
+            tokio::select! {
+                path = ensure_fd => path,
+                () = signal.cancelled() => return Err(io::Error::other("Operation aborted")),
+            }
+        } else {
+            ensure_fd.await
+        }
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "fd is not available and could not be downloaded",
+            )
+        })?;
 
         let mut inside_git_repo = false;
         let mut current = Some(search_path.as_path());
@@ -93,7 +109,7 @@ impl FindTool {
             search_path.to_string_lossy().into_owned(),
         ]);
 
-        let mut command = Command::new("fd");
+        let mut command = Command::new(fd_path);
         command.args(arguments).kill_on_drop(true);
         let output = if let Some(signal) = signal {
             tokio::select! {

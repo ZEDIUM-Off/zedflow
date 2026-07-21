@@ -12,6 +12,7 @@ publish.workspace = true
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 regex = "1"
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 serde_yaml = "0.9"
 tokio = { version = "1", features = ["fs", "macros", "process", "rt-multi-thread", "sync", "time"] }
 unicode-normalization = "0.1"

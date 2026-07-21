@@ -3515,6 +3515,7 @@ dependencies = [
  "base64",
  "image",
  "regex",
+ "reqwest",
  "serde_yaml",
  "tokio",
  "unicode-normalization",

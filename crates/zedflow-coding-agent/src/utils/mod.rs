@@ -6,3 +6,4 @@ pub mod json;
 pub mod mime;
 pub mod pi_user_agent;
 pub mod sleep;
+pub mod tools_manager;

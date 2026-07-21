@@ -16,6 +16,7 @@ use super::truncate::{
     DEFAULT_MAX_BYTES, GREP_MAX_LINE_LENGTH, TruncationOptions, TruncationResult, format_size,
     truncate_head, truncate_line,
 };
+use crate::utils::tools_manager::ensure_tool;
 
 pub const DEFAULT_GREP_LIMIT: usize = 100;
 
@@ -68,6 +69,21 @@ impl GrepTool {
         signal: Option<&AbortSignal>,
     ) -> io::Result<GrepToolResult> {
         check_aborted(signal)?;
+        let ensure_rg = ensure_tool("rg", true);
+        let rg_path = if let Some(signal) = signal {
+            tokio::select! {
+                path = ensure_rg => path,
+                () = signal.cancelled() => return Err(io::Error::other("Operation aborted")),
+            }
+        } else {
+            ensure_rg.await
+        }
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "ripgrep (rg) is not available and could not be downloaded",
+            )
+        })?;
         let search_path = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
         let is_directory = tokio::fs::metadata(&search_path)
             .await
@@ -102,7 +118,7 @@ impl GrepTool {
             search_path.to_string_lossy().into_owned(),
         ]);
 
-        let mut command = Command::new("rg");
+        let mut command = Command::new(rg_path);
         command.args(arguments).kill_on_drop(true);
         let output = if let Some(signal) = signal {
             tokio::select! {

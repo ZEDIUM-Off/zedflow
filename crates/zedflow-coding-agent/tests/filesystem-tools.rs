@@ -2,6 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+#[cfg(unix)]
+use std::process::Command;
+
 use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
 use zedflow_coding_agent::find::{FindTool, FindToolInput, create_find_tool};
 use zedflow_coding_agent::ls::{LsTool, LsToolInput, create_ls_tool};
@@ -209,6 +214,55 @@ fn factories_share_the_agent_runtime_details_type() {
             .collect::<Vec<_>>(),
         ["read", "write", "find", "ls"]
     );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn find_uses_the_managed_fd_binary_without_path() {
+    const CHILD: &str = "ZEDFLOW_MANAGED_FD_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let root = TempDir::new();
+        let agent_dir = root.as_ref().join("agent");
+        let bin_dir = agent_dir.join("bin");
+        let search_dir = root.as_ref().join("search");
+        fs::create_dir_all(&bin_dir).unwrap();
+        fs::create_dir(&search_dir).unwrap();
+        fs::write(search_dir.join("managed.txt"), "").unwrap();
+        let fd = bin_dir.join("fd");
+        fs::write(
+            &fd,
+            "#!/bin/sh\nfor last do :; done\nprintf '%s/managed.txt\\n' \"$last\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&fd, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "find_uses_the_managed_fd_binary_without_path",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("PI_CODING_AGENT_DIR", agent_dir)
+            .env("PI_OFFLINE", "1")
+            .env("PATH", root.as_ref().join("empty-path"))
+            .env("ZEDFLOW_MANAGED_SEARCH_ROOT", search_dir)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+
+    let root = PathBuf::from(std::env::var_os("ZEDFLOW_MANAGED_SEARCH_ROOT").unwrap());
+    let result = FindTool::new(&root)
+        .execute(FindToolInput {
+            pattern: "*.txt".into(),
+            path: None,
+            limit: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(output(&result), "managed.txt");
 }
 
 #[tokio::test]
