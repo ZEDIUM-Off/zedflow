@@ -1,6 +1,8 @@
 use std::io;
 use std::path::Path;
 
+use unicode_normalization::UnicodeNormalization;
+
 use super::path_utils::resolve_to_cwd;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -49,44 +51,8 @@ pub fn restore_line_endings(text: &str, ending: &str) -> String {
 }
 
 pub fn normalize_for_fuzzy_match(text: &str) -> String {
-    let compatibility = text
-        .chars()
-        .map(|character| match character {
-            '\u{ff01}'..='\u{ff5e}' => {
-                char::from_u32(character as u32 - 0xfee0).expect("fullwidth ASCII mapping")
-            }
-            '\u{3000}' => ' ',
-            other => other,
-        })
-        .collect::<String>();
-    let mut composed = String::with_capacity(compatibility.len());
-    for character in compatibility.chars() {
-        if character == '\u{0301}' {
-            let replacement = composed
-                .chars()
-                .next_back()
-                .and_then(|previous| match previous {
-                    'a' => Some('á'),
-                    'e' => Some('é'),
-                    'i' => Some('í'),
-                    'o' => Some('ó'),
-                    'u' => Some('ú'),
-                    'A' => Some('Á'),
-                    'E' => Some('É'),
-                    'I' => Some('Í'),
-                    'O' => Some('Ó'),
-                    'U' => Some('Ú'),
-                    _ => None,
-                });
-            if let Some(replacement) = replacement {
-                composed.pop();
-                composed.push(replacement);
-                continue;
-            }
-        }
-        composed.push(character);
-    }
-    composed
+    text.nfkc()
+        .collect::<String>()
         .split('\n')
         .map(str::trim_end)
         .collect::<Vec<_>>()

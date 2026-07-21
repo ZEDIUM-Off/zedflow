@@ -207,14 +207,14 @@ async fn fuzzy_edit_preserves_untouched_line_bytes() {
     let root = TempDir::new();
     fs::write(
         root.as_ref().join("fuzzy.txt"),
-        "keep  \nＡＢＣ１２３\ncafe\u{301}\n你好，世界\nafter   \n",
+        "keep  \nＡＢＣ１２３\ncafe\u{301}\n가\n㍑\n你好，世界\nafter   \n",
     )
     .unwrap();
     EditTool::new(&root)
         .execute(EditToolInput {
             path: "fuzzy.txt".into(),
             edits: vec![Edit {
-                old_text: "ABC123\ncafé\n你好,世界\n".into(),
+                old_text: "ABC123\ncafé\n가\nリットル\n你好,世界\n".into(),
                 new_text: "changed\n".into(),
             }],
         })
