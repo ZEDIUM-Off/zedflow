@@ -234,6 +234,37 @@ class ControllerTests(unittest.TestCase):
             controller.atomic_json(path, state)
             self.assertEqual(controller.load_runtime(ROOT, revised, path)["dag_sha256"], controller.dag_hash(revised))
 
+    def test_checkpoint_dag_transition_recovers_legacy_and_interrupted_state(self) -> None:
+        repo, _, _ = self.port_repo()
+        initial = {
+            "version": 2,
+            "source_gitlink": "references/pi@" + "a" * 40,
+            "max_active_writers": 1,
+            "units": [{"id": "NEXT", "kind": "checkpoint", "depends_on": [], "ownership": [controller.DAG_FILE], "validation": []}],
+        }
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        dag_path.write_text(json.dumps(initial))
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-m", "initial dag")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        revised = copy.deepcopy(initial)
+        revised["units"] = [{"id": "LATER", "kind": "reviewer", "depends_on": [], "ownership": [], "validation": []}]
+        dag_path.write_text(json.dumps(revised))
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-m", "extend dag")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, candidate)
+
+        legacy = {"dag_sha256": controller.dag_hash(initial), "units": {"NEXT": {"status": "ACCEPTED", "base": base, "candidate": candidate, "dag_sha256": controller.dag_hash(initial)}}}
+        self.assertTrue(controller.recover_accepted_checkpoint_dag(repo, revised, legacy, controller.INTEGRATION_REF))
+        self.assertEqual(legacy["dag_sha256"], controller.dag_hash(revised))
+
+        interrupted = {"dag_sha256": controller.dag_hash(initial), "units": {"NEXT": {"status": "ACCEPTING", "base": base, "candidate": candidate, "dag_sha256": controller.dag_hash(initial), "revised_dag_sha256": controller.dag_hash(revised)}}}
+        self.assertTrue(controller.reconcile_runtime(repo, revised, interrupted, controller.INTEGRATION_REF))
+        self.assertEqual(interrupted["units"]["NEXT"]["status"], "ACCEPTED")
+        self.assertEqual(interrupted["dag_sha256"], controller.dag_hash(revised))
+
     def test_continuous_replan_reaches_later_read_only_units(self) -> None:
         revised = {
             "version": 2,

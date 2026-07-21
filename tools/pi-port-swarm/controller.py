@@ -24,7 +24,8 @@ KINDS = {"writer", "checkpoint", "validator", "reviewer"}
 MUTATING_KINDS = {"writer", "checkpoint"}
 INTEGRATION_REF = "refs/heads/automation/pi-port"
 NULL_OID = "0" * 40
-CONTROL_OWNERSHIP = ("tools/pi-port-swarm/dag.json", ".agents/port-swarm/state.json", "docs/porting")
+DAG_FILE = "tools/pi-port-swarm/dag.json"
+CONTROL_OWNERSHIP = (DAG_FILE, ".agents/port-swarm/state.json", "docs/porting")
 PROMPTS = {
     "writer": "pi-port-worker-session.md",
     "checkpoint": "pi-port-checkpoint.md",
@@ -211,11 +212,36 @@ def seed_runtime(source: Path, dag: dict[str, Any], integration_ref: str = INTEG
     }
 
 
-def pending_plan_change(state: dict[str, Any]) -> bool:
+def pending_dag_change(state: dict[str, Any]) -> bool:
     return any(
-        record.get("status") == "ACCEPTING" and record.get("plan_change") and record.get("candidate")
+        record.get("status") == "ACCEPTING" and record.get("candidate") and record.get("revised_dag_sha256")
         for record in state.get("units", {}).values()
     )
+
+
+def recover_accepted_checkpoint_dag(source: Path, dag: dict[str, Any], state: dict[str, Any], integration_ref: str) -> bool:
+    """Recover state written by the pre-transactional checkpoint implementation."""
+    revised_hash = dag_hash(dag)
+    if state.get("dag_sha256") == revised_hash:
+        return False
+    ref = integration_sha(source, integration_ref)
+    matches = []
+    for identifier, record in state.get("units", {}).items():
+        base = record.get("base")
+        if record.get("status") != "ACCEPTED" or record.get("candidate") != ref or record.get("dag_sha256") != state.get("dag_sha256") or not base:
+            continue
+        try:
+            previous = json.loads(git(source, "show", f"{base}:{DAG_FILE}"))
+        except (ControllerError, json.JSONDecodeError):
+            continue
+        kinds = {unit["id"]: unit["kind"] for unit in validate_dag(previous)}
+        if kinds.get(identifier) == "checkpoint" and not git_ok(source, "diff", "--quiet", f"{base}..{ref}", "--", DAG_FILE):
+            matches.append(record)
+    if len(matches) != 1:
+        return False
+    matches[0]["revised_dag_sha256"] = revised_hash
+    state["dag_sha256"] = revised_hash
+    return True
 
 
 def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integration_ref: str = INTEGRATION_REF, write: bool = False) -> dict[str, Any]:
@@ -226,8 +252,13 @@ def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integratio
             raise ControllerError("runtime state does not match this controller integration ref")
         if state.get("pi_gitlink") != pinned_gitlink(dag):
             raise ControllerError("runtime state Pi gitlink differs from DAG")
-        if state.get("dag_sha256") != dag_hash(dag) and not pending_plan_change(state):
-            raise ControllerError("runtime state DAG revision differs from the integration DAG")
+        recovered = False
+        if state.get("dag_sha256") != dag_hash(dag) and not pending_dag_change(state):
+            recovered = recover_accepted_checkpoint_dag(source, dag, state, integration_ref)
+            if not recovered:
+                raise ControllerError("runtime state DAG revision differs from the integration DAG")
+        if recovered and write:
+            atomic_json(state_path, state)
         return state
     state = seed_runtime(source, dag, integration_ref)
     if write:
@@ -248,17 +279,19 @@ def reconcile_runtime(source: Path, dag: dict[str, Any], state: dict[str, Any], 
                 record["status"] = "RETRY" if record.get("replan_retry") else "SUPERSEDED"
             else:
                 record["status"] = "ACCEPTED"
+            if record.get("revised_dag_sha256"):
+                state["dag_sha256"] = record["revised_dag_sha256"]
             record["blocker"] = None
         elif ref == base:
             record["status"] = "FAILED"
             record["blocker"] = "interrupted before CAS; use retry --unit <id>"
-            if record.get("plan_change"):
-                state["dag_sha256"] = dag_hash(dag)
+            if record.get("revised_dag_sha256"):
+                state["dag_sha256"] = record.get("dag_sha256", dag_hash(dag))
         else:
             record["status"] = "FAILED"
             record["blocker"] = "integration ref changed while recovering interrupted unit"
         changed = True
-    if state.get("dag_sha256") != dag_hash(dag) and not pending_plan_change(state):
+    if state.get("dag_sha256") != dag_hash(dag) and not pending_dag_change(state):
         raise ControllerError("runtime state DAG revision differs from the integration DAG")
     return changed
 
@@ -458,11 +491,26 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
             candidate = result.get("candidate")
             if unit["kind"] in MUTATING_KINDS:
                 validate_candidate(source, worktree, base, candidate, unit, pin)
+                revised_hash = None
+                if unit["kind"] == "checkpoint" and not git_ok(source, "diff", "--quiet", f"{base}..{candidate}", "--", DAG_FILE):
+                    revised = load_json(worktree / DAG_FILE)
+                    revised_units = validate_dag(revised)
+                    if pinned_gitlink(revised) != pin:
+                        raise ControllerError("checkpoint changed the frozen Pi gitlink")
+                    prospective = json.loads(json.dumps(state))
+                    prospective.setdefault("units", {})[unit["id"]] = {"status": "ACCEPTED"}
+                    if not ready_units(revised_units, prospective) and not graph_complete(revised_units, prospective):
+                        raise ControllerError("checkpoint DAG change leaves no ready unit")
+                    revised_hash = dag_hash(revised)
                 # Persist the exact candidate before CAS so startup can recover a crash.
                 record.update(status="ACCEPTING", candidate=candidate)
+                if revised_hash:
+                    record["revised_dag_sha256"] = revised_hash
                 atomic_json(state_path, state)
                 git(source, "update-ref", integration_ref, candidate, base)
                 record.update(status="ACCEPTED", candidate=candidate)
+                if revised_hash:
+                    state["dag_sha256"] = revised_hash
             else:
                 if candidate is not None or integration_sha(source, integration_ref) != base:
                     raise ControllerError("read-only unit must not change the integration ref")
