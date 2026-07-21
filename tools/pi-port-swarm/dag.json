@@ -573,14 +573,30 @@
       "intent": "Repair CA-RV-FID-R4 blocker: stream ripgrep JSON and terminate the child as soon as the effective match limit is reached instead of buffering the complete process output, with deterministic early-termination coverage."
     },
     {
-      "id": "CA-RV-FID-R4",
-      "kind": "reviewer",
+      "id": "CA-T3-R4-INJECTED-EDIT-OPERATIONS",
+      "kind": "writer",
       "depends_on": [
         "CA-T3-R3-STREAMING-GREP-LIMIT"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/edit.rs",
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test search-edit-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R4 blocker: support injected edit access, read, and write operations while retaining local filesystem defaults and preserving custom backend access errors, with focused disk-independent coverage."
+    },
+    {
+      "id": "CA-RV-FID-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T3-R4-INJECTED-EDIT-OPERATIONS"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search-binary provisioning and streaming grep limit enforcement."
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search binaries, streaming grep limits, and injected edit operations are repaired."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
