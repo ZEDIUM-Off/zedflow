@@ -543,7 +543,7 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test search-edit-tools"
       ],
-      "intent": "Repair CA-RV-FID-R2 blocker: replace the partial fuzzy-edit compatibility mapping with Unicode-complete NFKC normalization and cover non-Latin canonical-equivalent matching."
+      "intent": "Repair CA-RV-FID-R2 blocker: replace the partial fuzzy-edit compatibility mapping with Unicode-complete NFKC normalization and cover non-Latin canonical equivalence and compatibility mappings."
     },
     {
       "id": "CA-RV-FID-R3",
