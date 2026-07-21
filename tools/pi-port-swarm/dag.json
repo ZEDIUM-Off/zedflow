@@ -670,7 +670,7 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test filesystem-tools"
       ],
-      "intent": "Repair CA-RV-FID-R5 blocker: support injected ls existence, stat, and directory-read operations while retaining local filesystem defaults, propagate options through the direct tool factory, and add focused disk-independent coverage."
+      "intent": "Repair CA-RV-FID-R5 blocker: match frozen Pi LsToolOptions.operations by routing injected existence, stat, and directory-read operations through createLsToolDefinition and createLsTool while retaining local filesystem defaults and adding focused disk-independent coverage."
     },
     {
       "id": "CA-T2-R4-INJECTED-WRITE-OPERATIONS",
