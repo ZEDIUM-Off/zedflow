@@ -12,6 +12,7 @@ use super::path_utils::resolve_read_path_async;
 use super::truncate::{
     DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, TruncatedBy, TruncationResult, format_size, truncate_head,
 };
+use crate::utils::image_process::{ProcessImageOptions, process_image};
 use crate::utils::mime::detect_supported_image_mime_type;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,15 +57,32 @@ impl ReadTool {
         check_aborted(signal)?;
 
         if let Some(mime_type) = detect_supported_image_mime_type(&bytes) {
+            let processed = tokio::task::spawn_blocking(move || {
+                process_image(&bytes, mime_type, ProcessImageOptions::default())
+            })
+            .await
+            .map_err(|error| io::Error::other(error.to_string()))?;
+            check_aborted(signal)?;
+            let content = match processed {
+                Ok(image) => {
+                    let mut note = format!("Read image file [{}]", image.mime_type);
+                    if !image.hints.is_empty() {
+                        note.push('\n');
+                        note.push_str(&image.hints.join("\n"));
+                    }
+                    vec![
+                        text(note),
+                        AgentToolResultContent::Image(ImageContent {
+                            content_type: ImageContentType::Image,
+                            data: image.data,
+                            mime_type: image.mime_type,
+                        }),
+                    ]
+                }
+                Err(message) => vec![text(format!("Read image file [{mime_type}]\n{message}"))],
+            };
             return Ok(AgentToolResult {
-                content: vec![
-                    text(format!("Read image file [{mime_type}]")),
-                    AgentToolResultContent::Image(ImageContent {
-                        content_type: ImageContentType::Image,
-                        data: encode_base64(&bytes),
-                        mime_type: mime_type.to_owned(),
-                    }),
-                ],
+                content,
                 details: None,
                 terminate: None,
             });
@@ -234,29 +252,6 @@ pub(crate) fn truncation_details(truncation: &TruncationResult) -> ToolSchema {
     value["maxLines"] = truncation.max_lines.into();
     value["maxBytes"] = truncation.max_bytes.into();
     value
-}
-
-fn encode_base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let value = (u32::from(chunk[0]) << 16)
-            | (u32::from(*chunk.get(1).unwrap_or(&0)) << 8)
-            | u32::from(*chunk.get(2).unwrap_or(&0));
-        encoded.push(ALPHABET[((value >> 18) & 63) as usize] as char);
-        encoded.push(ALPHABET[((value >> 12) & 63) as usize] as char);
-        encoded.push(if chunk.len() > 1 {
-            ALPHABET[((value >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        encoded.push(if chunk.len() > 2 {
-            ALPHABET[(value & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    encoded
 }
 
 fn text(value: impl Into<String>) -> AgentToolResultContent {
