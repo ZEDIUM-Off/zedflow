@@ -471,10 +471,30 @@
       "intent": "Mechanically accept the first coding-agent utility and filesystem-tool wave."
     },
     {
+      "id": "CA-T2-R1-IMAGE-PROCESSING",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V1"
+      ],
+      "ownership": [
+        "Cargo.lock",
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/core/tools/read.rs",
+        "crates/zedflow-coding-agent/src/utils",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs",
+        "crates/zedflow-coding-agent/tests/image-process.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools --test image-process"
+      ],
+      "intent": "Repair CA-RV-FID blocker: process detected images before attachment, including frozen conversion, resizing, hints, and omission-on-failure behavior; replace the invalid header-only PNG assertion with direct fidelity coverage."
+    },
+    {
       "id": "CA-RV-FID",
       "kind": "reviewer",
       "depends_on": [
-        "CA-V1"
+        "CA-T2-R1-IMAGE-PROCESSING"
       ],
       "ownership": [],
       "validation": [],
