@@ -1,6 +1,9 @@
 use std::collections::HashMap;
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::Arc;
 
@@ -41,10 +44,39 @@ pub struct GrepToolDetails {
 }
 
 pub type GrepToolResult = AgentToolResult<Option<GrepToolDetails>>;
+pub type GrepOperationFuture<T> = Pin<Box<dyn Future<Output = io::Result<T>> + Send>>;
+pub type GrepIsDirectoryOperation = Arc<dyn Fn(PathBuf) -> GrepOperationFuture<bool> + Send + Sync>;
+pub type GrepReadFileOperation = Arc<dyn Fn(PathBuf) -> GrepOperationFuture<String> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct GrepOperations {
+    pub is_directory: GrepIsDirectoryOperation,
+    pub read_file: GrepReadFileOperation,
+}
+
+impl Default for GrepOperations {
+    fn default() -> Self {
+        Self {
+            is_directory: Arc::new(|path| {
+                Box::pin(async move { Ok(tokio::fs::metadata(path).await?.is_dir()) })
+            }),
+            read_file: Arc::new(|path| Box::pin(tokio::fs::read_to_string(path))),
+        }
+    }
+}
+
+impl fmt::Debug for GrepOperations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("GrepOperations")
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct GrepTool {
     cwd: PathBuf,
+    operations: GrepOperations,
 }
 
 #[derive(Debug)]
@@ -56,8 +88,13 @@ struct Match {
 
 impl GrepTool {
     pub fn new(cwd: impl AsRef<Path>) -> Self {
+        Self::with_operations(cwd, GrepOperations::default())
+    }
+
+    pub fn with_operations(cwd: impl AsRef<Path>, operations: GrepOperations) -> Self {
         Self {
             cwd: cwd.as_ref().to_path_buf(),
+            operations,
         }
     }
 
@@ -87,15 +124,14 @@ impl GrepTool {
             )
         })?;
         let search_path = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
-        let is_directory = tokio::fs::metadata(&search_path)
+        let is_directory = (self.operations.is_directory)(search_path.clone())
             .await
             .map_err(|_| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
                     format!("Path not found: {}", search_path.display()),
                 )
-            })?
-            .is_dir();
+            })?;
         let context = input.context.filter(|value| *value > 0).unwrap_or(0);
         let limit = input.limit.unwrap_or(DEFAULT_GREP_LIMIT).max(1);
 
@@ -251,7 +287,7 @@ impl GrepTool {
             let lines = if let Some(lines) = cache.get(&found.file_path) {
                 lines
             } else {
-                let lines = tokio::fs::read_to_string(&found.file_path)
+                let lines = (self.operations.read_file)(found.file_path.clone())
                     .await
                     .map(|content| {
                         content
@@ -333,7 +369,14 @@ impl GrepTool {
 }
 
 pub fn create_grep_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    let tool = GrepTool::new(cwd);
+    create_grep_tool_with_operations(cwd, GrepOperations::default())
+}
+
+pub fn create_grep_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: GrepOperations,
+) -> AgentTool {
+    let tool = GrepTool::with_operations(cwd, operations);
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();
         Box::pin(async move {

@@ -12,7 +12,9 @@ use std::process::Command;
 use zedflow_agent::types::{AgentToolResult, AgentToolResultContent, ToolSchema};
 use zedflow_coding_agent::edit::{EditOperations, EditTool, EditToolInput, create_edit_tool};
 use zedflow_coding_agent::edit_diff::{Edit, compute_edits_diff};
-use zedflow_coding_agent::grep::{GrepTool, GrepToolInput};
+use zedflow_coding_agent::grep::{
+    GrepOperations, GrepTool, GrepToolInput, create_grep_tool_with_operations,
+};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
@@ -108,6 +110,87 @@ async fn grep_streams_and_stops_the_managed_rg_at_the_match_limit() {
     .unwrap();
     assert!(output(&result).starts_with("managed.txt:1: managed hit"));
     assert_eq!(result.details.unwrap().match_limit_reached, Some(1));
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn grep_factory_uses_injected_directory_and_context_operations() {
+    const CHILD: &str = "ZEDFLOW_INJECTED_GREP_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let root = TempDir::new();
+        let agent_dir = root.as_ref().join("agent");
+        let bin_dir = agent_dir.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let rg = bin_dir.join("rg");
+        fs::write(
+            &rg,
+            "#!/bin/sh\nfor last do :; done\nprintf '{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"%s/context.txt\"},\"lines\":{\"text\":\"match\\\\n\"},\"line_number\":2}}\\n' \"$last\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&rg, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "grep_factory_uses_injected_directory_and_context_operations",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("PI_CODING_AGENT_DIR", agent_dir)
+            .env("PI_OFFLINE", "1")
+            .env("PATH", root.as_ref().join("empty-path"))
+            .env("ZEDFLOW_INJECTED_GREP_ROOT", root.as_ref().join("virtual"))
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+
+    let root = PathBuf::from(std::env::var_os("ZEDFLOW_INJECTED_GREP_ROOT").unwrap());
+    let search_path = root.join("remote");
+    let context_path = search_path.join("context.txt");
+    assert!(!search_path.exists());
+
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let directory_calls = Arc::clone(&calls);
+    let read_calls = Arc::clone(&calls);
+    let tool = create_grep_tool_with_operations(
+        &root,
+        GrepOperations {
+            is_directory: Arc::new(move |path| {
+                let calls = Arc::clone(&directory_calls);
+                Box::pin(async move {
+                    calls.lock().unwrap().push(("directory", path));
+                    Ok(true)
+                })
+            }),
+            read_file: Arc::new(move |path| {
+                let calls = Arc::clone(&read_calls);
+                Box::pin(async move {
+                    calls.lock().unwrap().push(("read", path));
+                    Ok("before\nmatch\nafter\n".into())
+                })
+            }),
+        },
+    );
+
+    let result = (tool.execute)(
+        "grep-1",
+        json(r#"{"pattern":"match","path":"remote","context":1}"#),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![("directory", search_path), ("read", context_path),]
+    );
+    assert_eq!(
+        output(&result),
+        "context.txt-1- before\ncontext.txt:2: match\ncontext.txt-3- after"
+    );
 }
 
 #[tokio::test]
