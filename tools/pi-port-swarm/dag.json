@@ -696,7 +696,7 @@
       ],
       "ownership": [],
       "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected ls and write operations are repaired."
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave: verify LsToolOptions.operations and WriteToolOptions.operations reach both definition and direct factory paths, injected backends replace hardcoded tokio filesystem calls, and local filesystem defaults remain intact."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
