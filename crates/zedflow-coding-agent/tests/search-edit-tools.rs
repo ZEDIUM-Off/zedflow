@@ -53,7 +53,7 @@ fn output<T>(result: &AgentToolResult<T>) -> &str {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn grep_uses_the_managed_rg_binary_without_path() {
+async fn grep_streams_and_stops_the_managed_rg_at_the_match_limit() {
     const CHILD: &str = "ZEDFLOW_MANAGED_RG_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let root = TempDir::new();
@@ -66,7 +66,7 @@ async fn grep_uses_the_managed_rg_binary_without_path() {
         let rg = bin_dir.join("rg");
         fs::write(
             &rg,
-            "#!/bin/sh\nfor last do :; done\nprintf '{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"%s/managed.txt\"},\"lines\":{\"text\":\"managed hit\\\\n\"},\"line_number\":1}}\\n' \"$last\"\n",
+            "#!/bin/sh\nfor last do :; done\nprintf '{\"type\":\"match\",\"data\":{\"path\":{\"text\":\"%s/managed.txt\"},\"lines\":{\"text\":\"managed hit\\\\n\"},\"line_number\":1}}\\n' \"$last\"\nwhile :; do :; done\n",
         )
         .unwrap();
         fs::set_permissions(&rg, fs::Permissions::from_mode(0o755)).unwrap();
@@ -74,7 +74,7 @@ async fn grep_uses_the_managed_rg_binary_without_path() {
         let status = Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "grep_uses_the_managed_rg_binary_without_path",
+                "grep_streams_and_stops_the_managed_rg_at_the_match_limit",
                 "--nocapture",
             ])
             .env(CHILD, "1")
@@ -89,19 +89,23 @@ async fn grep_uses_the_managed_rg_binary_without_path() {
     }
 
     let root = PathBuf::from(std::env::var_os("ZEDFLOW_MANAGED_SEARCH_ROOT").unwrap());
-    let result = GrepTool::new(&root)
-        .execute(GrepToolInput {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        GrepTool::new(&root).execute(GrepToolInput {
             pattern: "managed".into(),
             path: None,
             glob: None,
             ignore_case: None,
             literal: None,
             context: None,
-            limit: None,
-        })
-        .await
-        .unwrap();
-    assert_eq!(output(&result), "managed.txt:1: managed hit");
+            limit: Some(1),
+        }),
+    )
+    .await
+    .expect("grep should terminate rg as soon as the match limit is reached")
+    .unwrap();
+    assert!(output(&result).starts_with("managed.txt:1: managed hit"));
+    assert_eq!(result.details.unwrap().match_limit_reached, Some(1));
 }
 
 #[tokio::test]

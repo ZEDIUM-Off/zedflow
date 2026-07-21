@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::process::Command;
 use zedflow_agent::types::{
     AgentCallbackError, AgentFuture, AgentTool, AgentToolExecuteFn, AgentToolResult,
@@ -119,62 +121,109 @@ impl GrepTool {
         ]);
 
         let mut command = Command::new(rg_path);
-        command.args(arguments).kill_on_drop(true);
-        let output = if let Some(signal) = signal {
-            tokio::select! {
-                result = command.output() => result.map_err(|error| io::Error::new(error.kind(), format!("Failed to run ripgrep: {error}")))?,
-                () = signal.cancelled() => return Err(io::Error::other("Operation aborted")),
-            }
-        } else {
-            command.output().await.map_err(|error| {
-                io::Error::new(error.kind(), format!("Failed to run ripgrep: {error}"))
-            })?
-        };
-        check_aborted(signal)?;
-        if !matches!(output.status.code(), Some(0 | 1)) {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-            return Err(io::Error::other(if stderr.is_empty() {
-                format!("ripgrep exited with code {}", output.status)
-            } else {
-                stderr
-            }));
-        }
+        command
+            .args(arguments)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        let mut child = command.spawn().map_err(|error| {
+            io::Error::new(error.kind(), format!("Failed to run ripgrep: {error}"))
+        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("Failed to read ripgrep stdout"))?;
+        let mut stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| io::Error::other("Failed to read ripgrep stderr"))?;
+        let stderr_task = tokio::spawn(async move {
+            let mut bytes = Vec::new();
+            stderr.read_to_end(&mut bytes).await.map(|_| bytes)
+        });
 
+        let mut stdout = BufReader::new(stdout);
+        let mut line = Vec::new();
         let mut matches = Vec::new();
-        for line in String::from_utf8_lossy(&output.stdout).lines() {
-            let Ok(event) = serde_yaml::from_str::<ToolSchema>(line) else {
+        let mut match_count = 0;
+        let mut killed_due_to_limit = false;
+        loop {
+            line.clear();
+            let bytes_read = if let Some(signal) = signal {
+                tokio::select! {
+                    result = stdout.read_until(b'\n', &mut line) => result?,
+                    () = signal.cancelled() => {
+                        let _ = child.start_kill();
+                        let _ = child.wait().await;
+                        stderr_task.abort();
+                        return Err(io::Error::other("Operation aborted"));
+                    },
+                }
+            } else {
+                stdout.read_until(b'\n', &mut line).await?
+            };
+            if bytes_read == 0 {
+                break;
+            }
+            let line = String::from_utf8_lossy(&line);
+            let Ok(event) = serde_yaml::from_str::<ToolSchema>(&line) else {
                 continue;
             };
             if event.get("type").and_then(ToolSchema::as_str) != Some("match") {
                 continue;
             }
-            let Some(file_path) = event
-                .pointer("/data/path/text")
-                .and_then(ToolSchema::as_str)
-            else {
-                continue;
-            };
-            let Some(line_number) = event
-                .pointer("/data/line_number")
-                .and_then(ToolSchema::as_u64)
-                .and_then(|value| usize::try_from(value).ok())
-            else {
-                continue;
-            };
-            matches.push(Match {
-                file_path: PathBuf::from(file_path),
-                line_number,
-                line_text: event
-                    .pointer("/data/lines/text")
-                    .and_then(ToolSchema::as_str)
-                    .map(str::to_owned),
-            });
-            if matches.len() >= limit {
+            match_count += 1;
+            if let (Some(file_path), Some(line_number)) = (
+                event
+                    .pointer("/data/path/text")
+                    .and_then(ToolSchema::as_str),
+                event
+                    .pointer("/data/line_number")
+                    .and_then(ToolSchema::as_u64)
+                    .and_then(|value| usize::try_from(value).ok()),
+            ) {
+                matches.push(Match {
+                    file_path: PathBuf::from(file_path),
+                    line_number,
+                    line_text: event
+                        .pointer("/data/lines/text")
+                        .and_then(ToolSchema::as_str)
+                        .map(str::to_owned),
+                });
+            }
+            if match_count >= limit {
+                killed_due_to_limit = true;
+                let _ = child.start_kill();
                 break;
             }
         }
 
-        if matches.is_empty() {
+        let status = if let Some(signal) = signal {
+            tokio::select! {
+                result = child.wait() => result?,
+                () = signal.cancelled() => {
+                    let _ = child.start_kill();
+                    let _ = child.wait().await;
+                    stderr_task.abort();
+                    return Err(io::Error::other("Operation aborted"));
+                },
+            }
+        } else {
+            child.wait().await?
+        };
+        let stderr = stderr_task.await.map_err(io::Error::other)??;
+        check_aborted(signal)?;
+        if !killed_due_to_limit && !matches!(status.code(), Some(0 | 1)) {
+            let stderr = String::from_utf8_lossy(&stderr).trim().to_owned();
+            return Err(io::Error::other(if stderr.is_empty() {
+                format!("ripgrep exited with code {status}")
+            } else {
+                stderr
+            }));
+        }
+
+        if match_count == 0 {
             return Ok(AgentToolResult {
                 content: vec![text("No matches found")],
                 details: None,
@@ -182,7 +231,7 @@ impl GrepTool {
             });
         }
 
-        let match_limit_reached = (matches.len() >= limit).then_some(limit);
+        let match_limit_reached = killed_due_to_limit.then_some(limit);
         let mut cache: HashMap<PathBuf, Vec<String>> = HashMap::new();
         let mut output_lines = Vec::new();
         let mut lines_truncated = false;
