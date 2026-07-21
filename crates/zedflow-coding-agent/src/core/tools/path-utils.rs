@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
+use unicode_normalization::UnicodeNormalization;
 
 const NARROW_NO_BREAK_SPACE: char = '\u{202f}';
 
@@ -124,74 +125,7 @@ fn percent_decode(value: &str) -> io::Result<String> {
 }
 
 fn nfd_variant(path: &Path) -> PathBuf {
-    let mut decomposed = String::new();
-    for character in path.to_string_lossy().chars() {
-        if let Some(replacement) = latin_nfd(character) {
-            decomposed.push_str(replacement);
-        } else {
-            decomposed.push(character);
-        }
-    }
-    PathBuf::from(decomposed)
-}
-
-fn latin_nfd(character: char) -> Option<&'static str> {
-    Some(match character {
-        'À' => "A\u{300}",
-        'Á' => "A\u{301}",
-        'Â' => "A\u{302}",
-        'Ã' => "A\u{303}",
-        'Ä' => "A\u{308}",
-        'Å' => "A\u{30a}",
-        'Ç' => "C\u{327}",
-        'È' => "E\u{300}",
-        'É' => "E\u{301}",
-        'Ê' => "E\u{302}",
-        'Ë' => "E\u{308}",
-        'Ì' => "I\u{300}",
-        'Í' => "I\u{301}",
-        'Î' => "I\u{302}",
-        'Ï' => "I\u{308}",
-        'Ñ' => "N\u{303}",
-        'Ò' => "O\u{300}",
-        'Ó' => "O\u{301}",
-        'Ô' => "O\u{302}",
-        'Õ' => "O\u{303}",
-        'Ö' => "O\u{308}",
-        'Ù' => "U\u{300}",
-        'Ú' => "U\u{301}",
-        'Û' => "U\u{302}",
-        'Ü' => "U\u{308}",
-        'Ý' => "Y\u{301}",
-        'à' => "a\u{300}",
-        'á' => "a\u{301}",
-        'â' => "a\u{302}",
-        'ã' => "a\u{303}",
-        'ä' => "a\u{308}",
-        'å' => "a\u{30a}",
-        'ç' => "c\u{327}",
-        'è' => "e\u{300}",
-        'é' => "e\u{301}",
-        'ê' => "e\u{302}",
-        'ë' => "e\u{308}",
-        'ì' => "i\u{300}",
-        'í' => "i\u{301}",
-        'î' => "i\u{302}",
-        'ï' => "i\u{308}",
-        'ñ' => "n\u{303}",
-        'ò' => "o\u{300}",
-        'ó' => "o\u{301}",
-        'ô' => "o\u{302}",
-        'õ' => "o\u{303}",
-        'ö' => "o\u{308}",
-        'ù' => "u\u{300}",
-        'ú' => "u\u{301}",
-        'û' => "u\u{302}",
-        'ü' => "u\u{308}",
-        'ý' => "y\u{301}",
-        'ÿ' => "y\u{308}",
-        _ => return None,
-    })
+    PathBuf::from(path.to_string_lossy().nfd().collect::<String>())
 }
 
 fn curly_quote_variant(path: &Path) -> PathBuf {

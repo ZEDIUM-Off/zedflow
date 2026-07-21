@@ -55,6 +55,18 @@ fn paths_expand_and_try_macos_filename_variants() {
         resolve_read_path("Screenshot 10.00 AM.png", &dir).unwrap(),
         dir.join(screenshot)
     );
+
+    let greek_nfd = "\u{03b1}\u{0301}\u{03bb}\u{03c6}\u{03b1}.txt";
+    let greek_nfc = "\u{03ac}\u{03bb}\u{03c6}\u{03b1}.txt";
+    fs::write(dir.join(greek_nfd), "content").unwrap();
+    assert_eq!(
+        resolve_read_path(greek_nfc, &dir).unwrap(),
+        dir.join(greek_nfd)
+    );
+    assert_eq!(
+        tokio_test(resolve_read_path_async(greek_nfc, &dir)).unwrap(),
+        dir.join(greek_nfd)
+    );
     fs::remove_dir_all(dir).unwrap();
 }
 
