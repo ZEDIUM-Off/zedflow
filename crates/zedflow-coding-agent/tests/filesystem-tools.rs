@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -8,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
-use zedflow_coding_agent::find::{FindTool, FindToolInput, create_find_tool};
+use zedflow_coding_agent::find::{FindOperations, FindTool, FindToolInput, create_find_tool};
 use zedflow_coding_agent::ls::{LsTool, LsToolInput, create_ls_tool};
 use zedflow_coding_agent::read::{ReadTool, ReadToolInput, create_read_tool};
 use zedflow_coding_agent::write::{WriteTool, WriteToolInput, create_write_tool};
@@ -214,6 +215,53 @@ fn factories_share_the_agent_runtime_details_type() {
             .collect::<Vec<_>>(),
         ["read", "write", "find", "ls"]
     );
+}
+
+#[tokio::test]
+async fn find_uses_injected_operations_before_provisioning_fd() {
+    let root = std::env::temp_dir().join("zedflow-virtual-find-root");
+    let search_path = root.join("search");
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let exists_calls = Arc::clone(&calls);
+    let glob_calls = Arc::clone(&calls);
+    let operations = FindOperations {
+        exists: Arc::new(move |path| {
+            let calls = Arc::clone(&exists_calls);
+            Box::pin(async move {
+                calls.lock().unwrap().push(("exists", path));
+                Ok(true)
+            })
+        }),
+        glob: Arc::new(move |pattern, cwd, options| {
+            let calls = Arc::clone(&glob_calls);
+            Box::pin(async move {
+                assert_eq!(pattern, "**/*.rs");
+                assert_eq!(options.ignore, ["**/node_modules/**", "**/.git/**"]);
+                assert_eq!(options.limit, 2);
+                calls.lock().unwrap().push(("glob", cwd.clone()));
+                Ok(vec![cwd.join("a.rs"), cwd.join("nested/b.rs")])
+            })
+        }),
+    };
+
+    let result = FindTool::with_operations(&root, operations)
+        .execute(FindToolInput {
+            pattern: "**/*.rs".into(),
+            path: Some("search".into()),
+            limit: Some(2),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![("exists", search_path.clone()), ("glob", search_path)]
+    );
+    assert_eq!(
+        output(&result),
+        "a.rs\nnested/b.rs\n\n[2 results limit reached]"
+    );
+    assert_eq!(result.details.unwrap().result_limit_reached, Some(2));
 }
 
 #[cfg(unix)]

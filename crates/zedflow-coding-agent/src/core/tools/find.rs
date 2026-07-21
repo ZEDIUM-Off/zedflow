@@ -1,5 +1,8 @@
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use tokio::process::Command;
@@ -32,16 +35,50 @@ pub struct FindToolDetails {
 }
 
 pub type FindToolResult = AgentToolResult<Option<FindToolDetails>>;
+pub type FindOperationFuture<T> = Pin<Box<dyn Future<Output = io::Result<T>> + Send>>;
+pub type FindExistsOperation = Arc<dyn Fn(PathBuf) -> FindOperationFuture<bool> + Send + Sync>;
+pub type FindGlobOperation = Arc<
+    dyn Fn(String, PathBuf, FindGlobOptions) -> FindOperationFuture<Vec<PathBuf>> + Send + Sync,
+>;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FindGlobOptions {
+    pub ignore: Vec<String>,
+    pub limit: usize,
+}
+
+#[derive(Clone)]
+pub struct FindOperations {
+    pub exists: FindExistsOperation,
+    pub glob: FindGlobOperation,
+}
+
+impl fmt::Debug for FindOperations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("FindOperations")
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct FindTool {
     cwd: PathBuf,
+    operations: Option<FindOperations>,
 }
 
 impl FindTool {
     pub fn new(cwd: impl AsRef<Path>) -> Self {
         Self {
             cwd: cwd.as_ref().to_path_buf(),
+            operations: None,
+        }
+    }
+
+    pub fn with_operations(cwd: impl AsRef<Path>, operations: FindOperations) -> Self {
+        Self {
+            cwd: cwd.as_ref().to_path_buf(),
+            operations: Some(operations),
         }
     }
 
@@ -57,6 +94,36 @@ impl FindTool {
         check_aborted(signal)?;
         let search_path = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
         let effective_limit = input.limit.unwrap_or(DEFAULT_FIND_LIMIT);
+
+        if let Some(operations) = &self.operations {
+            if !(operations.exists)(search_path.clone()).await? {
+                return Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("Path not found: {}", search_path.display()),
+                ));
+            }
+            check_aborted(signal)?;
+            let paths = (operations.glob)(
+                input.pattern,
+                search_path.clone(),
+                FindGlobOptions {
+                    ignore: vec!["**/node_modules/**".into(), "**/.git/**".into()],
+                    limit: effective_limit,
+                },
+            )
+            .await?
+            .into_iter()
+            .map(|path| {
+                path.strip_prefix(&search_path)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/")
+            })
+            .collect();
+            check_aborted(signal)?;
+            return Ok(format_result(paths, effective_limit, false));
+        }
+
         let ensure_fd = ensure_tool("fd", true);
         let fd_path = if let Some(signal) = signal {
             tokio::select! {
@@ -149,58 +216,22 @@ impl FindTool {
             paths.push(display);
         }
 
-        if paths.is_empty() {
-            return Ok(AgentToolResult {
-                content: vec![text("No files found matching pattern")],
-                details: None,
-                terminate: None,
-            });
-        }
-
-        let result_limit_reached = (paths.len() >= effective_limit).then_some(effective_limit);
-        let raw_output = paths.join("\n");
-        let truncation = truncate_head(
-            &raw_output,
-            TruncationOptions {
-                max_lines: usize::MAX,
-                max_bytes: DEFAULT_MAX_BYTES,
-            },
-        );
-        let mut result_output = truncation.content.clone();
-        let mut notices = Vec::new();
-        if let Some(limit) = result_limit_reached {
-            notices.push(format!(
-                "{limit} results limit reached. Use limit={} for more, or refine pattern",
-                limit.saturating_mul(2)
-            ));
-        }
-        if truncation.truncated {
-            notices.push(format!("{} limit reached", format_size(DEFAULT_MAX_BYTES)));
-        }
-        if !notices.is_empty() {
-            result_output.push_str("\n\n[");
-            result_output.push_str(&notices.join(". "));
-            result_output.push(']');
-        }
-        let details = if result_limit_reached.is_some() || truncation.truncated {
-            Some(FindToolDetails {
-                truncation: truncation.truncated.then_some(truncation),
-                result_limit_reached,
-            })
-        } else {
-            None
-        };
-
-        Ok(AgentToolResult {
-            content: vec![text(result_output)],
-            details,
-            terminate: None,
-        })
+        Ok(format_result(paths, effective_limit, true))
     }
 }
 
 pub fn create_find_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    let tool = FindTool::new(cwd);
+    build_find_tool(FindTool::new(cwd))
+}
+
+pub fn create_find_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: FindOperations,
+) -> AgentTool {
+    build_find_tool(FindTool::with_operations(cwd, operations))
+}
+
+fn build_find_tool(tool: FindTool) -> AgentTool {
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();
         Box::pin(async move {
@@ -260,6 +291,64 @@ pub fn create_find_tool(cwd: impl AsRef<Path>) -> AgentTool {
         prepare_arguments: None,
         execute,
         execution_mode: None,
+    }
+}
+
+fn format_result(
+    paths: Vec<String>,
+    effective_limit: usize,
+    include_limit_hint: bool,
+) -> FindToolResult {
+    if paths.is_empty() {
+        return AgentToolResult {
+            content: vec![text("No files found matching pattern")],
+            details: None,
+            terminate: None,
+        };
+    }
+
+    let result_limit_reached = (paths.len() >= effective_limit).then_some(effective_limit);
+    let raw_output = paths.join("\n");
+    let truncation = truncate_head(
+        &raw_output,
+        TruncationOptions {
+            max_lines: usize::MAX,
+            max_bytes: DEFAULT_MAX_BYTES,
+        },
+    );
+    let mut result_output = truncation.content.clone();
+    let mut notices = Vec::new();
+    if let Some(limit) = result_limit_reached {
+        let mut notice = format!("{limit} results limit reached");
+        if include_limit_hint {
+            notice.push_str(&format!(
+                ". Use limit={} for more, or refine pattern",
+                limit.saturating_mul(2)
+            ));
+        }
+        notices.push(notice);
+    }
+    if truncation.truncated {
+        notices.push(format!("{} limit reached", format_size(DEFAULT_MAX_BYTES)));
+    }
+    if !notices.is_empty() {
+        result_output.push_str("\n\n[");
+        result_output.push_str(&notices.join(". "));
+        result_output.push(']');
+    }
+    let details = if result_limit_reached.is_some() || truncation.truncated {
+        Some(FindToolDetails {
+            truncation: truncation.truncated.then_some(truncation),
+            result_limit_reached,
+        })
+    } else {
+        None
+    };
+
+    AgentToolResult {
+        content: vec![text(result_output)],
+        details,
+        terminate: None,
     }
 }
 
