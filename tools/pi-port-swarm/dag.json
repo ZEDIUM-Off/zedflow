@@ -546,10 +546,41 @@
       "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after the Unicode NFKC fuzzy-edit repair."
     },
     {
+      "id": "CA-T3-R2-MANAGED-SEARCH-BINARIES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-T3-R1-UNICODE-NFKC"
+      ],
+      "ownership": [
+        "Cargo.lock",
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/core/tools/find.rs",
+        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
+        "crates/zedflow-coding-agent/src/utils",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs",
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools --test search-edit-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R3 blocker: provision the frozen Pi managed find and grep binaries through ensureTool before execution instead of requiring PATH-only commands, with deterministic coverage for both tools."
+    },
+    {
+      "id": "CA-RV-FID-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T3-R2-MANAGED-SEARCH-BINARIES"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search-binary provisioning."
+    },
+    {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-R3"
+        "CA-RV-FID-R4"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
