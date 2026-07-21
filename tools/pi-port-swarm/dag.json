@@ -557,14 +557,30 @@
       "intent": "Repair CA-RV-FID-R3 blocker: provision the frozen Pi managed find and grep binaries through ensureTool before execution instead of requiring PATH-only commands, with deterministic coverage for both tools."
     },
     {
-      "id": "CA-RV-FID-R4",
-      "kind": "reviewer",
+      "id": "CA-T3-R3-STREAMING-GREP-LIMIT",
+      "kind": "writer",
       "depends_on": [
         "CA-T3-R2-MANAGED-SEARCH-BINARIES"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test search-edit-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R4 blocker: stream ripgrep JSON and terminate the child as soon as the effective match limit is reached instead of buffering the complete process output, with deterministic early-termination coverage."
+    },
+    {
+      "id": "CA-RV-FID-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T3-R3-STREAMING-GREP-LIMIT"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search-binary provisioning."
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search-binary provisioning and streaming grep limit enforcement."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
