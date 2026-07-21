@@ -5,10 +5,16 @@
 /// Deterministic utilities ported from Pi's coding-agent package.
 pub mod utils;
 
+#[path = "core/tools/edit.rs"]
+pub mod edit;
+#[path = "core/tools/edit-diff.rs"]
+pub mod edit_diff;
 #[path = "core/tools/file-mutation-queue.rs"]
 pub mod file_mutation_queue;
 #[path = "core/tools/find.rs"]
 pub mod find;
+#[path = "core/tools/grep.rs"]
+pub mod grep;
 #[path = "core/tools/ls.rs"]
 pub mod ls;
 #[path = "core/tools/output-accumulator.rs"]
@@ -26,7 +32,8 @@ pub mod write;
 pub mod core {
     pub mod tools {
         pub use crate::{
-            file_mutation_queue, find, ls, output_accumulator, path_utils, read, truncate, write,
+            edit, edit_diff, file_mutation_queue, find, grep, ls, output_accumulator, path_utils,
+            read, truncate, write,
         };
     }
 }
