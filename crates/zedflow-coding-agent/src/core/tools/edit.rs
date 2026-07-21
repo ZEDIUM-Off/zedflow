@@ -1,5 +1,8 @@
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use zedflow_agent::types::{
@@ -29,16 +32,63 @@ pub struct EditToolDetails {
 }
 
 pub type EditToolResult = AgentToolResult<EditToolDetails>;
+pub type EditOperationFuture<T> = Pin<Box<dyn Future<Output = io::Result<T>> + Send>>;
+pub type EditAccessOperation = Arc<dyn Fn(PathBuf) -> EditOperationFuture<()> + Send + Sync>;
+pub type EditReadOperation = Arc<dyn Fn(PathBuf) -> EditOperationFuture<Vec<u8>> + Send + Sync>;
+pub type EditWriteOperation = Arc<dyn Fn(PathBuf, String) -> EditOperationFuture<()> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct EditOperations {
+    pub access: EditAccessOperation,
+    pub read_file: EditReadOperation,
+    pub write_file: EditWriteOperation,
+}
+
+impl Default for EditOperations {
+    fn default() -> Self {
+        Self {
+            access: Arc::new(|path| {
+                Box::pin(async move {
+                    tokio::fs::OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .open(path)
+                        .await
+                        .map(|_| ())
+                        .map_err(|error| io::Error::new(error.kind(), error_code(&error)))
+                })
+            }),
+            read_file: Arc::new(|path| Box::pin(tokio::fs::read(path))),
+            write_file: Arc::new(|path, content| {
+                Box::pin(async move { tokio::fs::write(path, content).await })
+            }),
+        }
+    }
+}
+
+impl fmt::Debug for EditOperations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("EditOperations")
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct EditTool {
     cwd: PathBuf,
+    operations: EditOperations,
 }
 
 impl EditTool {
     pub fn new(cwd: impl AsRef<Path>) -> Self {
+        Self::with_operations(cwd, EditOperations::default())
+    }
+
+    pub fn with_operations(cwd: impl AsRef<Path>, operations: EditOperations) -> Self {
         Self {
             cwd: cwd.as_ref().to_path_buf(),
+            operations,
         }
     }
 
@@ -62,26 +112,21 @@ impl EditTool {
         let edits = input.edits;
         let edit_count = edits.len();
         let queue_path = absolute_path.clone();
+        let operations = self.operations.clone();
 
         with_file_mutation_queue(&absolute_path, || async move {
             check_aborted(signal)?;
-            tokio::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&queue_path)
+            (operations.access)(queue_path.clone())
                 .await
                 .map_err(|error| {
                     io::Error::new(
                         error.kind(),
-                        format!(
-                            "Could not edit file: {path_display}. {}.",
-                            error_code(&error)
-                        ),
+                        format!("Could not edit file: {path_display}. {error}."),
                     )
                 })?;
             check_aborted(signal)?;
 
-            let bytes = tokio::fs::read(&queue_path).await?;
+            let bytes = (operations.read_file)(queue_path.clone()).await?;
             check_aborted(signal)?;
             let raw = String::from_utf8_lossy(&bytes);
             let (bom, content) = strip_bom(&raw);
@@ -94,7 +139,7 @@ impl EditTool {
                 "{bom}{}",
                 restore_line_endings(&applied.new_content, ending)
             );
-            tokio::fs::write(&queue_path, final_content).await?;
+            (operations.write_file)(queue_path, final_content).await?;
             check_aborted(signal)?;
 
             let diff = generate_diff_string(&applied.base_content, &applied.new_content, 4);
@@ -163,7 +208,14 @@ pub fn prepare_edit_arguments(mut input: ToolSchema) -> Result<ToolSchema, Agent
 }
 
 pub fn create_edit_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    let tool = EditTool::new(cwd);
+    create_edit_tool_with_operations(cwd, EditOperations::default())
+}
+
+pub fn create_edit_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: EditOperations,
+) -> AgentTool {
+    let tool = EditTool::with_operations(cwd, operations);
     let prepare: PrepareArgumentsFn = Arc::new(prepare_edit_arguments);
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();

@@ -1,6 +1,8 @@
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -8,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 use zedflow_agent::types::{AgentToolResult, AgentToolResultContent, ToolSchema};
-use zedflow_coding_agent::edit::{EditTool, EditToolInput, create_edit_tool};
+use zedflow_coding_agent::edit::{EditOperations, EditTool, EditToolInput, create_edit_tool};
 use zedflow_coding_agent::edit_diff::{Edit, compute_edits_diff};
 use zedflow_coding_agent::grep::{GrepTool, GrepToolInput};
 
@@ -139,6 +141,104 @@ async fn grep_formats_file_paths_context_limits_and_long_lines() {
     let details = result.details.unwrap();
     assert_eq!(details.match_limit_reached, Some(1));
     assert!(details.lines_truncated);
+}
+
+#[tokio::test]
+async fn edit_uses_injected_operations_without_local_files() {
+    let root = std::env::current_dir().unwrap().join("virtual-edit-root");
+    let expected_path = root.join("remote.txt");
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let written = Arc::new(Mutex::new(None));
+
+    let access_calls = Arc::clone(&calls);
+    let read_calls = Arc::clone(&calls);
+    let write_calls = Arc::clone(&calls);
+    let captured_write = Arc::clone(&written);
+    let operations = EditOperations {
+        access: Arc::new(move |path| {
+            let calls = Arc::clone(&access_calls);
+            Box::pin(async move {
+                calls.lock().unwrap().push(("access", path));
+                Ok(())
+            })
+        }),
+        read_file: Arc::new(move |path| {
+            let calls = Arc::clone(&read_calls);
+            Box::pin(async move {
+                calls.lock().unwrap().push(("read", path));
+                Ok(b"before\r\nafter\r\n".to_vec())
+            })
+        }),
+        write_file: Arc::new(move |path, content| {
+            let calls = Arc::clone(&write_calls);
+            let written = Arc::clone(&captured_write);
+            Box::pin(async move {
+                calls.lock().unwrap().push(("write", path.clone()));
+                *written.lock().unwrap() = Some((path, content));
+                Ok(())
+            })
+        }),
+    };
+
+    let result = EditTool::with_operations(&root, operations)
+        .execute(EditToolInput {
+            path: "remote.txt".into(),
+            edits: vec![Edit {
+                old_text: "before\nafter".into(),
+                new_text: "changed".into(),
+            }],
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        output(&result),
+        "Successfully replaced 1 block(s) in remote.txt."
+    );
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![
+            ("access", expected_path.clone()),
+            ("read", expected_path.clone()),
+            ("write", expected_path.clone()),
+        ]
+    );
+    assert_eq!(
+        *written.lock().unwrap(),
+        Some((expected_path, "changed\r\n".into()))
+    );
+}
+
+#[tokio::test]
+async fn edit_preserves_injected_access_errors() {
+    let operations = EditOperations {
+        access: Arc::new(|_| {
+            Box::pin(async {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "remote backend denied access",
+                ))
+            })
+        }),
+        read_file: Arc::new(|_| Box::pin(async { panic!("read must not run") })),
+        write_file: Arc::new(|_, _| Box::pin(async { panic!("write must not run") })),
+    };
+
+    let error = EditTool::with_operations("virtual-edit-root", operations)
+        .execute(EditToolInput {
+            path: "remote.txt".into(),
+            edits: vec![Edit {
+                old_text: "before".into(),
+                new_text: "after".into(),
+            }],
+        })
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "Could not edit file: remote.txt. remote backend denied access."
+    );
 }
 
 #[tokio::test]
