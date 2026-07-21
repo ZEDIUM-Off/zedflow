@@ -686,7 +686,7 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test filesystem-tools"
       ],
-      "intent": "Repair CA-RV-FID-R5 blocker: match frozen Pi WriteToolOptions.operations by exposing an operations-aware constructor and propagating injected directory-creation and file-write operations through the direct tool factory, while retaining local filesystem defaults and adding focused disk-independent coverage."
+      "intent": "Repair CA-RV-FID-R5 blocker: match frozen Pi WriteToolOptions.operations by routing injected directory-creation and file-write operations through createWriteToolDefinition and createWriteTool while retaining local filesystem defaults and adding focused disk-independent coverage."
     },
     {
       "id": "CA-RV-FID-R6",
