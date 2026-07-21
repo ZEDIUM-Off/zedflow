@@ -589,14 +589,30 @@
       "intent": "Repair CA-RV-FID-R4 blocker: support injected edit access, read, and write operations while retaining local filesystem defaults and preserving custom backend access errors, with focused disk-independent coverage."
     },
     {
-      "id": "CA-RV-FID-R4",
-      "kind": "reviewer",
+      "id": "CA-T3-R5-INJECTED-FIND-OPERATIONS",
+      "kind": "writer",
       "depends_on": [
         "CA-T3-R4-INJECTED-EDIT-OPERATIONS"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/find.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R4 blocker: support injected find exists and glob operations, executing the custom backend before provisioning fd, with deterministic disk-independent coverage."
+    },
+    {
+      "id": "CA-RV-FID-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T3-R5-INJECTED-FIND-OPERATIONS"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search binaries, streaming grep limits, and injected edit operations are repaired."
+      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search binaries, streaming grep limits, injected edit operations, and injected find operations are repaired."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
