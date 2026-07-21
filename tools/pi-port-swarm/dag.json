@@ -536,16 +536,6 @@
       "intent": "Repair CA-RV-FID-R2 blocker: replace the partial fuzzy-edit compatibility mapping with Unicode-complete NFKC normalization and cover non-Latin canonical equivalence and compatibility mappings."
     },
     {
-      "id": "CA-RV-FID-R3",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-T3-R1-UNICODE-NFKC"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after the Unicode NFKC fuzzy-edit repair."
-    },
-    {
       "id": "CA-T3-R2-MANAGED-SEARCH-BINARIES",
       "kind": "writer",
       "depends_on": [
