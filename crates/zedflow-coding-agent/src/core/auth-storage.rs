@@ -223,13 +223,13 @@ impl AuthStorage {
             self.reload();
         }
         if let Some(error) = &self.load_error {
-            return Err(format!(
-                "Cannot update auth storage because it could not be loaded: {error}"
-            )
-            .into());
+            let error =
+                format!("Cannot update auth storage because it could not be loaded: {error}");
+            self.errors.push(error.clone());
+            return Err(error.into());
         }
         let provider = provider.to_owned();
-        let data = self.locked(true, |current| {
+        match self.locked(true, |current| {
             let mut data = parse(current)?;
             if let Some(value) = credential {
                 data.insert(provider, value);
@@ -238,9 +238,16 @@ impl AuthStorage {
             }
             let json = serde_json::to_string_pretty(&data)?;
             Ok((data, Some(json)))
-        })?;
-        self.data = data;
-        Ok(())
+        }) {
+            Ok(data) => {
+                self.data = data;
+                Ok(())
+            }
+            Err(error) => {
+                self.errors.push(error.to_string());
+                Err(error)
+            }
+        }
     }
     pub fn set(&mut self, provider: &str, credential: AuthCredential) -> Result<(), AuthError> {
         self.change(provider, Some(credential))
