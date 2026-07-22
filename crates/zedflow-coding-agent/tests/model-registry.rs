@@ -209,6 +209,41 @@ fn oauth_provider_modifies_registered_models_when_credentials_exist() {
 }
 
 #[test]
+fn copilot_oauth_rewrites_base_urls_and_filters_unavailable_models() {
+    let provider = get_oauth_provider("github-copilot").unwrap();
+    let credentials = OAuthCredential {
+        refresh: "refresh".into(),
+        access: "token;proxy-ep=proxy.enterprise.test".into(),
+        expires: i64::MAX,
+        extra: BTreeMap::from([("availableModelIds".into(), serde_json::json!(["supported"]))]),
+    };
+    let models = [
+        Model {
+            id: "supported".into(),
+            provider: "github-copilot".into(),
+            ..Default::default()
+        },
+        Model {
+            id: "unsupported".into(),
+            provider: "github-copilot".into(),
+            ..Default::default()
+        },
+        Model {
+            id: "other".into(),
+            provider: "anthropic".into(),
+            base_url: "https://unchanged.test".into(),
+            ..Default::default()
+        },
+    ];
+
+    let modified = provider.modify_models(&models, &credentials);
+    assert_eq!(modified.len(), 2);
+    assert_eq!(modified[0].id, "supported");
+    assert_eq!(modified[0].base_url, "https://api.enterprise.test");
+    assert_eq!(modified[1], models[2]);
+}
+
+#[test]
 fn invalid_custom_provider_keeps_builtin_models() {
     let path = temp_path("invalid.json");
     fs::write(

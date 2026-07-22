@@ -319,6 +319,42 @@ impl OAuthProviderInterface for GitHubCopilotRegistryProvider {
     fn get_api_key(&self, credentials: &OAuthCredential) -> String {
         credentials.access.clone()
     }
+
+    fn modify_models(&self, models: &[Model], credentials: &OAuthCredential) -> Vec<Model> {
+        let domain = credentials
+            .extra
+            .get("enterpriseUrl")
+            .and_then(serde_json::Value::as_str)
+            .and_then(normalize_domain);
+        let base_url = get_github_copilot_base_url(Some(&credentials.access), domain.as_deref());
+        let available_model_ids = credentials
+            .extra
+            .get("availableModelIds")
+            .and_then(serde_json::Value::as_array)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(serde_json::Value::as_str)
+                    .collect::<std::collections::HashSet<_>>()
+            });
+
+        models
+            .iter()
+            .filter_map(|model| {
+                if model.provider != "github-copilot" {
+                    return Some(model.clone());
+                }
+                if available_model_ids
+                    .as_ref()
+                    .is_some_and(|ids| !ids.contains(model.id.as_str()))
+                {
+                    return None;
+                }
+                let mut model = model.clone();
+                model.base_url = base_url.clone();
+                Some(model)
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
