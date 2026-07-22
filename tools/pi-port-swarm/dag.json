@@ -1720,20 +1720,27 @@
       "intent": "Normalize PI_PACKAGE_DIR overrides like frozen Pi, including tilde expansion and file URL conversion, with focused regression tests."
     },
     {
-      "id": "CA-RV-FID-V12-R2",
+      "id": "CA-RV-FID-V12-R3",
       "kind": "reviewer",
       "depends_on": [
         "CA-C14-R2-PACKAGE-DIR-NORMALIZATION-FIDELITY"
       ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent config and authentication-guidance primitives wave after package-directory normalization repair."
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs",
+        "references/pi/packages/coding-agent/src/config.ts",
+        "references/pi/packages/coding-agent/test/config.test.ts"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Fresh read-only frozen Pi fidelity review of package-directory normalization against the bounded Rust implementation, focused tests, and matching frozen Pi sources."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V10",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V12-R2"
+        "CA-RV-FID-V12-R3"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
