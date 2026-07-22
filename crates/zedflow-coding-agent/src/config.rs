@@ -1,6 +1,7 @@
 use std::{
     env,
     path::{Component, Path, PathBuf},
+    process::Command,
 };
 
 pub const PACKAGE_NAME: &str = "@earendil-works/pi-coding-agent";
@@ -54,6 +55,117 @@ pub fn detect_install_method_from_paths(
         InstallMethod::Npm
     } else {
         InstallMethod::Unknown
+    }
+}
+
+pub fn read_command_output(
+    command: &str,
+    args: &[&str],
+    require_success: bool,
+) -> Result<Option<String>, String> {
+    let result = Command::new(command).args(args).output();
+    let output = match result {
+        Ok(output) => output,
+        Err(error) if require_success => {
+            return Err(format!(
+                "Failed to run {}: {error}",
+                std::iter::once(command)
+                    .chain(args.iter().copied())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ));
+        }
+        Err(_) => return Ok(None),
+    };
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        return Ok((!stdout.is_empty()).then_some(stdout));
+    }
+    if require_success {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let reason = if stderr.is_empty() {
+            output.status.code().map_or_else(
+                || "exit code unknown".to_owned(),
+                |code| format!("exit code {code}"),
+            )
+        } else {
+            stderr
+        };
+        return Err(format!(
+            "Failed to run {}: {reason}",
+            std::iter::once(command)
+                .chain(args.iter().copied())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+    }
+    Ok(None)
+}
+
+pub fn get_global_package_roots(
+    method: InstallMethod,
+    npm_command: Option<&[String]>,
+) -> Result<Vec<PathBuf>, String> {
+    let read = |command: &str, args: &[&str], required| {
+        read_command_output(command, args, required).map(|path| path.map(PathBuf::from))
+    };
+    match method {
+        InstallMethod::Npm => {
+            let configured = npm_command.is_some_and(|command| !command.is_empty());
+            let command = npm_command
+                .and_then(|command| command.first())
+                .map_or("npm", String::as_str);
+            let npm_args: Vec<&str> = npm_command
+                .map(|command| command.iter().skip(1).map(String::as_str).collect())
+                .unwrap_or_default();
+            if configured && command == "bun" {
+                let mut args = npm_args;
+                args.extend(["pm", "bin", "-g"]);
+                let bun_bin = read(command, &args, true)?;
+                let mut roots = vec![home_dir().join(".bun/install/global/node_modules")];
+                if let Some(bin) = bun_bin.and_then(|path| path.parent().map(Path::to_path_buf)) {
+                    roots.push(bin.join("install/global/node_modules"));
+                }
+                return Ok(roots);
+            }
+            let mut args = npm_args;
+            args.extend(["root", "-g"]);
+            let mut roots: Vec<PathBuf> = read(command, &args, configured)?.into_iter().collect();
+            if !configured {
+                if let Some(prefix) = inferred_npm_prefix(&get_package_dir()) {
+                    roots.push(prefix.join("lib/node_modules"));
+                }
+            }
+            Ok(roots)
+        }
+        InstallMethod::Pnpm => {
+            if let Some(root) = read("pnpm", &["root", "-g"], false)? {
+                let parent = root.parent().map(Path::to_path_buf);
+                return Ok(std::iter::once(root).chain(parent).collect());
+            }
+            let path = get_package_dir().to_string_lossy().replace('\\', "/");
+            let marker = "/.pnpm/";
+            let root = path.find(marker).and_then(|end| {
+                let prefix = &path[..end];
+                let global = prefix.rfind("/global/")?;
+                Some(PathBuf::from(&prefix[..end.max(global)]))
+            });
+            Ok(root.into_iter().collect())
+        }
+        InstallMethod::Yarn => Ok(match read("yarn", &["global", "dir"], false)? {
+            Some(dir) => vec![dir.clone(), dir.join("node_modules")],
+            None => vec![],
+        }),
+        InstallMethod::Bun => {
+            let bun_bin = read("bun", &["pm", "bin", "-g"], false)?;
+            let mut roots = vec![home_dir().join(".bun/install/global/node_modules")];
+            if let Some(bin) = bun_bin.and_then(|path| path.parent().map(Path::to_path_buf)) {
+                roots.push(bin.join("install/global/node_modules"));
+            }
+            Ok(roots)
+        }
+        InstallMethod::BunBinary | InstallMethod::Unknown => Ok(vec![]),
     }
 }
 

@@ -10,10 +10,10 @@ use zedflow_coding_agent::{
         PACKAGE_NAME, detect_install_method_from_paths, expand_tilde_path, get_agent_dir,
         get_auth_path, get_bin_dir, get_bundled_interactive_asset_path, get_changelog_path,
         get_custom_themes_dir, get_debug_log_path, get_docs_path, get_examples_path,
-        get_export_template_dir, get_interactive_assets_dir, get_models_path, get_package_dir,
-        get_package_json_path, get_prompts_dir, get_readme_path, get_sessions_dir,
-        get_settings_path, get_share_viewer_url, get_themes_dir, get_tools_dir,
-        get_update_instruction_for_method,
+        get_export_template_dir, get_global_package_roots, get_interactive_assets_dir,
+        get_models_path, get_package_dir, get_package_json_path, get_prompts_dir, get_readme_path,
+        get_sessions_dir, get_settings_path, get_share_viewer_url, get_themes_dir, get_tools_dir,
+        get_update_instruction_for_method, read_command_output,
     },
 };
 
@@ -270,6 +270,46 @@ fn formats_provider_login_guidance_like_pi() {
     assert_eq!(
         format_no_api_key_found_message("anthropic"),
         format!("No API key found for anthropic.\n\n{help}")
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn reads_command_output_and_discovers_configured_global_roots() {
+    assert_eq!(
+        read_command_output("sh", &["-c", "printf '  /global/root  \\n'"], true).unwrap(),
+        Some("/global/root".to_owned())
+    );
+    assert_eq!(
+        read_command_output("sh", &["-c", "exit 2"], false).unwrap(),
+        None
+    );
+    assert_eq!(
+        read_command_output("sh", &["-c", "printf failure >&2; exit 2"], true).unwrap_err(),
+        "Failed to run sh -c printf failure >&2; exit 2: failure"
+    );
+
+    let npm_command = vec![
+        "sh".to_owned(),
+        "-c".to_owned(),
+        "printf '/configured/root\\n'".to_owned(),
+    ];
+    assert_eq!(
+        get_global_package_roots(InstallMethod::Npm, Some(&npm_command)).unwrap(),
+        vec![PathBuf::from("/configured/root")]
+    );
+}
+
+#[test]
+fn discovers_pi_global_package_root_defaults() {
+    assert!(
+        get_global_package_roots(InstallMethod::Unknown, None)
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        get_global_package_roots(InstallMethod::BunBinary, None).unwrap(),
+        Vec::<PathBuf>::new()
     );
 }
 
