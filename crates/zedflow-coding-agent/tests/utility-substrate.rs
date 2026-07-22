@@ -41,6 +41,7 @@ fn paths_and_git_cover_common_inputs() {
         )
     );
     assert!(parse_git_url("user/repo").is_none());
+    assert!(parse_git_url("https://github.com/user/%ZZ").is_none());
 }
 
 #[test]

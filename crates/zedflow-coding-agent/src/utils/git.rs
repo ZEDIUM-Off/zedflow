@@ -19,7 +19,9 @@ fn split_ref(url: &str) -> (&str, Option<&str>) {
         .unwrap_or((url, None))
 }
 fn unsafe_part(value: &str, allow_slash: bool) -> bool {
-    let decoded = percent_decode(value);
+    let Some(decoded) = percent_decode(value) else {
+        return true;
+    };
     [value, decoded.as_str()].iter().any(|v| {
         v.contains('\0')
             || v.contains('\\')
@@ -28,22 +30,25 @@ fn unsafe_part(value: &str, allow_slash: bool) -> bool {
             || v.split('/').any(|p| p == "..")
     })
 }
-fn percent_decode(s: &str) -> String {
-    let mut out = String::new();
+fn percent_decode(s: &str) -> Option<String> {
+    let mut out = Vec::with_capacity(s.len());
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(v as char);
-                i += 3;
-                continue;
+        if bytes[i] == b'%' {
+            if i + 2 >= bytes.len() {
+                return None;
             }
+            let v = u8::from_str_radix(&s[i + 1..i + 3], 16).ok()?;
+            out.push(v);
+            i += 3;
+        } else {
+            let next = s[i..].chars().next()?.len_utf8();
+            out.extend_from_slice(&bytes[i..i + next]);
+            i += next;
         }
-        out.push(bytes[i] as char);
-        i += 1;
     }
-    out
+    String::from_utf8(out).ok()
 }
 fn build(repo: String, host: String, path: String, ref_name: Option<String>) -> Option<GitSource> {
     let path = path
