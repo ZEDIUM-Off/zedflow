@@ -88,10 +88,20 @@
     "CA-C8-R3-PERSIST-ERROR-FIDELITY",
     "CA-V7-R1",
     "CA-RV-FID-V7-R1",
-    "CA-NEXT-PORT-DAG-V7"
+    "CA-NEXT-PORT-DAG-V7",
+    "CA-C9-MODEL-REGISTRY",
+    "CA-V8",
+    "CA-C9-R1-DYNAMIC-PROVIDERS",
+    "CA-V8-R1",
+    "CA-C10-R1-OAUTH-MODIFY-MODELS",
+    "CA-V9-R1",
+    "CA-C11-R1-COPILOT-MODIFY-MODELS",
+    "CA-V10-R1",
+    "CA-RV-FID-V10-R1",
+    "CA-NEXT-PORT-DAG-V8"
   ],
   "current": {
-    "id": "CA-C9-MODEL-REGISTRY",
+    "id": "CA-C12-MODEL-RESOLUTION-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
