@@ -42,6 +42,7 @@ fn package_directory_overrides_are_normalized() {
     let tilde_status = std::process::Command::new(&executable)
         .args(["--ignored", "--exact", "tilde_package_directory_child"])
         .env("HOME", &home)
+        .env("USERPROFILE", &home)
         .env("PI_PACKAGE_DIR", "~/pi package")
         .status()
         .unwrap();
@@ -56,6 +57,7 @@ fn package_directory_overrides_are_normalized() {
                 "backslash_tilde_package_directory_child",
             ])
             .env("HOME", &home)
+            .env("USERPROFILE", &home)
             .env("PI_PACKAGE_DIR", "~\\pi package")
             .status()
             .unwrap();
@@ -76,10 +78,11 @@ fn package_directory_overrides_are_normalized() {
 #[test]
 #[ignore]
 fn tilde_package_directory_child() {
-    assert_eq!(
-        get_package_dir(),
-        PathBuf::from(std::env::var_os("HOME").unwrap()).join("pi package")
-    );
+    #[cfg(windows)]
+    let home = std::env::var_os("USERPROFILE").unwrap();
+    #[cfg(not(windows))]
+    let home = std::env::var_os("HOME").unwrap();
+    assert_eq!(get_package_dir(), PathBuf::from(home).join("pi package"));
 }
 
 #[cfg(windows)]
@@ -88,8 +91,22 @@ fn tilde_package_directory_child() {
 fn backslash_tilde_package_directory_child() {
     assert_eq!(
         get_package_dir(),
-        PathBuf::from(std::env::var_os("HOME").unwrap()).join("pi package")
+        PathBuf::from(std::env::var_os("USERPROFILE").unwrap()).join("pi package")
     );
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_tilde_uses_userprofile_instead_of_home() {
+    let user_profile = std::env::temp_dir().join("zedflow user profile");
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "tilde_package_directory_child"])
+        .env("HOME", std::env::temp_dir().join("wrong home"))
+        .env("USERPROFILE", &user_profile)
+        .env("PI_PACKAGE_DIR", "~/pi package")
+        .status()
+        .unwrap();
+    assert!(status.success());
 }
 
 #[test]

@@ -69,8 +69,10 @@ fn absolute_package_asset(name: &str) -> PathBuf {
 }
 
 fn home_dir() -> PathBuf {
-    env::var_os("HOME")
-        .or_else(|| env::var_os("USERPROFILE"))
-        .map(PathBuf::from)
-        .unwrap_or_default()
+    #[cfg(windows)]
+    let home = env::var_os("USERPROFILE");
+    #[cfg(not(windows))]
+    let home = env::var_os("HOME");
+
+    home.map(PathBuf::from).unwrap_or_default()
 }
