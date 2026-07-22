@@ -978,20 +978,50 @@
       "intent": "Fresh mechanical acceptance of the third bounded coding-agent primitive wave."
     },
     {
-      "id": "CA-RV-FID-V3",
-      "kind": "reviewer",
+      "id": "CA-C4-R1-OUTPUT-GUARD-TAIL-DRAIN",
+      "kind": "writer",
       "depends_on": [
         "CA-V3"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/output-guard.rs",
+        "crates/zedflow-coding-agent/tests/output-guard.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test output-guard"
+      ],
+      "intent": "Match the frozen output guard's tail-stability loop so waiting also drains barriers queued while an earlier barrier is awaited."
+    },
+    {
+      "id": "CA-V3-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C4-R1-OUTPUT-GUARD-TAIL-DRAIN"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the repaired third bounded coding-agent primitive wave."
+    },
+    {
+      "id": "CA-RV-FID-V3-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V3-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the third bounded coding-agent primitive wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the repaired third bounded coding-agent primitive wave."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V3",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V3"
+        "CA-RV-FID-V3-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
