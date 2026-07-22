@@ -2292,20 +2292,50 @@
       "intent": "Fresh mechanical acceptance of the bounded TUI pure-primitives wave."
     },
     {
-      "id": "TUI-RV-FID-V1",
-      "kind": "reviewer",
+      "id": "TUI-C1-R1-UNICODE-WORD-NAVIGATION",
+      "kind": "writer",
       "depends_on": [
         "TUI-V1"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/tests/primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test primitives"
+      ],
+      "intent": "Repair word navigation to match frozen Pi Unicode segmentation semantics, with focused regression coverage."
+    },
+    {
+      "id": "TUI-V1-R1",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C1-R1-UNICODE-WORD-NAVIGATION"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the TUI pure-primitives wave after Unicode word-navigation repair."
+    },
+    {
+      "id": "TUI-RV-FID-V1-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V1-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave, including edge cases in fuzzy scoring, OSC color parsing, Unicode word movement, kill-ring rotation, and undo grouping."
+      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after Unicode word-navigation repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V16",
       "kind": "checkpoint",
       "depends_on": [
-        "TUI-RV-FID-V1"
+        "TUI-RV-FID-V1-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
