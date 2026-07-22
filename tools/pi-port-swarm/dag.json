@@ -1720,10 +1720,26 @@
       "intent": "Normalize PI_PACKAGE_DIR overrides like frozen Pi, including tilde expansion and file URL conversion, with focused regression tests."
     },
     {
-      "id": "CA-RV-FID-V12-R3",
-      "kind": "reviewer",
+      "id": "CA-C14-R3-WINDOWS-TILDE-NORMALIZATION-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-C14-R2-PACKAGE-DIR-NORMALIZATION-FIDELITY"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Match frozen Pi Windows package-directory normalization by expanding tilde paths beginning with a backslash, with a focused regression test."
+    },
+    {
+      "id": "CA-RV-FID-V12-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-C14-R3-WINDOWS-TILDE-NORMALIZATION-FIDELITY"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/config.rs",
@@ -1734,13 +1750,13 @@
       "validation": [
         "cargo test -p zedflow-coding-agent --test config-auth-guidance"
       ],
-      "intent": "Fresh read-only frozen Pi fidelity review of package-directory normalization against the bounded Rust implementation, focused tests, and matching frozen Pi sources."
+      "intent": "Fresh read-only frozen Pi fidelity review of package-directory normalization after the Windows backslash tilde repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V10",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V12-R3"
+        "CA-RV-FID-V12-R4"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
