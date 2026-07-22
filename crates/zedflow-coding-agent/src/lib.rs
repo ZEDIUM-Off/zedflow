@@ -7,8 +7,14 @@ pub mod utils;
 
 #[path = "core/compaction/mod.rs"]
 pub mod compaction;
+#[path = "core/defaults.rs"]
+pub mod defaults;
+#[path = "core/diagnostics.rs"]
+pub mod diagnostics;
 #[path = "core/event-bus.rs"]
 pub mod event_bus;
+#[path = "core/experimental.rs"]
+pub mod experimental;
 #[path = "core/messages.rs"]
 pub mod messages;
 #[path = "core/provider-display-names.rs"]
@@ -44,7 +50,8 @@ pub mod write;
 /// Pi-compatible tool namespaces.
 pub mod core {
     pub use crate::{
-        compaction, event_bus, messages, provider_display_names, session_cwd, timings,
+        compaction, defaults, diagnostics, event_bus, experimental, messages,
+        provider_display_names, session_cwd, timings,
     };
 
     pub mod tools {
