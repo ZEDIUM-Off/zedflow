@@ -85,7 +85,7 @@
     "CA-NEXT-PORT-DAG-V6"
   ],
   "current": {
-    "id": "CA-C8-AUTH-STORAGE",
+    "id": "CA-C8-AUTH-STORAGE-R1",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
