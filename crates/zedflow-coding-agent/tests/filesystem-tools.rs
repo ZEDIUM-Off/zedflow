@@ -548,6 +548,30 @@ async fn find_preserves_fractional_and_negative_number_limits() {
 }
 
 #[tokio::test]
+async fn grep_preserves_fractional_number_context() {
+    let root = TempDir::new();
+    fs::write(
+        root.as_ref().join("matches.txt"),
+        "first\nbefore\nhit\nafter\nlast\n",
+    )
+    .unwrap();
+    let tool = create_grep_tool(&root);
+
+    let result = (tool.execute)(
+        "grep-fractional-context",
+        serde_yaml::from_str(r#"{"pattern":"hit","context":1.5}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        output(&result),
+        "matches.txt-1.5- \nmatches.txt-2.5- \nmatches.txt-3.5- \nmatches.txt-4.5- "
+    );
+}
+
+#[tokio::test]
 async fn grep_preserves_fractional_and_negative_number_limits() {
     let root = TempDir::new();
     fs::write(root.as_ref().join("matches.txt"), "hit\nhit\nhit\n").unwrap();

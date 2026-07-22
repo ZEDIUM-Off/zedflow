@@ -32,7 +32,7 @@ pub struct GrepToolInput {
     pub glob: Option<String>,
     pub ignore_case: Option<bool>,
     pub literal: Option<bool>,
-    pub context: Option<usize>,
+    pub context: Option<f64>,
     pub limit: Option<f64>,
 }
 
@@ -132,7 +132,7 @@ impl GrepTool {
                     format!("Path not found: {}", search_path.display()),
                 )
             })?;
-        let context = input.context.filter(|value| *value > 0).unwrap_or(0);
+        let context = input.context.filter(|value| *value > 0.0).unwrap_or(0.0);
         let limit = input.limit.unwrap_or(DEFAULT_GREP_LIMIT as f64).max(1.0);
 
         let mut arguments = vec![
@@ -273,7 +273,7 @@ impl GrepTool {
         let mut lines_truncated = false;
         for found in matches {
             let display = display_path(&found.file_path, &search_path, is_directory);
-            if context == 0
+            if context == 0.0
                 && let Some(line_text) = found.line_text
             {
                 let normalized = line_text.replace("\r\n", "\n").replace('\r', "");
@@ -308,16 +308,26 @@ impl GrepTool {
                 ));
                 continue;
             }
-            let start = found.line_number.saturating_sub(context).max(1);
-            let end = found.line_number.saturating_add(context).min(lines.len());
-            for current in start..=end {
-                let (line, truncated) = truncate_line(&lines[current - 1], GREP_MAX_LINE_LENGTH);
+            let line_number = found.line_number as f64;
+            let mut current = (line_number - context).max(1.0);
+            let end = (line_number + context).min(lines.len() as f64);
+            while current <= end {
+                let line = if current.fract() == 0.0 {
+                    lines
+                        .get(current as usize - 1)
+                        .map(String::as_str)
+                        .unwrap_or("")
+                } else {
+                    ""
+                };
+                let (line, truncated) = truncate_line(line, GREP_MAX_LINE_LENGTH);
                 lines_truncated |= truncated;
-                if current == found.line_number {
+                if current == line_number {
                     output_lines.push(format!("{display}:{current}: {line}"));
                 } else {
                     output_lines.push(format!("{display}-{current}- {line}"));
                 }
+                current += 1.0;
             }
         }
 
@@ -396,7 +406,7 @@ pub fn create_grep_tool_with_operations(
                     .map(str::to_owned),
                 ignore_case: args.get("ignoreCase").and_then(ToolSchema::as_bool),
                 literal: args.get("literal").and_then(ToolSchema::as_bool),
-                context: number(&args, "context"),
+                context: args.get("context").and_then(ToolSchema::as_f64),
                 limit: args.get("limit").and_then(ToolSchema::as_f64),
             };
             let result = tool
@@ -460,19 +470,6 @@ fn display_path(file_path: &Path, search_path: &Path, is_directory: bool) -> Str
         .unwrap_or(file_path.as_os_str())
         .to_string_lossy()
         .into_owned()
-}
-
-fn number(args: &ToolSchema, key: &str) -> Option<usize> {
-    args.get(key).and_then(|value| {
-        value
-            .as_u64()
-            .and_then(|value| usize::try_from(value).ok())
-            .or_else(|| {
-                value
-                    .as_i64()
-                    .map(|value| usize::try_from(value).unwrap_or(0))
-            })
-    })
 }
 
 fn check_aborted(signal: Option<&AbortSignal>) -> io::Result<()> {
