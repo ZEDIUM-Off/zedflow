@@ -35,6 +35,14 @@ fn terminal_colors_parse_supported_responses() {
             b: 255
         })
     );
+    assert_eq!(
+        parse_osc11_background_color("\x1b]11;rgb:ffffffff/80000000/01000000\x07"),
+        Some(RgbColor {
+            r: 255,
+            g: 128,
+            b: 1
+        })
+    );
     assert!(!is_osc11_background_color_response("x\x1b]11;#ffffff\x07"));
     assert!(!is_osc11_background_color_response("\x1b]11;#ffffff\x07x"));
     assert!(!is_osc11_background_color_response("\x1b]11;#ff\x1bff\x07"));

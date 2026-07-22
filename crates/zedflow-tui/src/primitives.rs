@@ -142,9 +142,14 @@ fn osc_channel(s: &str) -> Option<u8> {
     if s.is_empty() || !s.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
-    let max = 16u32.pow(s.len() as u32).checked_sub(1)?;
-    let value = u32::from_str_radix(s, 16).ok()?;
-    Some(((value * 255 + max / 2) / max) as u8)
+    let max = 16f64.powi(s.len() as i32) - 1.0;
+    if max <= 0.0 {
+        return None;
+    }
+    let value = s.chars().try_fold(0f64, |value, c| {
+        c.to_digit(16).map(|digit| value * 16.0 + f64::from(digit))
+    })?;
+    Some((value / max * 255.0).round() as u8)
 }
 fn parse_hex(s: &str) -> Option<RgbColor> {
     if s.len() == 6 {
