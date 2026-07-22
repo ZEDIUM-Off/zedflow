@@ -1,9 +1,17 @@
 pub mod ansi;
+#[path = "child-process.rs"]
+pub mod child_process;
 pub mod frontmatter;
+#[path = "git.rs"]
+pub mod git;
 pub mod html;
 pub mod image_process;
 pub mod json;
 pub mod mime;
+#[path = "paths.rs"]
+pub mod paths;
 pub mod pi_user_agent;
+#[path = "shell.rs"]
+pub mod shell;
 pub mod sleep;
 pub mod tools_manager;
