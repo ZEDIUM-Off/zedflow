@@ -7,16 +7,53 @@ pub struct GitSource {
     pub pinned: bool,
 }
 
-fn split_ref(url: &str) -> (&str, Option<&str>) {
-    let marker = if url.starts_with("git@") {
-        url.find('@')
-            .and_then(|_| url[4..].find('@').map(|i| i + 4))
-    } else {
-        url.find('@')
+fn split_ref(url: &str) -> (String, Option<String>) {
+    if let Some(rest) = url.strip_prefix("git@") {
+        let Some((host, path)) = rest.split_once(':') else {
+            return (url.to_owned(), None);
+        };
+        let Some((repo_path, reference)) = path.split_once('@') else {
+            return (url.to_owned(), None);
+        };
+        if repo_path.is_empty() || reference.is_empty() {
+            return (url.to_owned(), None);
+        }
+        return (
+            format!("git@{host}:{repo_path}"),
+            Some(reference.to_owned()),
+        );
+    }
+
+    if url.contains("://") {
+        let Ok(mut parsed) = reqwest::Url::parse(url) else {
+            return (url.to_owned(), None);
+        };
+        let path = parsed.path().trim_start_matches('/').to_owned();
+        let Some((repo_path, reference)) = path.split_once('@') else {
+            return (url.to_owned(), None);
+        };
+        if repo_path.is_empty() || reference.is_empty() {
+            return (url.to_owned(), None);
+        }
+        let repo_path = repo_path.to_owned();
+        let reference = reference.to_owned();
+        parsed.set_path(&format!("/{repo_path}"));
+        return (
+            parsed.to_string().trim_end_matches('/').to_owned(),
+            Some(reference),
+        );
+    }
+
+    let Some((host, path)) = url.split_once('/') else {
+        return (url.to_owned(), None);
     };
-    marker
-        .map(|i| (&url[..i], Some(&url[i + 1..])))
-        .unwrap_or((url, None))
+    let Some((repo_path, reference)) = path.split_once('@') else {
+        return (url.to_owned(), None);
+    };
+    if repo_path.is_empty() || reference.is_empty() {
+        return (url.to_owned(), None);
+    }
+    (format!("{host}/{repo_path}"), Some(reference.to_owned()))
 }
 fn unsafe_part(value: &str, allow_slash: bool) -> bool {
     let Some(decoded) = percent_decode(value) else {
@@ -72,22 +109,20 @@ fn build(repo: String, host: String, path: String, ref_name: Option<String>) -> 
 }
 fn parse_generic(url: &str) -> Option<GitSource> {
     let (repo, reference) = split_ref(url);
-    let reference = reference.map(str::to_owned);
     if let Some(rest) = repo.strip_prefix("git@") {
         let (host, path) = rest.split_once(':')?;
-        return build(repo.to_owned(), host.to_owned(), path.to_owned(), reference);
+        return build(repo.clone(), host.to_owned(), path.to_owned(), reference);
     }
-    if let Some(rest) = repo
-        .strip_prefix("https://")
-        .or_else(|| repo.strip_prefix("http://"))
-        .or_else(|| repo.strip_prefix("ssh://"))
-        .or_else(|| repo.strip_prefix("git://"))
+    if repo.starts_with("https://")
+        || repo.starts_with("http://")
+        || repo.starts_with("ssh://")
+        || repo.starts_with("git://")
     {
-        let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+        let parsed = reqwest::Url::parse(&repo).ok()?;
         return build(
-            repo.to_owned(),
-            host.split(':').next().unwrap_or(host).to_owned(),
-            path.to_owned(),
+            repo,
+            parsed.host_str()?.to_owned(),
+            parsed.path().trim_start_matches('/').to_owned(),
             reference,
         );
     }
@@ -116,7 +151,7 @@ pub fn parse_git_url(source: &str) -> Option<GitSource> {
         return None;
     }
     let (repo, reference) = split_ref(url);
-    let reference = reference.map(str::to_owned);
+    let reference = reference;
     let (base, host_path) = if let Some(rest) = repo.strip_prefix("git@") {
         (repo.to_owned(), rest.replace(':', "/"))
     } else {

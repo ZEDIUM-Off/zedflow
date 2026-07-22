@@ -42,6 +42,21 @@ fn paths_and_git_cover_common_inputs() {
     );
     assert!(parse_git_url("user/repo").is_none());
     assert!(parse_git_url("https://github.com/user/%ZZ").is_none());
+
+    for source in [
+        "git:git@github.com:user/repo",
+        "git:git@github.com:user/repo@main",
+        "ssh://git@github.com/user/repo",
+        "ssh://git@github.com/user/repo@main",
+    ] {
+        let git = parse_git_url(source).unwrap();
+        assert_eq!(git.host, "github.com");
+        assert_eq!(git.path, "user/repo");
+    }
+    let pinned = parse_git_url("ssh://git@github.com/user/repo@main").unwrap();
+    assert_eq!(pinned.repo, "ssh://git@github.com/user/repo");
+    assert_eq!(pinned.ref_name.as_deref(), Some("main"));
+    assert!(pinned.pinned);
 }
 
 #[test]
