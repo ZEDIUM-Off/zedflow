@@ -11,9 +11,10 @@ use zedflow_coding_agent::{
         get_auth_path, get_bin_dir, get_bundled_interactive_asset_path, get_changelog_path,
         get_custom_themes_dir, get_debug_log_path, get_docs_path, get_examples_path,
         get_export_template_dir, get_global_package_roots, get_interactive_assets_dir,
-        get_models_path, get_package_dir, get_package_json_path, get_prompts_dir, get_readme_path,
-        get_sessions_dir, get_settings_path, get_share_viewer_url, get_themes_dir, get_tools_dir,
-        get_update_instruction_for_method, infer_pnpm_global_root, read_command_output,
+        get_models_path, get_package_dir, get_package_json_path, get_path_comparison_candidates,
+        get_prompts_dir, get_readme_path, get_sessions_dir, get_settings_path,
+        get_share_viewer_url, get_themes_dir, get_tools_dir, get_update_instruction_for_method,
+        infer_pnpm_global_root, normalize_existing_path_for_comparison, read_command_output,
     },
 };
 
@@ -99,6 +100,33 @@ fn custom_share_viewer_url_child() {
         get_share_viewer_url("abc123"),
         "https://viewer.example/session/#abc123"
     );
+}
+
+#[test]
+fn normalizes_only_existing_path_comparison_candidates() {
+    let existing = std::env::current_exe().unwrap();
+    let expected = existing.canonicalize().unwrap();
+    assert_eq!(
+        normalize_existing_path_for_comparison(&existing, true),
+        Some(expected.clone())
+    );
+    assert_eq!(get_path_comparison_candidates(&expected), vec![expected]);
+    assert!(get_path_comparison_candidates(existing.with_extension("missing")).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn path_comparison_candidates_include_symlink_and_target() {
+    let target = std::env::current_exe().unwrap().canonicalize().unwrap();
+    let link = std::env::temp_dir().join(format!("zedflow-path-link-{}", std::process::id()));
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    assert_eq!(
+        get_path_comparison_candidates(&link),
+        vec![link.clone(), target]
+    );
+    std::fs::remove_file(link).unwrap();
 }
 
 #[test]

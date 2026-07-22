@@ -375,6 +375,48 @@ fn absolute_package_asset(name: &str) -> PathBuf {
     })
 }
 
+pub fn normalize_existing_path_for_comparison(
+    path: impl AsRef<Path>,
+    resolve_symlinks: bool,
+) -> Option<PathBuf> {
+    let path = path.as_ref();
+    let resolved = lexical_normalize(if path.is_absolute() {
+        path.to_owned()
+    } else {
+        env::current_dir().ok()?.join(path)
+    });
+    if !resolved.exists() {
+        return None;
+    }
+
+    let normalized = if resolve_symlinks {
+        resolved.canonicalize().ok()?
+    } else {
+        resolved
+    };
+    #[cfg(windows)]
+    return Some(PathBuf::from(normalized.to_string_lossy().to_lowercase()));
+    #[cfg(not(windows))]
+    Some(normalized)
+}
+
+pub fn get_path_comparison_candidates(path: impl AsRef<Path>) -> Vec<PathBuf> {
+    let path = path.as_ref();
+    let mut candidates = Vec::new();
+    for candidate in [
+        normalize_existing_path_for_comparison(path, false),
+        normalize_existing_path_for_comparison(path, true),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !candidates.contains(&candidate) {
+            candidates.push(candidate);
+        }
+    }
+    candidates
+}
+
 fn lexical_normalize(path: impl AsRef<Path>) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.as_ref().components() {
