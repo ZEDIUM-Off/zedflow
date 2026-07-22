@@ -1090,6 +1090,63 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the source and slash-command metadata wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C6-HTTP-CONFIG-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V4"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
+        "crates/zedflow-coding-agent/tests/http-dispatcher.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test http-dispatcher"
+      ],
+      "intent": "Port frozen coding-agent HTTP idle-timeout choices, parsing and formatting, plus proxy environment defaults without beginning global dispatcher or fetch installation."
+    },
+    {
+      "id": "CA-V5",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C6-HTTP-CONFIG-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent HTTP configuration primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V5",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V5"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent HTTP configuration primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V5",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V5"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the HTTP configuration primitives wave and assign the next bounded package wave."
     }
   ]
 }

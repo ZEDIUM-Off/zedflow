@@ -65,10 +65,14 @@
     "CA-C4-R1-OUTPUT-GUARD-TAIL-DRAIN",
     "CA-V3-R1",
     "CA-RV-FID-V3-R1",
-    "CA-NEXT-PORT-DAG-V3"
+    "CA-NEXT-PORT-DAG-V3",
+    "CA-C5-SOURCE-SLASH-METADATA",
+    "CA-V4",
+    "CA-RV-FID-V4",
+    "CA-NEXT-PORT-DAG-V4"
   ],
   "current": {
-    "id": "CA-C5-SOURCE-SLASH-METADATA",
+    "id": "CA-C6-HTTP-CONFIG-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
