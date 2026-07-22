@@ -2412,20 +2412,48 @@
       "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after OSC11 parsing repair."
     },
     {
-      "id": "TUI-RV-FID-V1-R4",
-      "kind": "reviewer",
+      "id": "TUI-C1-R5-OSC11-CHANNEL-SCALING",
+      "kind": "writer",
       "depends_on": [
         "TUI-V1-R4"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/tests/primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test primitives"
+      ],
+      "intent": "Repair OSC11 channel scaling to match frozen Pi byte-to-channel conversion semantics, with focused regression coverage."
+    },
+    {
+      "id": "TUI-V1-R5",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C1-R5-OSC11-CHANNEL-SCALING"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo test -p zedflow-tui"
+      ],
+      "intent": "Fresh mechanical acceptance of the TUI OSC11 channel-scaling repair."
+    },
+    {
+      "id": "TUI-RV-FID-V1-R5",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V1-R5"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after OSC11 parsing repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after OSC11 channel-scaling repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V16",
       "kind": "checkpoint",
       "depends_on": [
-        "TUI-RV-FID-V1-R4"
+        "TUI-RV-FID-V1-R5"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
