@@ -872,20 +872,50 @@
       "intent": "Fresh mechanical acceptance of the repaired second coding-agent message, compaction-utility, and core-primitive wave."
     },
     {
-      "id": "CA-RV-FID-V2",
-      "kind": "reviewer",
+      "id": "CA-TIMINGS-FIDELITY-R1",
+      "kind": "writer",
       "depends_on": [
         "CA-V2-REVALIDATE"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/timings.rs",
+        "crates/zedflow-coding-agent/tests/core-primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test core-primitives"
+      ],
+      "intent": "Capture PI_TIMING once as frozen Pi does and preserve timing namespace insertion order, with focused regression coverage."
+    },
+    {
+      "id": "CA-V2-REVALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-TIMINGS-FIDELITY-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the repaired second coding-agent wave."
+    },
+    {
+      "id": "CA-RV-FID-V2-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V2-REVALIDATE-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the second coding-agent wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the repaired second coding-agent wave."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V2",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V2"
+        "CA-RV-FID-V2-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
