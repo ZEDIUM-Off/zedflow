@@ -5,6 +5,10 @@
 /// Deterministic utilities ported from Pi's coding-agent package.
 pub mod utils;
 
+pub mod config;
+
+#[path = "core/auth-guidance.rs"]
+pub mod auth_guidance;
 #[path = "core/auth-storage.rs"]
 pub mod auth_storage;
 #[path = "core/compaction/mod.rs"]
@@ -66,9 +70,9 @@ pub mod write;
 /// Pi-compatible tool namespaces.
 pub mod core {
     pub use crate::{
-        auth_storage, compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher,
-        messages, model_registry, model_resolver, output_guard, provider_display_names,
-        session_cwd, slash_commands, source_info, timings,
+        auth_guidance, auth_storage, compaction, defaults, diagnostics, event_bus, experimental,
+        http_dispatcher, messages, model_registry, model_resolver, output_guard,
+        provider_display_names, session_cwd, slash_commands, source_info, timings,
     };
 
     pub mod tools {
