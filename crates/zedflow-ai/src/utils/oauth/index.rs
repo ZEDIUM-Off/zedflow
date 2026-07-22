@@ -35,7 +35,10 @@ use super::openai_codex::{
     OPENAI_CODEX_OAUTH_PROVIDER_ID as OPENAI_CODEX_PROVIDER_ID,
     OPENAI_CODEX_OAUTH_PROVIDER_NAME as OPENAI_CODEX_PROVIDER_NAME,
 };
-use crate::auth::types::{AuthFuture, AuthLoginCallbacks, AuthResult, OAuthAuth, OAuthCredential};
+use crate::{
+    auth::types::{AuthFuture, AuthLoginCallbacks, AuthResult, OAuthAuth, OAuthCredential},
+    types::Model,
+};
 
 /// OAuth credential shape stored by Pi OAuth providers.
 pub type OAuthCredentials = OAuthCredential;
@@ -83,6 +86,11 @@ pub trait OAuthProviderInterface: Send + Sync {
 
     /// Converts credentials to an API key string for the provider.
     fn get_api_key(&self, credentials: &OAuthCredential) -> String;
+
+    /// Optionally modifies models for this provider.
+    fn modify_models(&self, models: &[Model], _credentials: &OAuthCredential) -> Vec<Model> {
+        models.to_vec()
+    }
 }
 
 /// Deprecated OAuth provider info shape returned by Pi's compatibility helper.

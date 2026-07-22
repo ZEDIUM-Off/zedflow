@@ -198,10 +198,12 @@ impl ModelRegistry {
         let mut builtins = compat::get_models().unwrap_or_default();
         let Some(path) = self.models_json_path.clone() else {
             self.models = builtins;
+            self.apply_oauth_model_modifiers();
             return;
         };
         if !path.exists() {
             self.models = builtins;
+            self.apply_oauth_model_modifiers();
             return;
         }
         match self.load_custom_models(&path, &mut builtins) {
@@ -220,6 +222,15 @@ impl ModelRegistry {
             Err(error) => self.load_error = Some(error),
         }
         self.models = builtins;
+        self.apply_oauth_model_modifiers();
+    }
+
+    fn apply_oauth_model_modifiers(&mut self) {
+        for oauth in self.auth_storage.oauth_providers() {
+            if let Some(credentials) = oauth_credentials(self.auth_storage.get(oauth.id())) {
+                self.models = oauth.modify_models(&self.models, &credentials);
+            }
+        }
     }
 
     fn load_custom_models(
@@ -578,6 +589,12 @@ impl ModelRegistry {
                 self.store_model_headers(name, &model.id, headers);
                 self.models.push(model);
             }
+            if let (Some(oauth), Some(credentials)) = (
+                &config.oauth,
+                oauth_credentials(self.auth_storage.get(name)),
+            ) {
+                self.models = oauth.modify_models(&self.models, &credentials);
+            }
         } else if let Some(url) = &config.base_url {
             for model in self.models.iter_mut().filter(|m| m.provider == name) {
                 model.base_url.clone_from(url);
@@ -616,6 +633,27 @@ impl OAuthProviderInterface for NamedOAuthProvider {
     fn get_api_key(&self, credentials: &OAuthCredential) -> String {
         self.inner.get_api_key(credentials)
     }
+    fn modify_models(&self, models: &[Model], credentials: &OAuthCredential) -> Vec<Model> {
+        self.inner.modify_models(models, credentials)
+    }
+}
+
+fn oauth_credentials(credential: Option<&AuthCredential>) -> Option<OAuthCredential> {
+    let AuthCredential::OAuth {
+        refresh,
+        access,
+        expires,
+        extra,
+    } = credential?
+    else {
+        return None;
+    };
+    Some(OAuthCredential {
+        refresh: refresh.clone(),
+        access: access.clone(),
+        expires: *expires,
+        extra: extra.clone(),
+    })
 }
 
 fn merge_compat(base: Option<ModelCompat>, over: Option<ModelCompat>) -> Option<ModelCompat> {

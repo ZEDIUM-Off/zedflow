@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc};
+use std::{collections::BTreeMap, fs, sync::Arc};
 use zedflow_ai::{
     auth::types::{AuthFuture, AuthLoginCallbacks, AuthResult, OAuthCredential},
     compat::{self, CompatError},
@@ -6,7 +6,7 @@ use zedflow_ai::{
     utils::oauth::index::{OAuthProviderInterface, get_oauth_provider},
 };
 use zedflow_coding_agent::{
-    auth_storage::AuthStorage,
+    auth_storage::{AuthCredential, AuthStorage},
     model_registry::{ModelRegistry, ProviderConfigInput},
 };
 
@@ -132,6 +132,80 @@ fn registers_custom_stream_and_oauth_provider() {
 
     registry.unregister_provider("dynamic");
     assert!(get_oauth_provider("dynamic").is_none());
+}
+
+#[test]
+fn oauth_provider_modifies_registered_models_when_credentials_exist() {
+    struct OAuth;
+    impl OAuthProviderInterface for OAuth {
+        fn id(&self) -> &str {
+            "dynamic-modify"
+        }
+        fn name(&self) -> &str {
+            "Dynamic OAuth"
+        }
+        fn login<'a>(
+            &'a self,
+            _: &'a dyn AuthLoginCallbacks,
+        ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
+            Box::pin(async { Err("unused".into()) })
+        }
+        fn refresh_token<'a>(
+            &'a self,
+            _: &'a OAuthCredential,
+        ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
+            Box::pin(async { Err("unused".into()) })
+        }
+        fn get_api_key(&self, credentials: &OAuthCredential) -> String {
+            credentials.access.clone()
+        }
+        fn modify_models(&self, models: &[Model], credentials: &OAuthCredential) -> Vec<Model> {
+            models
+                .iter()
+                .cloned()
+                .map(|mut model| {
+                    if model.provider == "dynamic-modify" {
+                        model.base_url = format!("https://{}.test", credentials.access);
+                    }
+                    model
+                })
+                .collect()
+        }
+    }
+
+    let mut auth = AuthStorage::in_memory(Default::default());
+    auth.set(
+        "dynamic-modify",
+        AuthCredential::OAuth {
+            refresh: "refresh".into(),
+            access: "credential".into(),
+            expires: i64::MAX,
+            extra: BTreeMap::new(),
+        },
+    )
+    .unwrap();
+    let mut registry = ModelRegistry::in_memory(auth);
+    registry
+        .register_provider(
+            "dynamic-modify",
+            ProviderConfigInput {
+                api: Some("custom-test-api".into()),
+                base_url: Some("https://before.test".into()),
+                oauth: Some(Arc::new(OAuth)),
+                models: Some(vec![Model {
+                    id: "model".into(),
+                    api: "custom-test-api".into(),
+                    ..Default::default()
+                }]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        registry.find("dynamic-modify", "model").unwrap().base_url,
+        "https://credential.test"
+    );
 }
 
 #[test]
