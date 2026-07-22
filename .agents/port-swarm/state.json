@@ -135,10 +135,16 @@
     "CA-C16-R4-NPM-PREFIX-JS-WHITESPACE",
     "CA-V14-R4",
     "CA-RV-FID-V14-R4",
-    "CA-NEXT-PORT-DAG-V12"
+    "CA-NEXT-PORT-DAG-V12",
+    "CA-C17-GLOBAL-PACKAGE-ROOT-PRIMITIVES",
+    "CA-V15",
+    "CA-C17-R1-GLOBAL-PNPM-PATH-FIDELITY",
+    "CA-V15-R1",
+    "CA-RV-FID-V15-R1",
+    "CA-NEXT-PORT-DAG-V13"
   ],
   "current": {
-    "id": "CA-C17-GLOBAL-PACKAGE-ROOT-PRIMITIVES",
+    "id": "CA-C18-PATH-COMPARISON-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,

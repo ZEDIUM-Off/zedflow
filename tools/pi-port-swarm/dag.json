@@ -2163,6 +2163,62 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the global package-root discovery primitives wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C18-PATH-COMPARISON-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V13"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Port only frozen coding-agent existing-path normalization and path-comparison candidate primitives, without beginning entrypoint discovery, writability checks, managed-install classification, self-update orchestration, or settings loading."
+    },
+    {
+      "id": "CA-V16",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C18-PATH-COMPARISON-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent path-comparison primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V16",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V16"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent path-comparison primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V14",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V16"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the path-comparison primitives wave and assign the next bounded package wave."
     }
   ]
 }
