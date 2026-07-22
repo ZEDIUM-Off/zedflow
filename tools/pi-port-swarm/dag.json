@@ -1436,20 +1436,51 @@
       "intent": "Fresh mechanical acceptance of the repaired coding-agent model registry wave."
     },
     {
-      "id": "CA-RV-FID-V8-R1",
-      "kind": "reviewer",
+      "id": "CA-C10-R1-OAUTH-MODIFY-MODELS",
+      "kind": "writer",
       "depends_on": [
         "CA-V8-R1"
       ],
+      "ownership": [
+        "crates/zedflow-ai/src/utils/oauth/index.rs",
+        "crates/zedflow-coding-agent/src/core/model-registry.rs",
+        "crates/zedflow-coding-agent/tests/model-registry.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test model-registry"
+      ],
+      "intent": "Restore frozen Pi fidelity for dynamic OAuth providers by exposing and applying modifyModels to registered models when OAuth credentials already exist."
+    },
+    {
+      "id": "CA-V9-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C10-R1-OAUTH-MODIFY-MODELS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the OAuth modifyModels model registry repair."
+    },
+    {
+      "id": "CA-RV-FID-V9-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V9-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the repaired coding-agent model registry wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the OAuth modifyModels model registry repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V8",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V8-R1"
+        "CA-RV-FID-V9-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
