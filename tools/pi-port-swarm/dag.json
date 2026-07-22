@@ -2493,7 +2493,6 @@
       ],
       "intent": "Continue the incomplete global Pi port after the bounded TUI pure-primitives wave. Keep remaining coding-agent work ahead of orchestrator, and require every non-final wave to end in a successor NEXT-PORT-DAG checkpoint; do not declare completion until every manifest row is represented and final workspace validation plus fidelity and Rust reviews pass."
     },
-
     {
       "id": "CA-C20-R2-UTILITY-SUBSTRATE-IMPLEMENTATIONS",
       "kind": "writer",
@@ -2557,22 +2556,37 @@
       "intent": "Re-run utility-substrate validation after the malformed percent-escape repair."
     },
     {
-      "id": "CA-RV-FID-V18-R2",
-      "kind": "reviewer",
+      "id": "CA-RV-FID-V18-R2-SSH-URL-PARSING",
+      "kind": "writer",
       "depends_on": [
         "CA-V18-R2-GIT-URL-VALIDATION"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/git.rs",
+        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Repair SSH git URL parsing to match frozen Pi behavior, including scp-like and ssh URL forms, and add focused regression coverage."
+    },
+    {
+      "id": "CA-RV-FID-V18-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-RV-FID-V18-R2-SSH-URL-PARSING"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh Pi-fidelity review of the utility-substrate wave after git URL validation repair."
+      "intent": "Fresh Pi-fidelity review of utility-substrate SSH git URL parsing after the targeted repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V17",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V18-R2"
+        "CA-RV-FID-V18-R3"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
