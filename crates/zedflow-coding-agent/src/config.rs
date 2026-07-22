@@ -69,7 +69,10 @@ pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &s
             format!("bun install -g --ignore-scripts --minimum-release-age=0 {package_name}")
         }
         InstallMethod::Npm => {
-            format!("npm install -g --ignore-scripts --min-release-age=0 {package_name}")
+            let prefix = inferred_npm_prefix(&get_package_dir())
+                .map(|prefix| format!(" --prefix {}", prefix.display()))
+                .unwrap_or_default();
+            format!("npm{prefix} install -g --ignore-scripts --min-release-age=0 {package_name}")
         }
         InstallMethod::BunBinary => {
             return "Download from: https://github.com/earendil-works/pi-mono/releases/latest"
@@ -82,6 +85,21 @@ pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &s
         }
     };
     format!("Run: {command}")
+}
+
+fn inferred_npm_prefix(package_dir: &Path) -> Option<&Path> {
+    let parent = package_dir.parent()?;
+    let root = if parent.file_name()?.to_string_lossy().starts_with('@')
+        && parent.parent()?.file_name()? == "node_modules"
+    {
+        parent.parent()?
+    } else if parent.file_name()? == "node_modules" {
+        parent
+    } else {
+        return None;
+    };
+    let lib = root.parent()?;
+    (lib.file_name()? == "lib").then(|| lib.parent()).flatten()
 }
 
 pub fn expand_tilde_path(path: &str) -> PathBuf {

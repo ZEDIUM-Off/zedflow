@@ -301,4 +301,28 @@ fn detects_install_methods_and_formats_update_instructions_like_pi() {
         get_update_instruction_for_method(InstallMethod::BunBinary, PACKAGE_NAME),
         "Download from: https://github.com/earendil-works/pi-mono/releases/latest"
     );
+
+    let prefix = std::env::temp_dir().join("pi-npm-prefix");
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "inferred_npm_prefix_child"])
+        .env(
+            "PI_PACKAGE_DIR",
+            prefix.join("lib/node_modules/@earendil-works/pi-coding-agent"),
+        )
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+#[test]
+#[ignore]
+fn inferred_npm_prefix_child() {
+    let prefix = std::env::temp_dir().join("pi-npm-prefix");
+    assert_eq!(
+        get_update_instruction_for_method(InstallMethod::Npm, PACKAGE_NAME),
+        format!(
+            "Run: npm --prefix {} install -g --ignore-scripts --min-release-age=0 {PACKAGE_NAME}",
+            prefix.display()
+        )
+    );
 }
