@@ -1228,20 +1228,50 @@
       "intent": "Fresh mechanical acceptance of the bounded coding-agent configuration value resolution wave."
     },
     {
-      "id": "CA-RV-FID-V6",
-      "kind": "reviewer",
+      "id": "CA-C7-R1-COMMAND-OUTPUT-OVERFLOW-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-V6"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/resolve-config-value.rs",
+        "crates/zedflow-coding-agent/tests/resolve-config-value.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test resolve-config-value"
+      ],
+      "intent": "Match frozen Pi command resolution by rejecting stdout that exceeds execSync's output buffer instead of returning a truncated value, with focused regression coverage."
+    },
+    {
+      "id": "CA-V6-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C7-R1-COMMAND-OUTPUT-OVERFLOW-FIDELITY"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the repaired bounded coding-agent configuration value resolution wave."
+    },
+    {
+      "id": "CA-RV-FID-V6-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V6-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent configuration value resolution wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the repaired bounded coding-agent configuration value resolution wave."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V6",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V6"
+        "CA-RV-FID-V6-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
