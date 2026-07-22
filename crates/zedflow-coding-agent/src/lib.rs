@@ -5,6 +5,8 @@
 /// Deterministic utilities ported from Pi's coding-agent package.
 pub mod utils;
 
+#[path = "core/auth-storage.rs"]
+pub mod auth_storage;
 #[path = "core/compaction/mod.rs"]
 pub mod compaction;
 #[path = "core/defaults.rs"]
@@ -60,9 +62,9 @@ pub mod write;
 /// Pi-compatible tool namespaces.
 pub mod core {
     pub use crate::{
-        compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher, messages,
-        output_guard, provider_display_names, resolve_config_value, session_cwd, slash_commands,
-        source_info, timings,
+        auth_storage, compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher,
+        messages, output_guard, provider_display_names, resolve_config_value, session_cwd,
+        slash_commands, source_info, timings,
     };
 
     pub mod tools {
