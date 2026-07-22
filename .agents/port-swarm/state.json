@@ -146,10 +146,11 @@
     "CA-V16",
     "CA-RV-FID-V16",
     "CA-NEXT-PORT-DAG-V14",
-    "CA-RV-FID-V17"
+    "CA-RV-FID-V17",
+    "CA-NEXT-PORT-DAG-V16"
   ],
   "current": {
-    "id": "TUI-C1-PURE-PRIMITIVES",
+    "id": "CA-C20-UTILITY-SUBSTRATE",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
