@@ -2495,25 +2495,29 @@
     },
 
     {
-      "id": "CA-C20-R1-UTILITY-MODULE-REGISTRATION",
+      "id": "CA-C20-R2-UTILITY-SUBSTRATE-IMPLEMENTATIONS",
       "kind": "writer",
       "depends_on": [
         "CA-NEXT-PORT-DAG-V16"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/utils/mod.rs"
+        "crates/zedflow-coding-agent/src/utils/mod.rs",
+        "crates/zedflow-coding-agent/src/utils/paths.rs",
+        "crates/zedflow-coding-agent/src/utils/child-process.rs",
+        "crates/zedflow-coding-agent/src/utils/git.rs",
+        "crates/zedflow-coding-agent/src/utils/shell.rs",
+        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test utility-substrate"
+        "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Register the utility-substrate modules in the coding-agent utility module tree, without modifying the already-port-owned utility implementations."
+      "intent": "Port the missing dependency-light utility-substrate implementations, register their modules, and add focused tests."
     },
     {
-      "id": "CA-V18",
+      "id": "CA-V18-R1",
       "kind": "validator",
       "depends_on": [
-        "CA-C20-R1-UTILITY-MODULE-REGISTRATION"
+        "CA-C20-R2-UTILITY-SUBSTRATE-IMPLEMENTATIONS"
       ],
       "ownership": [],
       "validation": [
@@ -2521,13 +2525,13 @@
         "cargo check --workspace --all-targets",
         "cargo test -p zedflow-coding-agent --test utility-substrate"
       ],
-      "intent": "Freshly validate the repaired utility-substrate wave across the workspace and focused utility tests."
+      "intent": "Re-run the failed utility-substrate validation after restoring the missing implementations and module registration."
     },
     {
       "id": "CA-RV-FID-V18",
       "kind": "reviewer",
       "depends_on": [
-        "CA-V18"
+        "CA-V18-R1"
       ],
       "ownership": [],
       "validation": [
