@@ -20,16 +20,16 @@ use super::truncate::{
 
 pub const DEFAULT_LS_LIMIT: usize = 500;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LsToolInput {
     pub path: Option<String>,
-    pub limit: Option<usize>,
+    pub limit: Option<f64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LsToolDetails {
     pub truncation: Option<TruncationResult>,
-    pub entry_limit_reached: Option<usize>,
+    pub entry_limit_reached: Option<f64>,
 }
 
 pub type LsToolResult = AgentToolResult<Option<LsToolDetails>>;
@@ -109,7 +109,7 @@ impl LsTool {
     ) -> io::Result<LsToolResult> {
         check_aborted(signal)?;
         let directory = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
-        let effective_limit = input.limit.unwrap_or(DEFAULT_LS_LIMIT);
+        let effective_limit = input.limit.unwrap_or(DEFAULT_LS_LIMIT as f64);
         if !(self.operations.exists)(directory.clone()).await? {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -141,7 +141,7 @@ impl LsTool {
         let mut entry_limit_reached = None;
         for entry in entries {
             check_aborted(signal)?;
-            if results.len() >= effective_limit {
+            if results.len() as f64 >= effective_limit {
                 entry_limit_reached = Some(effective_limit);
                 break;
             }
@@ -177,7 +177,7 @@ impl LsTool {
         if let Some(limit) = entry_limit_reached {
             notices.push(format!(
                 "{limit} entries limit reached. Use limit={} for more",
-                limit.saturating_mul(2)
+                limit * 2.0
             ));
         }
         if truncation.truncated {
@@ -238,10 +238,7 @@ fn build_ls_tool(tool: LsTool) -> AgentTool {
                     .get("path")
                     .and_then(|value| value.as_str())
                     .map(str::to_owned),
-                limit: args
-                    .get("limit")
-                    .and_then(|value| value.as_u64())
-                    .and_then(|value| usize::try_from(value).ok()),
+                limit: args.get("limit").and_then(|value| value.as_f64()),
             };
             let result = tool
                 .execute_with_signal(input, signal.as_ref())

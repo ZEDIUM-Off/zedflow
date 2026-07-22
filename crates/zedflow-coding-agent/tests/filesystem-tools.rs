@@ -263,7 +263,39 @@ async fn ls_sorts_entries_marks_directories_and_reports_limits() {
         output(&result),
         ".hidden\nA.txt\n\n[2 entries limit reached. Use limit=4 for more]"
     );
-    assert_eq!(result.details.unwrap().entry_limit_reached, Some(2));
+    assert_eq!(result.details.unwrap().entry_limit_reached, Some(2.0));
+}
+
+#[tokio::test]
+async fn ls_preserves_fractional_and_negative_number_limits() {
+    let root = TempDir::new();
+    for name in ["a", "b", "c"] {
+        fs::write(root.as_ref().join(name), name).unwrap();
+    }
+    let tool = create_ls_tool(&root);
+
+    let result = (tool.execute)(
+        "ls-fractional",
+        serde_yaml::from_str(r#"{"limit":1.5}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        output(&result),
+        "a\nb\n\n[1.5 entries limit reached. Use limit=3 for more]"
+    );
+
+    let result = (tool.execute)(
+        "ls-negative",
+        serde_yaml::from_str(r#"{"limit":-1}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(output(&result), "(empty directory)");
 }
 
 #[tokio::test]
