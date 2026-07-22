@@ -2493,36 +2493,35 @@
       ],
       "intent": "Continue the incomplete global Pi port after the bounded TUI pure-primitives wave. Keep remaining coding-agent work ahead of orchestrator, and require every non-final wave to end in a successor NEXT-PORT-DAG checkpoint; do not declare completion until every manifest row is represented and final workspace validation plus fidelity and Rust reviews pass."
     },
+
     {
-      "id": "CA-C20-UTILITY-SUBSTRATE",
+      "id": "CA-C20-R1-UTILITY-MODULE-REGISTRATION",
       "kind": "writer",
       "depends_on": [
         "CA-NEXT-PORT-DAG-V16"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/utils/paths.rs",
-        "crates/zedflow-coding-agent/src/utils/child-process.rs",
-        "crates/zedflow-coding-agent/src/utils/git.rs",
-        "crates/zedflow-coding-agent/src/utils/shell.rs",
-        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
+        "crates/zedflow-coding-agent/src/utils/mod.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test utility-substrate"
       ],
-      "intent": "Port the dependency-light path, child-process, Git URL, and shell utility substrate needed by the remaining coding-agent package rows; preserve Pi normalization and failure semantics without starting CLI or interactive runtime."
+      "intent": "Register the utility-substrate modules in the coding-agent utility module tree, without modifying the already-port-owned utility implementations."
     },
     {
       "id": "CA-V18",
       "kind": "validator",
       "depends_on": [
-        "CA-C20-UTILITY-SUBSTRATE"
+        "CA-C20-R1-UTILITY-MODULE-REGISTRATION"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --all --check",
-        "cargo check --workspace --all-targets"
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --test utility-substrate"
       ],
-      "intent": "Validate the utility-substrate wave across the workspace."
+      "intent": "Freshly validate the repaired utility-substrate wave across the workspace and focused utility tests."
     },
     {
       "id": "CA-RV-FID-V18",
