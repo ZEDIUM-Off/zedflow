@@ -7,6 +7,7 @@ use std::{
 };
 use zedflow_coding_agent::{
     event_bus::create_event_bus, provider_display_names::provider_display_name, session_cwd::*,
+    timings,
 };
 
 struct Source {
@@ -47,6 +48,25 @@ fn event_bus_unsubscribes_and_clears() {
 fn provider_names_include_fallback() {
     assert_eq!(provider_display_name("google"), "Google Gemini");
     assert_eq!(provider_display_name("custom"), "custom");
+}
+
+#[test]
+fn timings_capture_enablement_and_preserve_namespace_order() {
+    // SAFETY: this test is the only timing/environment user in this test binary.
+    unsafe { std::env::set_var("PI_TIMING", "1") };
+    timings::reset_timings("extensions");
+    timings::reset_timings("main");
+    timings::reset_timings("extensions");
+    unsafe { std::env::remove_var("PI_TIMING") };
+    timings::time("extension ready", "extensions");
+    timings::time("main ready", "main");
+
+    let output = timings::format_timings();
+    assert!(output.contains("extension ready"));
+    assert!(
+        output.find("Startup Timings: extensions").unwrap()
+            < output.find("Startup Timings: main").unwrap()
+    );
 }
 
 #[test]
