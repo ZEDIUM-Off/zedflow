@@ -203,6 +203,7 @@ pub fn resolve_available_model_scope_with_diagnostics(
             };
             let matcher = GlobBuilder::new(glob_pattern)
                 .case_insensitive(true)
+                .literal_separator(true)
                 .build()
                 .ok()
                 .map(|glob| glob.compile_matcher());

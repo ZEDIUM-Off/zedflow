@@ -61,6 +61,21 @@ fn resolves_exact_patterns_colon_suffixes_globs_and_diagnostics() {
 }
 
 #[test]
+fn glob_wildcards_do_not_match_path_separators() {
+    let models = vec![
+        model("anthropic", "claude-sonnet", "Sonnet"),
+        model("openrouter", "qwen/qwen3-coder", "Qwen Coder"),
+    ];
+
+    let single = resolve_available_model_scope_with_diagnostics(&["*".into()], &models);
+    assert_eq!(single.scoped_models.len(), 1);
+    assert_eq!(single.scoped_models[0].model.id, "claude-sonnet");
+
+    let recursive = resolve_available_model_scope_with_diagnostics(&["**".into()], &models);
+    assert_eq!(recursive.scoped_models.len(), 2);
+}
+
+#[test]
 fn invalid_thinking_suffix_is_warned_or_rejected_in_strict_mode() {
     let models = vec![model("anthropic", "claude-sonnet", "Sonnet")];
     let fallback = parse_model_pattern("sonnet:turbo", &models, true);
