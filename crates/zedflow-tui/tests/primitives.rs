@@ -62,6 +62,13 @@ fn word_navigation_skips_whitespace_and_runs() {
 }
 
 #[test]
+fn word_navigation_keeps_combining_marks_with_their_word() {
+    let text = "cafe\u{301} noir";
+    assert_eq!(find_word_forward(text, 0), "cafe\u{301}".len());
+    assert_eq!(find_word_backward(text, "cafe\u{301}".len()), 0);
+}
+
+#[test]
 fn word_navigation_uses_unicode_word_boundaries() {
     let text = "你好世界 test";
     assert_eq!(find_word_forward(text, 0), "你".len());

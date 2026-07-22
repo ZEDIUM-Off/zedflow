@@ -260,6 +260,21 @@ fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
+fn is_combining_mark(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0300}'..='\u{036f}'
+            | '\u{1ab0}'..='\u{1aff}'
+            | '\u{1dc0}'..='\u{1dff}'
+            | '\u{20d0}'..='\u{20ff}'
+            | '\u{fe20}'..='\u{fe2f}'
+    )
+}
+
+fn is_word_or_combining_mark(c: char) -> bool {
+    is_word(c) || is_combining_mark(c)
+}
+
 // Intl.Segmenter keeps CJK ideographs as separate word-like segments and
 // treats the ASCII punctuation below as boundaries inside a word segment.
 fn is_cjk(c: char) -> bool {
@@ -320,9 +335,13 @@ pub fn find_word_backward(text: &str, cursor: usize) -> usize {
     if is_cjk(c) {
         return start;
     }
-    if is_word(c) {
+    if is_word_or_combining_mark(c) {
         while let Some((start, c)) = prev_char_start(text, p) {
-            if c.is_whitespace() || is_cjk(c) || is_punctuation_boundary(c) || !is_word(c) {
+            if c.is_whitespace()
+                || is_cjk(c)
+                || is_punctuation_boundary(c)
+                || !is_word_or_combining_mark(c)
+            {
                 break;
             }
             p = start;
@@ -330,7 +349,7 @@ pub fn find_word_backward(text: &str, cursor: usize) -> usize {
         return p;
     }
     while let Some((start, c)) = prev_char_start(text, p) {
-        if c.is_whitespace() || is_word(c) || is_cjk(c) {
+        if c.is_whitespace() || is_word_or_combining_mark(c) || is_cjk(c) {
             break;
         }
         p = start;
@@ -351,9 +370,13 @@ pub fn find_word_forward(text: &str, cursor: usize) -> usize {
     if is_cjk(c) {
         return p + c.len_utf8();
     }
-    if is_word(c) {
+    if is_word_or_combining_mark(c) {
         while let Some(c) = text.get(p..).and_then(|s| s.chars().next()) {
-            if c.is_whitespace() || is_cjk(c) || is_punctuation_boundary(c) || !is_word(c) {
+            if c.is_whitespace()
+                || is_cjk(c)
+                || is_punctuation_boundary(c)
+                || !is_word_or_combining_mark(c)
+            {
                 break;
             }
             p += c.len_utf8();
@@ -361,7 +384,7 @@ pub fn find_word_forward(text: &str, cursor: usize) -> usize {
         return p;
     }
     while let Some(c) = text.get(p..).and_then(|s| s.chars().next()) {
-        if c.is_whitespace() || is_word(c) || is_cjk(c) {
+        if c.is_whitespace() || is_word_or_combining_mark(c) || is_cjk(c) {
             break;
         }
         p += c.len_utf8();
