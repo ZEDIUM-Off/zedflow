@@ -259,8 +259,52 @@ impl<S: Clone> UndoStack<S> {
 fn is_word(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
+
+// Intl.Segmenter keeps CJK ideographs as separate word-like segments and
+// treats the ASCII punctuation below as boundaries inside a word segment.
+fn is_cjk(c: char) -> bool {
+    matches!(c,
+        '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' |
+        '\u{f900}'..='\u{faff}' | '\u{20000}'..='\u{2ffff}')
+}
+fn is_punctuation_boundary(c: char) -> bool {
+    matches!(
+        c,
+        '(' | ')'
+            | '{'
+            | '}'
+            | '['
+            | ']'
+            | '<'
+            | '>'
+            | '.'
+            | ','
+            | ';'
+            | ':'
+            | '\''
+            | '"'
+            | '!'
+            | '?'
+            | '+'
+            | '-'
+            | '='
+            | '*'
+            | '/'
+            | '\\'
+            | '|'
+            | '&'
+            | '%'
+            | '^'
+            | '$'
+            | '#'
+            | '@'
+            | '~'
+            | '`'
+    )
+}
 fn prev_char_start(text: &str, at: usize) -> Option<(usize, char)> {
-    text[..at].char_indices().next_back()
+    text.get(..at)
+        .and_then(|prefix| prefix.char_indices().next_back())
 }
 pub fn find_word_backward(text: &str, cursor: usize) -> usize {
     let mut p = cursor.min(text.len());
@@ -270,9 +314,23 @@ pub fn find_word_backward(text: &str, cursor: usize) -> usize {
         }
         p = start;
     }
-    let class = prev_char_start(text, p).map(|(_, c)| is_word(c));
+    let Some((start, c)) = prev_char_start(text, p) else {
+        return p;
+    };
+    if is_cjk(c) {
+        return start;
+    }
+    if is_word(c) {
+        while let Some((start, c)) = prev_char_start(text, p) {
+            if c.is_whitespace() || is_cjk(c) || is_punctuation_boundary(c) || !is_word(c) {
+                break;
+            }
+            p = start;
+        }
+        return p;
+    }
     while let Some((start, c)) = prev_char_start(text, p) {
-        if c.is_whitespace() || Some(is_word(c)) != class {
+        if c.is_whitespace() || is_word(c) || is_cjk(c) {
             break;
         }
         p = start;
@@ -281,15 +339,29 @@ pub fn find_word_backward(text: &str, cursor: usize) -> usize {
 }
 pub fn find_word_forward(text: &str, cursor: usize) -> usize {
     let mut p = cursor.min(text.len());
-    while let Some(c) = text[p..].chars().next() {
+    while let Some(c) = text.get(p..).and_then(|s| s.chars().next()) {
         if !c.is_whitespace() {
             break;
         }
         p += c.len_utf8();
     }
-    let class = text[p..].chars().next().map(is_word);
-    while let Some(c) = text[p..].chars().next() {
-        if c.is_whitespace() || Some(is_word(c)) != class {
+    let Some(c) = text.get(p..).and_then(|s| s.chars().next()) else {
+        return p;
+    };
+    if is_cjk(c) {
+        return p + c.len_utf8();
+    }
+    if is_word(c) {
+        while let Some(c) = text.get(p..).and_then(|s| s.chars().next()) {
+            if c.is_whitespace() || is_cjk(c) || is_punctuation_boundary(c) || !is_word(c) {
+                break;
+            }
+            p += c.len_utf8();
+        }
+        return p;
+    }
+    while let Some(c) = text.get(p..).and_then(|s| s.chars().next()) {
+        if c.is_whitespace() || is_word(c) || is_cjk(c) {
             break;
         }
         p += c.len_utf8();

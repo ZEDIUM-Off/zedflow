@@ -60,3 +60,18 @@ fn word_navigation_skips_whitespace_and_runs() {
     assert_eq!(find_word_forward(text, 6), text.len());
     assert_eq!(find_word_backward(text, text.len()), 7);
 }
+
+#[test]
+fn word_navigation_uses_unicode_word_boundaries() {
+    let text = "你好世界 test";
+    assert_eq!(find_word_forward(text, 0), "你".len());
+    assert_eq!(find_word_forward(text, "你".len()), "你好".len());
+    assert_eq!(
+        find_word_backward(text, "你好世界".len()),
+        "你好世界".len() - "界".len()
+    );
+
+    let text = "café déjà";
+    assert_eq!(find_word_forward(text, 0), "café".len());
+    assert_eq!(find_word_backward(text, text.len()), "café ".len());
+}
