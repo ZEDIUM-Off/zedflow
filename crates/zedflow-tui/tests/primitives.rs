@@ -69,6 +69,16 @@ fn word_navigation_keeps_combining_marks_with_their_word() {
 }
 
 #[test]
+fn word_navigation_keeps_word_joiners_with_their_word() {
+    let text = "a\u{200d}b a\u{fe0f}b";
+    assert_eq!(find_word_forward(text, 0), "a\u{200d}b".len());
+    assert_eq!(find_word_backward(text, "a\u{200d}b".len()), 0);
+    let second = "a\u{200d}b ".len();
+    assert_eq!(find_word_forward(text, second), text.len());
+    assert_eq!(find_word_backward(text, text.len()), second);
+}
+
+#[test]
 fn word_navigation_uses_unicode_word_boundaries() {
     let text = "你好世界 test";
     assert_eq!(find_word_forward(text, 0), "你".len());

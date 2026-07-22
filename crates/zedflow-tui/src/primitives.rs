@@ -264,15 +264,29 @@ fn is_combining_mark(c: char) -> bool {
     matches!(
         c,
         '\u{0300}'..='\u{036f}'
+            | '\u{0483}'..='\u{0489}'
+            | '\u{0591}'..='\u{05bd}'
+            | '\u{05bf}'..='\u{05c7}'
+            | '\u{0610}'..='\u{061a}'
+            | '\u{064b}'..='\u{065f}'
+            | '\u{0670}'
+            | '\u{06d6}'..='\u{06ed}'
             | '\u{1ab0}'..='\u{1aff}'
             | '\u{1dc0}'..='\u{1dff}'
             | '\u{20d0}'..='\u{20ff}'
+            | '\u{fe00}'..='\u{fe0f}'
             | '\u{fe20}'..='\u{fe2f}'
+            | '\u{e0100}'..='\u{e01ef}'
     )
 }
 
+// Intl.Segmenter keeps format characters such as joiners inside a word.
+fn is_word_format(c: char) -> bool {
+    matches!(c, '\u{200c}' | '\u{200d}' | '\u{2060}' | '\u{feff}')
+}
+
 fn is_word_or_combining_mark(c: char) -> bool {
-    is_word(c) || is_combining_mark(c)
+    is_word(c) || is_combining_mark(c) || is_word_format(c)
 }
 
 // Intl.Segmenter keeps CJK ideographs as separate word-like segments and
