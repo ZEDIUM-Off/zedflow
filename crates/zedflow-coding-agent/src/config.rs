@@ -42,6 +42,18 @@ fn normalize_path(path: &str) -> PathBuf {
     expand_tilde_path(path)
 }
 
+pub fn get_themes_dir() -> PathBuf {
+    package_source_asset(&["modes", "interactive", "theme"])
+}
+
+pub fn get_export_template_dir() -> PathBuf {
+    package_source_asset(&["core", "export-html"])
+}
+
+pub fn get_package_json_path() -> PathBuf {
+    get_package_dir().join("package.json")
+}
+
 pub fn get_readme_path() -> PathBuf {
     absolute_package_asset("README.md")
 }
@@ -54,12 +66,79 @@ pub fn get_examples_path() -> PathBuf {
     absolute_package_asset("examples")
 }
 
+pub fn get_changelog_path() -> PathBuf {
+    absolute_package_asset("CHANGELOG.md")
+}
+
+pub fn get_interactive_assets_dir() -> PathBuf {
+    package_source_asset(&["modes", "interactive", "assets"])
+}
+
+pub fn get_bundled_interactive_asset_path(name: &str) -> PathBuf {
+    get_interactive_assets_dir().join(name)
+}
+
+pub fn get_share_viewer_url(gist_id: &str) -> String {
+    let base = env::var("PI_SHARE_VIEWER_URL")
+        .ok()
+        .filter(|url| !url.is_empty())
+        .unwrap_or_else(|| "https://pi.dev/session/".to_owned());
+    format!("{base}#{gist_id}")
+}
+
 pub fn get_agent_dir() -> PathBuf {
     env::var(ENV_AGENT_DIR)
         .ok()
         .filter(|path| !path.is_empty())
         .map(|path| expand_tilde_path(&path))
         .unwrap_or_else(|| home_dir().join(CONFIG_DIR_NAME).join("agent"))
+}
+
+pub fn get_custom_themes_dir() -> PathBuf {
+    get_agent_dir().join("themes")
+}
+
+pub fn get_models_path() -> PathBuf {
+    get_agent_dir().join("models.json")
+}
+
+pub fn get_auth_path() -> PathBuf {
+    get_agent_dir().join("auth.json")
+}
+
+pub fn get_settings_path() -> PathBuf {
+    get_agent_dir().join("settings.json")
+}
+
+pub fn get_tools_dir() -> PathBuf {
+    get_agent_dir().join("tools")
+}
+
+pub fn get_bin_dir() -> PathBuf {
+    get_agent_dir().join("bin")
+}
+
+pub fn get_prompts_dir() -> PathBuf {
+    get_agent_dir().join("prompts")
+}
+
+pub fn get_sessions_dir() -> PathBuf {
+    get_agent_dir().join("sessions")
+}
+
+pub fn get_debug_log_path() -> PathBuf {
+    get_agent_dir().join(format!("{APP_NAME}-debug.log"))
+}
+
+fn package_source_asset(components: &[&str]) -> PathBuf {
+    let package_dir = get_package_dir();
+    let mut path = package_dir.join(if package_dir.join("src").exists() {
+        "src"
+    } else {
+        "dist"
+    });
+    path.extend(components);
+    path
 }
 
 fn absolute_package_asset(name: &str) -> PathBuf {

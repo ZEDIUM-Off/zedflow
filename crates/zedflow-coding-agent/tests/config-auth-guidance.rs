@@ -7,8 +7,12 @@ use zedflow_coding_agent::{
     },
     config::{
         APP_NAME, APP_TITLE, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR, PACKAGE_NAME,
-        expand_tilde_path, get_agent_dir, get_docs_path, get_examples_path, get_package_dir,
-        get_readme_path,
+        expand_tilde_path, get_agent_dir, get_auth_path, get_bin_dir,
+        get_bundled_interactive_asset_path, get_changelog_path, get_custom_themes_dir,
+        get_debug_log_path, get_docs_path, get_examples_path, get_export_template_dir,
+        get_interactive_assets_dir, get_models_path, get_package_dir, get_package_json_path,
+        get_prompts_dir, get_readme_path, get_sessions_dir, get_settings_path,
+        get_share_viewer_url, get_themes_dir, get_tools_dir,
     },
 };
 
@@ -23,6 +27,23 @@ fn exposes_package_identity_and_asset_paths() {
     assert_eq!(get_docs_path(), get_package_dir().join("docs"));
     assert_eq!(get_examples_path(), get_package_dir().join("examples"));
     assert_eq!(get_readme_path(), get_package_dir().join("README.md"));
+    assert_eq!(get_changelog_path(), get_package_dir().join("CHANGELOG.md"));
+    assert_eq!(
+        get_package_json_path(),
+        get_package_dir().join("package.json")
+    );
+    assert_eq!(
+        get_themes_dir(),
+        get_package_dir().join("src/modes/interactive/theme")
+    );
+    assert_eq!(
+        get_export_template_dir(),
+        get_package_dir().join("src/core/export-html")
+    );
+    assert_eq!(
+        get_bundled_interactive_asset_path("logo.png"),
+        get_interactive_assets_dir().join("logo.png")
+    );
     assert_eq!(
         expand_tilde_path("relative/path"),
         PathBuf::from("relative/path")
@@ -33,6 +54,45 @@ fn exposes_package_identity_and_asset_paths() {
         .map(|path| expand_tilde_path(&path))
         .unwrap_or_else(|| expand_tilde_path("~").join(CONFIG_DIR_NAME).join("agent"));
     assert_eq!(get_agent_dir(), expected_agent_dir);
+    assert_eq!(get_custom_themes_dir(), expected_agent_dir.join("themes"));
+    assert_eq!(get_models_path(), expected_agent_dir.join("models.json"));
+    assert_eq!(get_auth_path(), expected_agent_dir.join("auth.json"));
+    assert_eq!(
+        get_settings_path(),
+        expected_agent_dir.join("settings.json")
+    );
+    assert_eq!(get_tools_dir(), expected_agent_dir.join("tools"));
+    assert_eq!(get_bin_dir(), expected_agent_dir.join("bin"));
+    assert_eq!(get_prompts_dir(), expected_agent_dir.join("prompts"));
+    assert_eq!(get_sessions_dir(), expected_agent_dir.join("sessions"));
+    assert_eq!(
+        get_debug_log_path(),
+        expected_agent_dir.join(format!("{APP_NAME}-debug.log"))
+    );
+}
+
+#[test]
+fn formats_share_viewer_urls_like_pi() {
+    assert_eq!(
+        get_share_viewer_url("gist/id"),
+        "https://pi.dev/session/#gist/id"
+    );
+
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "custom_share_viewer_url_child"])
+        .env("PI_SHARE_VIEWER_URL", "https://viewer.example/session/")
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+#[test]
+#[ignore]
+fn custom_share_viewer_url_child() {
+    assert_eq!(
+        get_share_viewer_url("abc123"),
+        "https://viewer.example/session/#abc123"
+    );
 }
 
 #[test]
