@@ -197,7 +197,11 @@ fn execute_command_uncached(config: &str) -> Option<String> {
             }
         }
     };
-    let value = reader.join().ok()?.trim().to_owned();
+    let output = reader.join().ok()?;
+    if output.len() > 1_048_576 {
+        return None;
+    }
+    let value = output.trim().to_owned();
     (success && !value.is_empty()).then_some(value)
 }
 

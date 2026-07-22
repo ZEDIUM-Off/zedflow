@@ -69,3 +69,12 @@ fn commands_are_trimmed_and_cached() {
     );
     let _ = std::fs::remove_file(path);
 }
+
+#[cfg(not(windows))]
+#[test]
+fn command_output_over_default_buffer_is_rejected() {
+    assert_eq!(
+        resolve_config_value_uncached("!head -c 1048577 /dev/zero | tr '\\0' x", None),
+        None
+    );
+}
