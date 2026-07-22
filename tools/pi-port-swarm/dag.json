@@ -843,10 +843,25 @@
       "intent": "Port the frozen dependency-light event bus, provider display names, session working-directory resolution, and timing helpers with focused deterministic coverage."
     },
     {
-      "id": "CA-V2",
-      "kind": "validator",
+      "id": "CA-FIX-SEARCH-EDIT-TOOLS-TEST-TYPES",
+      "kind": "writer",
       "depends_on": [
         "CA-C2-CORE-PRIMITIVES"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Repair the diagnosed E0308 test/API type mismatches in search-edit-tools.rs without changing product code."
+    },
+    {
+      "id": "CA-V2-REVALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "CA-FIX-SEARCH-EDIT-TOOLS-TEST-TYPES"
       ],
       "ownership": [],
       "validation": [
@@ -854,13 +869,13 @@
         "cargo check --workspace --all-targets",
         "cargo test -p zedflow-coding-agent --all-targets"
       ],
-      "intent": "Mechanically accept the second coding-agent message, compaction-utility, and core-primitive wave."
+      "intent": "Fresh mechanical acceptance of the repaired second coding-agent message, compaction-utility, and core-primitive wave."
     },
     {
       "id": "CA-RV-FID-V2",
       "kind": "reviewer",
       "depends_on": [
-        "CA-V2"
+        "CA-V2-REVALIDATE"
       ],
       "ownership": [],
       "validation": [],
