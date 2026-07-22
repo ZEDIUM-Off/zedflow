@@ -1752,10 +1752,26 @@
       "intent": "Match frozen Pi Windows tilde expansion by using USERPROFILE rather than HOME when resolving the home directory, with a focused regression test."
     },
     {
-      "id": "CA-RV-FID-V12-R5",
-      "kind": "reviewer",
+      "id": "CA-C14-R5-OS-HOME-FALLBACK-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-C14-R4-WINDOWS-HOME-PRECEDENCE-FIDELITY"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Match frozen Pi home-directory lookup when environment home variables are absent by falling back to the OS account home, with a focused regression test."
+    },
+    {
+      "id": "CA-RV-FID-V12-R6",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-C14-R5-OS-HOME-FALLBACK-FIDELITY"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/config.rs",
@@ -1766,13 +1782,13 @@
       "validation": [
         "cargo test -p zedflow-coding-agent --test config-auth-guidance"
       ],
-      "intent": "Fresh read-only frozen Pi fidelity review of package-directory normalization after the Windows home-directory precedence repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of package-directory normalization after the OS account home fallback repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V10",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V12-R5"
+        "CA-RV-FID-V12-R6"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
