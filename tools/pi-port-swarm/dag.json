@@ -1586,20 +1586,50 @@
       "intent": "Fresh mechanical acceptance after the bounded model-resolution glob separator fidelity repair."
     },
     {
-      "id": "CA-RV-FID-V11-R1",
-      "kind": "reviewer",
+      "id": "CA-C13-R1-GLOB-NEGATION-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-V11-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/model-resolver.rs",
+        "crates/zedflow-coding-agent/tests/model-resolver.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test model-resolver"
+      ],
+      "intent": "Repair model-scope leading-! negation so glob matching matches frozen minimatch behavior, with a focused regression test."
+    },
+    {
+      "id": "CA-V11-R2",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C13-R1-GLOB-NEGATION-FIDELITY"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance after the bounded model-resolution glob negation fidelity repair."
+    },
+    {
+      "id": "CA-RV-FID-V11-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V11-R2"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent model resolution primitives wave after glob separator repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent model resolution primitives wave after glob negation repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V9",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V11-R1"
+        "CA-RV-FID-V11-R2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
