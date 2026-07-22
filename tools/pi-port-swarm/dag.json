@@ -2219,6 +2219,46 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the path-comparison primitives wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C19-ENTRYPOINT-DISCOVERY-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V14"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Port only frozen coding-agent entrypoint package-directory discovery, without beginning path writability checks, managed-install classification, self-update orchestration, or settings loading."
+    },
+    {
+      "id": "CA-V17",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C19-ENTRYPOINT-DISCOVERY-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent entrypoint discovery primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V17",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V17"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent entrypoint discovery primitives wave."
     }
   ]
 }

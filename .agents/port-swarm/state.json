@@ -141,10 +141,14 @@
     "CA-C17-R1-GLOBAL-PNPM-PATH-FIDELITY",
     "CA-V15-R1",
     "CA-RV-FID-V15-R1",
-    "CA-NEXT-PORT-DAG-V13"
+    "CA-NEXT-PORT-DAG-V13",
+    "CA-C18-PATH-COMPARISON-PRIMITIVES",
+    "CA-V16",
+    "CA-RV-FID-V16",
+    "CA-NEXT-PORT-DAG-V14"
   ],
   "current": {
-    "id": "CA-C18-PATH-COMPARISON-PRIMITIVES",
+    "id": "CA-C19-ENTRYPOINT-DISCOVERY-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
