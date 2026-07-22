@@ -27,6 +27,16 @@ fn parses_and_formats_idle_timeouts() {
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::Number(1e30)),
         Some(1e30)
     );
+    for value in [
+        "0x10000000000000000",
+        "0b10000000000000000000000000000000000000000000000000000000000000000",
+        "0o2000000000000000000000",
+    ] {
+        assert_eq!(
+            parse_http_idle_timeout_ms(HttpIdleTimeoutValue::String(value)),
+            Some(18_446_744_073_709_551_616.0)
+        );
+    }
     assert_eq!(format_http_idle_timeout_ms(60_000.0), "1 min");
     assert_eq!(format_http_idle_timeout_ms(1_500.0), "1.5 sec");
 }
