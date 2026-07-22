@@ -268,6 +268,27 @@ pub fn get_package_dir() -> PathBuf {
         })
 }
 
+/// Finds the package root containing the process entrypoint, if one is present.
+pub fn get_entrypoint_package_dir() -> Option<PathBuf> {
+    env::args_os()
+        .nth(1)
+        .and_then(|entrypoint| find_entrypoint_package_dir(entrypoint))
+}
+
+pub fn find_entrypoint_package_dir(entrypoint: impl AsRef<Path>) -> Option<PathBuf> {
+    let mut dir = entrypoint
+        .as_ref()
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+    while dir.parent().is_some_and(|parent| parent != dir) {
+        if dir.join("package.json").exists() {
+            return Some(dir.to_owned());
+        }
+        dir = dir.parent().expect("checked above");
+    }
+    None
+}
+
 fn normalize_path(path: &str) -> PathBuf {
     if path.starts_with("file://") {
         return reqwest::Url::parse(path)

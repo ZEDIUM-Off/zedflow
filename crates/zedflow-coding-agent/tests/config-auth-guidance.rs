@@ -7,16 +7,36 @@ use zedflow_coding_agent::{
     },
     config::{
         APP_NAME, APP_TITLE, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR, InstallMethod,
-        PACKAGE_NAME, detect_install_method_from_paths, expand_tilde_path, get_agent_dir,
-        get_auth_path, get_bin_dir, get_bundled_interactive_asset_path, get_changelog_path,
-        get_custom_themes_dir, get_debug_log_path, get_docs_path, get_examples_path,
-        get_export_template_dir, get_global_package_roots, get_interactive_assets_dir,
-        get_models_path, get_package_dir, get_package_json_path, get_path_comparison_candidates,
-        get_prompts_dir, get_readme_path, get_sessions_dir, get_settings_path,
-        get_share_viewer_url, get_themes_dir, get_tools_dir, get_update_instruction_for_method,
-        infer_pnpm_global_root, normalize_existing_path_for_comparison, read_command_output,
+        PACKAGE_NAME, detect_install_method_from_paths, expand_tilde_path,
+        find_entrypoint_package_dir, get_agent_dir, get_auth_path, get_bin_dir,
+        get_bundled_interactive_asset_path, get_changelog_path, get_custom_themes_dir,
+        get_debug_log_path, get_docs_path, get_examples_path, get_export_template_dir,
+        get_global_package_roots, get_interactive_assets_dir, get_models_path, get_package_dir,
+        get_package_json_path, get_path_comparison_candidates, get_prompts_dir, get_readme_path,
+        get_sessions_dir, get_settings_path, get_share_viewer_url, get_themes_dir, get_tools_dir,
+        get_update_instruction_for_method, infer_pnpm_global_root,
+        normalize_existing_path_for_comparison, read_command_output,
     },
 };
+
+#[test]
+fn discovers_entrypoint_package_directory() {
+    let root =
+        std::env::temp_dir().join(format!("zedflow-entrypoint-package-{}", std::process::id()));
+    let entrypoint = root.join("bin/pi.js");
+    std::fs::create_dir_all(entrypoint.parent().unwrap()).unwrap();
+    std::fs::write(root.join("package.json"), "{}").unwrap();
+
+    assert_eq!(find_entrypoint_package_dir(&entrypoint), Some(root.clone()));
+    let missing_root =
+        std::env::temp_dir().join(format!("zedflow-entrypoint-missing-{}", std::process::id()));
+    assert_eq!(
+        find_entrypoint_package_dir(missing_root.join("bin/pi.js")),
+        None
+    );
+
+    std::fs::remove_dir_all(root).unwrap();
+}
 
 #[test]
 fn exposes_package_identity_and_asset_paths() {
