@@ -10,7 +10,11 @@ Inspect the evidence and current DAG/state. Make only the smallest justified con
 - `.agents/port-swarm/state.json`
 - `docs/porting`
 
-A mutation may add a prerequisite, repair dependencies/ownership/validation, or supersede an open unit. It must not rewrite accepted evidence or bypass a blocker. Validate the revised DAG and frozen gitlink, commit one nonempty control-plane result, then print exactly one final JSON line:
+A mutation may add a prerequisite, repair dependencies/ownership/validation, or supersede an open unit. It must not rewrite accepted evidence or bypass a blocker.
+
+A `DONE` candidate must modify `tools/pi-port-swarm/dag.json`; documentation-only or state-only commits are rejected. For a reviewer `PLAN_CHANGE`, remove the originating reviewer from the active DAG, attach its repair units to the reviewer's already-satisfied direct dependencies, and schedule a fresh reviewer after the repairs. Retaining the originating reviewer makes the controller retry it; making a repair depend on it deadlocks the DAG. The checked-in `.agents/port-swarm/state.json` may be historical, so use DAG dependencies for this transition; the controller verifies runtime reachability.
+
+Validate the revised DAG and frozen gitlink, commit one nonempty control-plane result, then print exactly one final JSON line:
 
 ```json
 {"status":"DONE","unit":"REPLAN-<id>","base":"<40-hex>","candidate":"<40-hex>","summary":"..."}
