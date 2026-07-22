@@ -1,6 +1,9 @@
 use std::cmp::Ordering;
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use zedflow_agent::types::{
@@ -30,16 +33,63 @@ pub struct LsToolDetails {
 }
 
 pub type LsToolResult = AgentToolResult<Option<LsToolDetails>>;
+pub type LsOperationFuture<T> = Pin<Box<dyn Future<Output = io::Result<T>> + Send>>;
+pub type LsExistsOperation = Arc<dyn Fn(PathBuf) -> LsOperationFuture<bool> + Send + Sync>;
+pub type LsStatOperation = Arc<dyn Fn(PathBuf) -> LsOperationFuture<bool> + Send + Sync>;
+pub type LsReadDirOperation = Arc<dyn Fn(PathBuf) -> LsOperationFuture<Vec<String>> + Send + Sync>;
+
+#[derive(Clone)]
+pub struct LsOperations {
+    pub exists: LsExistsOperation,
+    /// Returns whether the path is a directory.
+    pub stat: LsStatOperation,
+    pub read_dir: LsReadDirOperation,
+}
+
+impl Default for LsOperations {
+    fn default() -> Self {
+        Self {
+            exists: Arc::new(|path| Box::pin(tokio::fs::try_exists(path))),
+            stat: Arc::new(|path| {
+                Box::pin(async move { Ok(tokio::fs::metadata(path).await?.is_dir()) })
+            }),
+            read_dir: Arc::new(|path| {
+                Box::pin(async move {
+                    let mut reader = tokio::fs::read_dir(path).await?;
+                    let mut entries = Vec::new();
+                    while let Some(entry) = reader.next_entry().await? {
+                        entries.push(entry.file_name().to_string_lossy().into_owned());
+                    }
+                    Ok(entries)
+                })
+            }),
+        }
+    }
+}
+
+impl fmt::Debug for LsOperations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LsOperations")
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct LsTool {
     cwd: PathBuf,
+    operations: LsOperations,
 }
 
 impl LsTool {
     pub fn new(cwd: impl AsRef<Path>) -> Self {
+        Self::with_operations(cwd, LsOperations::default())
+    }
+
+    pub fn with_operations(cwd: impl AsRef<Path>, operations: LsOperations) -> Self {
         Self {
             cwd: cwd.as_ref().to_path_buf(),
+            operations,
         }
     }
 
@@ -55,30 +105,24 @@ impl LsTool {
         check_aborted(signal)?;
         let directory = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
         let effective_limit = input.limit.unwrap_or(DEFAULT_LS_LIMIT);
-        let metadata = tokio::fs::metadata(&directory).await.map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("Path not found: {}", directory.display()),
-                )
-            } else {
-                error
-            }
-        })?;
-        if !metadata.is_dir() {
+        if !(self.operations.exists)(directory.clone()).await? {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("Path not found: {}", directory.display()),
+            ));
+        }
+        if !(self.operations.stat)(directory.clone()).await? {
             return Err(io::Error::other(format!(
                 "Not a directory: {}",
                 directory.display()
             )));
         }
 
-        let mut reader = tokio::fs::read_dir(&directory).await.map_err(|error| {
-            io::Error::new(error.kind(), format!("Cannot read directory: {error}"))
-        })?;
-        let mut entries = Vec::new();
-        while let Some(entry) = reader.next_entry().await? {
-            entries.push(entry.file_name().to_string_lossy().into_owned());
-        }
+        let mut entries = (self.operations.read_dir)(directory.clone())
+            .await
+            .map_err(|error| {
+                io::Error::new(error.kind(), format!("Cannot read directory: {error}"))
+            })?;
         entries.sort_by(|left, right| {
             let order = left.to_lowercase().cmp(&right.to_lowercase());
             if order == Ordering::Equal {
@@ -97,10 +141,10 @@ impl LsTool {
                 break;
             }
             let full_path = directory.join(&entry);
-            let Ok(metadata) = tokio::fs::metadata(full_path).await else {
+            let Ok(is_directory) = (self.operations.stat)(full_path).await else {
                 continue;
             };
-            results.push(if metadata.is_dir() {
+            results.push(if is_directory {
                 format!("{entry}/")
             } else {
                 entry
@@ -157,7 +201,17 @@ impl LsTool {
 }
 
 pub fn create_ls_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    let tool = LsTool::new(cwd);
+    build_ls_tool(LsTool::new(cwd))
+}
+
+pub fn create_ls_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: LsOperations,
+) -> AgentTool {
+    build_ls_tool(LsTool::with_operations(cwd, operations))
+}
+
+fn build_ls_tool(tool: LsTool) -> AgentTool {
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();
         Box::pin(async move {

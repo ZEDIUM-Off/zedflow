@@ -10,7 +10,9 @@ use std::process::Command;
 
 use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
 use zedflow_coding_agent::find::{FindOperations, FindTool, FindToolInput, create_find_tool};
-use zedflow_coding_agent::ls::{LsTool, LsToolInput, create_ls_tool};
+use zedflow_coding_agent::ls::{
+    LsOperations, LsTool, LsToolInput, create_ls_tool, create_ls_tool_with_operations,
+};
 use zedflow_coding_agent::read::{ReadOperations, ReadTool, ReadToolInput, create_read_tool};
 use zedflow_coding_agent::write::{WriteTool, WriteToolInput, create_write_tool};
 
@@ -259,6 +261,69 @@ async fn ls_sorts_entries_marks_directories_and_reports_limits() {
         ".hidden\nA.txt\n\n[2 entries limit reached. Use limit=4 for more]"
     );
     assert_eq!(result.details.unwrap().entry_limit_reached, Some(2));
+}
+
+#[tokio::test]
+async fn ls_uses_injected_operations_without_disk_access() {
+    let root = PathBuf::from("/virtual-ls-root");
+    let directory = root.join("remote");
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let operations = LsOperations {
+        exists: {
+            let calls = Arc::clone(&calls);
+            Arc::new(move |path| {
+                let calls = Arc::clone(&calls);
+                Box::pin(async move {
+                    calls.lock().unwrap().push(("exists", path));
+                    Ok(true)
+                })
+            })
+        },
+        stat: {
+            let calls = Arc::clone(&calls);
+            Arc::new(move |path| {
+                let calls = Arc::clone(&calls);
+                Box::pin(async move {
+                    let is_directory = path.ends_with("folder") || path.ends_with("remote");
+                    calls.lock().unwrap().push(("stat", path));
+                    Ok(is_directory)
+                })
+            })
+        },
+        read_dir: {
+            let calls = Arc::clone(&calls);
+            Arc::new(move |path| {
+                let calls = Arc::clone(&calls);
+                Box::pin(async move {
+                    calls.lock().unwrap().push(("read_dir", path));
+                    Ok(vec!["z.txt".into(), "folder".into(), "A.txt".into()])
+                })
+            })
+        },
+    };
+
+    let tool = create_ls_tool_with_operations(&root, operations);
+    let result = (tool.execute)(
+        "ls-1",
+        serde_yaml::from_str(r#"{"path":"remote"}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(output(&result), "A.txt\nfolder/\nz.txt");
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![
+            ("exists", directory.clone()),
+            ("stat", directory.clone()),
+            ("read_dir", directory.clone()),
+            ("stat", directory.join("A.txt")),
+            ("stat", directory.join("folder")),
+            ("stat", directory.join("z.txt")),
+        ]
+    );
 }
 
 #[test]
