@@ -2382,20 +2382,50 @@
       "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after Unicode segmenter classification repair."
     },
     {
-      "id": "TUI-RV-FID-V1-R3",
-      "kind": "reviewer",
+      "id": "TUI-C1-R4-OSC11-PARSING",
+      "kind": "writer",
       "depends_on": [
         "TUI-V1-R3"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/tests/primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test primitives"
+      ],
+      "intent": "Repair Rust OSC11 terminal background-color response parsing to match frozen Pi regex acceptance and channel/error semantics, with focused regression coverage."
+    },
+    {
+      "id": "TUI-V1-R4",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C1-R4-OSC11-PARSING"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after OSC11 parsing repair."
+    },
+    {
+      "id": "TUI-RV-FID-V1-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V1-R4"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after Unicode segmenter classification repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after OSC11 parsing repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V16",
       "kind": "checkpoint",
       "depends_on": [
-        "TUI-RV-FID-V1-R3"
+        "TUI-RV-FID-V1-R4"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
