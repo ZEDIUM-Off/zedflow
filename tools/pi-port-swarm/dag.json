@@ -1467,20 +1467,50 @@
       "intent": "Fresh mechanical acceptance of the OAuth modifyModels model registry repair."
     },
     {
-      "id": "CA-RV-FID-V9-R1",
-      "kind": "reviewer",
+      "id": "CA-C11-R1-COPILOT-MODIFY-MODELS",
+      "kind": "writer",
       "depends_on": [
         "CA-V9-R1"
       ],
+      "ownership": [
+        "crates/zedflow-ai/src/utils/oauth/index.rs",
+        "crates/zedflow-coding-agent/tests/model-registry.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test model-registry"
+      ],
+      "intent": "Restore frozen Pi fidelity for GitHub Copilot OAuth modifyModels by rewriting Copilot base URLs and filtering unsupported model IDs."
+    },
+    {
+      "id": "CA-V10-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C11-R1-COPILOT-MODIFY-MODELS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the GitHub Copilot OAuth modifyModels repair."
+    },
+    {
+      "id": "CA-RV-FID-V10-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V10-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the OAuth modifyModels model registry repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the GitHub Copilot OAuth modifyModels repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V8",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V9-R1"
+        "CA-RV-FID-V10-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
