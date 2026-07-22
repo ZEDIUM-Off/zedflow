@@ -1640,6 +1640,64 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the model resolution primitives wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C14-CONFIG-AUTH-GUIDANCE-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V9"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/src/core/auth-guidance.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Port frozen coding-agent package identity, documentation and agent-directory path primitives plus provider login guidance without beginning install/update detection, settings, session runtime, or CLI selection."
+    },
+    {
+      "id": "CA-V12",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C14-CONFIG-AUTH-GUIDANCE-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent config and authentication-guidance primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V12",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V12"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent config and authentication-guidance primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V10",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V12"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the config and authentication-guidance primitives wave and assign the next bounded package wave."
     }
   ]
 }

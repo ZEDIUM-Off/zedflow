@@ -98,10 +98,18 @@
     "CA-C11-R1-COPILOT-MODIFY-MODELS",
     "CA-V10-R1",
     "CA-RV-FID-V10-R1",
-    "CA-NEXT-PORT-DAG-V8"
+    "CA-NEXT-PORT-DAG-V8",
+    "CA-C12-MODEL-RESOLUTION-PRIMITIVES",
+    "CA-V11",
+    "CA-C12-R1-GLOB-SEPARATOR-FIDELITY",
+    "CA-V11-R1",
+    "CA-C13-R1-GLOB-NEGATION-FIDELITY",
+    "CA-V11-R2",
+    "CA-RV-FID-V11-R2",
+    "CA-NEXT-PORT-DAG-V9"
   ],
   "current": {
-    "id": "CA-C12-MODEL-RESOLUTION-PRIMITIVES",
+    "id": "CA-C14-CONFIG-AUTH-GUIDANCE-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
