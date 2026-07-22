@@ -12,6 +12,11 @@ enum Message {
     Barrier(mpsc::Sender<io::Result<()>>),
 }
 
+struct RawQueue {
+    tx: mpsc::Sender<Message>,
+    tail: u64,
+}
+
 /// Owns the output streams used by an interactive coding-agent session.
 ///
 /// Normal stdout is redirected to stderr while takeover is active. Raw stdout
@@ -20,7 +25,7 @@ pub struct OutputGuard {
     stdout: Arc<Mutex<Box<dyn Write + Send>>>,
     stderr: Arc<Mutex<Box<dyn Write + Send>>>,
     taken_over: Mutex<bool>,
-    raw_tx: mpsc::Sender<Message>,
+    raw_queue: Mutex<RawQueue>,
 }
 
 impl Default for OutputGuard {
@@ -39,7 +44,10 @@ impl OutputGuard {
             stdout,
             stderr: Arc::new(Mutex::new(Box::new(stderr))),
             taken_over: Mutex::new(false),
-            raw_tx,
+            raw_queue: Mutex::new(RawQueue {
+                tx: raw_tx,
+                tail: 0,
+            }),
         }
     }
 
@@ -68,25 +76,37 @@ impl OutputGuard {
     pub fn write_raw_stdout(&self, text: impl Into<String>) {
         let text = text.into();
         if !text.is_empty() {
-            let _ = self.raw_tx.send(Message::Write(text));
+            let mut queue = self.raw_queue.lock().unwrap();
+            if queue.tx.send(Message::Write(text)).is_ok() {
+                queue.tail = queue.tail.wrapping_add(1);
+            }
         }
     }
 
     pub async fn wait_for_raw_stdout_backpressure(&self) -> io::Result<()> {
-        let (tx, rx) = mpsc::channel();
-        self.raw_tx
-            .send(Message::Barrier(tx))
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "raw stdout worker stopped"))?;
-        tokio::task::spawn_blocking(move || {
-            rx.recv().unwrap_or_else(|_| {
-                Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "raw stdout worker stopped",
-                ))
+        loop {
+            let (tx, rx) = mpsc::channel();
+            let tail = {
+                let queue = self.raw_queue.lock().unwrap();
+                queue.tx.send(Message::Barrier(tx)).map_err(|_| {
+                    io::Error::new(io::ErrorKind::BrokenPipe, "raw stdout worker stopped")
+                })?;
+                queue.tail
+            };
+            tokio::task::spawn_blocking(move || {
+                rx.recv().unwrap_or_else(|_| {
+                    Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "raw stdout worker stopped",
+                    ))
+                })
             })
-        })
-        .await
-        .map_err(io::Error::other)?
+            .await
+            .map_err(io::Error::other)??;
+            if tail == self.raw_queue.lock().unwrap().tail {
+                return Ok(());
+            }
+        }
     }
 
     pub async fn flush_raw_stdout(&self) -> io::Result<()> {
