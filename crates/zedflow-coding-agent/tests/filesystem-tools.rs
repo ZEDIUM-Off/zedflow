@@ -267,6 +267,24 @@ async fn ls_sorts_entries_marks_directories_and_reports_limits() {
 }
 
 #[tokio::test]
+async fn ls_uses_locale_aware_case_insensitive_unicode_ordering() {
+    let root = TempDir::new();
+    for name in ["zebra", "Éclair", "apple", "ångström", "Örebro"] {
+        fs::write(root.as_ref().join(name), name).unwrap();
+    }
+
+    let result = LsTool::new(&root)
+        .execute(LsToolInput {
+            path: None,
+            limit: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(output(&result), "ångström\napple\nÉclair\nÖrebro\nzebra");
+}
+
+#[tokio::test]
 async fn ls_preserves_fractional_and_negative_number_limits() {
     let root = TempDir::new();
     for name in ["a", "b", "c"] {

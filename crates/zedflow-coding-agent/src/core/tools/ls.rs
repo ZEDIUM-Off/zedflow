@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt;
 use std::future::Future;
 use std::io;
@@ -6,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
+use icu_collator::Collator;
 use zedflow_agent::types::{
     AgentCallbackError, AgentFuture, AgentTool, AgentToolExecuteFn, AgentToolResult,
     AgentToolResultContent, Tool, ToolSchema,
@@ -128,14 +128,10 @@ impl LsTool {
             .map_err(|error| {
                 io::Error::new(error.kind(), format!("Cannot read directory: {error}"))
             })?;
-        entries.sort_by(|left, right| {
-            let order = left.to_lowercase().cmp(&right.to_lowercase());
-            if order == Ordering::Equal {
-                left.cmp(right)
-            } else {
-                order
-            }
-        });
+        let collator = Collator::try_new(Default::default(), Default::default())
+            .expect("compiled ICU collation data must include the root locale");
+        entries
+            .sort_by(|left, right| collator.compare(&left.to_lowercase(), &right.to_lowercase()));
 
         let mut results = Vec::new();
         let mut entry_limit_reached = None;
