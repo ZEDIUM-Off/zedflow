@@ -20,6 +20,7 @@ pub fn expand_tilde_path(path: &str) -> PathBuf {
 
 pub fn get_package_dir() -> PathBuf {
     env::var_os("PI_PACKAGE_DIR")
+        .filter(|path| !path.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
@@ -38,8 +39,10 @@ pub fn get_examples_path() -> PathBuf {
 
 pub fn get_agent_dir() -> PathBuf {
     env::var(ENV_AGENT_DIR)
+        .ok()
+        .filter(|path| !path.is_empty())
         .map(|path| expand_tilde_path(&path))
-        .unwrap_or_else(|_| home_dir().join(CONFIG_DIR_NAME).join("agent"))
+        .unwrap_or_else(|| home_dir().join(CONFIG_DIR_NAME).join("agent"))
 }
 
 fn absolute_package_asset(name: &str) -> PathBuf {

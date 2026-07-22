@@ -28,9 +28,32 @@ fn exposes_package_identity_and_asset_paths() {
         PathBuf::from("relative/path")
     );
     let expected_agent_dir = std::env::var(ENV_AGENT_DIR)
+        .ok()
+        .filter(|path| !path.is_empty())
         .map(|path| expand_tilde_path(&path))
-        .unwrap_or_else(|_| expand_tilde_path("~").join(CONFIG_DIR_NAME).join("agent"));
+        .unwrap_or_else(|| expand_tilde_path("~").join(CONFIG_DIR_NAME).join("agent"));
     assert_eq!(get_agent_dir(), expected_agent_dir);
+}
+
+#[test]
+fn empty_directory_overrides_use_pi_defaults() {
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "empty_directory_overrides_child"])
+        .env("PI_PACKAGE_DIR", "")
+        .env(ENV_AGENT_DIR, "")
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+#[test]
+#[ignore]
+fn empty_directory_overrides_child() {
+    assert_eq!(get_package_dir(), PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    assert_eq!(
+        get_agent_dir(),
+        expand_tilde_path("~").join(CONFIG_DIR_NAME).join("agent")
+    );
 }
 
 #[test]
