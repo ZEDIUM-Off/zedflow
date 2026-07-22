@@ -1032,6 +1032,64 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the third coding-agent wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C5-SOURCE-SLASH-METADATA",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/source-info.rs",
+        "crates/zedflow-coding-agent/src/core/slash-commands.rs",
+        "crates/zedflow-coding-agent/tests/source-slash-metadata.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test source-slash-metadata"
+      ],
+      "intent": "Port frozen coding-agent source provenance records, synthetic defaults, and built-in slash-command metadata without beginning package loading, extensions, or interactive command execution."
+    },
+    {
+      "id": "CA-V4",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C5-SOURCE-SLASH-METADATA"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent source and slash-command metadata wave."
+    },
+    {
+      "id": "CA-RV-FID-V4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V4"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent source and slash-command metadata wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V4",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V4"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the source and slash-command metadata wave and assign the next bounded package wave."
     }
   ]
 }
