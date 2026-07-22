@@ -15,6 +15,8 @@ pub mod diagnostics;
 pub mod event_bus;
 #[path = "core/experimental.rs"]
 pub mod experimental;
+#[path = "core/http-dispatcher.rs"]
+pub mod http_dispatcher;
 #[path = "core/messages.rs"]
 pub mod messages;
 #[path = "core/output-guard.rs"]
@@ -56,8 +58,8 @@ pub mod write;
 /// Pi-compatible tool namespaces.
 pub mod core {
     pub use crate::{
-        compaction, defaults, diagnostics, event_bus, experimental, messages, output_guard,
-        provider_display_names, session_cwd, slash_commands, source_info, timings,
+        compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher, messages,
+        output_guard, provider_display_names, session_cwd, slash_commands, source_info, timings,
     };
 
     pub mod tools {
