@@ -21,6 +21,8 @@ pub mod experimental;
 pub mod http_dispatcher;
 #[path = "core/messages.rs"]
 pub mod messages;
+#[path = "core/model-registry.rs"]
+pub mod model_registry;
 #[path = "core/output-guard.rs"]
 pub mod output_guard;
 #[path = "core/provider-display-names.rs"]
@@ -63,8 +65,8 @@ pub mod write;
 pub mod core {
     pub use crate::{
         auth_storage, compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher,
-        messages, output_guard, provider_display_names, resolve_config_value, session_cwd,
-        slash_commands, source_info, timings,
+        messages, model_registry, output_guard, provider_display_names, resolve_config_value,
+        session_cwd, slash_commands, source_info, timings,
     };
 
     pub mod tools {
