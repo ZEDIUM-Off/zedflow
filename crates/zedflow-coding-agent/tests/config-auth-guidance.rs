@@ -13,7 +13,7 @@ use zedflow_coding_agent::{
         get_export_template_dir, get_global_package_roots, get_interactive_assets_dir,
         get_models_path, get_package_dir, get_package_json_path, get_prompts_dir, get_readme_path,
         get_sessions_dir, get_settings_path, get_share_viewer_url, get_themes_dir, get_tools_dir,
-        get_update_instruction_for_method, read_command_output,
+        get_update_instruction_for_method, infer_pnpm_global_root, read_command_output,
     },
 };
 
@@ -310,6 +310,22 @@ fn discovers_pi_global_package_root_defaults() {
     assert_eq!(
         get_global_package_roots(InstallMethod::BunBinary, None).unwrap(),
         Vec::<PathBuf>::new()
+    );
+}
+
+#[test]
+fn infers_only_single_segment_pnpm_global_roots() {
+    assert_eq!(
+        infer_pnpm_global_root(&PathBuf::from(
+            "/home/me/.local/share/pnpm/global/5/.pnpm/pkg/node_modules/pkg",
+        )),
+        Some(PathBuf::from("/home/me/.local/share/pnpm/global/5"))
+    );
+    assert_eq!(
+        infer_pnpm_global_root(&PathBuf::from(
+            "/home/me/.local/share/pnpm/global/5/nested/.pnpm/pkg/node_modules/pkg",
+        )),
+        None
     );
 }
 

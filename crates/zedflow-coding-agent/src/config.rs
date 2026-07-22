@@ -144,14 +144,9 @@ pub fn get_global_package_roots(
                 let parent = root.parent().map(Path::to_path_buf);
                 return Ok(std::iter::once(root).chain(parent).collect());
             }
-            let path = get_package_dir().to_string_lossy().replace('\\', "/");
-            let marker = "/.pnpm/";
-            let root = path.find(marker).and_then(|end| {
-                let prefix = &path[..end];
-                let global = prefix.rfind("/global/")?;
-                Some(PathBuf::from(&prefix[..end.max(global)]))
-            });
-            Ok(root.into_iter().collect())
+            Ok(infer_pnpm_global_root(&get_package_dir())
+                .into_iter()
+                .collect())
         }
         InstallMethod::Yarn => Ok(match read("yarn", &["global", "dir"], false)? {
             Some(dir) => vec![dir.clone(), dir.join("node_modules")],
@@ -167,6 +162,15 @@ pub fn get_global_package_roots(
         }
         InstallMethod::BunBinary | InstallMethod::Unknown => Ok(vec![]),
     }
+}
+
+pub fn infer_pnpm_global_root(package_dir: &Path) -> Option<PathBuf> {
+    let path = package_dir.to_string_lossy().replace('\\', "/");
+    let end = path.find("/.pnpm/")?;
+    let prefix = &path[..end];
+    let global = prefix.rfind("/global/")?;
+    let version = &prefix[global + "/global/".len()..];
+    (!version.is_empty() && !version.contains('/')).then(|| PathBuf::from(prefix))
 }
 
 pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &str) -> String {
