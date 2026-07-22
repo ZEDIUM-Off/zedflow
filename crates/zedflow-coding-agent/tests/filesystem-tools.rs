@@ -11,12 +11,12 @@ use std::process::Command;
 use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
 use zedflow_coding_agent::find::{FindOperations, FindTool, FindToolInput, create_find_tool};
 use zedflow_coding_agent::ls::{
-    LsOperations, LsTool, LsToolInput, create_ls_tool, create_ls_tool_with_operations,
+    LsOperations, LsTool, LsToolInput, LsToolOptions, create_ls_tool, create_ls_tool_definition,
 };
 use zedflow_coding_agent::read::{ReadOperations, ReadTool, ReadToolInput, create_read_tool};
 use zedflow_coding_agent::write::{
-    WriteOperations, WriteTool, WriteToolInput, create_write_tool,
-    create_write_tool_with_operations,
+    WriteOperations, WriteTool, WriteToolInput, WriteToolOptions, create_write_tool,
+    create_write_tool_with_options,
 };
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
@@ -305,15 +305,19 @@ async fn ls_uses_injected_operations_without_disk_access() {
         },
     };
 
-    let tool = create_ls_tool_with_operations(&root, operations);
-    let result = (tool.execute)(
-        "ls-1",
-        serde_yaml::from_str(r#"{"path":"remote"}"#).unwrap(),
-        None,
-        None,
-    )
-    .await
-    .unwrap();
+    let tool = create_ls_tool_definition(
+        &root,
+        LsToolOptions {
+            operations: Some(operations),
+        },
+    );
+    let result = tool
+        .execute(LsToolInput {
+            path: Some("remote".into()),
+            limit: None,
+        })
+        .await
+        .unwrap();
 
     assert_eq!(output(&result), "A.txt\nfolder/\nz.txt");
     assert_eq!(
@@ -360,7 +364,12 @@ async fn write_uses_injected_operations_without_disk_access() {
         },
     };
 
-    let tool = create_write_tool_with_operations(&root, operations);
+    let tool = create_write_tool_with_options(
+        &root,
+        WriteToolOptions {
+            operations: Some(operations),
+        },
+    );
     let result = (tool.execute)(
         "write-1",
         serde_yaml::from_str(r#"{"path":"nested/file.txt","content":"remote"}"#).unwrap(),

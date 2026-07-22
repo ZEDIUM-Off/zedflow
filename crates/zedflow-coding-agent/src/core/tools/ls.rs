@@ -75,6 +75,11 @@ impl fmt::Debug for LsOperations {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct LsToolOptions {
+    pub operations: Option<LsOperations>,
+}
+
 #[derive(Clone, Debug)]
 pub struct LsTool {
     cwd: PathBuf,
@@ -200,15 +205,28 @@ impl LsTool {
     }
 }
 
+pub fn create_ls_tool_definition(cwd: impl AsRef<Path>, options: LsToolOptions) -> LsTool {
+    LsTool::with_operations(cwd, options.operations.unwrap_or_default())
+}
+
 pub fn create_ls_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    build_ls_tool(LsTool::new(cwd))
+    create_ls_tool_with_options(cwd, LsToolOptions::default())
+}
+
+pub fn create_ls_tool_with_options(cwd: impl AsRef<Path>, options: LsToolOptions) -> AgentTool {
+    build_ls_tool(create_ls_tool_definition(cwd, options))
 }
 
 pub fn create_ls_tool_with_operations(
     cwd: impl AsRef<Path>,
     operations: LsOperations,
 ) -> AgentTool {
-    build_ls_tool(LsTool::with_operations(cwd, operations))
+    create_ls_tool_with_options(
+        cwd,
+        LsToolOptions {
+            operations: Some(operations),
+        },
+    )
 }
 
 fn build_ls_tool(tool: LsTool) -> AgentTool {

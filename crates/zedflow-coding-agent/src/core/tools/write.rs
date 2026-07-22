@@ -50,6 +50,11 @@ impl fmt::Debug for WriteOperations {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct WriteToolOptions {
+    pub operations: Option<WriteOperations>,
+}
+
 #[derive(Clone, Debug)]
 pub struct WriteTool {
     cwd: PathBuf,
@@ -106,15 +111,19 @@ impl WriteTool {
     }
 }
 
-pub fn create_write_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    create_write_tool_with_operations(cwd, WriteOperations::default())
+pub fn create_write_tool_definition(cwd: impl AsRef<Path>, options: WriteToolOptions) -> WriteTool {
+    WriteTool::with_operations(cwd, options.operations.unwrap_or_default())
 }
 
-pub fn create_write_tool_with_operations(
+pub fn create_write_tool(cwd: impl AsRef<Path>) -> AgentTool {
+    create_write_tool_with_options(cwd, WriteToolOptions::default())
+}
+
+pub fn create_write_tool_with_options(
     cwd: impl AsRef<Path>,
-    operations: WriteOperations,
+    options: WriteToolOptions,
 ) -> AgentTool {
-    let tool = WriteTool::with_operations(cwd, operations);
+    let tool = create_write_tool_definition(cwd, options);
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();
         Box::pin(async move {
@@ -156,6 +165,18 @@ pub fn create_write_tool_with_operations(
         execute,
         execution_mode: None,
     }
+}
+
+pub fn create_write_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: WriteOperations,
+) -> AgentTool {
+    create_write_tool_with_options(
+        cwd,
+        WriteToolOptions {
+            operations: Some(operations),
+        },
+    )
 }
 
 fn check_aborted(signal: Option<&AbortSignal>) -> io::Result<()> {
