@@ -2077,6 +2077,62 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the install-method primitives wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C17-GLOBAL-PACKAGE-ROOT-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V12"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Port only frozen coding-agent command-output reading and global package-root discovery primitives, without beginning path comparison, entrypoint discovery, writability checks, managed-install classification, or settings loading."
+    },
+    {
+      "id": "CA-V15",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C17-GLOBAL-PACKAGE-ROOT-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent global package-root discovery primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V15",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V15"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent global package-root discovery primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V13",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V15"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the global package-root discovery primitives wave and assign the next bounded package wave."
     }
   ]
 }
