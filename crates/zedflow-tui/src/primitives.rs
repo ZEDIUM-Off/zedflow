@@ -152,20 +152,21 @@ fn osc_channel(s: &str) -> Option<u8> {
     Some((value / max * 255.0).round() as u8)
 }
 fn parse_hex(s: &str) -> Option<RgbColor> {
+    if !s.is_ascii() || !matches!(s.len(), 6 | 12) {
+        return None;
+    }
     if s.len() == 6 {
         Some(RgbColor {
             r: u8::from_str_radix(&s[0..2], 16).ok()?,
             g: u8::from_str_radix(&s[2..4], 16).ok()?,
             b: u8::from_str_radix(&s[4..6], 16).ok()?,
         })
-    } else if s.len() == 12 {
+    } else {
         Some(RgbColor {
             r: osc_channel(&s[0..4])?,
             g: osc_channel(&s[4..8])?,
             b: osc_channel(&s[8..12])?,
         })
-    } else {
-        None
     }
 }
 pub fn is_osc11_background_color_response(data: &str) -> bool {
