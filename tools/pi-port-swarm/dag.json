@@ -1847,20 +1847,50 @@
       "intent": "Fresh mechanical acceptance of the bounded coding-agent derived config path primitives wave."
     },
     {
-      "id": "CA-RV-FID-V13",
-      "kind": "reviewer",
+      "id": "CA-C15-R1-BUNDLED-BINARY-ASSET-PATH-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-V13"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Match frozen Pi bundled-binary theme, export-template, and interactive-asset paths beside the executable, with focused regression coverage."
+    },
+    {
+      "id": "CA-V13-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C15-R1-BUNDLED-BINARY-ASSET-PATH-FIDELITY"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the derived config path primitives wave after bundled-binary asset path repair."
+    },
+    {
+      "id": "CA-RV-FID-V13-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V13-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent derived config path primitives wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent derived config path primitives wave after bundled-binary asset path repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V11",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V13"
+        "CA-RV-FID-V13-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
