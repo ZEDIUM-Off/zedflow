@@ -24,6 +24,10 @@ fn exposes_package_identity_and_asset_paths() {
     assert_eq!(CONFIG_DIR_NAME, ".pi");
     assert_eq!(ENV_AGENT_DIR, "PI_CODING_AGENT_DIR");
     assert_eq!(ENV_SESSION_DIR, "PI_CODING_AGENT_SESSION_DIR");
+    assert_eq!(
+        get_package_dir(),
+        std::env::current_exe().unwrap().parent().unwrap()
+    );
     assert_eq!(get_docs_path(), get_package_dir().join("docs"));
     assert_eq!(get_examples_path(), get_package_dir().join("examples"));
     assert_eq!(get_readme_path(), get_package_dir().join("README.md"));
@@ -32,13 +36,14 @@ fn exposes_package_identity_and_asset_paths() {
         get_package_json_path(),
         get_package_dir().join("package.json")
     );
-    assert_eq!(
-        get_themes_dir(),
-        get_package_dir().join("src/modes/interactive/theme")
-    );
+    assert_eq!(get_themes_dir(), get_package_dir().join("theme"));
     assert_eq!(
         get_export_template_dir(),
-        get_package_dir().join("src/core/export-html")
+        get_package_dir().join("export-html")
+    );
+    assert_eq!(
+        get_interactive_assets_dir(),
+        get_package_dir().join("assets")
     );
     assert_eq!(
         get_bundled_interactive_asset_path("logo.png"),
@@ -231,7 +236,10 @@ fn empty_directory_overrides_use_pi_defaults() {
 #[test]
 #[ignore]
 fn empty_directory_overrides_child() {
-    assert_eq!(get_package_dir(), PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    assert_eq!(
+        get_package_dir(),
+        std::env::current_exe().unwrap().parent().unwrap()
+    );
     assert_eq!(
         get_agent_dir(),
         expand_tilde_path("~").join(CONFIG_DIR_NAME).join("agent")

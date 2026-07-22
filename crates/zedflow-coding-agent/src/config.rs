@@ -29,7 +29,12 @@ pub fn get_package_dir() -> PathBuf {
         .ok()
         .filter(|path| !path.is_empty())
         .map(|path| normalize_path(&path))
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+        .unwrap_or_else(|| {
+            env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(Path::to_path_buf))
+                .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+        })
 }
 
 fn normalize_path(path: &str) -> PathBuf {
@@ -43,11 +48,11 @@ fn normalize_path(path: &str) -> PathBuf {
 }
 
 pub fn get_themes_dir() -> PathBuf {
-    package_source_asset(&["modes", "interactive", "theme"])
+    get_package_dir().join("theme")
 }
 
 pub fn get_export_template_dir() -> PathBuf {
-    package_source_asset(&["core", "export-html"])
+    get_package_dir().join("export-html")
 }
 
 pub fn get_package_json_path() -> PathBuf {
@@ -71,7 +76,7 @@ pub fn get_changelog_path() -> PathBuf {
 }
 
 pub fn get_interactive_assets_dir() -> PathBuf {
-    package_source_asset(&["modes", "interactive", "assets"])
+    get_package_dir().join("assets")
 }
 
 pub fn get_bundled_interactive_asset_path(name: &str) -> PathBuf {
@@ -128,17 +133,6 @@ pub fn get_sessions_dir() -> PathBuf {
 
 pub fn get_debug_log_path() -> PathBuf {
     get_agent_dir().join(format!("{APP_NAME}-debug.log"))
-}
-
-fn package_source_asset(components: &[&str]) -> PathBuf {
-    let package_dir = get_package_dir();
-    let mut path = package_dir.join(if package_dir.join("src").exists() {
-        "src"
-    } else {
-        "dist"
-    });
-    path.extend(components);
-    path
 }
 
 fn absolute_package_asset(name: &str) -> PathBuf {
