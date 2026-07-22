@@ -69,10 +69,17 @@
     "CA-C5-SOURCE-SLASH-METADATA",
     "CA-V4",
     "CA-RV-FID-V4",
-    "CA-NEXT-PORT-DAG-V4"
+    "CA-NEXT-PORT-DAG-V4",
+    "CA-C6-HTTP-CONFIG-PRIMITIVES",
+    "CA-V5",
+    "CA-C6-R1-HTTP-TIMEOUT-NUMERIC-FIDELITY",
+    "CA-C6-R2-HTTP-TIMEOUT-OVERFLOW-FIDELITY",
+    "CA-C6-R3-HTTP-TIMEOUT-RADIX-OVERFLOW-FIDELITY",
+    "CA-RV-FID-V5-R3",
+    "CA-NEXT-PORT-DAG-V5"
   ],
   "current": {
-    "id": "CA-C6-HTTP-CONFIG-PRIMITIVES",
+    "id": "CA-C7-CONFIG-VALUE-RESOLUTION",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
