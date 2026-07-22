@@ -2352,20 +2352,50 @@
       "intent": "Fresh mechanical acceptance preserving the failed TUI wave validation after Unicode combining-mark repair."
     },
     {
-      "id": "TUI-RV-FID-V1-R2",
-      "kind": "reviewer",
+      "id": "TUI-C1-R3-UNICODE-SEGMENTER-CLASSIFICATION",
+      "kind": "writer",
       "depends_on": [
         "TUI-V1-R2"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/tests/primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test primitives"
+      ],
+      "intent": "Repair the remaining TUI word-navigation classification divergence from frozen Pi Intl.Segmenter semantics, with focused Unicode regression coverage."
+    },
+    {
+      "id": "TUI-V1-R3",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C1-R3-UNICODE-SEGMENTER-CLASSIFICATION"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after Unicode segmenter classification repair."
+    },
+    {
+      "id": "TUI-RV-FID-V1-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V1-R3"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after Unicode word-navigation and combining-mark repairs."
+      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after Unicode segmenter classification repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V16",
       "kind": "checkpoint",
       "depends_on": [
-        "TUI-RV-FID-V1-R2"
+        "TUI-RV-FID-V1-R3"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
