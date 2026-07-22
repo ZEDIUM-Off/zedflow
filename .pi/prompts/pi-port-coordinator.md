@@ -12,7 +12,9 @@ Inspect the evidence and current DAG/state. Make only the smallest justified con
 
 A mutation may add a prerequisite, repair dependencies/ownership/validation, or supersede an open unit. It must not rewrite accepted evidence or bypass a blocker.
 
-A `DONE` candidate must modify `tools/pi-port-swarm/dag.json`; documentation-only or state-only commits are rejected. For a reviewer `PLAN_CHANGE`, remove the originating reviewer from the active DAG, attach its repair units to the reviewer's already-satisfied direct dependencies, and schedule a fresh reviewer after the repairs. Retaining the originating reviewer makes the controller retry it; making a repair depend on it deadlocks the DAG. The checked-in `.agents/port-swarm/state.json` may be historical, so use DAG dependencies for this transition; the controller verifies runtime reachability.
+A `DONE` candidate must modify `tools/pi-port-swarm/dag.json`; documentation-only or state-only commits are rejected. The dispatch capsule includes the blocked `source_unit`.
+
+Remove that originating unit from the active DAG, attach repair units to its already-satisfied direct dependencies, and schedule a fresh equivalent reviewer or validator after the repairs. Retaining the originating unit makes the controller retry it; making a repair depend on it deadlocks the DAG. For a deterministic validator failure in repository code or tests, add the smallest writer owning only the diagnosed files, preserve the failed validation on a fresh validator, and reconnect downstream units to that validator. The checked-in `.agents/port-swarm/state.json` may be historical, so use the source unit's DAG dependencies for this transition; the controller verifies runtime reachability.
 
 Validate the revised DAG and frozen gitlink, commit one nonempty control-plane result, then print exactly one final JSON line:
 

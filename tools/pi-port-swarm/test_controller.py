@@ -70,6 +70,10 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(controller.ControllerError):
             controller.result_line('{"status":"DONE"}\n{"status":"BLOCKED"}')
 
+    def test_blocked_reason_preserves_recovery_evidence(self) -> None:
+        self.assertEqual(controller.blocked_reason({"summary": "cargo check: tests/a.rs:7 E0308"}), "cargo check: tests/a.rs:7 E0308")
+        self.assertEqual(controller.blocked_reason({"reason": "exact", "summary": "short"}), "exact")
+
     def test_fixed_integration_ref(self) -> None:
         controller.require_integration_ref(controller.INTEGRATION_REF)
         with self.assertRaises(controller.ControllerError):
@@ -79,6 +83,20 @@ class ControllerTests(unittest.TestCase):
         units = dag()["units"]
         state = {"units": {"A": {"status": "ACCEPTED"}, "B": {"status": "FAILED"}, "C": {"status": "ACCEPTED"}}}
         self.assertFalse(controller.graph_complete(units, state))
+
+    def test_progress_ignores_historical_failures_outside_active_dag(self) -> None:
+        units = dag()["units"]
+        state = {"units": {"A": {"status": "ACCEPTED"}, "B": {"status": "FAILED", "blocker": "active"}, "OLD": {"status": "FAILED", "blocker": "stale"}}}
+        self.assertEqual(controller.progress(units, state)["blockers"], {"B": "active"})
+
+    def test_progress_prioritizes_failure_blocking_downstream(self) -> None:
+        units = [
+            {"id": "OLD", "kind": "reviewer", "depends_on": [], "ownership": [], "validation": []},
+            {"id": "V", "kind": "validator", "depends_on": [], "ownership": [], "validation": []},
+            {"id": "NEXT", "kind": "reviewer", "depends_on": ["V"], "ownership": [], "validation": []},
+        ]
+        state = {"units": {"OLD": {"status": "FAILED", "blocker": "stale"}, "V": {"status": "BLOCKED", "blocker": "active"}}}
+        self.assertEqual(controller.progress(units, state)["blockers"], {"V": "active"})
 
     def test_assignment_command_is_fresh_and_has_no_resume(self) -> None:
         first = controller.pi_command(Path("worker.md"), Path("/tmp/session-one"), "one", "capsule")
@@ -264,6 +282,32 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(controller.reconcile_runtime(repo, revised, interrupted, controller.INTEGRATION_REF))
         self.assertEqual(interrupted["units"]["NEXT"]["status"], "ACCEPTED")
         self.assertEqual(interrupted["dag_sha256"], controller.dag_hash(revised))
+
+    def test_validator_replan_preserves_gate_and_downstream(self) -> None:
+        original = [
+            {"id": "A", "kind": "writer", "depends_on": [], "ownership": ["a"], "validation": []},
+            {"id": "X", "kind": "writer", "depends_on": ["A"], "ownership": ["x"], "validation": []},
+            {"id": "V1", "kind": "validator", "depends_on": ["A"], "ownership": [], "validation": ["cargo check"]},
+            {"id": "RV", "kind": "reviewer", "depends_on": ["V1", "X"], "ownership": [], "validation": []},
+        ]
+        revised = [
+            original[0],
+            original[1],
+            {"id": "FIX", "kind": "writer", "depends_on": ["A"], "ownership": ["fix"], "validation": ["cargo test"]},
+            {"id": "V2", "kind": "validator", "depends_on": ["FIX"], "ownership": [], "validation": ["cargo check"]},
+            {"id": "RV", "kind": "reviewer", "depends_on": ["V2", "X"], "ownership": [], "validation": []},
+        ]
+        controller.validate_replan_transition(original[2], original, revised)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_replan_transition(original[2], original, [original[0]])
+        bypass = copy.deepcopy(revised)
+        bypass[3]["depends_on"] = ["A"]
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_replan_transition(original[2], original, bypass)
+        dropped_dependency = copy.deepcopy(revised)
+        dropped_dependency[4]["depends_on"] = ["V2"]
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_replan_transition(original[2], original, dropped_dependency)
 
     def test_continuous_replan_reaches_later_read_only_units(self) -> None:
         revised = {

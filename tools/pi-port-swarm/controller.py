@@ -371,6 +371,10 @@ def validate_result(unit: dict[str, Any], result: dict[str, Any], base: str) -> 
         raise ControllerError("non-mutating result must not return a candidate")
 
 
+def blocked_reason(result: dict[str, Any]) -> str:
+    return str(result.get("blocker") or result.get("reason") or result.get("summary") or "worker blocked")
+
+
 def allowed_changes(source: Path, base: str, candidate: str, ownership: list[str]) -> list[str]:
     changed = [line for line in git(source, "diff", "--name-only", f"{base}..{candidate}").splitlines() if line]
     if not changed:
@@ -431,9 +435,42 @@ def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, re
     state["dag_sha256"] = revised_hash
 
 
+def validate_replan_transition(source_unit: dict[str, Any], original_units: list[dict[str, Any]], revised_units: list[dict[str, Any]]) -> None:
+    if source_unit["kind"] != "validator":
+        return
+    source_id = source_unit["id"]
+    original_ids = {unit["id"] for unit in original_units}
+    revised = {unit["id"]: unit for unit in revised_units}
+    if source_id in revised:
+        raise ControllerError("validator replan must supersede the blocked validator")
+    downstream = [unit for unit in original_units if source_id in unit["depends_on"]]
+    replacements = [
+        unit for unit in revised_units
+        if unit["id"] not in original_ids
+        and unit["kind"] == "validator"
+        and unit["validation"] == source_unit["validation"]
+        and any(revised.get(dependency, {}).get("kind") == "writer" and dependency not in original_ids for dependency in unit["depends_on"])
+    ]
+    if len(replacements) != 1:
+        raise ControllerError("validator replan requires one fresh equivalent validator after a new repair writer")
+    replacement = replacements[0]["id"]
+    for unit in downstream:
+        required = (set(unit["depends_on"]) - {source_id}) | {replacement}
+        if unit["id"] not in revised or not required.issubset(revised[unit["id"]]["depends_on"]):
+            raise ControllerError("validator replan must preserve and reconnect direct downstream units")
+
+
 def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any], state_path: Path) -> tuple[str, bool]:
     require_integration_ref(integration_ref)
-    control = {"id": f"REPLAN-{unit['id']}", "kind": "checkpoint", "depends_on": [], "ownership": list(CONTROL_OWNERSHIP), "validation": ["python3 tools/pi-port-swarm/controller.py validate"], "intent": result.get("reason", "evidence-backed plan mutation")}
+    control = {
+        "id": f"REPLAN-{unit['id']}",
+        "kind": "checkpoint",
+        "depends_on": [],
+        "ownership": list(CONTROL_OWNERSHIP),
+        "validation": ["python3 tools/pi-port-swarm/controller.py validate"],
+        "intent": result.get("reason", "evidence-backed plan mutation"),
+        "source_unit": unit,
+    }
     worktree, session = create_worktree(source, state_dir, base, control, 1, pin)
     coordinator_result = launch(source, worktree, session, control, base, coordinator=True)
     validate_result(control, coordinator_result, base)
@@ -445,6 +482,8 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
         raise ControllerError("PLAN_CHANGE coordinator did not modify dag.json")
     revised = load_json(worktree / "tools/pi-port-swarm/dag.json")
     revised_units = validate_dag(revised)
+    original_units = validate_dag(json.loads(git(source, "show", f"{base}:{DAG_FILE}")))
+    validate_replan_transition(unit, original_units, revised_units)
     if pinned_gitlink(revised) != pin:
         raise ControllerError("coordinator changed the frozen Pi gitlink")
     revised_hash = dag_hash(revised)
@@ -481,7 +520,7 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
         result = launch(source, worktree, session, unit, base)
         validate_result(unit, result, base)
         if result["status"] == "BLOCKED":
-            record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "worker blocked")
+            record.update(status="BLOCKED", blocker=blocked_reason(result))
         elif result["status"] == "PLAN_CHANGE":
             record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "plan change requested")
             atomic_json(state_path, state)
@@ -530,9 +569,17 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
 
 def progress(units: list[dict[str, Any]], state: dict[str, Any]) -> dict[str, Any]:
     records = state.get("units", {})
+    by_id = {unit["id"]: unit for unit in units}
     done = [unit["id"] for unit in units if records.get(unit["id"], {}).get("status") == "ACCEPTED"]
     remaining = [unit["id"] for unit in units if unit["id"] not in done and records.get(unit["id"], {}).get("status") != "SUPERSEDED"]
-    blockers = {identifier: record.get("blocker") for identifier, record in records.items() if record.get("status") in {"FAILED", "BLOCKED", "RUNNING", "ACCEPTING"}}
+    failed = {identifier for identifier, record in records.items() if identifier in by_id and record.get("status") in {"FAILED", "BLOCKED", "RUNNING", "ACCEPTING"}}
+
+    def depends_on(identifier: str, dependency: str) -> bool:
+        return dependency in by_id[identifier]["depends_on"] or any(depends_on(child, dependency) for child in by_id[identifier]["depends_on"])
+
+    blocking = {identifier for identifier in failed if any(other != identifier and depends_on(other, identifier) for other in remaining)}
+    visible = blocking or failed
+    blockers = {identifier: records[identifier].get("blocker") for identifier in visible}
     return {"label": "DAG execution progress, not Pi fidelity completion", "total": len(units), "done": done, "remaining": remaining, "blockers": blockers}
 
 
@@ -587,6 +634,9 @@ def main() -> int:
     run_parser.add_argument("--continuous", action="store_true")
     retry_parser = sub.add_parser("retry")
     retry_parser.add_argument("--unit", required=True)
+    replan_parser = sub.add_parser("replan")
+    replan_parser.add_argument("--unit", required=True)
+    replan_parser.add_argument("--reason", required=True)
     args = parser.parse_args()
     try:
         source, dag_path, state_dir, state_path = paths(args)
@@ -617,6 +667,21 @@ def main() -> int:
                 record.update(status="RETRY", candidate=None, blocker=None)
                 atomic_json(state_path, state)
                 print(json.dumps({"status": "retry-ready", **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))
+                return 0
+            if args.command == "replan":
+                unit = next((unit for unit in units if unit["id"] == args.unit), None)
+                record = state.get("units", {}).get(args.unit)
+                if not unit or not record or record.get("status") not in {"FAILED", "BLOCKED"}:
+                    raise ControllerError("replan requires an active FAILED or BLOCKED unit")
+                base = integration_sha(source, INTEGRATION_REF)
+                record["base"] = base
+                result = {"status": "PLAN_CHANGE", "unit": args.unit, "base": base, "reason": args.reason}
+                candidate, replan_retry = accept_plan_change(source, state_dir, base, unit, result, pinned_gitlink(dag), INTEGRATION_REF, state, state_path)
+                record.update(status="RETRY" if replan_retry else "SUPERSEDED", candidate=candidate, blocker=None, plan_change=args.reason, replan_retry=replan_retry)
+                state.setdefault("history", []).append({"unit": args.unit, "status": record["status"], "base": base, "candidate": candidate, "at": int(time.time())})
+                atomic_json(state_path, state)
+                revised = load_dag(source, dag_path, INTEGRATION_REF)
+                print(json.dumps({"status": "replanned", **snapshot(source, revised, state, INTEGRATION_REF)}, sort_keys=True))
                 return 0
             while True:
                 outcome = run_one(source, dag, state, state_path, INTEGRATION_REF, state_dir, args.unit)
