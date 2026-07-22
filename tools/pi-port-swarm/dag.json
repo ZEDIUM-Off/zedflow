@@ -730,20 +730,36 @@
       "intent": "Repair CA-RV-FID-R8 blocker: match frozen Pi locale-aware, case-insensitive ls ordering for Unicode filenames by adding the required Unicode collation dependency and focused fidelity coverage."
     },
     {
-      "id": "CA-RV-FID-R9",
-      "kind": "reviewer",
+      "id": "CA-T2-R8-FIND-NUMERIC-LIMIT-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-T2-R7-LS-COLLATION-FIDELITY"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/find.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R9 blocker: preserve frozen Pi find limit semantics for all Type.Number inputs, including fractional and negative values, instead of silently replacing non-u64 values with the default limit, with focused fidelity coverage."
+    },
+    {
+      "id": "CA-RV-FID-R10",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T2-R8-FIND-NUMERIC-LIMIT-FIDELITY"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity re-review of the first coding-agent wave after Unicode ls collation is repaired."
+      "intent": "Fresh read-only frozen Pi fidelity re-review of the first coding-agent wave after find numeric limit semantics are repaired."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-R9"
+        "CA-RV-FID-R10"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
