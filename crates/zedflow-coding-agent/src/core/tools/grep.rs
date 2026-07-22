@@ -25,7 +25,7 @@ use crate::utils::tools_manager::ensure_tool;
 
 pub const DEFAULT_GREP_LIMIT: usize = 100;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GrepToolInput {
     pub pattern: String,
     pub path: Option<String>,
@@ -33,13 +33,13 @@ pub struct GrepToolInput {
     pub ignore_case: Option<bool>,
     pub literal: Option<bool>,
     pub context: Option<usize>,
-    pub limit: Option<usize>,
+    pub limit: Option<f64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct GrepToolDetails {
     pub truncation: Option<TruncationResult>,
-    pub match_limit_reached: Option<usize>,
+    pub match_limit_reached: Option<f64>,
     pub lines_truncated: bool,
 }
 
@@ -133,7 +133,7 @@ impl GrepTool {
                 )
             })?;
         let context = input.context.filter(|value| *value > 0).unwrap_or(0);
-        let limit = input.limit.unwrap_or(DEFAULT_GREP_LIMIT).max(1);
+        let limit = input.limit.unwrap_or(DEFAULT_GREP_LIMIT as f64).max(1.0);
 
         let mut arguments = vec![
             "--json".to_owned(),
@@ -228,7 +228,7 @@ impl GrepTool {
                         .map(str::to_owned),
                 });
             }
-            if match_count >= limit {
+            if match_count as f64 >= limit {
                 killed_due_to_limit = true;
                 let _ = child.start_kill();
                 break;
@@ -334,7 +334,7 @@ impl GrepTool {
         if let Some(limit) = match_limit_reached {
             notices.push(format!(
                 "{limit} matches limit reached. Use limit={} for more, or refine pattern",
-                limit.saturating_mul(2)
+                limit * 2.0
             ));
         }
         if truncation.truncated {
@@ -397,7 +397,7 @@ pub fn create_grep_tool_with_operations(
                 ignore_case: args.get("ignoreCase").and_then(ToolSchema::as_bool),
                 literal: args.get("literal").and_then(ToolSchema::as_bool),
                 context: number(&args, "context"),
-                limit: number(&args, "limit"),
+                limit: args.get("limit").and_then(ToolSchema::as_f64),
             };
             let result = tool
                 .execute_with_signal(input, signal.as_ref())

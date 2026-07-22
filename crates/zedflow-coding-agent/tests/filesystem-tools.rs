@@ -12,6 +12,7 @@ use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
 use zedflow_coding_agent::find::{
     FindOperations, FindTool, FindToolInput, create_find_tool, create_find_tool_with_operations,
 };
+use zedflow_coding_agent::grep::create_grep_tool;
 use zedflow_coding_agent::ls::{
     LsOperations, LsTool, LsToolInput, LsToolOptions, create_ls_tool, create_ls_tool_definition,
 };
@@ -544,6 +545,41 @@ async fn find_preserves_fractional_and_negative_number_limits() {
     .unwrap();
     assert_eq!(output(&result), "a\nb\n\n[-1 results limit reached]");
     assert_eq!(*limits.lock().unwrap(), [1.5, -1.0]);
+}
+
+#[tokio::test]
+async fn grep_preserves_fractional_and_negative_number_limits() {
+    let root = TempDir::new();
+    fs::write(root.as_ref().join("matches.txt"), "hit\nhit\nhit\n").unwrap();
+    let tool = create_grep_tool(&root);
+
+    let result = (tool.execute)(
+        "grep-fractional",
+        serde_yaml::from_str(r#"{"pattern":"hit","limit":1.5}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        output(&result),
+        "matches.txt:1: hit\nmatches.txt:2: hit\n\n[1.5 matches limit reached. Use limit=3 for more, or refine pattern]"
+    );
+    assert_eq!(result.details["matchLimitReached"].as_f64(), Some(1.5));
+
+    let result = (tool.execute)(
+        "grep-negative",
+        serde_yaml::from_str(r#"{"pattern":"hit","limit":-1}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        output(&result),
+        "matches.txt:1: hit\n\n[1 matches limit reached. Use limit=2 for more, or refine pattern]"
+    );
+    assert_eq!(result.details["matchLimitReached"].as_f64(), Some(1.0));
 }
 
 #[cfg(unix)]
