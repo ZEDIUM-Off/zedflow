@@ -21,17 +21,17 @@ use crate::utils::tools_manager::ensure_tool;
 
 pub const DEFAULT_FIND_LIMIT: usize = 1_000;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FindToolInput {
     pub pattern: String,
     pub path: Option<String>,
-    pub limit: Option<usize>,
+    pub limit: Option<f64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FindToolDetails {
     pub truncation: Option<TruncationResult>,
-    pub result_limit_reached: Option<usize>,
+    pub result_limit_reached: Option<f64>,
 }
 
 pub type FindToolResult = AgentToolResult<Option<FindToolDetails>>;
@@ -41,10 +41,10 @@ pub type FindGlobOperation = Arc<
     dyn Fn(String, PathBuf, FindGlobOptions) -> FindOperationFuture<Vec<PathBuf>> + Send + Sync,
 >;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FindGlobOptions {
     pub ignore: Vec<String>,
-    pub limit: usize,
+    pub limit: f64,
 }
 
 #[derive(Clone)]
@@ -93,7 +93,7 @@ impl FindTool {
     ) -> io::Result<FindToolResult> {
         check_aborted(signal)?;
         let search_path = resolve_to_cwd(input.path.as_deref().unwrap_or("."), &self.cwd)?;
-        let effective_limit = input.limit.unwrap_or(DEFAULT_FIND_LIMIT);
+        let effective_limit = input.limit.unwrap_or(DEFAULT_FIND_LIMIT as f64);
 
         if let Some(operations) = &self.operations {
             if !(operations.exists)(search_path.clone()).await? {
@@ -245,10 +245,7 @@ fn build_find_tool(tool: FindTool) -> AgentTool {
                     .get("path")
                     .and_then(|value| value.as_str())
                     .map(str::to_owned),
-                limit: args
-                    .get("limit")
-                    .and_then(|value| value.as_u64())
-                    .and_then(|value| usize::try_from(value).ok()),
+                limit: args.get("limit").and_then(|value| value.as_f64()),
             };
             let result = tool
                 .execute_with_signal(input, signal.as_ref())
@@ -296,7 +293,7 @@ fn build_find_tool(tool: FindTool) -> AgentTool {
 
 fn format_result(
     paths: Vec<String>,
-    effective_limit: usize,
+    effective_limit: f64,
     include_limit_hint: bool,
 ) -> FindToolResult {
     if paths.is_empty() {
@@ -307,7 +304,7 @@ fn format_result(
         };
     }
 
-    let result_limit_reached = (paths.len() >= effective_limit).then_some(effective_limit);
+    let result_limit_reached = (paths.len() as f64 >= effective_limit).then_some(effective_limit);
     let raw_output = paths.join("\n");
     let truncation = truncate_head(
         &raw_output,
@@ -323,7 +320,7 @@ fn format_result(
         if include_limit_hint {
             notice.push_str(&format!(
                 ". Use limit={} for more, or refine pattern",
-                limit.saturating_mul(2)
+                limit * 2.0
             ));
         }
         notices.push(notice);

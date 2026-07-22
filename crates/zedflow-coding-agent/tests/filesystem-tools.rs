@@ -9,7 +9,9 @@ use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 use zedflow_agent::types::{AgentTool, AgentToolResult, AgentToolResultContent};
-use zedflow_coding_agent::find::{FindOperations, FindTool, FindToolInput, create_find_tool};
+use zedflow_coding_agent::find::{
+    FindOperations, FindTool, FindToolInput, create_find_tool, create_find_tool_with_operations,
+};
 use zedflow_coding_agent::ls::{
     LsOperations, LsTool, LsToolInput, LsToolOptions, create_ls_tool, create_ls_tool_definition,
 };
@@ -479,7 +481,7 @@ async fn find_uses_injected_operations_before_provisioning_fd() {
             Box::pin(async move {
                 assert_eq!(pattern, "**/*.rs");
                 assert_eq!(options.ignore, ["**/node_modules/**", "**/.git/**"]);
-                assert_eq!(options.limit, 2);
+                assert_eq!(options.limit, 2.0);
                 calls.lock().unwrap().push(("glob", cwd.clone()));
                 Ok(vec![cwd.join("a.rs"), cwd.join("nested/b.rs")])
             })
@@ -490,7 +492,7 @@ async fn find_uses_injected_operations_before_provisioning_fd() {
         .execute(FindToolInput {
             pattern: "**/*.rs".into(),
             path: Some("search".into()),
-            limit: Some(2),
+            limit: Some(2.0),
         })
         .await
         .unwrap();
@@ -503,7 +505,45 @@ async fn find_uses_injected_operations_before_provisioning_fd() {
         output(&result),
         "a.rs\nnested/b.rs\n\n[2 results limit reached]"
     );
-    assert_eq!(result.details.unwrap().result_limit_reached, Some(2));
+    assert_eq!(result.details.unwrap().result_limit_reached, Some(2.0));
+}
+
+#[tokio::test]
+async fn find_preserves_fractional_and_negative_number_limits() {
+    let root = PathBuf::from("/virtual-find-root");
+    let limits = Arc::new(Mutex::new(Vec::new()));
+    let glob_limits = Arc::clone(&limits);
+    let tool = create_find_tool_with_operations(
+        &root,
+        FindOperations {
+            exists: Arc::new(|_| Box::pin(async { Ok(true) })),
+            glob: Arc::new(move |_, cwd, options| {
+                glob_limits.lock().unwrap().push(options.limit);
+                Box::pin(async move { Ok(vec![cwd.join("a"), cwd.join("b")]) })
+            }),
+        },
+    );
+
+    let result = (tool.execute)(
+        "find-fractional",
+        serde_yaml::from_str(r#"{"pattern":"*","limit":1.5}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(output(&result), "a\nb\n\n[1.5 results limit reached]");
+
+    let result = (tool.execute)(
+        "find-negative",
+        serde_yaml::from_str(r#"{"pattern":"*","limit":-1}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(output(&result), "a\nb\n\n[-1 results limit reached]");
+    assert_eq!(*limits.lock().unwrap(), [1.5, -1.0]);
 }
 
 #[cfg(unix)]
@@ -580,12 +620,12 @@ async fn find_matches_path_globs_and_respects_gitignore() {
         .execute(FindToolInput {
             pattern: "**/*.spec.ts".into(),
             path: Some(".".into()),
-            limit: Some(1),
+            limit: Some(1.0),
         })
         .await
         .unwrap();
     let text = output(&result);
     assert!(!text.contains("ignored.spec.ts"));
     assert!(text.contains("1 results limit reached. Use limit=2 for more, or refine pattern"));
-    assert_eq!(result.details.unwrap().result_limit_reached, Some(1));
+    assert_eq!(result.details.unwrap().result_limit_reached, Some(1.0));
 }
