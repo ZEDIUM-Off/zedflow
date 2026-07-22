@@ -6,13 +6,14 @@ use zedflow_coding_agent::{
         format_no_models_available_message, get_provider_login_help,
     },
     config::{
-        APP_NAME, APP_TITLE, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR, PACKAGE_NAME,
-        expand_tilde_path, get_agent_dir, get_auth_path, get_bin_dir,
-        get_bundled_interactive_asset_path, get_changelog_path, get_custom_themes_dir,
-        get_debug_log_path, get_docs_path, get_examples_path, get_export_template_dir,
-        get_interactive_assets_dir, get_models_path, get_package_dir, get_package_json_path,
-        get_prompts_dir, get_readme_path, get_sessions_dir, get_settings_path,
-        get_share_viewer_url, get_themes_dir, get_tools_dir,
+        APP_NAME, APP_TITLE, CONFIG_DIR_NAME, ENV_AGENT_DIR, ENV_SESSION_DIR, InstallMethod,
+        PACKAGE_NAME, detect_install_method_from_paths, expand_tilde_path, get_agent_dir,
+        get_auth_path, get_bin_dir, get_bundled_interactive_asset_path, get_changelog_path,
+        get_custom_themes_dir, get_debug_log_path, get_docs_path, get_examples_path,
+        get_export_template_dir, get_interactive_assets_dir, get_models_path, get_package_dir,
+        get_package_json_path, get_prompts_dir, get_readme_path, get_sessions_dir,
+        get_settings_path, get_share_viewer_url, get_themes_dir, get_tools_dir,
+        get_update_instruction_for_method,
     },
 };
 
@@ -269,5 +270,35 @@ fn formats_provider_login_guidance_like_pi() {
     assert_eq!(
         format_no_api_key_found_message("anthropic"),
         format!("No API key found for anthropic.\n\n{help}")
+    );
+}
+
+#[test]
+fn detects_install_methods_and_formats_update_instructions_like_pi() {
+    let package = PathBuf::from("C:\\Users\\Admin\\pnpm\\global\\5\\.pnpm\\pkg\\node_modules\\pkg");
+    assert_eq!(
+        detect_install_method_from_paths(&package, &PathBuf::from("node.exe"), false, false),
+        InstallMethod::Pnpm
+    );
+    assert_eq!(
+        detect_install_method_from_paths(
+            &PathBuf::from("/home/me/.bun/install/global/node_modules/pkg"),
+            &PathBuf::from("/usr/bin/node"),
+            false,
+            false,
+        ),
+        InstallMethod::Bun
+    );
+    assert_eq!(
+        get_update_instruction_for_method(InstallMethod::Pnpm, PACKAGE_NAME),
+        "Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @earendil-works/pi-coding-agent"
+    );
+    assert_eq!(
+        get_update_instruction_for_method(InstallMethod::Unknown, PACKAGE_NAME),
+        "Update @earendil-works/pi-coding-agent using the package manager, wrapper, or source checkout that provides this installation."
+    );
+    assert_eq!(
+        get_update_instruction_for_method(InstallMethod::BunBinary, PACKAGE_NAME),
+        "Download from: https://github.com/earendil-works/pi-mono/releases/latest"
     );
 }

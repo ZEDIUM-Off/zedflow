@@ -11,6 +11,79 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const ENV_AGENT_DIR: &str = "PI_CODING_AGENT_DIR";
 pub const ENV_SESSION_DIR: &str = "PI_CODING_AGENT_SESSION_DIR";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InstallMethod {
+    BunBinary,
+    Npm,
+    Pnpm,
+    Yarn,
+    Bun,
+    Unknown,
+}
+
+pub fn detect_install_method() -> InstallMethod {
+    detect_install_method_from_paths(
+        &get_package_dir(),
+        &env::current_exe().unwrap_or_default(),
+        false,
+        false,
+    )
+}
+
+pub fn detect_install_method_from_paths(
+    package_dir: &Path,
+    executable_path: &Path,
+    is_bun_binary: bool,
+    is_bun_runtime: bool,
+) -> InstallMethod {
+    if is_bun_binary {
+        return InstallMethod::BunBinary;
+    }
+
+    let resolved_path = format!("{}\0{}", package_dir.display(), executable_path.display())
+        .to_lowercase()
+        .replace('\\', "/");
+
+    if resolved_path.contains("/pnpm/") || resolved_path.contains("/.pnpm/") {
+        InstallMethod::Pnpm
+    } else if resolved_path.contains("/yarn/") || resolved_path.contains("/.yarn/") {
+        InstallMethod::Yarn
+    } else if is_bun_runtime || resolved_path.contains("/install/global/node_modules/") {
+        InstallMethod::Bun
+    } else if resolved_path.contains("/npm/") || resolved_path.contains("/node_modules/") {
+        InstallMethod::Npm
+    } else {
+        InstallMethod::Unknown
+    }
+}
+
+pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &str) -> String {
+    let command = match method {
+        InstallMethod::Pnpm => {
+            format!("pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 {package_name}")
+        }
+        InstallMethod::Yarn => {
+            format!("yarn global add --ignore-scripts {package_name}")
+        }
+        InstallMethod::Bun => {
+            format!("bun install -g --ignore-scripts --minimum-release-age=0 {package_name}")
+        }
+        InstallMethod::Npm => {
+            format!("npm install -g --ignore-scripts --min-release-age=0 {package_name}")
+        }
+        InstallMethod::BunBinary => {
+            return "Download from: https://github.com/earendil-works/pi-mono/releases/latest"
+                .to_owned();
+        }
+        InstallMethod::Unknown => {
+            return format!(
+                "Update {package_name} using the package manager, wrapper, or source checkout that provides this installation."
+            );
+        }
+    };
+    format!("Run: {command}")
+}
+
 pub fn expand_tilde_path(path: &str) -> PathBuf {
     if path == "~" {
         return home_dir();
