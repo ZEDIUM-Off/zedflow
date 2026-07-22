@@ -1317,20 +1317,50 @@
       "intent": "Fresh mechanical acceptance of the bounded coding-agent authentication storage wave."
     },
     {
-      "id": "CA-RV-FID-V7",
-      "kind": "reviewer",
+      "id": "CA-C8-R3-PERSIST-ERROR-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-V7"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/auth-storage.rs",
+        "crates/zedflow-coding-agent/tests/auth-storage.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test auth-storage"
+      ],
+      "intent": "Match frozen Pi authentication storage by recording every persistProviderChange failure for drainErrors(), including parse, write, and lock failures, with focused regression coverage."
+    },
+    {
+      "id": "CA-V7-R1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C8-R3-PERSIST-ERROR-FIDELITY"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the repaired bounded coding-agent authentication storage wave."
+    },
+    {
+      "id": "CA-RV-FID-V7-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V7-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent authentication storage wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the repaired bounded coding-agent authentication storage wave."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V7",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V7"
+        "CA-RV-FID-V7-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
