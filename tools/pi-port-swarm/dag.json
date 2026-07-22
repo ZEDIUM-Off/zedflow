@@ -647,20 +647,10 @@
       "intent": "Repair CA-RV-FID-R4 blocker: support injected grep directory-status and context-file read operations while retaining local filesystem defaults, propagate options through the direct tool factory, and add focused disk-independent coverage."
     },
     {
-      "id": "CA-RV-FID-R5",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-T3-R6-INJECTED-GREP-OPERATIONS"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after injected read and grep operations are repaired."
-    },
-    {
       "id": "CA-T2-R3-INJECTED-LS-OPERATIONS",
       "kind": "writer",
       "depends_on": [
-        "CA-RV-FID-R5"
+        "CA-T3-R6-INJECTED-GREP-OPERATIONS"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools/ls.rs",
