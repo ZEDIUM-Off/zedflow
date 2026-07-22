@@ -19,10 +19,21 @@ pub fn expand_tilde_path(path: &str) -> PathBuf {
 }
 
 pub fn get_package_dir() -> PathBuf {
-    env::var_os("PI_PACKAGE_DIR")
+    env::var("PI_PACKAGE_DIR")
+        .ok()
         .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
+        .map(|path| normalize_path(&path))
         .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
+fn normalize_path(path: &str) -> PathBuf {
+    if path.starts_with("file://") {
+        return reqwest::Url::parse(path)
+            .expect("PI_PACKAGE_DIR must be a valid file URL")
+            .to_file_path()
+            .expect("PI_PACKAGE_DIR file URL must identify a local path");
+    }
+    expand_tilde_path(path)
 }
 
 pub fn get_readme_path() -> PathBuf {

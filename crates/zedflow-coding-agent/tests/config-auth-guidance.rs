@@ -36,6 +36,47 @@ fn exposes_package_identity_and_asset_paths() {
 }
 
 #[test]
+fn package_directory_overrides_are_normalized() {
+    let executable = std::env::current_exe().unwrap();
+    let home = std::env::temp_dir().join("zedflow package home");
+    let tilde_status = std::process::Command::new(&executable)
+        .args(["--ignored", "--exact", "tilde_package_directory_child"])
+        .env("HOME", &home)
+        .env("PI_PACKAGE_DIR", "~/pi package")
+        .status()
+        .unwrap();
+    assert!(tilde_status.success());
+
+    let package_dir = home.join("pi package");
+    let file_url = reqwest::Url::from_directory_path(&package_dir).unwrap();
+    let file_url_status = std::process::Command::new(executable)
+        .args(["--ignored", "--exact", "file_url_package_directory_child"])
+        .env("PI_PACKAGE_DIR", file_url.as_str())
+        .env("EXPECTED_PACKAGE_DIR", &package_dir)
+        .status()
+        .unwrap();
+    assert!(file_url_status.success());
+}
+
+#[test]
+#[ignore]
+fn tilde_package_directory_child() {
+    assert_eq!(
+        get_package_dir(),
+        PathBuf::from(std::env::var_os("HOME").unwrap()).join("pi package")
+    );
+}
+
+#[test]
+#[ignore]
+fn file_url_package_directory_child() {
+    assert_eq!(
+        get_package_dir(),
+        PathBuf::from(std::env::var_os("EXPECTED_PACKAGE_DIR").unwrap())
+    );
+}
+
+#[test]
 fn empty_directory_overrides_use_pi_defaults() {
     let status = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--ignored", "--exact", "empty_directory_overrides_child"])
