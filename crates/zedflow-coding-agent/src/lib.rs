@@ -23,6 +23,10 @@ pub mod output_guard;
 pub mod provider_display_names;
 #[path = "core/session-cwd.rs"]
 pub mod session_cwd;
+#[path = "core/slash-commands.rs"]
+pub mod slash_commands;
+#[path = "core/source-info.rs"]
+pub mod source_info;
 #[path = "core/timings.rs"]
 pub mod timings;
 
@@ -53,7 +57,7 @@ pub mod write;
 pub mod core {
     pub use crate::{
         compaction, defaults, diagnostics, event_bus, experimental, messages, output_guard,
-        provider_display_names, session_cwd, timings,
+        provider_display_names, session_cwd, slash_commands, source_info, timings,
     };
 
     pub mod tools {
