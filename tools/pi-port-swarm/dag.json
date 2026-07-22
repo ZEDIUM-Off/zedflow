@@ -1815,6 +1815,62 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the config and authentication-guidance primitives wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C15-CONFIG-DERIVED-PATH-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V10"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Port only the remaining frozen coding-agent package asset and agent-directory-derived path primitives plus share-viewer URL formatting, without beginning install/update detection or settings loading."
+    },
+    {
+      "id": "CA-V13",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C15-CONFIG-DERIVED-PATH-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent derived config path primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V13",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V13"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent derived config path primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V11",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V13"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the derived config path primitives wave and assign the next bounded package wave."
     }
   ]
 }
