@@ -145,10 +145,11 @@
     "CA-C18-PATH-COMPARISON-PRIMITIVES",
     "CA-V16",
     "CA-RV-FID-V16",
-    "CA-NEXT-PORT-DAG-V14"
+    "CA-NEXT-PORT-DAG-V14",
+    "CA-RV-FID-V17"
   ],
   "current": {
-    "id": "CA-C19-ENTRYPOINT-DISCOVERY-PRIMITIVES",
+    "id": "TUI-C1-PURE-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
