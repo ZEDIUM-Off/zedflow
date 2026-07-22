@@ -2,12 +2,19 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use serde::{Deserialize, Serialize};
 use zedflow_ai::{
+    auth::types::{AuthFuture, AuthLoginCallbacks, AuthResult, OAuthCredential},
     compat,
-    types::{Api, Model, ModelCompat, ModelCost, ModelInput, ThinkingLevelMap},
+    types::{
+        Api, Model, ModelCompat, ModelCost, ModelInput, SimpleStreamOptions, ThinkingLevelMap,
+    },
+    utils::oauth::index::{
+        OAuthProviderInterface, register_oauth_provider, unregister_oauth_provider,
+    },
 };
 
 use crate::{
@@ -94,7 +101,7 @@ pub struct ResolvedRequestAuth {
     pub env: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ProviderConfigInput {
     pub name: Option<String>,
     pub base_url: Option<String>,
@@ -103,6 +110,8 @@ pub struct ProviderConfigInput {
     pub headers: Option<HashMap<String, String>>,
     pub auth_header: bool,
     pub models: Option<Vec<Model>>,
+    pub stream_simple: Option<compat::ApiStreamSimpleFunction>,
+    pub oauth: Option<Arc<dyn OAuthProviderInterface>>,
 }
 
 impl Default for ProviderConfigInput {
@@ -115,6 +124,8 @@ impl Default for ProviderConfigInput {
             headers: None,
             auth_header: false,
             models: None,
+            stream_simple: None,
+            oauth: None,
         }
     }
 }
@@ -152,6 +163,10 @@ impl ModelRegistry {
         value
     }
     pub fn refresh(&mut self) {
+        for name in self.registered_providers.keys() {
+            compat::unregister_api_providers(&format!("provider:{name}"));
+            unregister_oauth_provider(name);
+        }
         self.provider_request_configs.clear();
         self.model_request_headers.clear();
         self.provider_display_names.clear();
@@ -469,9 +484,22 @@ impl ModelRegistry {
         name: &str,
         config: ProviderConfigInput,
     ) -> Result<(), String> {
+        if config.stream_simple.is_some() && config.api.is_none() {
+            return Err(format!(
+                "Provider {name}: \"api\" is required when registering streamSimple."
+            ));
+        }
         if config.models.as_ref().is_some_and(|v| !v.is_empty()) && config.base_url.is_none() {
             return Err(format!(
                 "Provider {name}: \"baseUrl\" is required when defining models."
+            ));
+        }
+        if config.models.as_ref().is_some_and(|v| !v.is_empty())
+            && config.api_key.is_none()
+            && config.oauth.is_none()
+        {
+            return Err(format!(
+                "Provider {name}: \"apiKey\" or \"oauth\" is required when defining models."
             ));
         }
         if let Some(models) = &config.models {
@@ -493,10 +521,39 @@ impl ModelRegistry {
     }
     pub fn unregister_provider(&mut self, name: &str) {
         if self.registered_providers.remove(name).is_some() {
+            compat::unregister_api_providers(&format!("provider:{name}"));
+            unregister_oauth_provider(name);
             self.refresh()
         }
     }
     fn apply_provider_config(&mut self, name: &str, config: &ProviderConfigInput) {
+        if let Some(oauth) = &config.oauth {
+            register_oauth_provider(Arc::new(NamedOAuthProvider {
+                id: name.into(),
+                inner: Arc::clone(oauth),
+            }));
+        }
+        if let (Some(api), Some(stream_simple)) = (&config.api, &config.stream_simple) {
+            let simple_for_stream = Arc::clone(stream_simple);
+            compat::register_api_provider(
+                compat::ApiProvider {
+                    api: api.clone(),
+                    stream: Arc::new(move |model, context, options| {
+                        simple_for_stream(
+                            model,
+                            context,
+                            options.map(|stream| SimpleStreamOptions {
+                                stream,
+                                reasoning: None,
+                                thinking_budgets: None,
+                            }),
+                        )
+                    }),
+                    stream_simple: Arc::clone(stream_simple),
+                },
+                Some(format!("provider:{name}")),
+            );
+        }
         self.store_request_config(
             name,
             config.api_key.clone(),
@@ -526,6 +583,38 @@ impl ModelRegistry {
                 model.base_url.clone_from(url);
             }
         }
+    }
+}
+
+struct NamedOAuthProvider {
+    id: String,
+    inner: Arc<dyn OAuthProviderInterface>,
+}
+
+impl OAuthProviderInterface for NamedOAuthProvider {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn uses_callback_server(&self) -> bool {
+        self.inner.uses_callback_server()
+    }
+    fn login<'a>(
+        &'a self,
+        callbacks: &'a dyn AuthLoginCallbacks,
+    ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
+        self.inner.login(callbacks)
+    }
+    fn refresh_token<'a>(
+        &'a self,
+        credentials: &'a OAuthCredential,
+    ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
+        self.inner.refresh_token(credentials)
+    }
+    fn get_api_key(&self, credentials: &OAuthCredential) -> String {
+        self.inner.get_api_key(credentials)
     }
 }
 
@@ -611,5 +700,11 @@ fn merge_provider_input(old: &mut ProviderConfigInput, new: &ProviderConfigInput
     }
     if new.auth_header {
         old.auth_header = true
+    }
+    if new.stream_simple.is_some() {
+        old.stream_simple.clone_from(&new.stream_simple)
+    }
+    if new.oauth.is_some() {
+        old.oauth.clone_from(&new.oauth)
     }
 }

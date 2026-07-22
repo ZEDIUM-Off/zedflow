@@ -1,5 +1,14 @@
-use std::fs;
-use zedflow_coding_agent::{auth_storage::AuthStorage, model_registry::ModelRegistry};
+use std::{fs, sync::Arc};
+use zedflow_ai::{
+    auth::types::{AuthFuture, AuthLoginCallbacks, AuthResult, OAuthCredential},
+    compat::{self, CompatError},
+    types::{Context, Model},
+    utils::oauth::index::{OAuthProviderInterface, get_oauth_provider},
+};
+use zedflow_coding_agent::{
+    auth_storage::AuthStorage,
+    model_registry::{ModelRegistry, ProviderConfigInput},
+};
 
 fn temp_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
@@ -63,6 +72,66 @@ async fn loads_custom_models_overrides_and_resolves_request_auth() {
     );
 
     fs::remove_file(path).ok();
+}
+
+#[test]
+fn registers_custom_stream_and_oauth_provider() {
+    struct OAuth;
+    impl OAuthProviderInterface for OAuth {
+        fn id(&self) -> &str {
+            "ignored"
+        }
+        fn name(&self) -> &str {
+            "Custom OAuth"
+        }
+        fn login<'a>(
+            &'a self,
+            _: &'a dyn AuthLoginCallbacks,
+        ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
+            Box::pin(async { Err("unused".into()) })
+        }
+        fn refresh_token<'a>(
+            &'a self,
+            _: &'a OAuthCredential,
+        ) -> AuthFuture<'a, AuthResult<OAuthCredential>> {
+            Box::pin(async { Err("unused".into()) })
+        }
+        fn get_api_key(&self, credentials: &OAuthCredential) -> String {
+            credentials.access.clone()
+        }
+    }
+
+    let mut registry = ModelRegistry::in_memory(AuthStorage::in_memory(Default::default()));
+    let api = "custom-test-api".to_string();
+    registry
+        .register_provider(
+            "dynamic",
+            ProviderConfigInput {
+                api: Some(api.clone()),
+                oauth: Some(Arc::new(OAuth)),
+                stream_simple: Some(Arc::new(|_, _, _| {
+                    Err(CompatError::Porting("called".into()))
+                })),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let model = Model {
+        api,
+        provider: "dynamic".into(),
+        ..Default::default()
+    };
+    assert!(
+        matches!(compat::stream_simple(&model, &Context::default(), None), Err(CompatError::Porting(message)) if message == "called")
+    );
+    assert_eq!(
+        get_oauth_provider("dynamic").unwrap().name(),
+        "Custom OAuth"
+    );
+
+    registry.unregister_provider("dynamic");
+    assert!(get_oauth_provider("dynamic").is_none());
 }
 
 #[test]
