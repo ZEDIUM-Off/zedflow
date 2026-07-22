@@ -679,20 +679,37 @@
       "intent": "Repair CA-RV-FID-R5 blocker: match frozen Pi WriteToolOptions.operations by routing injected directory-creation and file-write operations through createWriteToolDefinition and createWriteTool while retaining local filesystem defaults and adding focused disk-independent coverage."
     },
     {
-      "id": "CA-RV-FID-R6",
-      "kind": "reviewer",
+      "id": "CA-T2-R5-OPTIONS-FACTORY-API",
+      "kind": "writer",
       "depends_on": [
         "CA-T2-R4-INJECTED-WRITE-OPERATIONS"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
+        "crates/zedflow-coding-agent/src/core/tools/write.rs",
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test filesystem-tools"
+      ],
+      "intent": "Repair CA-RV-FID-R6 blocker: expose the frozen Pi option-bearing definition and direct factory APIs for ls and write so callers can supply operations while preserving local filesystem defaults, with focused API coverage."
+    },
+    {
+      "id": "CA-RV-FID-R7",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-T2-R5-OPTIONS-FACTORY-API"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave: verify LsToolOptions.operations and WriteToolOptions.operations reach both definition and direct factory paths, injected backends replace hardcoded tokio filesystem calls, and local filesystem defaults remain intact."
+      "intent": "Fresh read-only frozen Pi fidelity re-review of the first coding-agent wave after the option-bearing ls and write definition and direct factory APIs are repaired."
     },
     {
       "id": "CA-NEXT-PORT-DAG",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-R6"
+        "CA-RV-FID-R7"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
