@@ -117,10 +117,16 @@
     "CA-C14-R5-OS-HOME-FALLBACK-FIDELITY",
     "CA-C14-R6-RELATIVE-PACKAGE-DIR-FIDELITY",
     "CA-RV-FID-V12-R7",
-    "CA-NEXT-PORT-DAG-V10"
+    "CA-NEXT-PORT-DAG-V10",
+    "CA-C15-CONFIG-DERIVED-PATH-PRIMITIVES",
+    "CA-V13",
+    "CA-C15-R1-BUNDLED-BINARY-ASSET-PATH-FIDELITY",
+    "CA-V13-R1",
+    "CA-RV-FID-V13-R1",
+    "CA-NEXT-PORT-DAG-V11"
   ],
   "current": {
-    "id": "CA-C15-CONFIG-DERIVED-PATH-PRIMITIVES",
+    "id": "CA-C16-INSTALL-METHOD-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,

@@ -1901,6 +1901,69 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the derived config path primitives wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C16-INSTALL-METHOD-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V11"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Port only frozen coding-agent install-method detection and pure update-instruction formatting primitives, without beginning global package-manager discovery, path writability checks, command execution, or settings loading."
+    },
+    {
+      "id": "CA-V14",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C16-INSTALL-METHOD-PRIMITIVES"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent install-method primitives wave."
+    },
+    {
+      "id": "CA-RV-FID-V14",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V14"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs",
+        "references/pi/packages/coding-agent/src/config.ts",
+        "references/pi/packages/coding-agent/test/config.test.ts"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent install-method detection and update-instruction formatting primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V12",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V14"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the install-method primitives wave and assign the next bounded package wave."
     }
   ]
 }
