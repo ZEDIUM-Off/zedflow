@@ -164,24 +164,42 @@ fn parse_hex(s: &str) -> Option<RgbColor> {
     }
 }
 pub fn is_osc11_background_color_response(data: &str) -> bool {
-    data.starts_with("\x1b]11;") && (data.ends_with('\x07') || data.ends_with("\x1b\\"))
+    let Some(value) = data.strip_prefix("\x1b]11;") else {
+        return false;
+    };
+    let Some(value) = value
+        .strip_suffix('\x07')
+        .or_else(|| value.strip_suffix("\x1b\\"))
+    else {
+        return false;
+    };
+    !value.contains(['\x07', '\x1b'])
 }
 pub fn parse_osc11_background_color(data: &str) -> Option<RgbColor> {
-    if !is_osc11_background_color_response(data) {
-        return None;
-    }
     let value = data
         .strip_prefix("\x1b]11;")?
         .strip_suffix('\x07')
         .or_else(|| data.strip_prefix("\x1b]11;")?.strip_suffix("\x1b\\"))?
         .trim();
+    if !is_osc11_background_color_response(data) {
+        return None;
+    }
     if let Some(hex) = value.strip_prefix('#') {
         return parse_hex(hex);
     }
-    let value = value
-        .strip_prefix("rgba:")
-        .or_else(|| value.strip_prefix("rgb:"))
-        .unwrap_or(value);
+    let value = if value
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("rgba:"))
+    {
+        &value[5..]
+    } else if value
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("rgb:"))
+    {
+        &value[4..]
+    } else {
+        value
+    };
     let mut channels = value.split('/');
     Some(RgbColor {
         r: osc_channel(channels.next()?)?,

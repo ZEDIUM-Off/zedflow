@@ -28,6 +28,17 @@ fn terminal_colors_parse_supported_responses() {
         })
     );
     assert_eq!(
+        parse_osc11_background_color("\x1b]11;RgB:0000/8000/ffff\x07"),
+        Some(RgbColor {
+            r: 0,
+            g: 128,
+            b: 255
+        })
+    );
+    assert!(!is_osc11_background_color_response("x\x1b]11;#ffffff\x07"));
+    assert!(!is_osc11_background_color_response("\x1b]11;#ffffff\x07x"));
+    assert!(!is_osc11_background_color_response("\x1b]11;#ff\x1bff\x07"));
+    assert_eq!(
         parse_terminal_color_scheme_report("\x1b[?997;2n"),
         Some(TerminalColorScheme::Light)
     );
