@@ -89,7 +89,22 @@ pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &s
 
 fn quote_display_arg(path: &Path) -> String {
     let path = path.to_string_lossy();
-    if path.chars().any(char::is_whitespace) {
+    if path.chars().any(|character| {
+        matches!(
+            character,
+            '\u{0009}'..='\u{000d}'
+                | '\u{0020}'
+                | '\u{00a0}'
+                | '\u{1680}'
+                | '\u{2000}'..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+        )
+    }) {
         format!("\"{path}\"")
     } else {
         path.into_owned()

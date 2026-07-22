@@ -313,16 +313,26 @@ fn detects_install_methods_and_formats_update_instructions_like_pi() {
         .unwrap();
     assert!(status.success());
 
-    let prefix = std::env::temp_dir().join("pi'npm-prefix");
-    let status = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--ignored", "--exact", "unquoted_npm_prefix_child"])
-        .env(
-            "PI_PACKAGE_DIR",
-            prefix.join("lib/node_modules/@earendil-works/pi-coding-agent"),
-        )
-        .status()
-        .unwrap();
-    assert!(status.success());
+    for (test, prefix) in [
+        ("unquoted_npm_prefix_child", "pi'npm-prefix"),
+        (
+            "javascript_whitespace_npm_prefix_child",
+            "pi\u{feff}npm-prefix",
+        ),
+        ("unicode_nel_npm_prefix_child", "pi\u{85}npm-prefix"),
+    ] {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--ignored", "--exact", test])
+            .env(
+                "PI_PACKAGE_DIR",
+                std::env::temp_dir()
+                    .join(prefix)
+                    .join("lib/node_modules/@earendil-works/pi-coding-agent"),
+            )
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
 }
 
 #[test]
@@ -341,12 +351,33 @@ fn inferred_npm_prefix_child() {
 #[test]
 #[ignore]
 fn unquoted_npm_prefix_child() {
-    let prefix = std::env::temp_dir().join("pi'npm-prefix");
+    assert_npm_prefix_display("pi'npm-prefix", false);
+}
+
+#[test]
+#[ignore]
+fn javascript_whitespace_npm_prefix_child() {
+    assert_npm_prefix_display("pi\u{feff}npm-prefix", true);
+}
+
+#[test]
+#[ignore]
+fn unicode_nel_npm_prefix_child() {
+    assert_npm_prefix_display("pi\u{85}npm-prefix", false);
+}
+
+fn assert_npm_prefix_display(name: &str, quoted: bool) {
+    let prefix = std::env::temp_dir().join(name);
+    let prefix = prefix.display();
+    let prefix = if quoted {
+        format!("\"{prefix}\"")
+    } else {
+        prefix.to_string()
+    };
     assert_eq!(
         get_update_instruction_for_method(InstallMethod::Npm, PACKAGE_NAME),
         format!(
-            "Run: npm --prefix {} install -g --ignore-scripts --min-release-age=0 {PACKAGE_NAME}",
-            prefix.display()
+            "Run: npm --prefix {prefix} install -g --ignore-scripts --min-release-age=0 {PACKAGE_NAME}"
         )
     );
 }
