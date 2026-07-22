@@ -147,10 +147,11 @@
     "CA-RV-FID-V16",
     "CA-NEXT-PORT-DAG-V14",
     "CA-RV-FID-V17",
-    "CA-NEXT-PORT-DAG-V16"
+    "CA-NEXT-PORT-DAG-V16",
+    "CA-NEXT-PORT-DAG-V17"
   ],
   "current": {
-    "id": "CA-C20-UTILITY-SUBSTRATE",
+    "id": "CA-C21-UTILITY-COMPLEMENTS",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,

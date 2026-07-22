@@ -2597,6 +2597,69 @@
         "git diff --check"
       ],
       "intent": "Continue the incomplete global Pi port after the bounded coding-agent utility-substrate wave; keep remaining coding-agent rows ahead of orchestrator, and require a successor checkpoint until every manifest row and final validation/review gate is represented."
+    },
+    {
+      "id": "CA-C21-UTILITY-COMPLEMENTS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V17"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/utils/changelog.rs",
+        "crates/zedflow-coding-agent/src/utils/deprecation.rs",
+        "crates/zedflow-coding-agent/src/utils/fs-watch.rs",
+        "crates/zedflow-coding-agent/src/utils/open-browser.rs",
+        "crates/zedflow-coding-agent/src/utils/clipboard.rs",
+        "crates/zedflow-coding-agent/src/utils/syntax-highlight.rs",
+        "crates/zedflow-coding-agent/src/utils/version-check.rs",
+        "crates/zedflow-coding-agent/tests/utility-complements.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port dependency-light coding-agent utility complements from frozen Pi without beginning runtime, CLI, TUI, or orchestrator work."
+    },
+    {
+      "id": "CA-V19",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C21-UTILITY-COMPLEMENTS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check --package zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Validate the coding-agent utility-complements wave."
+    },
+    {
+      "id": "CA-RV-FID-V19",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V19"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review of coding-agent utility-complements behavior against frozen Pi."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V18",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V19"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Continue the incomplete global Pi port after the coding-agent utility-complements wave; keep remaining coding-agent rows ahead of orchestrator, and require a successor checkpoint until every manifest row and final validation/review gate is represented."
     }
   ]
 }
