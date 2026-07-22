@@ -2528,22 +2528,51 @@
       "intent": "Re-run the failed utility-substrate validation after restoring the missing implementations and module registration."
     },
     {
-      "id": "CA-RV-FID-V18",
-      "kind": "reviewer",
+      "id": "CA-RV-FID-V18-R1-GIT-URL-VALIDATION",
+      "kind": "writer",
       "depends_on": [
         "CA-V18-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/git.rs",
+        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Reject malformed percent escapes in git URL validation, matching frozen Pi decodeURIComponent behavior, and add the focused regression."
+    },
+    {
+      "id": "CA-V18-R2-GIT-URL-VALIDATION",
+      "kind": "validator",
+      "depends_on": [
+        "CA-RV-FID-V18-R1-GIT-URL-VALIDATION"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --test utility-substrate"
+      ],
+      "intent": "Re-run utility-substrate validation after the malformed percent-escape repair."
+    },
+    {
+      "id": "CA-RV-FID-V18-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V18-R2-GIT-URL-VALIDATION"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh Pi-fidelity review of the utility-substrate wave against frozen references/pi; record blockers before advancing."
+      "intent": "Fresh Pi-fidelity review of the utility-substrate wave after git URL validation repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V17",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V18"
+        "CA-RV-FID-V18-R2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
