@@ -718,14 +718,16 @@
         "CA-T2-R6-NUMERIC-LIMIT-FIDELITY"
       ],
       "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml",
         "crates/zedflow-coding-agent/src/core/tools/ls.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
+        "crates/zedflow-coding-agent/tests/filesystem-tools.rs",
+        "Cargo.lock"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test filesystem-tools"
       ],
-      "intent": "Repair CA-RV-FID-R8 blocker: match frozen Pi locale-aware, case-insensitive ls ordering for Unicode filenames, with focused fidelity coverage."
+      "intent": "Repair CA-RV-FID-R8 blocker: match frozen Pi locale-aware, case-insensitive ls ordering for Unicode filenames by adding the required Unicode collation dependency and focused fidelity coverage."
     },
     {
       "id": "CA-RV-FID-R9",
