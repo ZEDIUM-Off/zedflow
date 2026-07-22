@@ -2259,6 +2259,22 @@
       "ownership": [],
       "validation": [],
       "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent entrypoint discovery primitives wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V15",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V17"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Continue the global identity port after the accepted coding-agent V17 wave. The port is not complete: coding-agent is 36/161 source and 5/170 tests, tui is 0/28 source and 0/33 tests, and orchestrator is 0/13 source. Assign the next bounded dependency-safe package wave, preferring tui before remaining coding-agent and orchestrator after coding-agent. Every non-final wave must end in a successor NEXT-PORT-DAG checkpoint. Do not declare global completion until every manifest row is represented and final workspace validation plus fidelity and Rust reviews pass."
     }
   ]
 }
