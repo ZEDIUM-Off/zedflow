@@ -119,6 +119,26 @@ fn file_url_package_directory_child() {
 }
 
 #[test]
+fn missing_home_environment_uses_os_account_home() {
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "missing_home_environment_child"])
+        .env_remove("HOME")
+        .env_remove("USERPROFILE")
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+#[test]
+#[ignore]
+fn missing_home_environment_child() {
+    #[allow(deprecated)]
+    let expected = std::env::home_dir().unwrap();
+    assert_eq!(expand_tilde_path("~"), expected);
+    assert_eq!(expand_tilde_path("~/pi"), expected.join("pi"));
+}
+
+#[test]
 fn empty_directory_overrides_use_pi_defaults() {
     let status = std::process::Command::new(std::env::current_exe().unwrap())
         .args(["--ignored", "--exact", "empty_directory_overrides_child"])

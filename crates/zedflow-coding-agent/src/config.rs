@@ -74,5 +74,10 @@ fn home_dir() -> PathBuf {
     #[cfg(not(windows))]
     let home = env::var_os("HOME");
 
-    home.map(PathBuf::from).unwrap_or_default()
+    home.map(PathBuf::from)
+        .or_else(|| {
+            #[allow(deprecated)]
+            env::home_dir()
+        })
+        .unwrap_or_default()
 }
