@@ -5,6 +5,11 @@
 /// Deterministic utilities ported from Pi's coding-agent package.
 pub mod utils;
 
+#[path = "core/compaction/mod.rs"]
+pub mod compaction;
+#[path = "core/messages.rs"]
+pub mod messages;
+
 #[path = "core/tools/edit.rs"]
 pub mod edit;
 #[path = "core/tools/edit-diff.rs"]
@@ -30,6 +35,8 @@ pub mod write;
 
 /// Pi-compatible tool namespaces.
 pub mod core {
+    pub use crate::{compaction, messages};
+
     pub mod tools {
         pub use crate::{
             edit, edit_diff, file_mutation_queue, find, grep, ls, output_accumulator, path_utils,
