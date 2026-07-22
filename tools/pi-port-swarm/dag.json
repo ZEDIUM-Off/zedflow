@@ -1371,6 +1371,65 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the authentication storage wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C9-MODEL-REGISTRY",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V7"
+      ],
+      "ownership": [
+        "Cargo.lock",
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/model-registry.rs",
+        "crates/zedflow-coding-agent/tests/model-registry.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test model-registry"
+      ],
+      "intent": "Port frozen coding-agent built-in and custom model registration, provider configuration, validation, and authentication resolution without beginning model selection/resolution or session integration."
+    },
+    {
+      "id": "CA-V8",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C9-MODEL-REGISTRY"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent model registry wave."
+    },
+    {
+      "id": "CA-RV-FID-V8",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V8"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent model registry wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V8",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V8"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the model registry wave and assign the next bounded package wave."
     }
   ]
 }

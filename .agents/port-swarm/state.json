@@ -82,10 +82,16 @@
     "CA-C7-R1-COMMAND-OUTPUT-OVERFLOW-FIDELITY",
     "CA-V6-R1",
     "CA-RV-FID-V6-R1",
-    "CA-NEXT-PORT-DAG-V6"
+    "CA-NEXT-PORT-DAG-V6",
+    "CA-C8-AUTH-STORAGE-R2",
+    "CA-V7",
+    "CA-C8-R3-PERSIST-ERROR-FIDELITY",
+    "CA-V7-R1",
+    "CA-RV-FID-V7-R1",
+    "CA-NEXT-PORT-DAG-V7"
   ],
   "current": {
-    "id": "CA-C8-AUTH-STORAGE-R2",
+    "id": "CA-C9-MODEL-REGISTRY",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
