@@ -1704,20 +1704,36 @@
       "intent": "Fresh mechanical acceptance after the bounded empty-environment config fidelity repair."
     },
     {
-      "id": "CA-RV-FID-V12-R1",
-      "kind": "reviewer",
+      "id": "CA-C14-R2-PACKAGE-DIR-NORMALIZATION-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-V12-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Normalize PI_PACKAGE_DIR overrides like frozen Pi, including tilde expansion and file URL conversion, with focused regression tests."
+    },
+    {
+      "id": "CA-RV-FID-V12-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-C14-R2-PACKAGE-DIR-NORMALIZATION-FIDELITY"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent config and authentication-guidance primitives wave after empty-environment repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent config and authentication-guidance primitives wave after package-directory normalization repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V10",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V12-R1"
+        "CA-RV-FID-V12-R2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
