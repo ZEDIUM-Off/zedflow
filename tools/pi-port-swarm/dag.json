@@ -1284,12 +1284,13 @@
       "intent": "Record acceptance of the configuration value resolution wave and assign the next bounded package wave."
     },
     {
-      "id": "CA-C8-AUTH-STORAGE-R1",
+      "id": "CA-C8-AUTH-STORAGE-R2",
       "kind": "writer",
       "depends_on": [
         "CA-NEXT-PORT-DAG-V6"
       ],
       "ownership": [
+        "Cargo.lock",
         "crates/zedflow-coding-agent/Cargo.toml",
         "crates/zedflow-coding-agent/src/lib.rs",
         "crates/zedflow-coding-agent/src/core/auth-storage.rs",
@@ -1299,13 +1300,13 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test auth-storage"
       ],
-      "intent": "Port frozen coding-agent credential storage, runtime API-key overrides, environment and fallback lookup, OAuth credential refresh, and locked JSON persistence, including only the direct crate dependencies required for that bounded port, without beginning model registry or session integration."
+      "intent": "Port frozen coding-agent credential storage, runtime API-key overrides, environment and fallback lookup, OAuth credential refresh, and locked JSON persistence, including Cargo.lock updates from only the direct crate dependencies required for that bounded port, without beginning model registry or session integration."
     },
     {
       "id": "CA-V7",
       "kind": "validator",
       "depends_on": [
-        "CA-C8-AUTH-STORAGE-R1"
+        "CA-C8-AUTH-STORAGE-R2"
       ],
       "ownership": [],
       "validation": [
