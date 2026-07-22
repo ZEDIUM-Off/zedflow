@@ -23,6 +23,8 @@ pub mod messages;
 pub mod output_guard;
 #[path = "core/provider-display-names.rs"]
 pub mod provider_display_names;
+#[path = "core/resolve-config-value.rs"]
+pub mod resolve_config_value;
 #[path = "core/session-cwd.rs"]
 pub mod session_cwd;
 #[path = "core/slash-commands.rs"]
@@ -59,7 +61,8 @@ pub mod write;
 pub mod core {
     pub use crate::{
         compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher, messages,
-        output_guard, provider_display_names, session_cwd, slash_commands, source_info, timings,
+        output_guard, provider_display_names, resolve_config_value, session_cwd, slash_commands,
+        source_info, timings,
     };
 
     pub mod tools {
