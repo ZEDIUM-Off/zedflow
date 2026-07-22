@@ -1,33 +1,33 @@
 use std::collections::HashMap;
 
-pub const DEFAULT_HTTP_IDLE_TIMEOUT_MS: u64 = 300_000;
+pub const DEFAULT_HTTP_IDLE_TIMEOUT_MS: f64 = 300_000.0;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HttpIdleTimeoutChoice {
     pub label: &'static str,
-    pub timeout_ms: u64,
+    pub timeout_ms: f64,
 }
 
 pub const HTTP_IDLE_TIMEOUT_CHOICES: [HttpIdleTimeoutChoice; 5] = [
     HttpIdleTimeoutChoice {
         label: "30 sec",
-        timeout_ms: 30_000,
+        timeout_ms: 30_000.0,
     },
     HttpIdleTimeoutChoice {
         label: "1 min",
-        timeout_ms: 60_000,
+        timeout_ms: 60_000.0,
     },
     HttpIdleTimeoutChoice {
         label: "2 min",
-        timeout_ms: 120_000,
+        timeout_ms: 120_000.0,
     },
     HttpIdleTimeoutChoice {
         label: "5 min",
-        timeout_ms: 300_000,
+        timeout_ms: 300_000.0,
     },
     HttpIdleTimeoutChoice {
         label: "disabled",
-        timeout_ms: 0,
+        timeout_ms: 0.0,
     },
 ];
 
@@ -38,12 +38,12 @@ pub enum HttpIdleTimeoutValue<'a> {
     Other,
 }
 
-pub fn parse_http_idle_timeout_ms(value: HttpIdleTimeoutValue<'_>) -> Option<u64> {
+pub fn parse_http_idle_timeout_ms(value: HttpIdleTimeoutValue<'_>) -> Option<f64> {
     match value {
         HttpIdleTimeoutValue::String(value) => {
             let value = value.trim();
             if value.eq_ignore_ascii_case("disabled") {
-                Some(0)
+                Some(0.0)
             } else if value.is_empty() {
                 None
             } else {
@@ -69,18 +69,18 @@ pub fn parse_http_idle_timeout_ms(value: HttpIdleTimeoutValue<'_>) -> Option<u64
             }
         }
         HttpIdleTimeoutValue::Number(value) if value.is_finite() && value >= 0.0 => {
-            Some(value.floor() as u64)
+            Some(value.floor())
         }
         _ => None,
     }
 }
 
-pub fn format_http_idle_timeout_ms(timeout_ms: u64) -> String {
+pub fn format_http_idle_timeout_ms(timeout_ms: f64) -> String {
     HTTP_IDLE_TIMEOUT_CHOICES
         .iter()
         .find(|choice| choice.timeout_ms == timeout_ms)
         .map_or_else(
-            || format!("{} sec", timeout_ms as f64 / 1000.0),
+            || format!("{} sec", timeout_ms / 1000.0),
             |choice| choice.label.to_owned(),
         )
 }

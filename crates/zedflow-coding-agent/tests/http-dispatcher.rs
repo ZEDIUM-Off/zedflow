@@ -9,15 +9,15 @@ use zedflow_coding_agent::http_dispatcher::{
 fn parses_and_formats_idle_timeouts() {
     assert_eq!(
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::String(" DISABLED ")),
-        Some(0)
+        Some(0.0)
     );
     assert_eq!(
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::String("1200.9")),
-        Some(1200)
+        Some(1200.0)
     );
     assert_eq!(
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::String("0x10")),
-        Some(16)
+        Some(16.0)
     );
     assert_eq!(
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::Number(f64::INFINITY)),
@@ -25,10 +25,10 @@ fn parses_and_formats_idle_timeouts() {
     );
     assert_eq!(
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::Number(1e30)),
-        Some(u64::MAX)
+        Some(1e30)
     );
-    assert_eq!(format_http_idle_timeout_ms(60_000), "1 min");
-    assert_eq!(format_http_idle_timeout_ms(1_500), "1.5 sec");
+    assert_eq!(format_http_idle_timeout_ms(60_000.0), "1 min");
+    assert_eq!(format_http_idle_timeout_ms(1_500.0), "1.5 sec");
 }
 
 #[test]
