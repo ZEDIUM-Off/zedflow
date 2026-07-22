@@ -1,4 +1,7 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Component, Path, PathBuf},
+};
 
 pub const PACKAGE_NAME: &str = "@earendil-works/pi-coding-agent";
 pub const APP_NAME: &str = "pi";
@@ -61,11 +64,25 @@ pub fn get_agent_dir() -> PathBuf {
 
 fn absolute_package_asset(name: &str) -> PathBuf {
     let path = get_package_dir().join(name);
-    if path.is_absolute() {
+    lexical_normalize(if path.is_absolute() {
         path
     } else {
         env::current_dir().unwrap_or_default().join(path)
+    })
+}
+
+fn lexical_normalize(path: impl AsRef<Path>) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.as_ref().components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            component => normalized.push(component.as_os_str()),
+        }
     }
+    normalized
 }
 
 fn home_dir() -> PathBuf {

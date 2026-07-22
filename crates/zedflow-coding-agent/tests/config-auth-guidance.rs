@@ -73,6 +73,16 @@ fn package_directory_overrides_are_normalized() {
         .status()
         .unwrap();
     assert!(file_url_status.success());
+
+    let cwd = std::env::temp_dir();
+    let relative_status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "relative_package_directory_child"])
+        .current_dir(&cwd)
+        .env("PI_PACKAGE_DIR", "nested/./package/../package")
+        .env("EXPECTED_PACKAGE_DIR", cwd.join("nested/package"))
+        .status()
+        .unwrap();
+    assert!(relative_status.success());
 }
 
 #[test]
@@ -116,6 +126,15 @@ fn file_url_package_directory_child() {
         get_package_dir(),
         PathBuf::from(std::env::var_os("EXPECTED_PACKAGE_DIR").unwrap())
     );
+}
+
+#[test]
+#[ignore]
+fn relative_package_directory_child() {
+    let package_dir = PathBuf::from(std::env::var_os("EXPECTED_PACKAGE_DIR").unwrap());
+    assert_eq!(get_docs_path(), package_dir.join("docs"));
+    assert_eq!(get_examples_path(), package_dir.join("examples"));
+    assert_eq!(get_readme_path(), package_dir.join("README.md"));
 }
 
 #[test]
