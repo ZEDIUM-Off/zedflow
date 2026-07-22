@@ -1123,20 +1123,36 @@
       "intent": "Fresh mechanical acceptance of the bounded coding-agent HTTP configuration primitives wave."
     },
     {
-      "id": "CA-RV-FID-V5",
-      "kind": "reviewer",
+      "id": "CA-C6-R1-HTTP-TIMEOUT-NUMERIC-FIDELITY",
+      "kind": "writer",
       "depends_on": [
         "CA-V5"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
+        "crates/zedflow-coding-agent/tests/http-dispatcher.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test http-dispatcher"
+      ],
+      "intent": "Match frozen JavaScript HTTP timeout parsing for finite numeric values above u64::MAX and add focused regression coverage."
+    },
+    {
+      "id": "CA-RV-FID-V5-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-C6-R1-HTTP-TIMEOUT-NUMERIC-FIDELITY"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent HTTP configuration primitives wave."
+      "intent": "Fresh read-only frozen Pi fidelity review of the repaired bounded coding-agent HTTP configuration primitives wave."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V5",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V5"
+        "CA-RV-FID-V5-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
