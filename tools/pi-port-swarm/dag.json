@@ -2023,20 +2023,50 @@
       "intent": "Fresh mechanical acceptance of the install-method primitives wave after exact frozen Pi npm prefix display-quoting repair."
     },
     {
-      "id": "CA-RV-FID-V14-R3",
-      "kind": "reviewer",
+      "id": "CA-C16-R4-NPM-PREFIX-JS-WHITESPACE",
+      "kind": "writer",
       "depends_on": [
         "CA-V14-R3"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Match frozen Pi update display quoting exactly by using JavaScript /\\s/ whitespace semantics rather than Rust Unicode whitespace semantics, with focused regression coverage."
+    },
+    {
+      "id": "CA-V14-R4",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C16-R4-NPM-PREFIX-JS-WHITESPACE"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the install-method primitives wave after exact JavaScript whitespace display-quoting repair."
+    },
+    {
+      "id": "CA-RV-FID-V14-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V14-R4"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent install-method primitives wave after exact npm prefix display-quoting repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent install-method primitives wave after exact JavaScript whitespace display-quoting repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V12",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V14-R3"
+        "CA-RV-FID-V14-R4"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
