@@ -102,14 +102,14 @@ async fn grep_streams_and_stops_the_managed_rg_at_the_match_limit() {
             ignore_case: None,
             literal: None,
             context: None,
-            limit: Some(1),
+            limit: Some(1.0),
         }),
     )
     .await
     .expect("grep should terminate rg as soon as the match limit is reached")
     .unwrap();
     assert!(output(&result).starts_with("managed.txt:1: managed hit"));
-    assert_eq!(result.details.unwrap().match_limit_reached, Some(1));
+    assert_eq!(result.details.unwrap().match_limit_reached, Some(1.0));
 }
 
 #[cfg(unix)]
@@ -209,8 +209,8 @@ async fn grep_formats_file_paths_context_limits_and_long_lines() {
             glob: None,
             ignore_case: None,
             literal: None,
-            context: Some(1),
-            limit: Some(1),
+            context: Some(1.0),
+            limit: Some(1.0),
         })
         .await
         .unwrap();
@@ -222,7 +222,7 @@ async fn grep_formats_file_paths_context_limits_and_long_lines() {
     assert!(text.contains("[1 matches limit reached. Use limit=2 for more, or refine pattern"));
     assert!(!text.contains("match two"));
     let details = result.details.unwrap();
-    assert_eq!(details.match_limit_reached, Some(1));
+    assert_eq!(details.match_limit_reached, Some(1.0));
     assert!(details.lines_truncated);
 }
 
