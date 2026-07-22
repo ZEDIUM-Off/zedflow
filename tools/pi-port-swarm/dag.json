@@ -926,6 +926,82 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the second coding-agent wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C3-STATIC-RUNTIME-PRIMITIVES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/defaults.rs",
+        "crates/zedflow-coding-agent/src/core/diagnostics.rs",
+        "crates/zedflow-coding-agent/src/core/experimental.rs",
+        "crates/zedflow-coding-agent/tests/static-runtime-primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test static-runtime-primitives"
+      ],
+      "intent": "Port the frozen dependency-free default thinking level, resource diagnostic contracts, and PI_EXPERIMENTAL gate with focused deterministic coverage."
+    },
+    {
+      "id": "CA-C4-OUTPUT-GUARD",
+      "kind": "writer",
+      "depends_on": [
+        "CA-C3-STATIC-RUNTIME-PRIMITIVES"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/output-guard.rs",
+        "crates/zedflow-coding-agent/tests/output-guard.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test output-guard"
+      ],
+      "intent": "Port frozen coding-agent stdout takeover, ordered raw-output writes, backpressure waiting, restoration, and retry behavior without beginning the interactive session runtime."
+    },
+    {
+      "id": "CA-V3",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C4-OUTPUT-GUARD"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the third bounded coding-agent primitive wave."
+    },
+    {
+      "id": "CA-RV-FID-V3",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V3"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the third bounded coding-agent primitive wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V3",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V3"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the third coding-agent wave and assign the next bounded package wave."
     }
   ]
 }

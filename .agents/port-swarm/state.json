@@ -50,10 +50,18 @@
     "CA-T3-R7-GREP-NUMERIC-LIMIT-FIDELITY",
     "CA-T3-R8-GREP-NUMERIC-CONTEXT-FIDELITY",
     "CA-RV-FID-R12",
-    "CA-NEXT-PORT-DAG"
+    "CA-NEXT-PORT-DAG",
+    "CA-C1-MESSAGE-COMPACTION-UTILS",
+    "CA-C2-CORE-PRIMITIVES",
+    "CA-FIX-SEARCH-EDIT-TOOLS-TEST-TYPES",
+    "CA-V2-REVALIDATE",
+    "CA-TIMINGS-FIDELITY-R1",
+    "CA-V2-REVALIDATE-R1",
+    "CA-RV-FID-V2-R1",
+    "CA-NEXT-PORT-DAG-V2"
   ],
   "current": {
-    "id": "CA-C1-MESSAGE-COMPACTION-UTILS",
+    "id": "CA-C3-STATIC-RUNTIME-PRIMITIVES",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
