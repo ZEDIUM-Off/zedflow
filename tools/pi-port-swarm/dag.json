@@ -1282,6 +1282,63 @@
         "git diff --check"
       ],
       "intent": "Record acceptance of the configuration value resolution wave and assign the next bounded package wave."
+    },
+    {
+      "id": "CA-C8-AUTH-STORAGE",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V6"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/auth-storage.rs",
+        "crates/zedflow-coding-agent/tests/auth-storage.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test auth-storage"
+      ],
+      "intent": "Port frozen coding-agent credential storage, runtime API-key overrides, environment and fallback lookup, OAuth credential refresh, and locked JSON persistence without beginning model registry or session integration."
+    },
+    {
+      "id": "CA-V7",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C8-AUTH-STORAGE"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the bounded coding-agent authentication storage wave."
+    },
+    {
+      "id": "CA-RV-FID-V7",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V7"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent authentication storage wave."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V7",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V7"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm/state.json",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record acceptance of the authentication storage wave and assign the next bounded package wave."
     }
   ]
 }
