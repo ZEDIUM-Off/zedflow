@@ -68,9 +68,7 @@ pub fn parse_http_idle_timeout_ms(value: HttpIdleTimeoutValue<'_>) -> Option<u64
                 parse_http_idle_timeout_ms(HttpIdleTimeoutValue::Number(number))
             }
         }
-        HttpIdleTimeoutValue::Number(value)
-            if value.is_finite() && value >= 0.0 && value.floor() <= u64::MAX as f64 =>
-        {
+        HttpIdleTimeoutValue::Number(value) if value.is_finite() && value >= 0.0 => {
             Some(value.floor() as u64)
         }
         _ => None,

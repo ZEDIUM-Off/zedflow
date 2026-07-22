@@ -23,6 +23,10 @@ fn parses_and_formats_idle_timeouts() {
         parse_http_idle_timeout_ms(HttpIdleTimeoutValue::Number(f64::INFINITY)),
         None
     );
+    assert_eq!(
+        parse_http_idle_timeout_ms(HttpIdleTimeoutValue::Number(1e30)),
+        Some(u64::MAX)
+    );
     assert_eq!(format_http_idle_timeout_ms(60_000), "1 min");
     assert_eq!(format_http_idle_timeout_ms(1_500), "1.5 sec");
 }
