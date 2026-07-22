@@ -255,7 +255,7 @@ async fn ls_sorts_entries_marks_directories_and_reports_limits() {
     let result = tool
         .execute(LsToolInput {
             path: Some(".".into()),
-            limit: Some(2),
+            limit: Some(2.0),
         })
         .await
         .unwrap();
