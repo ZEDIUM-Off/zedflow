@@ -76,6 +76,22 @@ fn glob_wildcards_do_not_match_path_separators() {
 }
 
 #[test]
+fn leading_bang_negates_glob_matches_like_minimatch() {
+    let models = vec![
+        model("anthropic", "claude-sonnet", "Sonnet"),
+        model("openai", "gpt-5", "GPT"),
+    ];
+
+    let negated = resolve_available_model_scope_with_diagnostics(&["!*sonnet*".into()], &models);
+    assert_eq!(negated.scoped_models.len(), 2);
+
+    let double_negated =
+        resolve_available_model_scope_with_diagnostics(&["!!*sonnet*".into()], &models);
+    assert_eq!(double_negated.scoped_models.len(), 1);
+    assert_eq!(double_negated.scoped_models[0].model.id, "claude-sonnet");
+}
+
+#[test]
 fn invalid_thinking_suffix_is_warned_or_rejected_in_strict_mode() {
     let models = vec![model("anthropic", "claude-sonnet", "Sonnet")];
     let fallback = parse_model_pattern("sonnet:turbo", &models, true);

@@ -201,6 +201,9 @@ pub fn resolve_available_model_scope_with_diagnostics(
                 }
                 _ => (pattern.as_str(), None),
             };
+            let negations = glob_pattern.chars().take_while(|&c| c == '!').count();
+            let glob_pattern = &glob_pattern[negations..];
+            let negated = negations % 2 == 1;
             let matcher = GlobBuilder::new(glob_pattern)
                 .case_insensitive(true)
                 .literal_separator(true)
@@ -211,8 +214,8 @@ pub fn resolve_available_model_scope_with_diagnostics(
                 .iter()
                 .filter(|model| {
                     matcher.as_ref().is_some_and(|matcher| {
-                        matcher.is_match(format!("{}/{}", model.provider, model.id))
-                            || matcher.is_match(&model.id)
+                        let is_match = |candidate: &str| matcher.is_match(candidate) != negated;
+                        is_match(&format!("{}/{}", model.provider, model.id)) || is_match(&model.id)
                     })
                 })
                 .collect();
