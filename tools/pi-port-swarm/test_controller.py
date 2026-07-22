@@ -172,6 +172,14 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(controller.ControllerError):
             controller.git(repo, "update-ref", "refs/heads/automation/pi-port", base, base)
 
+    def test_worktree_head_overrides_a_misreported_candidate(self) -> None:
+        repo, _base, candidate = self.port_repo()
+        unit = {"id": "A", "kind": "writer"}
+        reported = "9" * 40
+        result = controller.authoritative_result(unit, {"status": "DONE", "candidate": reported}, repo)
+        self.assertEqual(result["candidate"], candidate)
+        self.assertEqual(result["reported_candidate"], reported)
+
     def test_integration_ref_is_created_only_from_null_oid(self) -> None:
         repo, base, candidate = self.port_repo()
         controller.ensure_integration_ref(repo, controller.INTEGRATION_REF, base)

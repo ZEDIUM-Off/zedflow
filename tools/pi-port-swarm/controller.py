@@ -411,6 +411,15 @@ def create_worktree(source: Path, state_dir: Path, base: str, unit: dict[str, An
     return worktree, state_dir / "sessions" / f"{unit['id'].lower()}-{attempt}-{nonce}"
 
 
+def authoritative_result(unit: dict[str, Any], result: dict[str, Any], worktree: Path) -> dict[str, Any]:
+    if result.get("status") != "DONE" or unit["kind"] not in MUTATING_KINDS:
+        return result
+    candidate = git(worktree, "rev-parse", "HEAD")
+    if result.get("candidate") == candidate:
+        return result
+    return {**result, "reported_candidate": result.get("candidate"), "candidate": candidate}
+
+
 def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any], base: str, coordinator: bool = False) -> dict[str, Any]:
     prompt = prompt_for(source, unit, coordinator)
     capsule = {"unit": unit, "base": base, "ownership": unit["ownership"], "validation": unit["validation"], "intent": unit.get("intent", ""), "result_schema": result_schema(unit)}
@@ -421,7 +430,7 @@ def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any]
     log.write_text(completed.stdout + completed.stderr, encoding="utf-8")
     if completed.returncode:
         raise ControllerError(f"Pi exited {completed.returncode}; see {log}")
-    return result_line(completed.stdout)
+    return authoritative_result(unit, result_line(completed.stdout), worktree)
 
 
 def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, reason: Any, revised_hash: str, replan_retry: bool) -> None:
