@@ -1993,20 +1993,50 @@
       "intent": "Fresh mechanical acceptance of the install-method primitives wave after inferred Unix npm prefix shell-quoting repair."
     },
     {
-      "id": "CA-RV-FID-V14-R2",
-      "kind": "reviewer",
+      "id": "CA-C16-R3-NPM-PREFIX-PI-QUOTING",
+      "kind": "writer",
       "depends_on": [
         "CA-V14-R2"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
+      ],
+      "intent": "Match frozen Pi update display semantics exactly by double-quoting only whitespace-containing inferred npm prefix arguments, with focused regression coverage."
+    },
+    {
+      "id": "CA-V14-R3",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C16-R3-NPM-PREFIX-PI-QUOTING"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance of the install-method primitives wave after exact frozen Pi npm prefix display-quoting repair."
+    },
+    {
+      "id": "CA-RV-FID-V14-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V14-R3"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent install-method primitives wave after inferred Unix npm prefix shell-quoting repair."
+      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent install-method primitives wave after exact npm prefix display-quoting repair."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V12",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V14-R2"
+        "CA-RV-FID-V14-R3"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
