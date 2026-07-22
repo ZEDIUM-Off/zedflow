@@ -70,7 +70,7 @@ pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &s
         }
         InstallMethod::Npm => {
             let prefix = inferred_npm_prefix(&get_package_dir())
-                .map(|prefix| format!(" --prefix {}", shell_quote(prefix)))
+                .map(|prefix| format!(" --prefix {}", quote_display_arg(prefix)))
                 .unwrap_or_default();
             format!("npm{prefix} install -g --ignore-scripts --min-release-age=0 {package_name}")
         }
@@ -87,15 +87,12 @@ pub fn get_update_instruction_for_method(method: InstallMethod, package_name: &s
     format!("Run: {command}")
 }
 
-fn shell_quote(path: &Path) -> String {
+fn quote_display_arg(path: &Path) -> String {
     let path = path.to_string_lossy();
-    if path
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || "_@%+=:,./-".contains(character))
-    {
-        path.into_owned()
+    if path.chars().any(char::is_whitespace) {
+        format!("\"{path}\"")
     } else {
-        format!("'{}'", path.replace('\'', "'\"'\"'"))
+        path.into_owned()
     }
 }
 

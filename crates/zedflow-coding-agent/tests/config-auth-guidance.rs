@@ -312,6 +312,17 @@ fn detects_install_methods_and_formats_update_instructions_like_pi() {
         .status()
         .unwrap();
     assert!(status.success());
+
+    let prefix = std::env::temp_dir().join("pi'npm-prefix");
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--ignored", "--exact", "unquoted_npm_prefix_child"])
+        .env(
+            "PI_PACKAGE_DIR",
+            prefix.join("lib/node_modules/@earendil-works/pi-coding-agent"),
+        )
+        .status()
+        .unwrap();
+    assert!(status.success());
 }
 
 #[test]
@@ -321,7 +332,20 @@ fn inferred_npm_prefix_child() {
     assert_eq!(
         get_update_instruction_for_method(InstallMethod::Npm, PACKAGE_NAME),
         format!(
-            "Run: npm --prefix '{}' install -g --ignore-scripts --min-release-age=0 {PACKAGE_NAME}",
+            "Run: npm --prefix \"{}\" install -g --ignore-scripts --min-release-age=0 {PACKAGE_NAME}",
+            prefix.display()
+        )
+    );
+}
+
+#[test]
+#[ignore]
+fn unquoted_npm_prefix_child() {
+    let prefix = std::env::temp_dir().join("pi'npm-prefix");
+    assert_eq!(
+        get_update_instruction_for_method(InstallMethod::Npm, PACKAGE_NAME),
+        format!(
+            "Run: npm --prefix {} install -g --ignore-scripts --min-release-age=0 {PACKAGE_NAME}",
             prefix.display()
         )
     );
