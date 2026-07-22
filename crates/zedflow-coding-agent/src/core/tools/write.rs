@@ -1,5 +1,8 @@
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 
 use zedflow_agent::types::{
@@ -18,16 +21,50 @@ pub struct WriteToolInput {
 }
 
 pub type WriteToolResult = AgentToolResult<()>;
+pub type WriteOperationFuture = Pin<Box<dyn Future<Output = io::Result<()>> + Send>>;
+pub type WriteFileOperation = Arc<dyn Fn(PathBuf, String) -> WriteOperationFuture + Send + Sync>;
+pub type WriteMkdirOperation = Arc<dyn Fn(PathBuf) -> WriteOperationFuture + Send + Sync>;
+
+#[derive(Clone)]
+pub struct WriteOperations {
+    pub write_file: WriteFileOperation,
+    pub mkdir: WriteMkdirOperation,
+}
+
+impl Default for WriteOperations {
+    fn default() -> Self {
+        Self {
+            write_file: Arc::new(|path, content| {
+                Box::pin(async move { tokio::fs::write(path, content).await })
+            }),
+            mkdir: Arc::new(|path| Box::pin(tokio::fs::create_dir_all(path))),
+        }
+    }
+}
+
+impl fmt::Debug for WriteOperations {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("WriteOperations")
+            .finish_non_exhaustive()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct WriteTool {
     cwd: PathBuf,
+    operations: WriteOperations,
 }
 
 impl WriteTool {
     pub fn new(cwd: impl AsRef<Path>) -> Self {
+        Self::with_operations(cwd, WriteOperations::default())
+    }
+
+    pub fn with_operations(cwd: impl AsRef<Path>, operations: WriteOperations) -> Self {
         Self {
             cwd: cwd.as_ref().to_path_buf(),
+            operations,
         }
     }
 
@@ -51,9 +88,9 @@ impl WriteTool {
 
         with_file_mutation_queue(&absolute_path, || async move {
             check_aborted(signal)?;
-            tokio::fs::create_dir_all(directory).await?;
+            (self.operations.mkdir)(directory).await?;
             check_aborted(signal)?;
-            tokio::fs::write(write_path, content.as_bytes()).await?;
+            (self.operations.write_file)(write_path, content.clone()).await?;
             check_aborted(signal)?;
 
             Ok(AgentToolResult {
@@ -70,7 +107,14 @@ impl WriteTool {
 }
 
 pub fn create_write_tool(cwd: impl AsRef<Path>) -> AgentTool {
-    let tool = WriteTool::new(cwd);
+    create_write_tool_with_operations(cwd, WriteOperations::default())
+}
+
+pub fn create_write_tool_with_operations(
+    cwd: impl AsRef<Path>,
+    operations: WriteOperations,
+) -> AgentTool {
+    let tool = WriteTool::with_operations(cwd, operations);
     let execute: AgentToolExecuteFn = Arc::new(move |_tool_call_id, args, signal, _on_update| {
         let tool = tool.clone();
         Box::pin(async move {

@@ -14,7 +14,10 @@ use zedflow_coding_agent::ls::{
     LsOperations, LsTool, LsToolInput, create_ls_tool, create_ls_tool_with_operations,
 };
 use zedflow_coding_agent::read::{ReadOperations, ReadTool, ReadToolInput, create_read_tool};
-use zedflow_coding_agent::write::{WriteTool, WriteToolInput, create_write_tool};
+use zedflow_coding_agent::write::{
+    WriteOperations, WriteTool, WriteToolInput, create_write_tool,
+    create_write_tool_with_operations,
+};
 
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
@@ -322,6 +325,60 @@ async fn ls_uses_injected_operations_without_disk_access() {
             ("stat", directory.join("A.txt")),
             ("stat", directory.join("folder")),
             ("stat", directory.join("z.txt")),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn write_uses_injected_operations_without_disk_access() {
+    let root = PathBuf::from("/virtual-write-root");
+    let path = root.join("nested/file.txt");
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let operations = WriteOperations {
+        mkdir: {
+            let calls = Arc::clone(&calls);
+            Arc::new(move |path| {
+                let calls = Arc::clone(&calls);
+                Box::pin(async move {
+                    calls.lock().unwrap().push(("mkdir", path, None));
+                    Ok(())
+                })
+            })
+        },
+        write_file: {
+            let calls = Arc::clone(&calls);
+            Arc::new(move |path, content| {
+                let calls = Arc::clone(&calls);
+                Box::pin(async move {
+                    calls
+                        .lock()
+                        .unwrap()
+                        .push(("write_file", path, Some(content)));
+                    Ok(())
+                })
+            })
+        },
+    };
+
+    let tool = create_write_tool_with_operations(&root, operations);
+    let result = (tool.execute)(
+        "write-1",
+        serde_yaml::from_str(r#"{"path":"nested/file.txt","content":"remote"}"#).unwrap(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        output(&result),
+        "Successfully wrote 6 bytes to nested/file.txt"
+    );
+    assert_eq!(
+        *calls.lock().unwrap(),
+        vec![
+            ("mkdir", root.join("nested"), None),
+            ("write_file", path, Some("remote".into())),
         ]
     );
 }
