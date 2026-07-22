@@ -47,6 +47,21 @@ fn package_directory_overrides_are_normalized() {
         .unwrap();
     assert!(tilde_status.success());
 
+    #[cfg(windows)]
+    {
+        let backslash_tilde_status = std::process::Command::new(&executable)
+            .args([
+                "--ignored",
+                "--exact",
+                "backslash_tilde_package_directory_child",
+            ])
+            .env("HOME", &home)
+            .env("PI_PACKAGE_DIR", "~\\pi package")
+            .status()
+            .unwrap();
+        assert!(backslash_tilde_status.success());
+    }
+
     let package_dir = home.join("pi package");
     let file_url = reqwest::Url::from_directory_path(&package_dir).unwrap();
     let file_url_status = std::process::Command::new(executable)
@@ -61,6 +76,16 @@ fn package_directory_overrides_are_normalized() {
 #[test]
 #[ignore]
 fn tilde_package_directory_child() {
+    assert_eq!(
+        get_package_dir(),
+        PathBuf::from(std::env::var_os("HOME").unwrap()).join("pi package")
+    );
+}
+
+#[cfg(windows)]
+#[test]
+#[ignore]
+fn backslash_tilde_package_directory_child() {
     assert_eq!(
         get_package_dir(),
         PathBuf::from(std::env::var_os("HOME").unwrap()).join("pi package")

@@ -12,7 +12,10 @@ pub fn expand_tilde_path(path: &str) -> PathBuf {
     if path == "~" {
         return home_dir();
     }
-    if let Some(rest) = path.strip_prefix("~/") {
+    if let Some(rest) = path
+        .strip_prefix("~/")
+        .or_else(|| cfg!(windows).then(|| path.strip_prefix("~\\")).flatten())
+    {
         return home_dir().join(rest);
     }
     PathBuf::from(path)
