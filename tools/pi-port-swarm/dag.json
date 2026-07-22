@@ -2412,20 +2412,10 @@
       "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after OSC11 parsing repair."
     },
     {
-      "id": "TUI-RV-FID-V1-R4",
-      "kind": "reviewer",
-      "depends_on": [
-        "TUI-V1-R4"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after OSC11 parsing repair."
-    },
-    {
       "id": "CA-NEXT-PORT-DAG-V16",
       "kind": "checkpoint",
       "depends_on": [
-        "TUI-RV-FID-V1-R4"
+        "TUI-RV-FID-V1-R5"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
@@ -2436,6 +2426,44 @@
         "git diff --check"
       ],
       "intent": "Continue the incomplete global Pi port after the bounded TUI pure-primitives wave. Keep remaining coding-agent work ahead of orchestrator, and require every non-final wave to end in a successor NEXT-PORT-DAG checkpoint; do not declare completion until every manifest row is represented and final workspace validation plus fidelity and Rust reviews pass."
+    },
+    {
+      "id": "TUI-C1-R5-OSC11-CHANNEL-PARSING",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V1-R4"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/tests/primitives.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test primitives"
+      ],
+      "intent": "Repair the remaining Rust OSC11 terminal background-color channel parsing divergence from frozen Pi behavior, with focused regression coverage."
+    },
+    {
+      "id": "TUI-V1-R5",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C1-R5-OSC11-CHANNEL-PARSING"
+      ],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets"
+      ],
+      "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after OSC11 channel parsing repair."
+    },
+    {
+      "id": "TUI-RV-FID-V1-R5",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V1-R5"
+      ],
+      "validation": [],
+      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after OSC11 channel parsing repair."
     }
   ]
 }
