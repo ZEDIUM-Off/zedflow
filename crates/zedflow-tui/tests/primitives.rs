@@ -3,8 +3,65 @@ use zedflow_tui::*;
 #[test]
 fn parses_legacy_navigation_keys() {
     assert_eq!(parse_key("\x1b[A"), Some("up"));
+    assert_eq!(parse_key("\x1b[1;5D"), Some("ctrl+left"));
+    assert_eq!(parse_key("\x1b[13;2u"), Some("shift+enter"));
     assert!(matches_key("\x1b[3~", "delete"));
     assert_eq!(parse_key("x"), None);
+}
+
+#[test]
+fn detects_key_repeat_and_release_without_mistaking_paste() {
+    assert!(is_key_repeat("\x1b[1;2A:2u"));
+    assert!(is_key_release("\x1b[1;2A:3A"));
+    assert!(!is_key_repeat("\x1b[200~text:2u"));
+    assert!(!is_key_release("\x1b[200~text:3u"));
+}
+
+struct RecordingComponent {
+    lines: Vec<String>,
+    inputs: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+}
+
+impl Component for RecordingComponent {
+    fn render(&self, _width: usize) -> Vec<String> {
+        self.lines.clone()
+    }
+
+    fn handle_input(&mut self, data: &str) {
+        self.inputs.borrow_mut().push(data.to_owned());
+    }
+}
+
+#[test]
+fn tui_renders_overlay_and_routes_input_to_topmost_focus() {
+    let mut tui = Tui::new();
+    let base_inputs = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let overlay_inputs = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    tui.root.add_child(RecordingComponent {
+        lines: vec!["base".into()],
+        inputs: base_inputs.clone(),
+    });
+    let first = tui.show_overlay(RecordingComponent {
+        lines: vec!["one".into()],
+        inputs: overlay_inputs.clone(),
+    });
+    let second = tui.show_overlay(RecordingComponent {
+        lines: vec!["two".into()],
+        inputs: overlay_inputs.clone(),
+    });
+
+    assert_eq!(tui.render(80), vec!["base", "two"]);
+    tui.dispatch_input("x");
+    assert_eq!(*overlay_inputs.borrow(), vec!["x"]);
+    assert_eq!(tui.overlay_count(), 2);
+    assert!(tui.hide_overlay(first).is_some());
+    assert!(tui.hide_overlay(second - 1).is_some());
+    assert_eq!(tui.render(80), vec!["base"]);
+}
+
+#[test]
+fn cursor_marker_is_zero_width_protocol_marker() {
+    assert_eq!(CURSOR_MARKER, "\x1b_pi:c\x07");
 }
 
 #[test]
