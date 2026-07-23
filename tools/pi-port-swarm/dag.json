@@ -2842,6 +2842,7 @@
       "ownership": [
         "crates/zedflow-coding-agent/src/cli",
         "crates/zedflow-coding-agent/src/cli.rs",
+        "crates/zedflow-coding-agent/src/lib.rs",
         "crates/zedflow-coding-agent/src/modes",
         "crates/zedflow-coding-agent/src/main.rs",
         "crates/zedflow-coding-agent/src/index.rs",
@@ -2849,7 +2850,8 @@
         "crates/zedflow-coding-agent/tests"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets"
       ],
       "intent": "Port the remaining CLI, print, RPC, and non-interactive mode manifest rows."
     },
