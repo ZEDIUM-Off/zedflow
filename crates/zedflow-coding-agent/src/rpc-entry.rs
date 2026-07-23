@@ -14,7 +14,7 @@ use crate::{
         },
     },
     defaults::DEFAULT_THINKING_LEVEL,
-    modes::rpc::rpc_mode::run_rpc_loop_with_runtime,
+    modes::rpc::rpc_mode::run_rpc_loop_with_runtime_and_session_file,
 };
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -67,6 +67,7 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
     let tools = configured_tools(&parsed, &cwd);
     let active_tool_names = tools.iter().map(|tool| tool.tool.name.clone()).collect();
     let resources = configured_resources(&parsed, &cwd);
+    let session_file = rpc_session_file(&parsed, &cwd);
     let session = AgentSession::new(AgentHarnessOptions {
         env,
         session,
@@ -85,7 +86,7 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
     })
     .map_err(|error| io::Error::other(error.to_string()))?;
     let runtime = AgentSessionRuntime::new(session, cwd_string);
-    run_rpc_loop_with_runtime(reader, writer, &runtime)
+    run_rpc_loop_with_runtime_and_session_file(reader, writer, &runtime, session_file)
 }
 
 fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentTool> {
@@ -463,6 +464,18 @@ async fn find_session_metadata(
         .into_iter()
         .find(|session| session.base.id == argument || session.base.id.starts_with(argument))
         .ok_or_else(|| format!("No session found matching '{argument}'"))
+}
+
+fn rpc_session_file(args: &Args, cwd: &Path) -> Option<String> {
+    let session = args.session.as_deref()?;
+    if !(session.contains('/') || session.contains('\\') || session.ends_with(".jsonl")) {
+        return None;
+    }
+    Some(if Path::new(session).is_absolute() {
+        session.to_owned()
+    } else {
+        cwd.join(session).to_string_lossy().into_owned()
+    })
 }
 
 fn queue_mode(value: &str) -> zedflow_agent::types::QueueMode {

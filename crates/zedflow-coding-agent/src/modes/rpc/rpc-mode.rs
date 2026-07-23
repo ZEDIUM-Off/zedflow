@@ -6,9 +6,10 @@ use super::{
 };
 use crate::agent_session::{AgentHarnessError, AgentHarnessErrorCode};
 use crate::agent_session_runtime::AgentSessionRuntime;
+use crate::config;
 use serde_json::Value;
 use std::io::{self, BufRead, Write};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use zedflow_agent::harness::{
     compaction::compaction::{
@@ -122,53 +123,33 @@ struct RpcDispatchControls {
     auto_retry_enabled: Arc<Mutex<bool>>,
     bash_abort: Arc<Mutex<Option<AbortController>>>,
     retry_abort: Arc<Mutex<Option<AbortController>>>,
+    session_file: Arc<Mutex<Option<String>>>,
 }
 
-impl Default for RpcDispatchControls {
-    fn default() -> Self {
+impl RpcDispatchControls {
+    fn with_session_file(session_file: Option<String>) -> Self {
         Self {
             auto_compaction_enabled: Arc::new(Mutex::new(true)),
             auto_retry_enabled: Arc::new(Mutex::new(true)),
             bash_abort: Arc::new(Mutex::new(None)),
             retry_abort: Arc::new(Mutex::new(None)),
+            session_file: Arc::new(Mutex::new(session_file)),
         }
     }
 }
 
-#[derive(Clone, Default)]
-struct RpcResponseOrder {
-    state: Arc<(Mutex<usize>, Condvar)>,
+impl Default for RpcDispatchControls {
+    fn default() -> Self {
+        Self::with_session_file(None)
+    }
 }
 
-impl RpcResponseOrder {
-    fn write<W: Write>(
-        &self,
-        sequence: usize,
-        writer: &Arc<Mutex<W>>,
-        response: &RpcResponse,
-    ) -> io::Result<()> {
-        let (next, ready) = &*self.state;
-        let mut next_sequence = next
-            .lock()
-            .map_err(|_| io::Error::other("RPC response order lock is poisoned"))?;
-        while *next_sequence != sequence {
-            next_sequence = ready
-                .wait(next_sequence)
-                .map_err(|_| io::Error::other("RPC response order lock is poisoned"))?;
-        }
-        let result = (|| {
-            let mut writer = writer
-                .lock()
-                .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
-            writer.write_all(serialize_json_line(response).as_bytes())?;
-            writer.flush()
-        })();
-        if result.is_ok() {
-            *next_sequence += 1;
-            ready.notify_all();
-        }
-        result
-    }
+fn write_response<W: Write>(writer: &Arc<Mutex<W>>, response: &RpcResponse) -> io::Result<()> {
+    let mut writer = writer
+        .lock()
+        .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
+    writer.write_all(serialize_json_line(response).as_bytes())?;
+    writer.flush()
 }
 
 fn dispatch_command_with_controls(
@@ -199,10 +180,19 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
     writer: W,
     runtime: &AgentSessionRuntime,
 ) -> io::Result<()> {
+    run_rpc_loop_with_runtime_and_session_file(reader, writer, runtime, None)
+}
+
+pub fn run_rpc_loop_with_runtime_and_session_file<R: BufRead, W: Write + Send + 'static>(
+    reader: R,
+    writer: W,
+    runtime: &AgentSessionRuntime,
+    session_file: Option<String>,
+) -> io::Result<()> {
     let writer = Arc::new(Mutex::new(writer));
     let event_writer = Arc::clone(&writer);
     let runtime_session = runtime.session();
-    let controls = RpcDispatchControls::default();
+    let controls = RpcDispatchControls::with_session_file(session_file);
     let unsubscribe = runtime_session.subscribe(Arc::new(move |event| {
         let event_writer = Arc::clone(&event_writer);
         Box::pin(async move {
@@ -233,24 +223,44 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
     }));
 
     let mut workers = Vec::new();
-    let response_order = RpcResponseOrder::default();
-    for (sequence, line) in reader.lines().enumerate() {
+    for line in reader.lines() {
         let line = line?;
-        let response = match parse_command(&line) {
-            Ok(command) => {
-                let runtime = runtime.clone();
-                let writer = Arc::clone(&writer);
-                let controls = controls.clone();
-                let response_order = response_order.clone();
-                workers.push(std::thread::spawn(move || {
-                    let response = dispatch_command_with_controls(&runtime, command, controls);
-                    response_order.write(sequence, &writer, &response)
-                }));
+        let command = match parse_command(&line) {
+            Ok(command) => command,
+            Err(response) => {
+                write_response(&writer, &response)?;
                 continue;
             }
-            Err(response) => response,
         };
-        response_order.write(sequence, &writer, &response)?;
+        let runtime = runtime.clone();
+        let writer = Arc::clone(&writer);
+        let controls = controls.clone();
+        workers.push(std::thread::spawn(move || {
+            if let RpcCommand::Prompt {
+                id,
+                streaming_behavior,
+                images,
+                ..
+            } = &command
+            {
+                if let Err(error) =
+                    validate_prompt_preflight(streaming_behavior.as_deref(), images.as_ref())
+                {
+                    return write_response(
+                        &writer,
+                        &RpcResponse::error(id.clone(), "prompt", error),
+                    );
+                }
+                // Pi acknowledges a prompt after preflight, before the turn emits
+                // its events. The harness prompt itself remains synchronous.
+                write_response(&writer, &RpcResponse::success(id.clone(), "prompt", None))?;
+                let _ = dispatch_command_with_controls(&runtime, command, controls);
+                Ok(())
+            } else {
+                let response = dispatch_command_with_controls(&runtime, command, controls);
+                write_response(&writer, &response)
+            }
+        }));
     }
     for worker in workers {
         worker
@@ -390,6 +400,7 @@ async fn dispatch_command_async(
             streaming_behavior,
             ..
         } => {
+            let message = expand_rpc_prompt(&message, &session.get_resources());
             let images = images
                 .map(Value::Array)
                 .map(serde_json::from_value)
@@ -424,6 +435,7 @@ async fn dispatch_command_async(
         RpcCommand::Steer {
             message, images, ..
         } => {
+            let message = expand_rpc_prompt(&message, &session.get_resources());
             let images = images
                 .map(Value::Array)
                 .map(serde_json::from_value)
@@ -438,6 +450,7 @@ async fn dispatch_command_async(
         RpcCommand::FollowUp {
             message, images, ..
         } => {
+            let message = expand_rpc_prompt(&message, &session.get_resources());
             let images = images
                 .map(Value::Array)
                 .map(serde_json::from_value)
@@ -626,8 +639,25 @@ async fn dispatch_command_async(
                 .map_err(|_| "RPC bash control lock is poisoned".to_owned())?
                 .take();
             let result = result.map_err(|e| e.to_string())?;
+            let cancelled = signal.aborted();
+            let output = format!("{}{}", result.stdout, result.stderr);
+            let exclude_from_context = exclude_from_context.unwrap_or(false);
+            session
+                .session()
+                .append_message(AgentMessage::Custom(serde_json::json!({
+                    "role": "bashExecution",
+                    "command": command.clone(),
+                    "output": output.clone(),
+                    "exitCode": (!cancelled).then_some(result.exit_code),
+                    "cancelled": cancelled,
+                    "truncated": false,
+                    "timestamp": zedflow_agent::harness::session::repo_utils::now_millis(),
+                    "excludeFromContext": exclude_from_context,
+                })))
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(Some(
-                serde_json::json!({"command": command, "output": format!("{}{}", result.stdout, result.stderr), "exitCode": result.exit_code, "cancelled": signal.aborted(), "excludeFromContext": exclude_from_context}),
+                serde_json::json!({"command": command, "output": output, "exitCode": (!cancelled).then_some(result.exit_code), "cancelled": cancelled, "excludeFromContext": exclude_from_context}),
             ))
         }
         RpcCommand::GetSessionStats { .. } => {
@@ -674,7 +704,11 @@ async fn dispatch_command_async(
                 })
             });
             Ok(Some(serde_json::json!({
-                "sessionFile": null,
+                "sessionFile": controls
+                    .session_file
+                    .lock()
+                    .map_err(|_| "RPC state lock is poisoned".to_owned())?
+                    .clone(),
                 "sessionId": session.session().get_metadata().await.id,
                 "userMessages": user_messages,
                 "assistantMessages": assistant_messages,
@@ -843,12 +877,11 @@ async fn dispatch_command_async(
                 .unwrap_or_default()
                 .into_iter()
                 .map(|template| {
-                    let path = format!("{}.md", template.name);
                     serde_json::json!({
                         "name": template.name,
                         "description": template.description,
                         "source": "prompt",
-                        "sourceInfo": rpc_source_info(&path, "local", "project", None)
+                        "sourceInfo": prompt_source_info(&template.name, runtime.cwd())
                     })
                 });
             let skills = resources
@@ -860,7 +893,7 @@ async fn dispatch_command_async(
                         "name": format!("skill:{}", skill.name),
                         "description": skill.description,
                         "source": "skill",
-                        "sourceInfo": rpc_source_info(&skill.file_path, "local", "project", None)
+                        "sourceInfo": resource_source_info(&skill.file_path, runtime.cwd())
                     })
                 });
             Ok(Some(
@@ -881,16 +914,120 @@ mod tests {
         assert_eq!(response.command, "future_command");
         assert!(!response.success);
     }
+
+    #[test]
+    fn rpc_prompt_expands_skill_and_template_invocations() {
+        let resources = zedflow_agent::harness::types::AgentHarnessResources {
+            prompt_templates: Some(vec![zedflow_agent::harness::types::PromptTemplate {
+                name: "summarize".into(),
+                description: None,
+                content: "Summary: $1 ($ARGUMENTS)".into(),
+            }]),
+            skills: Some(vec![zedflow_agent::harness::types::Skill {
+                name: "review".into(),
+                description: "Review code".into(),
+                content: "Inspect the diff.".into(),
+                file_path: "/tmp/review/SKILL.md".into(),
+                disable_model_invocation: None,
+            }]),
+        };
+        assert_eq!(
+            expand_rpc_prompt("/summarize one two", &resources),
+            "Summary: one (one two)"
+        );
+        assert!(expand_rpc_prompt("/skill:review extra", &resources).contains("Inspect the diff."));
+    }
 }
 
-fn rpc_source_info(path: &str, source: &str, scope: &str, base_dir: Option<&str>) -> Value {
+fn validate_prompt_preflight(
+    streaming_behavior: Option<&str>,
+    images: Option<&Vec<Value>>,
+) -> Result<(), String> {
+    if let Some(value) = streaming_behavior {
+        if value != "steer" && value != "followUp" {
+            return Err(format!("Invalid streaming behavior: {value}"));
+        }
+    }
+    if let Some(images) = images {
+        serde_json::from_value::<Vec<zedflow_ai::ImageContent>>(Value::Array(images.clone()))
+            .map_err(|error| format!("Invalid images: {error}"))?;
+    }
+    Ok(())
+}
+
+fn expand_rpc_prompt(
+    text: &str,
+    resources: &zedflow_agent::harness::types::AgentHarnessResources,
+) -> String {
+    if !text.starts_with('/') {
+        return text.to_owned();
+    }
+    let (name, args) = text[1..]
+        .split_once(char::is_whitespace)
+        .map_or((&text[1..], ""), |(name, args)| (name, args.trim()));
+    if let Some(skill_name) = name.strip_prefix("skill:") {
+        if let Some(skill) = resources
+            .skills
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .find(|skill| skill.name == skill_name)
+        {
+            return zedflow_agent::harness::skills::format_skill_invocation(
+                skill,
+                (!args.is_empty()).then_some(args),
+            );
+        }
+    }
+    if let Some(template) = resources
+        .prompt_templates
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .find(|template| template.name == name)
+    {
+        let arguments = zedflow_agent::harness::prompt_templates::parse_command_args(args);
+        return zedflow_agent::harness::prompt_templates::format_prompt_template_invocation(
+            template, &arguments,
+        );
+    }
+    text.to_owned()
+}
+
+fn resource_source_info(path: &str, cwd: &str) -> Value {
+    let path = std::path::Path::new(path);
+    let cwd = std::path::Path::new(cwd);
+    let agent_dir = config::get_agent_dir();
+    let (scope, base_dir) = if path.starts_with(&agent_dir) {
+        ("user", path.parent())
+    } else if path.starts_with(cwd) {
+        ("project", path.parent())
+    } else {
+        ("temporary", path.parent())
+    };
     serde_json::json!({
-        "path": path,
-        "source": source,
+        "path": path.to_string_lossy(),
+        "source": "local",
         "scope": scope,
         "origin": "top-level",
-        "baseDir": base_dir
+        "baseDir": base_dir.map(|path| path.to_string_lossy().into_owned())
     })
+}
+
+fn prompt_source_info(name: &str, cwd: &str) -> Value {
+    let candidates = [
+        config::get_agent_dir()
+            .join("prompts")
+            .join(format!("{name}.md")),
+        std::path::Path::new(cwd)
+            .join(config::CONFIG_DIR_NAME)
+            .join("prompts")
+            .join(format!("{name}.md")),
+    ];
+    candidates.iter().find(|path| path.is_file()).map_or_else(
+        || resource_source_info(&format!("{name}.md"), cwd),
+        |path| resource_source_info(&path.to_string_lossy(), cwd),
+    )
 }
 
 fn queue_mode_name(mode: QueueMode) -> &'static str {
