@@ -3212,22 +3212,10 @@
       "intent": "Validate the complete TUI manifest wave."
     },
     {
-      "id": "TUI-RV-FID-V2",
-      "kind": "reviewer",
-      "depends_on": [
-        "TUI-V2"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of all remaining TUI rows."
-    },
-    {
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
-        "TUI-RV-FID-V2"
+        "REPLAN-TUI-V2-RUNTIME-REVIEW"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
@@ -3318,6 +3306,75 @@
         "git diff --check"
       ],
       "intent": "Record completion only after every manifest row and final validation, fidelity, and Rust review gates are accepted."
+    },
+    {
+      "id": "REPLAN-TUI-V2-RUNTIME",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V2"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port the missing Pi TUI/Container runtime surface in lib.rs: component lifecycle, layout/rendering, overlays, input dispatch, and cursor behavior, bounded to the existing crate API."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS",
+      "kind": "writer",
+      "depends_on": [
+        "REPLAN-TUI-V2-RUNTIME"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Complete Pi-faithful TUI key decoding and input primitives in keys.rs, including the missing terminal/key protocols while preserving existing callers."
+    },
+    {
+      "id": "REPLAN-TUI-V2-TESTS",
+      "kind": "writer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --all-targets"
+      ],
+      "intent": "Add focused tests for the repaired TUI runtime, rendering/input behavior, overlays, cursor handling, and key decoding against frozen Pi semantics."
+    },
+    {
+      "id": "REPLAN-TUI-V2-VALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-TUI-V2-TESTS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo test -p zedflow-tui --all-targets",
+        "git diff --check"
+      ],
+      "intent": "Fresh focused validation of the bounded TUI runtime repair wave."
+    },
+    {
+      "id": "REPLAN-TUI-V2-RUNTIME-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-TUI-V2-VALIDATE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review of the repaired TUI runtime, key decoding, rendering, overlays, input, and cursor rows."
     }
   ]
 }
