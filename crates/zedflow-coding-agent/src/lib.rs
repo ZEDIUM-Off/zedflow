@@ -8,6 +8,21 @@ pub mod utils;
 
 pub mod config;
 
+#[path = "cli/mod.rs"]
+pub mod cli;
+#[path = "index.rs"]
+pub mod index;
+#[path = "modes/mod.rs"]
+pub mod modes;
+#[path = "rpc-entry.rs"]
+pub mod rpc_entry;
+
+pub use cli::{Args, InitialMessageResult, Mode, build_initial_message, parse_args};
+pub use modes::{
+    AssistantResult, PrintModeOptions, PrintOutputMode, RpcClient, RpcCommand, RpcResponse,
+    handle_command_line, prompts, render_print_result, run_rpc_loop,
+};
+
 #[path = "core/agent-session.rs"]
 pub mod agent_session;
 #[path = "core/agent-session-runtime.rs"]
