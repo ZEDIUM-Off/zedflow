@@ -14,6 +14,33 @@ pub fn is_kitty_protocol_active() -> bool {
 /// Decode the legacy escape sequences used by terminals for navigation keys.
 pub fn parse_key(data: &str) -> Option<&'static str> {
     // Legacy sequences, plus Kitty CSI-u and xterm modifier forms.
+    if let Some(key) = parse_kitty_key(data) {
+        return Some(Box::leak(key.into_boxed_str()));
+    }
+    if data.len() == 1 {
+        let byte = data.as_bytes()[0];
+        if (1..=26).contains(&byte) {
+            return Some(Box::leak(
+                format!("ctrl+{}", (b'a' + byte - 1) as char).into_boxed_str(),
+            ));
+        }
+        if (32..=126).contains(&byte) {
+            return Some(Box::leak(data.to_owned().into_boxed_str()));
+        }
+    }
+    if let Some(rest) = data.strip_prefix('\x1b') {
+        if rest.len() == 1 {
+            let byte = rest.as_bytes()[0];
+            if (b'a'..=b'z').contains(&byte) || (b'0'..=b'9').contains(&byte) {
+                return Some(Box::leak(format!("alt+{}", byte as char).into_boxed_str()));
+            }
+            if (1..=26).contains(&byte) {
+                return Some(Box::leak(
+                    format!("ctrl+alt+{}", (b'a' + byte - 1) as char).into_boxed_str(),
+                ));
+            }
+        }
+    }
     Some(match data {
         "\x1b" => "escape",
         "\r" | "\n" => "enter",
@@ -68,6 +95,31 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
         "\x1b[9;3u" => "alt+tab",
         _ => return None,
     })
+}
+
+fn parse_kitty_key(data: &str) -> Option<String> {
+    let body = data.strip_prefix("\x1b[")?.strip_suffix('u')?;
+    let (code, modifier) = body.split_once(';').map_or((body, "1"), |v| v);
+    let code: u32 = code.split(':').next()?.parse().ok()?;
+    let modifier: u32 = modifier.split(':').next()?.parse().ok()?.saturating_sub(1);
+    let key = match code {
+        13 => "enter".to_owned(),
+        9 => "tab".to_owned(),
+        127 => "backspace".to_owned(),
+        32..=126 => char::from_u32(code)?.to_string(),
+        _ => return None,
+    };
+    let mut prefix = String::new();
+    if modifier & 1 != 0 {
+        prefix.push_str("shift+");
+    }
+    if modifier & 2 != 0 {
+        prefix.push_str("alt+");
+    }
+    if modifier & 4 != 0 {
+        prefix.push_str("ctrl+");
+    }
+    Some(format!("{prefix}{key}"))
 }
 
 pub fn is_key_release(data: &str) -> bool {
