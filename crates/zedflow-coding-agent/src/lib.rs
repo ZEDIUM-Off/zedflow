@@ -3,6 +3,7 @@
 //! Zedflow coding-agent crate.
 
 /// Deterministic utilities ported from Pi's coding-agent package.
+#[path = "utils/mod.rs"]
 pub mod utils;
 
 pub mod config;
