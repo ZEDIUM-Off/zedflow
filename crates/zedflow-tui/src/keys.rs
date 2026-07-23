@@ -41,7 +41,7 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
     // Pi treats a raw printable character as its own key identifier.
     if data.chars().count() == 1 {
         let character = data.chars().next().unwrap();
-        if character >= ' ' && character != '\x7f' {
+        if character > ' ' && character != '\x7f' {
             return Some(Box::leak(data.to_owned().into_boxed_str()));
         }
     }
@@ -159,6 +159,7 @@ mod tests {
     fn parses_raw_printable_input() {
         assert_eq!(parse_key("a"), Some("a"));
         assert_eq!(parse_key("é"), Some("é"));
+        assert_eq!(parse_key(" "), Some("space"));
         assert_eq!(parse_key("\x01"), Some("ctrl+a"));
     }
 }
