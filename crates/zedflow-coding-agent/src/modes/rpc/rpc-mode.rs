@@ -11,6 +11,7 @@ use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 use zedflow_agent::harness::types::AgentHarnessPromptOptions;
 use zedflow_agent::types::QueueMode;
+use zedflow_ai::utils::abort_signals::AbortController;
 
 /// Handle one already-framed command. Runtime integrations can dispatch the
 /// returned command; malformed input gets the same error envelope as Pi.
@@ -103,6 +104,21 @@ pub fn run_rpc_loop<R: BufRead, W: Write>(reader: R, mut writer: W) -> io::Resul
 /// acknowledged as successful without reaching the harness.
 #[must_use]
 pub fn dispatch_command(runtime: &AgentSessionRuntime, command: RpcCommand) -> RpcResponse {
+    dispatch_command_with_controls(runtime, command, RpcDispatchControls::default())
+}
+
+#[derive(Clone, Default)]
+struct RpcDispatchControls {
+    auto_compaction_enabled: Arc<Mutex<bool>>,
+    auto_retry_enabled: Arc<Mutex<bool>>,
+    bash_abort: Arc<Mutex<Option<AbortController>>>,
+}
+
+fn dispatch_command_with_controls(
+    runtime: &AgentSessionRuntime,
+    command: RpcCommand,
+    controls: RpcDispatchControls,
+) -> RpcResponse {
     let id = command.id().map(str::to_owned);
     let name = command_name(&command);
     let runtime = runtime.clone();
@@ -110,7 +126,9 @@ pub fn dispatch_command(runtime: &AgentSessionRuntime, command: RpcCommand) -> R
         .enable_all()
         .build()
         .map_err(|error| error.to_string())
-        .and_then(|executor| executor.block_on(dispatch_command_async(&runtime, command)));
+        .and_then(|executor| {
+            executor.block_on(dispatch_command_async(&runtime, command, controls))
+        });
 
     match result {
         Ok(data) => RpcResponse::success(id, name, data),
@@ -127,6 +145,7 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
     let writer = Arc::new(Mutex::new(writer));
     let event_writer = Arc::clone(&writer);
     let runtime_session = runtime.session();
+    let controls = RpcDispatchControls::default();
     let unsubscribe = runtime_session.subscribe(Arc::new(move |event| {
         let event_writer = Arc::clone(&event_writer);
         Box::pin(async move {
@@ -163,8 +182,9 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
             Ok(command) => {
                 let runtime = runtime.clone();
                 let writer = Arc::clone(&writer);
+                let controls = controls.clone();
                 workers.push(std::thread::spawn(move || {
-                    let response = dispatch_command(&runtime, command);
+                    let response = dispatch_command_with_controls(&runtime, command, controls);
                     let mut writer = writer
                         .lock()
                         .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
@@ -201,6 +221,7 @@ fn queue_mode(value: &str) -> Result<QueueMode, String> {
 async fn dispatch_command_async(
     runtime: &AgentSessionRuntime,
     command: RpcCommand,
+    controls: RpcDispatchControls,
 ) -> Result<Option<Value>, String> {
     let session = runtime.session();
     match command {
@@ -269,11 +290,30 @@ async fn dispatch_command_async(
                 .map_err(|e| e.to_string())?;
             Ok(None)
         }
-        RpcCommand::Abort { .. } | RpcCommand::AbortRetry { .. } | RpcCommand::AbortBash { .. } => {
+        RpcCommand::Abort { .. } => {
             session.abort().await.map_err(|e| e.to_string())?;
             Ok(None)
         }
-        RpcCommand::NewSession { .. } => Ok(Some(serde_json::json!({"cancelled": true}))),
+        RpcCommand::AbortRetry { .. } => {
+            // The Rust harness performs retries inside the prompt future; aborting the
+            // active turn is the only safe way to stop one at this protocol boundary.
+            session.abort().await.map_err(|e| e.to_string())?;
+            Ok(None)
+        }
+        RpcCommand::AbortBash { .. } => {
+            if let Some(controller) = controls
+                .bash_abort
+                .lock()
+                .map_err(|_| "RPC bash control lock is poisoned".to_owned())?
+                .take()
+            {
+                controller.abort();
+            }
+            Ok(None)
+        }
+        RpcCommand::NewSession { .. } => {
+            Err("Session creation is only available when starting the RPC runtime".to_owned())
+        }
         RpcCommand::GetState { .. } => {
             let metadata = session.session().get_metadata().await;
             let context = session.session().build_context().await;
@@ -288,7 +328,11 @@ async fn dispatch_command_async(
                     session_file: None,
                     session_id: metadata.id,
                     session_name: None,
-                    auto_compaction_enabled: true,
+                    auto_compaction_enabled: controls
+                        .auto_compaction_enabled
+                        .lock()
+                        .map_err(|_| "RPC state lock is poisoned".to_owned())
+                        .map(|enabled| *enabled)?,
                     message_count: context.messages.len(),
                     pending_message_count: 0,
                 })
@@ -381,49 +425,128 @@ async fn dispatch_command_async(
                 serde_json::to_value(result).map_err(|e| e.to_string())?,
             ))
         }
-        RpcCommand::SetAutoCompaction { .. } | RpcCommand::SetAutoRetry { .. } => Ok(None),
+        RpcCommand::SetAutoCompaction { enabled, .. } => {
+            *controls
+                .auto_compaction_enabled
+                .lock()
+                .map_err(|_| "RPC state lock is poisoned".to_owned())? = enabled;
+            Ok(None)
+        }
+        RpcCommand::SetAutoRetry { enabled, .. } => {
+            *controls
+                .auto_retry_enabled
+                .lock()
+                .map_err(|_| "RPC retry control lock is poisoned".to_owned())? = enabled;
+            Ok(None)
+        }
         RpcCommand::Bash {
             command,
             exclude_from_context,
             ..
         } => {
             use zedflow_agent::harness::types::ShellExecOptions;
+            let controller = AbortController::new();
+            let signal = controller.signal();
+            *controls
+                .bash_abort
+                .lock()
+                .map_err(|_| "RPC bash control lock is poisoned".to_owned())? = Some(controller);
             let result = session
                 .env()
                 .exec(
                     &command,
                     Some(ShellExecOptions {
                         cwd: Some(runtime.cwd().to_owned()),
+                        abort_signal: Some(signal.clone()),
                         ..Default::default()
                     }),
                 )
-                .await
-                .map_err(|e| e.to_string())?;
+                .await;
+            controls
+                .bash_abort
+                .lock()
+                .map_err(|_| "RPC bash control lock is poisoned".to_owned())?
+                .take();
+            let result = result.map_err(|e| e.to_string())?;
             Ok(Some(
-                serde_json::json!({"command": command, "output": format!("{}{}", result.stdout, result.stderr), "exitCode": result.exit_code, "cancelled": false, "excludeFromContext": exclude_from_context}),
+                serde_json::json!({"command": command, "output": format!("{}{}", result.stdout, result.stderr), "exitCode": result.exit_code, "cancelled": signal.aborted(), "excludeFromContext": exclude_from_context}),
             ))
         }
         RpcCommand::GetSessionStats { .. } => {
             let messages = session.session().build_context().await.messages;
-            let mut stats = serde_json::json!({"sessionFile": null, "sessionId": session.session().get_metadata().await.id,
-                "userMessages": 0, "assistantMessages": 0, "toolCalls": 0, "toolResults": 0,
-                "totalMessages": messages.len(), "tokens": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}, "cost": 0});
+            let mut stats = serde_json::json!({
+                "sessionFile": null,
+                "sessionId": session.session().get_metadata().await.id,
+                "userMessages": 0,
+                "assistantMessages": 0,
+                "toolCalls": 0,
+                "toolResults": 0,
+                "totalMessages": messages.len(),
+                "tokens": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0},
+                "cost": 0
+            });
             for message in messages {
                 let value = serde_json::to_value(message).map_err(|e| e.to_string())?;
                 match value.get("role").and_then(Value::as_str) {
                     Some("user") => {
-                        stats["userMessages"] = stats["userMessages"].as_u64().unwrap_or(0).into()
+                        stats["userMessages"] = stats["userMessages"]
+                            .as_u64()
+                            .unwrap_or(0)
+                            .saturating_add(1)
+                            .into()
                     }
                     Some("assistant") => {
-                        stats["assistantMessages"] =
-                            stats["assistantMessages"].as_u64().unwrap_or(0).into()
+                        stats["assistantMessages"] = stats["assistantMessages"]
+                            .as_u64()
+                            .unwrap_or(0)
+                            .saturating_add(1)
+                            .into();
+                        if let Some(content) = value.get("content").and_then(Value::as_array) {
+                            let calls = content
+                                .iter()
+                                .filter(|block| {
+                                    block.get("type").and_then(Value::as_str) == Some("toolCall")
+                                })
+                                .count() as u64;
+                            stats["toolCalls"] = stats["toolCalls"]
+                                .as_u64()
+                                .unwrap_or(0)
+                                .saturating_add(calls)
+                                .into();
+                        }
+                        if let Some(usage) = value.get("usage") {
+                            for key in ["input", "output", "cacheRead", "cacheWrite"] {
+                                let amount = usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+                                stats["tokens"][key] = stats["tokens"][key]
+                                    .as_u64()
+                                    .unwrap_or(0)
+                                    .saturating_add(amount)
+                                    .into();
+                            }
+                            let cost = usage
+                                .get("cost")
+                                .and_then(|cost| cost.get("total"))
+                                .and_then(Value::as_f64)
+                                .unwrap_or(0.0);
+                            stats["cost"] =
+                                serde_json::json!(stats["cost"].as_f64().unwrap_or(0.0) + cost);
+                        }
                     }
                     Some("toolResult") => {
-                        stats["toolResults"] = stats["toolResults"].as_u64().unwrap_or(0).into()
+                        stats["toolResults"] = stats["toolResults"]
+                            .as_u64()
+                            .unwrap_or(0)
+                            .saturating_add(1)
+                            .into()
                     }
                     _ => {}
                 }
             }
+            let total = ["input", "output", "cacheRead", "cacheWrite"]
+                .into_iter()
+                .map(|key| stats["tokens"][key].as_u64().unwrap_or(0))
+                .sum::<u64>();
+            stats["tokens"]["total"] = total.into();
             Ok(Some(stats))
         }
         RpcCommand::ExportHtml { output_path, .. } => {
@@ -439,11 +562,14 @@ async fn dispatch_command_async(
             "Session switching is unavailable in this runtime: {session_path}"
         )),
         RpcCommand::Fork { entry_id, .. } => {
-            session
+            let result = session
                 .navigate_tree(&entry_id, Default::default())
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(Some(serde_json::json!({"text": "", "cancelled": false})))
+            Ok(Some(serde_json::json!({
+                "text": result.editor_text,
+                "cancelled": result.cancelled
+            })))
         }
         RpcCommand::Clone { .. } => {
             let leaf = session
@@ -451,13 +577,51 @@ async fn dispatch_command_async(
                 .get_leaf_id()
                 .await
                 .ok_or("Cannot clone session: no current entry selected")?;
-            session
+            let result = session
                 .navigate_tree(&leaf, Default::default())
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(Some(serde_json::json!({"cancelled": false})))
+            Ok(Some(serde_json::json!({"cancelled": result.cancelled})))
         }
-        RpcCommand::GetForkMessages { .. } => Ok(Some(serde_json::json!({"messages": []}))),
+        RpcCommand::GetForkMessages { .. } => {
+            let messages = session
+                .session()
+                .get_entries()
+                .await
+                .into_iter()
+                .filter_map(|entry| {
+                    let value = serde_json::to_value(entry).ok()?;
+                    let message = value.get("message")?;
+                    (message.get("role").and_then(Value::as_str) == Some("user")).then(|| {
+                        let text = message
+                            .get("content")
+                            .and_then(|content| {
+                                content.as_str().map(str::to_owned).or_else(|| {
+                                    content.as_array().map(|blocks| {
+                                        blocks
+                                            .iter()
+                                            .filter_map(|block| {
+                                                (block.get("type").and_then(Value::as_str)
+                                                    == Some("text"))
+                                                .then(|| block.get("text").and_then(Value::as_str))
+                                                .flatten()
+                                            })
+                                            .collect::<String>()
+                                    })
+                                })
+                            })
+                            .unwrap_or_default();
+                        serde_json::json!({"entryId": value["id"], "text": text})
+                    })
+                })
+                .filter(|message| {
+                    message["text"]
+                        .as_str()
+                        .is_some_and(|text| !text.is_empty())
+                })
+                .collect::<Vec<_>>();
+            Ok(Some(serde_json::json!({"messages": messages})))
+        }
         RpcCommand::GetEntries { since, .. } => {
             let entries = session.session().get_entries().await;
             let values = entries
@@ -489,7 +653,37 @@ async fn dispatch_command_async(
                 serde_json::json!({"tree": entries, "leafId": session.session().get_leaf_id().await}),
             ))
         }
-        RpcCommand::GetLastAssistantText { .. } => Ok(Some(serde_json::json!({"text": null}))),
+        RpcCommand::GetLastAssistantText { .. } => {
+            let text = session
+                .session()
+                .build_context()
+                .await
+                .messages
+                .into_iter()
+                .rev()
+                .find_map(|message| {
+                    let value = serde_json::to_value(message).ok()?;
+                    (value.get("role").and_then(Value::as_str) == Some("assistant"))
+                        .then(|| {
+                            value
+                                .get("content")
+                                .and_then(Value::as_array)
+                                .map(|blocks| {
+                                    blocks
+                                        .iter()
+                                        .filter_map(|block| {
+                                            (block.get("type").and_then(Value::as_str)
+                                                == Some("text"))
+                                            .then(|| block.get("text").and_then(Value::as_str))
+                                            .flatten()
+                                        })
+                                        .collect::<String>()
+                                })
+                        })
+                        .flatten()
+                });
+            Ok(Some(serde_json::json!({"text": text})))
+        }
         RpcCommand::SetSessionName { name, .. } => {
             let name = name.trim();
             if name.is_empty() {

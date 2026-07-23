@@ -16,6 +16,7 @@ use crate::{
     defaults::DEFAULT_THINKING_LEVEL,
     modes::rpc::rpc_mode::run_rpc_loop_with_runtime,
 };
+use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -26,9 +27,9 @@ use zedflow_agent::harness::{
         repo_utils::to_shared_session,
     },
     types::{
-        AgentHarnessOptions, AgentHarnessResources, FileSystem, JsonlSessionListOptions,
-        PromptTemplate as HarnessPromptTemplate, Session as AgentSessionTrait, SessionMetadata,
-        Skill as HarnessSkill,
+        AgentHarnessOptions, AgentHarnessResources, FileSystem, JsonlSessionCreateOptions,
+        JsonlSessionListOptions, JsonlSessionMetadata, PromptTemplate as HarnessPromptTemplate,
+        Session as AgentSessionTrait, SessionForkOptions, SessionMetadata, Skill as HarnessSkill,
     },
 };
 use zedflow_ai::{Model, Models, providers::all::builtin_models};
@@ -112,44 +113,126 @@ fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentT
 }
 
 fn configured_resources(args: &Args, cwd: &Path) -> AgentHarnessResources {
-    if args.no_skills {
-        return AgentHarnessResources {
-            prompt_templates: Some(Vec::new()),
-            skills: Some(Vec::new()),
-        };
-    }
     let mut loader = DefaultResourceLoader::new(cwd, config::get_agent_dir());
     loader.extend_resources(ResourceExtensionPaths {
         skill_paths: args.skills.iter().map(PathBuf::from).collect(),
         ..Default::default()
     });
     loader.reload();
-    let skills = loader
-        .get_skills()
-        .skills
-        .iter()
-        .filter(|skill| {
-            args.skills.is_empty()
-                || args.skills.iter().any(|name| {
-                    name == &skill.name || Path::new(name) == Path::new(&skill.file_path)
-                })
-        })
-        .filter_map(|skill| {
-            std::fs::read_to_string(&skill.file_path)
-                .ok()
-                .map(|content| HarnessSkill {
-                    name: skill.name.clone(),
-                    description: skill.description.clone(),
-                    content,
-                    file_path: skill.file_path.clone(),
-                    disable_model_invocation: Some(skill.disable_model_invocation),
-                })
-        })
-        .collect::<Vec<_>>();
+    let skills = if args.no_skills {
+        Vec::new()
+    } else {
+        loader
+            .get_skills()
+            .skills
+            .iter()
+            .filter_map(|skill| {
+                fs::read_to_string(&skill.file_path)
+                    .ok()
+                    .map(|content| HarnessSkill {
+                        name: skill.name.clone(),
+                        description: skill.description.clone(),
+                        content,
+                        file_path: skill.file_path.clone(),
+                        disable_model_invocation: Some(skill.disable_model_invocation),
+                    })
+            })
+            .collect::<Vec<_>>()
+    };
     AgentHarnessResources {
-        prompt_templates: Some(Vec::<HarnessPromptTemplate>::new()),
+        prompt_templates: Some(load_prompt_templates(args, cwd)),
         skills: Some(skills),
     }
+}
+
+fn load_prompt_templates(args: &Args, cwd: &Path) -> Vec<HarnessPromptTemplate> {
+    let mut templates = Vec::new();
+    if !args.no_prompt_templates {
+        for directory in [
+            config::get_agent_dir().join("prompts"),
+            cwd.join(config::CONFIG_DIR_NAME).join("prompts"),
+        ] {
+            load_prompt_template_path(&directory, &mut templates);
+        }
+    }
+    for path in &args.prompt_templates {
+        let path = Path::new(path);
+        load_prompt_template_path(
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            }
+            .as_path(),
+            &mut templates,
+        );
+    }
+    templates
+}
+
+fn load_prompt_template_path(path: &Path, templates: &mut Vec<HarnessPromptTemplate>) {
+    if path.is_dir() {
+        let Ok(entries) = fs::read_dir(path) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let child = entry.path();
+            if child.extension().is_some_and(|extension| extension == "md") {
+                load_prompt_template_path(&child, templates);
+            }
+        }
+        return;
+    }
+    if path.extension().is_none_or(|extension| extension != "md") {
+        return;
+    }
+    let Ok(raw) = fs::read_to_string(path) else {
+        return;
+    };
+    let (frontmatter, content) = if let Some(rest) = raw.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            let yaml = &rest[1..end];
+            let content = rest
+                .get(end + 4..)
+                .unwrap_or_default()
+                .trim_start_matches('\n');
+            (
+                serde_yaml::from_str::<serde_yaml::Value>(yaml).ok(),
+                content,
+            )
+        } else {
+            (None, raw.as_str())
+        }
+    } else {
+        (None, raw.as_str())
+    };
+    let description = frontmatter
+        .as_ref()
+        .and_then(|value| value.get("description"))
+        .and_then(serde_yaml::Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| {
+            content
+                .lines()
+                .find(|line| !line.trim().is_empty())
+                .map(|line| {
+                    let line = line.trim();
+                    let shortened = line.chars().take(60).collect::<String>();
+                    if shortened.len() < line.len() {
+                        format!("{shortened}...")
+                    } else {
+                        shortened
+                    }
+                })
+        });
+    let Some(name) = path.file_stem().and_then(|name| name.to_str()) else {
+        return;
+    };
+    templates.push(HarnessPromptTemplate {
+        name: name.to_owned(),
+        description,
+        content: content.to_owned(),
+    });
 }
 
 async fn create_session(
@@ -186,6 +269,23 @@ async fn create_session(
         session_root.to_string_lossy().into_owned(),
     );
 
+    if let Some(source_arg) = args.fork.as_deref() {
+        let metadata = find_session_metadata(&repo, env, source_arg, cwd, cwd_string).await?;
+        return repo
+            .fork(
+                metadata,
+                JsonlSessionCreateOptions {
+                    id: args.session_id.clone(),
+                    cwd: cwd_string.to_owned(),
+                    parent_session_path: None,
+                },
+                SessionForkOptions::default(),
+            )
+            .await
+            .map(|session| Arc::new(session) as Arc<dyn AgentSessionTrait>)
+            .map_err(|error| error.to_string());
+    }
+
     if let Some(session_arg) = args.session.as_deref() {
         let path = if session_arg.contains('/')
             || session_arg.contains('\\')
@@ -204,12 +304,38 @@ async fn create_session(
                 })
                 .await
                 .map_err(|error| error.to_string())?;
-            let metadata = sessions
-                .into_iter()
-                .find(|session| {
-                    session.base.id == session_arg || session.base.id.starts_with(session_arg)
-                })
-                .ok_or_else(|| format!("No session found matching '{session_arg}'"))?;
+            let mut metadata = sessions.into_iter().find(|session| {
+                session.base.id == session_arg || session.base.id.starts_with(session_arg)
+            });
+            let mut fork_global = false;
+            if metadata.is_none() {
+                metadata = repo
+                    .list(JsonlSessionListOptions { cwd: None })
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .into_iter()
+                    .find(|session| {
+                        session.base.id == session_arg || session.base.id.starts_with(session_arg)
+                    });
+                fork_global = metadata.is_some();
+            }
+            let metadata =
+                metadata.ok_or_else(|| format!("No session found matching '{session_arg}'"))?;
+            if fork_global {
+                return repo
+                    .fork(
+                        metadata,
+                        JsonlSessionCreateOptions {
+                            id: args.session_id.clone(),
+                            cwd: cwd_string.to_owned(),
+                            parent_session_path: None,
+                        },
+                        SessionForkOptions::default(),
+                    )
+                    .await
+                    .map(|session| Arc::new(session) as Arc<dyn AgentSessionTrait>)
+                    .map_err(|error| error.to_string());
+            }
             return repo
                 .open(metadata)
                 .await
@@ -227,6 +353,21 @@ async fn create_session(
                 zedflow_agent::harness::session::load_jsonl_session_metadata(env.as_ref(), &path)
                     .await
                     .map_err(|error| error.to_string())?;
+            if metadata.cwd != cwd_string {
+                return repo
+                    .fork(
+                        metadata,
+                        JsonlSessionCreateOptions {
+                            id: args.session_id.clone(),
+                            cwd: cwd_string.to_owned(),
+                            parent_session_path: None,
+                        },
+                        SessionForkOptions::default(),
+                    )
+                    .await
+                    .map(|session| Arc::new(session) as Arc<dyn AgentSessionTrait>)
+                    .map_err(|error| error.to_string());
+            }
             return repo
                 .open(metadata)
                 .await
@@ -271,6 +412,55 @@ async fn create_session(
     .await
     .map(|session| Arc::new(session) as Arc<dyn AgentSessionTrait>)
     .map_err(|error| error.to_string())
+}
+
+async fn find_session_metadata(
+    repo: &JsonlSessionRepo,
+    env: &Arc<NodeExecutionEnv>,
+    argument: &str,
+    cwd: &Path,
+    cwd_string: &str,
+) -> Result<JsonlSessionMetadata, String> {
+    let path_like =
+        argument.contains('/') || argument.contains('\\') || argument.ends_with(".jsonl");
+    if path_like {
+        let path = Path::new(argument);
+        let path = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            cwd.join(path)
+        };
+        let path = path.to_string_lossy().into_owned();
+        if !env
+            .exists(&path, None)
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            return Err(format!("Session path does not exist: {path}"));
+        }
+        return zedflow_agent::harness::session::load_jsonl_session_metadata(env.as_ref(), &path)
+            .await
+            .map_err(|error| error.to_string());
+    }
+    let mut sessions = repo
+        .list(JsonlSessionListOptions {
+            cwd: Some(cwd_string.to_owned()),
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    if !sessions
+        .iter()
+        .any(|session| session.base.id == argument || session.base.id.starts_with(argument))
+    {
+        sessions = repo
+            .list(JsonlSessionListOptions { cwd: None })
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    sessions
+        .into_iter()
+        .find(|session| session.base.id == argument || session.base.id.starts_with(argument))
+        .ok_or_else(|| format!("No session found matching '{argument}'"))
 }
 
 fn queue_mode(value: &str) -> zedflow_agent::types::QueueMode {
@@ -425,5 +615,32 @@ mod tests {
 
         assert_eq!(model.provider, "openai");
         assert_eq!(model.id, "gpt-4");
+    }
+
+    #[test]
+    fn prompt_template_loader_strips_frontmatter() {
+        let path = std::env::temp_dir().join(format!(
+            "zedflow-rpc-prompt-{}.md",
+            zedflow_agent::harness::session::create_session_id()
+        ));
+        std::fs::write(
+            &path,
+            "---\ndescription: summarize the input\n---\nUse $ARGUMENTS.",
+        )
+        .expect("prompt template");
+        let mut templates = Vec::new();
+        load_prompt_template_path(&path, &mut templates);
+        std::fs::remove_file(&path).expect("remove prompt template");
+
+        assert_eq!(templates.len(), 1);
+        assert_eq!(
+            templates[0].name,
+            path.file_stem().unwrap().to_str().unwrap()
+        );
+        assert_eq!(
+            templates[0].description.as_deref(),
+            Some("summarize the input")
+        );
+        assert_eq!(templates[0].content, "Use $ARGUMENTS.");
     }
 }
