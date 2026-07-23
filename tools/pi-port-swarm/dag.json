@@ -3198,20 +3198,6 @@
       "intent": "Port the remaining TUI source and test manifest rows after coding-agent integration is complete."
     },
     {
-      "id": "TUI-V2",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C2-REMAINING-MANIFEST-ROWS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-tui --all-targets"
-      ],
-      "intent": "Validate the complete TUI manifest wave."
-    },
-    {
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
@@ -3311,7 +3297,7 @@
       "id": "REPLAN-TUI-V2-KEYS-REPAIR",
       "kind": "writer",
       "depends_on": [
-        "TUI-V2"
+        "TUI-C2-REMAINING-MANIFEST-ROWS"
       ],
       "ownership": [
         "crates/zedflow-tui/src/keys.rs"
@@ -3322,7 +3308,7 @@
       "intent": "Implement the diagnosed Pi-compatible printable, control, Alt, and Kitty key decoding repair in keys.rs."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE",
+      "id": "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE-R1",
       "kind": "validator",
       "depends_on": [
         "REPLAN-TUI-V2-KEYS-REPAIR"
@@ -3339,7 +3325,7 @@
       "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE"
+        "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
