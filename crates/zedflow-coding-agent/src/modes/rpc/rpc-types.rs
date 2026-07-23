@@ -5,13 +5,14 @@ use serde_json::Value;
 use zedflow_agent::types::ThinkingLevel;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum RpcCommand {
     #[serde(rename = "prompt")]
     Prompt {
         id: Option<String>,
         message: String,
         images: Option<Vec<Value>>,
+        #[serde(rename = "streamingBehavior")]
         streaming_behavior: Option<String>,
     },
     #[serde(rename = "steer")]
@@ -31,6 +32,7 @@ pub enum RpcCommand {
     #[serde(rename = "new_session")]
     NewSession {
         id: Option<String>,
+        #[serde(rename = "parentSession")]
         parent_session: Option<String>,
     },
     #[serde(rename = "get_state")]
@@ -39,6 +41,7 @@ pub enum RpcCommand {
     SetModel {
         id: Option<String>,
         provider: String,
+        #[serde(rename = "modelId")]
         model_id: String,
     },
     #[serde(rename = "cycle_model")]
@@ -59,6 +62,7 @@ pub enum RpcCommand {
     #[serde(rename = "compact")]
     Compact {
         id: Option<String>,
+        #[serde(rename = "customInstructions")]
         custom_instructions: Option<String>,
     },
     #[serde(rename = "set_auto_compaction")]
@@ -71,6 +75,7 @@ pub enum RpcCommand {
     Bash {
         id: Option<String>,
         command: String,
+        #[serde(rename = "excludeFromContext")]
         exclude_from_context: Option<bool>,
     },
     #[serde(rename = "abort_bash")]
@@ -80,16 +85,19 @@ pub enum RpcCommand {
     #[serde(rename = "export_html")]
     ExportHtml {
         id: Option<String>,
+        #[serde(rename = "outputPath")]
         output_path: Option<String>,
     },
     #[serde(rename = "switch_session")]
     SwitchSession {
         id: Option<String>,
+        #[serde(rename = "sessionPath")]
         session_path: String,
     },
     #[serde(rename = "fork")]
     Fork {
         id: Option<String>,
+        #[serde(rename = "entryId")]
         entry_id: String,
     },
     #[serde(rename = "clone")]
@@ -217,3 +225,30 @@ impl RpcResponse {
 
 pub type RpcExtensionUiRequest = Value;
 pub type RpcExtensionUiResponse = Value;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_fields_use_pi_wire_names() {
+        let command = RpcCommand::Prompt {
+            id: Some("request-1".into()),
+            message: "hello".into(),
+            images: None,
+            streaming_behavior: Some("steer".into()),
+        };
+        let json = serde_json::to_value(command).unwrap();
+        assert_eq!(json["streamingBehavior"], "steer");
+        assert!(json.get("streaming_behavior").is_none());
+
+        let command = RpcCommand::SetModel {
+            id: None,
+            provider: "openai".into(),
+            model_id: "gpt-4o".into(),
+        };
+        let json = serde_json::to_value(command).unwrap();
+        assert_eq!(json["modelId"], "gpt-4o");
+        assert!(json.get("model_id").is_none());
+    }
+}
