@@ -84,6 +84,62 @@ mod tests {
         assert_eq!(get_new_entries(&entries, "1.1.0")[0].major, 1);
         let _ = std::fs::remove_file(dir);
     }
+
+    #[test]
+    fn normalizes_local_changelog_links_like_pi() {
+        let markdown = "[file](../README.md?raw=1#top) [dir](docs/) [web](https://example.com/a)";
+        assert_eq!(
+            normalize_changelog_links(markdown, "1.2.3"),
+            "[file](https://github.com/earendil-works/pi/blob/v1.2.3/packages/README.md?raw=1#top) [dir](https://github.com/earendil-works/pi/tree/v1.2.3/packages/coding-agent/docs) [web](https://example.com/a)"
+        );
+    }
+}
+
+fn encode_uri_path(path: &str) -> String {
+    const UNESCAPED: &[u8] = b"-_.!~*'()/";
+    let mut out = String::with_capacity(path.len());
+    for byte in path.bytes() {
+        if byte.is_ascii_alphanumeric() || UNESCAPED.contains(&byte) {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
+fn resolve_repository_path(target: &str) -> Option<String> {
+    let target = target.replace('\\', "/");
+    let joined = if target.starts_with('/') {
+        target.trim_start_matches('/').to_owned()
+    } else {
+        format!("packages/coding-agent/{target}")
+    };
+    let mut parts = Vec::new();
+    for part in joined.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            part => parts.push(part),
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
+fn split_local_target(target: &str) -> (&str, String, String) {
+    let (before_hash, fragment) = target.split_once('#').unwrap_or((target, ""));
+    let (path, query) = before_hash.split_once('?').unwrap_or((before_hash, ""));
+    (
+        path,
+        (!query.is_empty())
+            .then(|| format!("?{query}"))
+            .unwrap_or_default(),
+        (!fragment.is_empty())
+            .then(|| format!("#{fragment}"))
+            .unwrap_or_default(),
+    )
 }
 
 pub fn normalize_changelog_links(markdown: &str, version: &str) -> String {
@@ -92,8 +148,54 @@ pub fn normalize_changelog_links(markdown: &str, version: &str) -> String {
     } else {
         format!("v{version}")
     };
-    markdown.split_inclusive(')').map(|part| {
-        if let Some(start) = part.find("](") { let (head, tail) = part.split_at(start+2); let end = tail.find(')').unwrap_or(tail.len()); let target=&tail[..end]; if !target.contains(":") && !target.starts_with('#') { return format!("{head}https://github.com/earendil-works/pi/blob/{tag}/packages/coding-agent/{}{}", target.trim_start_matches('/'), &tail[end..]); } }
-        part.to_owned()
-    }).collect()
+    let repo = "https://github.com/earendil-works/pi";
+    let links = regex::Regex::new(r#"(!?\[[^\]\n]+\]\()([^\s)]+)((?:\s+[^)]*)?\))"#).unwrap();
+    links
+        .replace_all(markdown, |caps: &regex::Captures<'_>| {
+            let mut target = caps[2].to_owned();
+            for prefix in [
+                "https://github.com/badlogic/pi-mono",
+                "https://github.com/earendil-works/pi-mono",
+            ] {
+                if let Some(rest) = target.strip_prefix(prefix) {
+                    if rest.is_empty() || rest.starts_with('/') {
+                        target = format!("{repo}{rest}");
+                        break;
+                    }
+                }
+            }
+            for route in ["blob", "tree"] {
+                for branch in ["main", "master"] {
+                    let prefix = format!("{repo}/{route}/{branch}/");
+                    if let Some(rest) = target.strip_prefix(&prefix) {
+                        target = format!("{repo}/{route}/{tag}/{rest}");
+                    }
+                }
+            }
+            let external = target.starts_with('#')
+                || target.starts_with("//")
+                || regex::Regex::new(r"^[a-z][a-z0-9+.-]*:")
+                    .unwrap()
+                    .is_match(&target);
+            if !external {
+                let (path, query, fragment) = split_local_target(&target);
+                if !path.is_empty() {
+                    if let Some(repository_path) = resolve_repository_path(path) {
+                        let route = if path.ends_with('/')
+                            || !repository_path.rsplit('/').next().unwrap().contains('.')
+                        {
+                            "tree"
+                        } else {
+                            "blob"
+                        };
+                        target = format!(
+                            "{repo}/{route}/{tag}/{}{query}{fragment}",
+                            encode_uri_path(&repository_path)
+                        );
+                    }
+                }
+            }
+            format!("{}{}{}", &caps[1], target, &caps[3])
+        })
+        .into_owned()
 }
