@@ -41,7 +41,7 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
             }
         }
     }
-    Some(match data {
+    let key = match data {
         "\x1b" => "escape",
         "\r" | "\n" => "enter",
         "\t" => "tab",
@@ -93,8 +93,10 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
         "\x1b[13;2u" => "shift+enter",
         "\x1b[13;5u" => "ctrl+enter",
         "\x1b[9;3u" => "alt+tab",
+        // Unsupported input, including unsupported one-character input.
         _ => return None,
-    })
+    };
+    Some(key)
 }
 
 fn parse_kitty_key(data: &str) -> Option<String> {
