@@ -3215,7 +3215,7 @@
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-TUI-V2-RUNTIME-REVIEW"
+        "REPLAN-TUI-V2-RUNTIME-REVIEW-R1"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
@@ -3311,7 +3311,7 @@
       "id": "REPLAN-TUI-V2-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "TUI-V2"
+        "REPLAN-TUI-V2-VALIDATE"
       ],
       "ownership": [
         "crates/zedflow-tui/src/lib.rs"
@@ -3365,7 +3365,7 @@
       "intent": "Fresh focused validation of the bounded TUI runtime repair wave."
     },
     {
-      "id": "REPLAN-TUI-V2-RUNTIME-REVIEW",
+      "id": "REPLAN-TUI-V2-RUNTIME-REVIEW-R1",
       "kind": "reviewer",
       "depends_on": [
         "REPLAN-TUI-V2-VALIDATE"
@@ -3374,7 +3374,7 @@
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh Pi-fidelity review of the repaired TUI runtime, key decoding, rendering, overlays, input, and cursor rows."
+      "intent": "Fresh Pi-fidelity review of the repaired TUI runtime, including printable/raw/Alt/Kitty key decoding, rendering, overlays, input, and cursor rows."
     }
   ]
 }
