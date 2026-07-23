@@ -2802,7 +2802,7 @@
       "intent": "Freshly validate the repaired core session runtime port with formatting and focused package checks."
     },
     {
-      "id": "CA-C25-RESOURCE-EXTENSION-RUNTIME",
+      "id": "CA-C25-R1-RESOURCE-EXTENSION-RUNTIME-OWNERSHIP",
       "kind": "writer",
       "depends_on": [
         "CA-C24-V1-CORE-SESSION-RUNTIME"
@@ -2813,18 +2813,31 @@
         "crates/zedflow-coding-agent/src/core/skills.rs",
         "crates/zedflow-coding-agent/src/core/system-prompt.rs",
         "crates/zedflow-coding-agent/src/core/export-html",
+        "crates/zedflow-coding-agent/src/lib.rs",
         "crates/zedflow-coding-agent/tests"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port resource loading, skills, export, extension, and trust runtime rows after core session contracts exist."
+      "intent": "Re-run the resource, skills, export, extension, and trust runtime port with explicit ownership of the required lib.rs module exports."
+    },
+    {
+      "id": "CA-C25-V1-RESOURCE-EXTENSION-RUNTIME",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C25-R1-RESOURCE-EXTENSION-RUNTIME-OWNERSHIP"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Freshly validate the repaired resource-extension runtime port while preserving the failed formatting gate."
     },
     {
       "id": "CA-C26-CLI-RPC-MODES",
       "kind": "writer",
       "depends_on": [
-        "CA-C25-RESOURCE-EXTENSION-RUNTIME"
+        "CA-C25-V1-RESOURCE-EXTENSION-RUNTIME"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/cli",
