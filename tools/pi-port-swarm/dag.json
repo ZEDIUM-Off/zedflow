@@ -3198,6 +3198,20 @@
       "intent": "Port the remaining TUI source and test manifest rows after coding-agent integration is complete."
     },
     {
+      "id": "TUI-V2",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C2-REMAINING-MANIFEST-ROWS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-tui --all-targets"
+      ],
+      "intent": "Validate the complete TUI manifest wave."
+    },
+    {
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
@@ -3297,7 +3311,7 @@
       "id": "REPLAN-TUI-V2-KEYS-REPAIR",
       "kind": "writer",
       "depends_on": [
-        "TUI-C2-REMAINING-MANIFEST-ROWS"
+        "TUI-V2"
       ],
       "ownership": [
         "crates/zedflow-tui/src/keys.rs"
@@ -3308,10 +3322,24 @@
       "intent": "Implement the diagnosed Pi-compatible printable, control, Alt, and Kitty key decoding repair in keys.rs."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE-R1",
-      "kind": "validator",
+      "id": "REPLAN-TUI-V2-KEYS-PARSE-TYPE-REPAIR",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-TUI-V2-KEYS-REPAIR"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Fix the diagnosed E0282 by making Kitty modifier parsing explicitly u32, without changing behavior."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PARSE-TYPE-VALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PARSE-TYPE-REPAIR"
       ],
       "ownership": [],
       "validation": [
@@ -3319,13 +3347,13 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Re-run focused TUI validation after the key decoding repair."
+      "intent": "Re-run the exact blocked TUI validation after the parse type repair."
     },
     {
       "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE-R1"
+        "REPLAN-TUI-V2-KEYS-PARSE-TYPE-VALIDATE"
       ],
       "ownership": [],
       "validation": [
