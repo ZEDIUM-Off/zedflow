@@ -3215,7 +3215,7 @@
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-TUI-V2-RUNTIME-REVIEW"
+        "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
@@ -3308,24 +3308,10 @@
       "intent": "Record completion only after every manifest row and final validation, fidelity, and Rust review gates are accepted."
     },
     {
-      "id": "REPLAN-TUI-V2-RUNTIME",
+      "id": "REPLAN-TUI-V2-KEYS-REPAIR",
       "kind": "writer",
       "depends_on": [
         "TUI-V2"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Port the missing Pi TUI/Container runtime surface in lib.rs: component lifecycle, layout/rendering, overlays, input dispatch, and cursor behavior, bounded to the existing crate API."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-RUNTIME"
       ],
       "ownership": [
         "crates/zedflow-tui/src/keys.rs"
@@ -3333,28 +3319,13 @@
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Complete Pi-faithful TUI key decoding and input primitives in keys.rs, including the missing terminal/key protocols while preserving existing callers."
+      "intent": "Implement the diagnosed Pi-compatible printable, control, Alt, and Kitty key decoding repair in keys.rs."
     },
     {
-      "id": "REPLAN-TUI-V2-TESTS",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --all-targets"
-      ],
-      "intent": "Add focused tests for the repaired TUI runtime, rendering/input behavior, overlays, cursor handling, and key decoding against frozen Pi semantics."
-    },
-    {
-      "id": "REPLAN-TUI-V2-VALIDATE",
+      "id": "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-TUI-V2-TESTS"
+        "REPLAN-TUI-V2-KEYS-REPAIR"
       ],
       "ownership": [],
       "validation": [
@@ -3362,19 +3333,19 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Fresh focused validation of the bounded TUI runtime repair wave."
+      "intent": "Re-run focused TUI validation after the key decoding repair."
     },
     {
-      "id": "REPLAN-TUI-V2-RUNTIME-REVIEW",
+      "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-TUI-V2-VALIDATE"
+        "REPLAN-TUI-V2-KEYS-REPAIR-VALIDATE"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh Pi-fidelity review of the repaired TUI runtime, key decoding, rendering, overlays, input, and cursor rows."
+      "intent": "Fresh Pi-fidelity review of the repaired TUI key decoding."
     }
   ]
 }
