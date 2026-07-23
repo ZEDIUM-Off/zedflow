@@ -3412,7 +3412,9 @@
         "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3"
       ],
       "ownership": [],
-      "validation": [],
+      "validation": [
+        "git diff --check"
+      ],
       "intent": "Fresh Pi-fidelity review of printable TUI key decoding after the remaining repair."
     },
     {
