@@ -2946,25 +2946,25 @@
       "intent": "Freshly validate the runtime-dispatch and RPC-wire repair while preserving the failed review diff gate and coding-agent package checks."
     },
     {
-      "id": "CA-RV-FID-V21-R4-RPC-ENTRY-DISPATCH",
+      "id": "CA-RV-FID-V21-R5-RPC-ENTRY-DISPATCH",
       "kind": "writer",
       "depends_on": [
         "CA-V19-R2-CODING-AGENT"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-entry.rs"
+        "crates/zedflow-coding-agent/src/rpc-entry.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Repair the remaining Pi-fidelity gap where the production RPC entrypoint calls the framing-only loop instead of dispatching AgentSessionRuntime commands."
+      "intent": "Repair the remaining Pi-fidelity gap where the production RPC entrypoint calls the framing-only loop instead of dispatching AgentSessionRuntime commands, using the actual crate paths."
     },
     {
       "id": "CA-V19-R3-CODING-AGENT",
       "kind": "validator",
       "depends_on": [
-        "CA-RV-FID-V21-R4-RPC-ENTRY-DISPATCH"
+        "CA-RV-FID-V21-R5-RPC-ENTRY-DISPATCH"
       ],
       "ownership": [],
       "validation": [
