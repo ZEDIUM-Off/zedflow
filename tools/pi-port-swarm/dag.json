@@ -3351,7 +3351,7 @@
       "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-REPAIR"
+        "REPLAN-TUI-V2-KEYS-PARSE-TYPE-REPAIR"
       ],
       "ownership": [
         "crates/zedflow-tui/src/keys.rs"
