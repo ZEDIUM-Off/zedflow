@@ -4,7 +4,7 @@ The controller supplies one JSON capsule with immutable base SHA, ownership, val
 
 1. Verify `HEAD` equals `base`, the worktree and frozen `references/pi` are clean.
 2. Edit only declared ownership. Do not edit product Rust unless it is explicitly owned.
-   When replanning a blocked validator, remove only that validator, append a new repair writer with a fresh ID, append exactly one fresh validator with the same validation commands depending on that writer, and reconnect every direct downstream unit to the fresh validator. Keep unrelated and already accepted units.
+   When replanning a blocked validator, remove only that validator, append a new repair writer with a fresh ID that depends on the blocked validator's direct dependencies, append exactly one fresh validator with the same validation commands depending on that writer, and reconnect every direct downstream unit to the fresh validator. This dependency must serialize writers with overlapping ownership. Keep unrelated and already accepted units.
 3. Run declared validation, create one nonempty owned commit, and print exactly one final JSON line:
 
 ```json
