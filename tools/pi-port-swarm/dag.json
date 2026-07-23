@@ -3215,7 +3215,7 @@
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW"
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
@@ -3336,18 +3336,6 @@
       "intent": "Fix the diagnosed E0282 by making Kitty modifier parsing explicitly u32, without changing behavior."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of the repaired TUI key decoding."
-    },
-    {
       "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR",
       "kind": "writer",
       "depends_on": [
@@ -3388,6 +3376,34 @@
         "git diff --check"
       ],
       "intent": "Re-run the exact blocked TUI validation after the fresh parse semantics repair."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR",
+      "kind": "writer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Implement the diagnosed Pi-compatible printable input handling in parse_key, preserving existing control, Alt, and Kitty decoding."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo test -p zedflow-tui --all-targets",
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review and validation of printable TUI key decoding after the repair."
     }
   ]
 }
