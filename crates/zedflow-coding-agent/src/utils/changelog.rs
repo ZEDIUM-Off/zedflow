@@ -87,16 +87,16 @@ mod tests {
 
     #[test]
     fn normalizes_local_changelog_links_like_pi() {
-        let markdown = "[file](../README.md?raw=1#top) [dir](docs/) [web](https://example.com/a)";
+        let markdown = "[file](../README.md?raw=1#top) [dir](docs/) [web](https://example.com/a) [reserved](a&b;c=x+$,@:.md) [upper](HTTPS://example.com/a)";
         assert_eq!(
             normalize_changelog_links(markdown, "1.2.3"),
-            "[file](https://github.com/earendil-works/pi/blob/v1.2.3/packages/README.md?raw=1#top) [dir](https://github.com/earendil-works/pi/tree/v1.2.3/packages/coding-agent/docs) [web](https://example.com/a)"
+            "[file](https://github.com/earendil-works/pi/blob/v1.2.3/packages/README.md?raw=1#top) [dir](https://github.com/earendil-works/pi/tree/v1.2.3/packages/coding-agent/docs) [web](https://example.com/a) [reserved](https://github.com/earendil-works/pi/blob/v1.2.3/packages/coding-agent/a&b;c=x+$,@:.md) [upper](HTTPS://example.com/a)"
         );
     }
 }
 
 fn encode_uri_path(path: &str) -> String {
-    const UNESCAPED: &[u8] = b"-_.!~*'()/";
+    const UNESCAPED: &[u8] = b"-_.!~*'();,/?:@&=+$#";
     let mut out = String::with_capacity(path.len());
     for byte in path.bytes() {
         if byte.is_ascii_alphanumeric() || UNESCAPED.contains(&byte) {
@@ -174,7 +174,7 @@ pub fn normalize_changelog_links(markdown: &str, version: &str) -> String {
             }
             let external = target.starts_with('#')
                 || target.starts_with("//")
-                || regex::Regex::new(r"^[a-z][a-z0-9+.-]*:")
+                || regex::Regex::new(r"(?i)^[a-z][a-z0-9+.-]*:")
                     .unwrap()
                     .is_match(&target);
             if !external {
