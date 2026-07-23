@@ -175,8 +175,12 @@ fn load_prompt_template_path(path: &Path, templates: &mut Vec<HarnessPromptTempl
         let Ok(entries) = fs::read_dir(path) else {
             return;
         };
-        for entry in entries.flatten() {
-            let child = entry.path();
+        let mut entries = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for child in entries {
             if child.extension().is_some_and(|extension| extension == "md") {
                 load_prompt_template_path(&child, templates);
             }
@@ -189,22 +193,20 @@ fn load_prompt_template_path(path: &Path, templates: &mut Vec<HarnessPromptTempl
     let Ok(raw) = fs::read_to_string(path) else {
         return;
     };
-    let (frontmatter, content) = if let Some(rest) = raw.strip_prefix("---") {
+    let raw = raw.replace("\r\n", "\n").replace('\r', "\n");
+    let (frontmatter, content) = if let Some(rest) = raw.strip_prefix("---\n") {
         if let Some(end) = rest.find("\n---") {
-            let yaml = &rest[1..end];
-            let content = rest
-                .get(end + 4..)
-                .unwrap_or_default()
-                .trim_start_matches('\n');
-            (
-                serde_yaml::from_str::<serde_yaml::Value>(yaml).ok(),
-                content,
-            )
+            let yaml = &rest[..end];
+            let content = rest.get(end + 4..).unwrap_or_default().trim().to_owned();
+            let Ok(frontmatter) = serde_yaml::from_str::<serde_yaml::Value>(yaml) else {
+                return;
+            };
+            (Some(frontmatter), content)
         } else {
-            (None, raw.as_str())
+            (None, raw.clone())
         }
     } else {
-        (None, raw.as_str())
+        (None, raw.clone())
     };
     let description = frontmatter
         .as_ref()
@@ -218,7 +220,7 @@ fn load_prompt_template_path(path: &Path, templates: &mut Vec<HarnessPromptTempl
                 .map(|line| {
                     let line = line.trim();
                     let shortened = line.chars().take(60).collect::<String>();
-                    if shortened.len() < line.len() {
+                    if line.chars().count() > 60 {
                         format!("{shortened}...")
                     } else {
                         shortened
@@ -642,5 +644,20 @@ mod tests {
             Some("summarize the input")
         );
         assert_eq!(templates[0].content, "Use $ARGUMENTS.");
+    }
+
+    #[test]
+    fn malformed_prompt_frontmatter_is_not_loaded() {
+        let path = std::env::temp_dir().join(format!(
+            "zedflow-rpc-invalid-prompt-{}.md",
+            zedflow_agent::harness::session::create_session_id()
+        ));
+        std::fs::write(&path, "---\ndescription: [unterminated\n---\nignored")
+            .expect("prompt template");
+        let mut templates = Vec::new();
+        load_prompt_template_path(&path, &mut templates);
+        std::fs::remove_file(&path).expect("remove prompt template");
+
+        assert!(templates.is_empty());
     }
 }

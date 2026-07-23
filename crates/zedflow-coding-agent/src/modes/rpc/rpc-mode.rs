@@ -8,10 +8,19 @@ use crate::agent_session::{AgentHarnessError, AgentHarnessErrorCode};
 use crate::agent_session_runtime::AgentSessionRuntime;
 use serde_json::Value;
 use std::io::{self, BufRead, Write};
-use std::sync::{Arc, Mutex};
-use zedflow_agent::harness::types::AgentHarnessPromptOptions;
-use zedflow_agent::types::QueueMode;
-use zedflow_ai::utils::abort_signals::AbortController;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
+use zedflow_agent::harness::{
+    compaction::compaction::{
+        DEFAULT_COMPACTION_SETTINGS, calculate_context_tokens, estimate_context_tokens,
+        should_compact,
+    },
+    types::AgentHarnessPromptOptions,
+};
+use zedflow_agent::types::{AgentMessage, QueueMode};
+use zedflow_ai::Message;
+use zedflow_ai::StopReason;
+use zedflow_ai::utils::{abort_signals::AbortController, retry::wait_or_abort};
 
 /// Handle one already-framed command. Runtime integrations can dispatch the
 /// returned command; malformed input gets the same error envelope as Pi.
@@ -107,11 +116,59 @@ pub fn dispatch_command(runtime: &AgentSessionRuntime, command: RpcCommand) -> R
     dispatch_command_with_controls(runtime, command, RpcDispatchControls::default())
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct RpcDispatchControls {
     auto_compaction_enabled: Arc<Mutex<bool>>,
     auto_retry_enabled: Arc<Mutex<bool>>,
     bash_abort: Arc<Mutex<Option<AbortController>>>,
+    retry_abort: Arc<Mutex<Option<AbortController>>>,
+}
+
+impl Default for RpcDispatchControls {
+    fn default() -> Self {
+        Self {
+            auto_compaction_enabled: Arc::new(Mutex::new(true)),
+            auto_retry_enabled: Arc::new(Mutex::new(true)),
+            bash_abort: Arc::new(Mutex::new(None)),
+            retry_abort: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct RpcResponseOrder {
+    state: Arc<(Mutex<usize>, Condvar)>,
+}
+
+impl RpcResponseOrder {
+    fn write<W: Write>(
+        &self,
+        sequence: usize,
+        writer: &Arc<Mutex<W>>,
+        response: &RpcResponse,
+    ) -> io::Result<()> {
+        let (next, ready) = &*self.state;
+        let mut next_sequence = next
+            .lock()
+            .map_err(|_| io::Error::other("RPC response order lock is poisoned"))?;
+        while *next_sequence != sequence {
+            next_sequence = ready
+                .wait(next_sequence)
+                .map_err(|_| io::Error::other("RPC response order lock is poisoned"))?;
+        }
+        let result = (|| {
+            let mut writer = writer
+                .lock()
+                .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
+            writer.write_all(serialize_json_line(response).as_bytes())?;
+            writer.flush()
+        })();
+        if result.is_ok() {
+            *next_sequence += 1;
+            ready.notify_all();
+        }
+        result
+    }
 }
 
 fn dispatch_command_with_controls(
@@ -176,30 +233,24 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
     }));
 
     let mut workers = Vec::new();
-    for line in reader.lines() {
+    let response_order = RpcResponseOrder::default();
+    for (sequence, line) in reader.lines().enumerate() {
         let line = line?;
         let response = match parse_command(&line) {
             Ok(command) => {
                 let runtime = runtime.clone();
                 let writer = Arc::clone(&writer);
                 let controls = controls.clone();
+                let response_order = response_order.clone();
                 workers.push(std::thread::spawn(move || {
                     let response = dispatch_command_with_controls(&runtime, command, controls);
-                    let mut writer = writer
-                        .lock()
-                        .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
-                    writer.write_all(serialize_json_line(&response).as_bytes())?;
-                    writer.flush()
+                    response_order.write(sequence, &writer, &response)
                 }));
                 continue;
             }
             Err(response) => response,
         };
-        let mut writer = writer
-            .lock()
-            .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
-        writer.write_all(serialize_json_line(&response).as_bytes())?;
-        writer.flush()?;
+        response_order.write(sequence, &writer, &response)?;
     }
     for worker in workers {
         worker
@@ -216,6 +267,114 @@ fn queue_mode(value: &str) -> Result<QueueMode, String> {
         "one-at-a-time" => Ok(QueueMode::OneAtATime),
         _ => Err(format!("Invalid queue mode: {value}")),
     }
+}
+
+fn control_enabled(control: &Arc<Mutex<bool>>) -> Result<bool, AgentHarnessError> {
+    control.lock().map(|value| *value).map_err(|_| {
+        AgentHarnessError::new(
+            AgentHarnessErrorCode::Hook,
+            "RPC control lock is poisoned",
+            None,
+        )
+    })
+}
+
+fn abort_retry(controls: &RpcDispatchControls) -> Result<(), String> {
+    if let Some(controller) = controls
+        .retry_abort
+        .lock()
+        .map_err(|_| "RPC retry control lock is poisoned".to_owned())?
+        .take()
+    {
+        controller.abort();
+    }
+    Ok(())
+}
+
+async fn prompt_with_recovery(
+    session: &crate::agent_session::AgentSession,
+    message: &str,
+    options: Option<AgentHarnessPromptOptions>,
+    controls: &RpcDispatchControls,
+) -> Result<(), AgentHarnessError> {
+    let mut result = session.prompt(message.to_owned(), options.clone()).await;
+    if result
+        .as_ref()
+        .is_err_and(|error| error.code == AgentHarnessErrorCode::Busy)
+    {
+        return result.map(|_| ());
+    }
+
+    let failed = |result: &Result<zedflow_ai::AssistantMessage, AgentHarnessError>| {
+        result.is_err()
+            || result
+                .as_ref()
+                .is_ok_and(|assistant| assistant.stop_reason == StopReason::Error)
+    };
+
+    if failed(&result) && control_enabled(&controls.auto_compaction_enabled)? {
+        // Overflow recovery is deliberately limited to one compaction per prompt,
+        // matching Pi's guard against retry loops on an irreducible context.
+        if session.compact(None).await.is_ok() {
+            result = session.prompt(message.to_owned(), options.clone()).await;
+        }
+    }
+
+    if failed(&result) && control_enabled(&controls.auto_retry_enabled)? {
+        for attempt in 0..3_u32 {
+            let controller = AbortController::new();
+            let signal = controller.signal();
+            *controls.retry_abort.lock().map_err(|_| {
+                AgentHarnessError::new(
+                    AgentHarnessErrorCode::Hook,
+                    "RPC retry control lock is poisoned",
+                    None,
+                )
+            })? = Some(controller);
+            let ready = wait_or_abort(
+                Duration::from_millis(2_000_u64.saturating_mul(2_u64.saturating_pow(attempt))),
+                Some(&signal),
+            )
+            .await;
+            controls
+                .retry_abort
+                .lock()
+                .map_err(|_| {
+                    AgentHarnessError::new(
+                        AgentHarnessErrorCode::Hook,
+                        "RPC retry control lock is poisoned",
+                        None,
+                    )
+                })?
+                .take();
+            if !ready {
+                break;
+            }
+            result = session.prompt(message.to_owned(), options.clone()).await;
+            if result.is_ok() {
+                break;
+            }
+        }
+    }
+
+    let assistant = result?;
+    if control_enabled(&controls.auto_compaction_enabled)? {
+        let context = session.session().build_context().await;
+        let usage_tokens = calculate_context_tokens(&assistant.usage);
+        let context_tokens = if usage_tokens > 0 {
+            usage_tokens
+        } else {
+            estimate_context_tokens(&context.messages).tokens
+        };
+        if should_compact(
+            context_tokens,
+            session.get_model().context_window,
+            DEFAULT_COMPACTION_SETTINGS,
+        ) {
+            let _ = session.compact(None).await;
+        }
+    }
+    Ok(())
 }
 
 async fn dispatch_command_async(
@@ -237,8 +396,8 @@ async fn dispatch_command_async(
                 .transpose()
                 .map_err(|error| format!("Invalid images: {error}"))?;
             let options = Some(AgentHarnessPromptOptions { images });
-            match session.prompt(message.clone(), options.clone()).await {
-                Ok(_) => Ok(None),
+            match prompt_with_recovery(&session, &message, options.clone(), &controls).await {
+                Ok(()) => Ok(None),
                 Err(error) if error.code == AgentHarnessErrorCode::Busy => {
                     match streaming_behavior.as_deref() {
                         Some("steer") => {
@@ -291,13 +450,12 @@ async fn dispatch_command_async(
             Ok(None)
         }
         RpcCommand::Abort { .. } => {
+            abort_retry(&controls)?;
             session.abort().await.map_err(|e| e.to_string())?;
             Ok(None)
         }
         RpcCommand::AbortRetry { .. } => {
-            // The Rust harness performs retries inside the prompt future; aborting the
-            // active turn is the only safe way to stop one at this protocol boundary.
-            session.abort().await.map_err(|e| e.to_string())?;
+            abort_retry(&controls)?;
             Ok(None)
         }
         RpcCommand::AbortBash { .. } => {
@@ -473,81 +631,60 @@ async fn dispatch_command_async(
             ))
         }
         RpcCommand::GetSessionStats { .. } => {
-            let messages = session.session().build_context().await.messages;
-            let mut stats = serde_json::json!({
-                "sessionFile": null,
-                "sessionId": session.session().get_metadata().await.id,
-                "userMessages": 0,
-                "assistantMessages": 0,
-                "toolCalls": 0,
-                "toolResults": 0,
-                "totalMessages": messages.len(),
-                "tokens": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0},
-                "cost": 0
-            });
-            for message in messages {
-                let value = serde_json::to_value(message).map_err(|e| e.to_string())?;
-                match value.get("role").and_then(Value::as_str) {
-                    Some("user") => {
-                        stats["userMessages"] = stats["userMessages"]
-                            .as_u64()
-                            .unwrap_or(0)
-                            .saturating_add(1)
-                            .into()
+            let context = session.session().build_context().await;
+            let messages = context.messages;
+            let mut user_messages = 0_u64;
+            let mut assistant_messages = 0_u64;
+            let mut tool_calls = 0_u64;
+            let mut tool_results = 0_u64;
+            let mut input = 0_u64;
+            let mut output = 0_u64;
+            let mut cache_read = 0_u64;
+            let mut cache_write = 0_u64;
+            let mut cost = 0.0_f64;
+            for message in &messages {
+                match message {
+                    AgentMessage::Llm(Message::User(_)) => user_messages += 1,
+                    AgentMessage::Llm(Message::Assistant(assistant)) => {
+                        assistant_messages += 1;
+                        tool_calls += assistant
+                            .content
+                            .iter()
+                            .filter(|block| {
+                                matches!(block, zedflow_ai::AssistantContentBlock::ToolCall(_))
+                            })
+                            .count() as u64;
+                        input += assistant.usage.input;
+                        output += assistant.usage.output;
+                        cache_read += assistant.usage.cache_read;
+                        cache_write += assistant.usage.cache_write;
+                        cost += assistant.usage.cost.total;
                     }
-                    Some("assistant") => {
-                        stats["assistantMessages"] = stats["assistantMessages"]
-                            .as_u64()
-                            .unwrap_or(0)
-                            .saturating_add(1)
-                            .into();
-                        if let Some(content) = value.get("content").and_then(Value::as_array) {
-                            let calls = content
-                                .iter()
-                                .filter(|block| {
-                                    block.get("type").and_then(Value::as_str) == Some("toolCall")
-                                })
-                                .count() as u64;
-                            stats["toolCalls"] = stats["toolCalls"]
-                                .as_u64()
-                                .unwrap_or(0)
-                                .saturating_add(calls)
-                                .into();
-                        }
-                        if let Some(usage) = value.get("usage") {
-                            for key in ["input", "output", "cacheRead", "cacheWrite"] {
-                                let amount = usage.get(key).and_then(Value::as_u64).unwrap_or(0);
-                                stats["tokens"][key] = stats["tokens"][key]
-                                    .as_u64()
-                                    .unwrap_or(0)
-                                    .saturating_add(amount)
-                                    .into();
-                            }
-                            let cost = usage
-                                .get("cost")
-                                .and_then(|cost| cost.get("total"))
-                                .and_then(Value::as_f64)
-                                .unwrap_or(0.0);
-                            stats["cost"] =
-                                serde_json::json!(stats["cost"].as_f64().unwrap_or(0.0) + cost);
-                        }
-                    }
-                    Some("toolResult") => {
-                        stats["toolResults"] = stats["toolResults"]
-                            .as_u64()
-                            .unwrap_or(0)
-                            .saturating_add(1)
-                            .into()
-                    }
-                    _ => {}
+                    AgentMessage::Llm(Message::ToolResult(_)) => tool_results += 1,
+                    AgentMessage::Custom(_) => {}
                 }
             }
-            let total = ["input", "output", "cacheRead", "cacheWrite"]
-                .into_iter()
-                .map(|key| stats["tokens"][key].as_u64().unwrap_or(0))
-                .sum::<u64>();
-            stats["tokens"]["total"] = total.into();
-            Ok(Some(stats))
+            let context_tokens = estimate_context_tokens(&messages).tokens;
+            let context_window = session.get_model().context_window;
+            let context_usage = (context_window > 0).then(|| {
+                serde_json::json!({
+                    "tokens": context_tokens,
+                    "contextWindow": context_window,
+                    "percent": context_tokens as f64 / context_window as f64 * 100.0
+                })
+            });
+            Ok(Some(serde_json::json!({
+                "sessionFile": null,
+                "sessionId": session.session().get_metadata().await.id,
+                "userMessages": user_messages,
+                "assistantMessages": assistant_messages,
+                "toolCalls": tool_calls,
+                "toolResults": tool_results,
+                "totalMessages": messages.len(),
+                "tokens": {"input": input, "output": output, "cacheRead": cache_read, "cacheWrite": cache_write, "total": input + output + cache_read + cache_write},
+                "cost": cost,
+                "contextUsage": context_usage
+            })))
         }
         RpcCommand::ExportHtml { output_path, .. } => {
             let path = output_path.unwrap_or_else(|| "session.html".into());
@@ -701,8 +838,34 @@ async fn dispatch_command_async(
         )),
         RpcCommand::GetCommands { .. } => {
             let resources = session.get_resources();
-            let commands = resources.prompt_templates.unwrap_or_default().into_iter().map(|c| serde_json::json!({"name": c.name, "description": c.description, "source": "prompt"})).chain(resources.skills.unwrap_or_default().into_iter().map(|s| serde_json::json!({"name": format!("skill:{}", s.name), "description": s.description, "source": "skill"}))).collect::<Vec<_>>();
-            Ok(Some(serde_json::json!({"commands": commands})))
+            let prompts = resources
+                .prompt_templates
+                .unwrap_or_default()
+                .into_iter()
+                .map(|template| {
+                    let path = format!("{}.md", template.name);
+                    serde_json::json!({
+                        "name": template.name,
+                        "description": template.description,
+                        "source": "prompt",
+                        "sourceInfo": rpc_source_info(&path, "local", "project", None)
+                    })
+                });
+            let skills = resources
+                .skills
+                .unwrap_or_default()
+                .into_iter()
+                .map(|skill| {
+                    serde_json::json!({
+                        "name": format!("skill:{}", skill.name),
+                        "description": skill.description,
+                        "source": "skill",
+                        "sourceInfo": rpc_source_info(&skill.file_path, "local", "project", None)
+                    })
+                });
+            Ok(Some(
+                serde_json::json!({"commands": prompts.chain(skills).collect::<Vec<_>>() }),
+            ))
         }
         RpcCommand::ExtensionUiResponse { .. } => Ok(None),
     }
@@ -718,6 +881,16 @@ mod tests {
         assert_eq!(response.command, "future_command");
         assert!(!response.success);
     }
+}
+
+fn rpc_source_info(path: &str, source: &str, scope: &str, base_dir: Option<&str>) -> Value {
+    serde_json::json!({
+        "path": path,
+        "source": source,
+        "scope": scope,
+        "origin": "top-level",
+        "baseDir": base_dir
+    })
 }
 
 fn queue_mode_name(mode: QueueMode) -> &'static str {
