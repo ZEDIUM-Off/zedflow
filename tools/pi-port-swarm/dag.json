@@ -2712,10 +2712,24 @@
       "intent": "Repair the deterministic Pi-fidelity gaps found by the failed review: accept ChangelogEntry for changelog link normalization and add fs-watch watchWithErrorHandler behavior."
     },
     {
-      "id": "CA-RV-FID-V20-R2-V1",
-      "kind": "validator",
+      "id": "CA-RV-FID-V20-R2-CHANGELOG-URL-REPAIR",
+      "kind": "writer",
       "depends_on": [
         "CA-RV-FID-V20-R2-REPAIR"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/changelog.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Repair the deterministic changelog URL normalization failure: strip the coding-agent package segment so version links match Pi's /packages/ URL."
+    },
+    {
+      "id": "CA-RV-FID-V20-R2-V2",
+      "kind": "validator",
+      "depends_on": [
+        "CA-RV-FID-V20-R2-CHANGELOG-URL-REPAIR"
       ],
       "ownership": [],
       "validation": [
@@ -2724,13 +2738,13 @@
         "cargo check --package zedflow-coding-agent --all-targets",
         "cargo test --package zedflow-coding-agent --all-targets"
       ],
-      "intent": "Freshly validate the repaired changelog and fs-watch Pi-fidelity gaps, preserving the failed review diff gate and focused package checks."
+      "intent": "Freshly validate the deterministic changelog URL repair and preserve the failed review diff gate and focused package checks."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V18",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V20-R2-V1"
+        "CA-RV-FID-V20-R2-V2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
