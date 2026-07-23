@@ -3406,10 +3406,34 @@
       "intent": "Repair the remaining Pi printable-key decoding divergence diagnosed by the failed fidelity review, preserving control, Alt, and Kitty decoding."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R1",
-      "kind": "validator",
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R2"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Fresh Pi-fidelity review of printable TUI key decoding after the remaining repair."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R2",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Repair the deterministic full-suite printable-key failure in keys.rs without changing unrelated TUI behavior."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R2"
       ],
       "ownership": [],
       "validation": [
@@ -3417,17 +3441,7 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Re-run the exact blocked TUI printable-key review validation after the fresh keys repair."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh Pi-fidelity review of printable TUI key decoding after the remaining repair."
+      "intent": "Re-run the exact blocked TUI printable-key validation after the fresh deterministic failure repair."
     }
   ]
 }
