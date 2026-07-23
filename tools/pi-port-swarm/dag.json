@@ -2599,45 +2599,38 @@
       "intent": "Continue the incomplete global Pi port after the bounded coding-agent utility-substrate wave; keep remaining coding-agent rows ahead of orchestrator, and require a successor checkpoint until every manifest row and final validation/review gate is represented."
     },
     {
-      "id": "CA-C21-UTILITY-COMPLEMENTS",
+      "id": "CA-C21-R1-UTILITY-COMPLEMENTS-OWNERSHIP",
       "kind": "writer",
       "depends_on": [
         "CA-NEXT-PORT-DAG-V17"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/utils/changelog.rs",
-        "crates/zedflow-coding-agent/src/utils/deprecation.rs",
-        "crates/zedflow-coding-agent/src/utils/fs-watch.rs",
-        "crates/zedflow-coding-agent/src/utils/open-browser.rs",
-        "crates/zedflow-coding-agent/src/utils/clipboard.rs",
-        "crates/zedflow-coding-agent/src/utils/syntax-highlight.rs",
-        "crates/zedflow-coding-agent/src/utils/version-check.rs",
-        "crates/zedflow-coding-agent/tests/utility-complements.rs"
+        "crates/zedflow-coding-agent/src/utils/mod.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port dependency-light coding-agent utility complements from frozen Pi without beginning runtime, CLI, TUI, or orchestrator work."
+      "intent": "Repair the utility-complements wave by removing the duplicate `pub mod utils` declaration from lib.rs and registering the worker-modified utility module tree under explicit ownership."
     },
     {
-      "id": "CA-V19",
+      "id": "CA-C21-V1-UTILITY-COMPLEMENTS",
       "kind": "validator",
       "depends_on": [
-        "CA-C21-UTILITY-COMPLEMENTS"
+        "CA-C21-R1-UTILITY-COMPLEMENTS-OWNERSHIP"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo check --package zedflow-coding-agent --all-targets"
       ],
-      "intent": "Validate the coding-agent utility-complements wave."
+      "intent": "Freshly validate the repaired coding-agent utility-complements wave, preserving the failed formatting gate and focused package validation."
     },
     {
       "id": "CA-RV-FID-V19",
       "kind": "reviewer",
       "depends_on": [
-        "CA-V19"
+        "CA-C21-V1-UTILITY-COMPLEMENTS"
       ],
       "ownership": [],
       "validation": [
