@@ -24,9 +24,6 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
                 format!("ctrl+{}", (b'a' + byte - 1) as char).into_boxed_str(),
             ));
         }
-        if (32..=126).contains(&byte) {
-            return Some(Box::leak(data.to_owned().into_boxed_str()));
-        }
     }
     if let Some(rest) = data.strip_prefix('\x1b') {
         if rest.len() == 1 {
