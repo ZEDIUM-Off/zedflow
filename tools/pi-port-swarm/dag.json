@@ -2697,22 +2697,40 @@
       "intent": "Repair the remaining Pi-fidelity gaps in changelog link normalization identified by the failed review, preserving frozen URL, path, encoding, and version semantics."
     },
     {
-      "id": "CA-RV-FID-V20-R2",
-      "kind": "reviewer",
+      "id": "CA-RV-FID-V20-R2-REPAIR",
+      "kind": "writer",
       "depends_on": [
         "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/changelog.rs",
+        "crates/zedflow-coding-agent/src/utils/fs-watch.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Repair the deterministic Pi-fidelity gaps found by the failed review: accept ChangelogEntry for changelog link normalization and add fs-watch watchWithErrorHandler behavior."
+    },
+    {
+      "id": "CA-RV-FID-V20-R2-V1",
+      "kind": "validator",
+      "depends_on": [
+        "CA-RV-FID-V20-R2-REPAIR"
+      ],
       "ownership": [],
       "validation": [
-        "git diff --check"
+        "git diff --check",
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check --package zedflow-coding-agent --all-targets",
+        "cargo test --package zedflow-coding-agent --all-targets"
       ],
-      "intent": "Fresh Pi-fidelity review of changelog link normalization and the completed coding-agent utility-complements port against frozen Pi."
+      "intent": "Freshly validate the repaired changelog and fs-watch Pi-fidelity gaps, preserving the failed review diff gate and focused package checks."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V18",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V20-R2"
+        "CA-RV-FID-V20-R2-V1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
