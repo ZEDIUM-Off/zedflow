@@ -8,6 +8,12 @@ pub mod utils;
 
 pub mod config;
 
+#[path = "core/agent-session.rs"]
+pub mod agent_session;
+#[path = "core/agent-session-runtime.rs"]
+pub mod agent_session_runtime;
+#[path = "core/agent-session-services.rs"]
+pub mod agent_session_services;
 #[path = "core/auth-guidance.rs"]
 pub mod auth_guidance;
 #[path = "core/auth-storage.rs"]
@@ -38,6 +44,10 @@ pub mod provider_display_names;
 pub mod resolve_config_value;
 #[path = "core/session-cwd.rs"]
 pub mod session_cwd;
+#[path = "core/session-manager.rs"]
+pub mod session_manager;
+#[path = "core/settings-manager.rs"]
+pub mod settings_manager;
 #[path = "core/slash-commands.rs"]
 pub mod slash_commands;
 #[path = "core/source-info.rs"]
@@ -71,9 +81,10 @@ pub mod write;
 /// Pi-compatible tool namespaces.
 pub mod core {
     pub use crate::{
-        auth_guidance, auth_storage, compaction, defaults, diagnostics, event_bus, experimental,
-        http_dispatcher, messages, model_registry, model_resolver, output_guard,
-        provider_display_names, session_cwd, slash_commands, source_info, timings,
+        agent_session, agent_session_runtime, agent_session_services, auth_guidance, auth_storage,
+        compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher, messages,
+        model_registry, model_resolver, output_guard, provider_display_names, session_cwd,
+        session_manager, settings_manager, slash_commands, source_info, timings,
     };
 
     pub mod tools {
