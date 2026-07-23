@@ -33,6 +33,7 @@ pub mod mime;
 pub mod open_browser;
 #[path = "paths.rs"]
 pub mod paths;
+pub mod photon;
 pub mod pi_user_agent;
 #[path = "shell.rs"]
 pub mod shell;

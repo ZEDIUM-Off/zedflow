@@ -5,6 +5,7 @@ use zedflow_coding_agent::utils::{
         PathInputOptions, format_path_relative_to_cwd_or_absolute, get_cwd_relative_path,
         normalize_path,
     },
+    photon::load_photon,
     shell::sanitize_binary_output,
 };
 
@@ -62,4 +63,9 @@ fn paths_and_git_cover_common_inputs() {
 #[test]
 fn shell_output_removes_unsafe_controls() {
     assert_eq!(sanitize_binary_output("ok\0\x1b[31m\n"), "ok[31m\n");
+}
+
+#[test]
+fn native_photon_boundary_is_available() {
+    assert!(load_photon().is_some());
 }
