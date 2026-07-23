@@ -1,0 +1,5 @@
+# Replan coding-agent RPC command and session fidelity
+
+The `CA-RV-FID-V21-R8` review found concrete Pi-fidelity gaps: `rpc-mode.rs:207-320` dispatches only a subset of the frozen RPC commands, waits for complete prompt execution, and drops `streamingBehavior` instead of acknowledging after prompt preflight (`references/pi/packages/coding-agent/src/modes/rpc/rpc-mode.ts:390-411`). `rpc-entry.rs:62-67` leaves tools and resources unset, while `rpc-entry.rs:144-174` creates a new session when a supplied `--session` path is missing; Pi reports an error (`references/pi/packages/coding-agent/src/main.ts:297-318`).
+
+The originating reviewer is removed from the active DAG rather than retried. `CA-RV-FID-V21-R8-REPAIR` attaches to its already-satisfied dependency `CA-V19-R5-CODING-AGENT` and owns only the diagnosed RPC entrypoint files. Fresh validator `CA-V19-R6-CODING-AGENT` preserves the diff gate and coding-agent package checks, followed by fresh reviewer `CA-RV-FID-V21-R9` before `CA-NEXT-PORT-DAG-V19`.
