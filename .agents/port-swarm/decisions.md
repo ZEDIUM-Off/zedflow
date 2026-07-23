@@ -7,3 +7,4 @@
 - Context is bounded: workers receive a compact assignment capsule; reviews are fresh and wave-scoped; the coordinator is invoked only for plan mutation.
 - `ACCEPTING` is persisted before CAS; startup reconciles interrupted acceptance and requires explicit `retry --unit` for failures. A monitoring timer may call the deterministic read-only `monitor` command. It must never run, repair, or mutate the port.
 - `AG-R1-JSONL-LEAF-ERROR` is an audit-discovered prerequisite before the remaining AG-P units.
+- `CA-NEXT-PORT-DAG-V19` is accepted after `CA-RV-FID-V21-R12`; TUI remains the next bounded wave, with orchestrator and final validation/review gates downstream.

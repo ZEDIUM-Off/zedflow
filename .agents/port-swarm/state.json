@@ -152,10 +152,11 @@
     "CA-RV-FID-V20-R2-REPAIR",
     "CA-RV-FID-V20-R2-CHANGELOG-URL-REPAIR",
     "CA-RV-FID-V20-R2-V2",
-    "CA-NEXT-PORT-DAG-V18"
+    "CA-NEXT-PORT-DAG-V18",
+    "CA-NEXT-PORT-DAG-V19"
   ],
   "current": {
-    "id": "CA-C23-REMAINING-UTILITY-ROWS",
+    "id": "TUI-C2-REMAINING-MANIFEST-ROWS",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,
