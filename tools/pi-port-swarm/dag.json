@@ -2669,22 +2669,36 @@
       "intent": "Freshly validate the missing utility-complements port with formatting and focused package compilation."
     },
     {
-      "id": "CA-RV-FID-V20",
-      "kind": "reviewer",
+      "id": "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION",
+      "kind": "writer",
       "depends_on": [
         "CA-C22-V1-UTILITY-COMPLEMENTS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/changelog.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Repair the Pi-fidelity review finding that changelog link normalization is not faithful to the frozen Pi implementation."
+    },
+    {
+      "id": "CA-RV-FID-V20-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh Pi-fidelity review of the completed coding-agent utility-complements port against frozen Pi."
+      "intent": "Fresh Pi-fidelity review of the repaired changelog link normalization and completed coding-agent utility-complements port against frozen Pi."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V18",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V20"
+        "CA-RV-FID-V20-R1"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
