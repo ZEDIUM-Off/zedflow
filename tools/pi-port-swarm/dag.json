@@ -2772,25 +2772,40 @@
       "intent": "Port the remaining dependency-light coding-agent utility manifest rows not covered by the accepted utility-complements wave, with focused tests."
     },
     {
-      "id": "CA-C24-CORE-SESSION-RUNTIME",
+      "id": "CA-C24-R1-CORE-SESSION-RUNTIME-OWNERSHIP",
       "kind": "writer",
       "depends_on": [
         "CA-C23-REMAINING-UTILITY-ROWS"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core",
+        "crates/zedflow-coding-agent/src/lib.rs",
         "crates/zedflow-coding-agent/tests"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port core agent-session, compaction, settings, session-manager, and related runtime manifest rows from frozen Pi."
+      "intent": "Re-port the core agent-session, compaction, settings, and session-manager runtime rows with explicit ownership of the required lib.rs module exports."
+    },
+    {
+      "id": "CA-C24-V1-CORE-SESSION-RUNTIME",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C24-R1-CORE-SESSION-RUNTIME-OWNERSHIP"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check --package zedflow-coding-agent --all-targets",
+        "cargo test --package zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Freshly validate the repaired core session runtime port with formatting and focused package checks."
     },
     {
       "id": "CA-C25-RESOURCE-EXTENSION-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "CA-C24-CORE-SESSION-RUNTIME"
+        "CA-C24-V1-CORE-SESSION-RUNTIME"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/extensions",
