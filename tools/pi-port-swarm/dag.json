@@ -2915,10 +2915,40 @@
       "intent": "Freshly validate the runtime-dispatch and RPC-wire repair with the failed review diff gate and coding-agent package checks."
     },
     {
-      "id": "CA-RV-FID-V21-R1",
-      "kind": "reviewer",
+      "id": "CA-RV-FID-V21-R2-RUNTIME-DISPATCH-WIRE",
+      "kind": "writer",
       "depends_on": [
         "CA-V19-R1-CODING-AGENT"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/modes/rpc/rpc-types.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Repair the remaining coding-agent runtime mode dispatch and Pi-compatible RPC wire field gaps identified by the failed fidelity review."
+    },
+    {
+      "id": "CA-V19-R2-CODING-AGENT",
+      "kind": "validator",
+      "depends_on": [
+        "CA-RV-FID-V21-R2-RUNTIME-DISPATCH-WIRE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check",
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Freshly validate the runtime-dispatch and RPC-wire repair while preserving the failed review diff gate and coding-agent package checks."
+    },
+    {
+      "id": "CA-RV-FID-V21-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V19-R2-CODING-AGENT"
       ],
       "ownership": [],
       "validation": [
@@ -2930,7 +2960,7 @@
       "id": "CA-NEXT-PORT-DAG-V19",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V21-R1"
+        "CA-RV-FID-V21-R2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
