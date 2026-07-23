@@ -28,6 +28,10 @@ pub mod diagnostics;
 pub mod event_bus;
 #[path = "core/experimental.rs"]
 pub mod experimental;
+#[path = "core/export-html/mod.rs"]
+pub mod export_html;
+#[path = "core/extensions/mod.rs"]
+pub mod extensions;
 #[path = "core/http-dispatcher.rs"]
 pub mod http_dispatcher;
 #[path = "core/messages.rs"]
@@ -42,16 +46,22 @@ pub mod output_guard;
 pub mod provider_display_names;
 #[path = "core/resolve-config-value.rs"]
 pub mod resolve_config_value;
+#[path = "core/resource-loader.rs"]
+pub mod resource_loader;
 #[path = "core/session-cwd.rs"]
 pub mod session_cwd;
 #[path = "core/session-manager.rs"]
 pub mod session_manager;
 #[path = "core/settings-manager.rs"]
 pub mod settings_manager;
+#[path = "core/skills.rs"]
+pub mod skills;
 #[path = "core/slash-commands.rs"]
 pub mod slash_commands;
 #[path = "core/source-info.rs"]
 pub mod source_info;
+#[path = "core/system-prompt.rs"]
+pub mod system_prompt;
 #[path = "core/timings.rs"]
 pub mod timings;
 
@@ -82,9 +92,10 @@ pub mod write;
 pub mod core {
     pub use crate::{
         agent_session, agent_session_runtime, agent_session_services, auth_guidance, auth_storage,
-        compaction, defaults, diagnostics, event_bus, experimental, http_dispatcher, messages,
-        model_registry, model_resolver, output_guard, provider_display_names, session_cwd,
-        session_manager, settings_manager, slash_commands, source_info, timings,
+        compaction, defaults, diagnostics, event_bus, experimental, export_html, extensions,
+        http_dispatcher, messages, model_registry, model_resolver, output_guard,
+        provider_display_names, resource_loader, session_cwd, session_manager, settings_manager,
+        skills, slash_commands, source_info, system_prompt, timings,
     };
 
     pub mod tools {
