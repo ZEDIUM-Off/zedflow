@@ -3215,7 +3215,7 @@
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R1"
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R2"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
@@ -3406,7 +3406,7 @@
       "intent": "Repair the remaining Pi printable-key decoding divergence diagnosed by the failed fidelity review, preserving control, Alt, and Kitty decoding."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R1",
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R2",
       "kind": "reviewer",
       "depends_on": [
         "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3"
