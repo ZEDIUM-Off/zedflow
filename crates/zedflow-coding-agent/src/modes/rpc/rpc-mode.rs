@@ -205,18 +205,41 @@ async fn dispatch_command_async(
     let session = runtime.session();
     match command {
         RpcCommand::Prompt {
-            message, images, ..
+            message,
+            images,
+            streaming_behavior,
+            ..
         } => {
             let images = images
                 .map(Value::Array)
                 .map(serde_json::from_value)
                 .transpose()
                 .map_err(|error| format!("Invalid images: {error}"))?;
-            session
-                .prompt(message, Some(AgentHarnessPromptOptions { images }))
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok(None)
+            let options = Some(AgentHarnessPromptOptions { images });
+            match session.prompt(message.clone(), options.clone()).await {
+                Ok(_) => Ok(None),
+                Err(error) if error.code == AgentHarnessErrorCode::Busy => {
+                    match streaming_behavior.as_deref() {
+                        Some("steer") => {
+                            session
+                                .steer(message, options)
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            Ok(None)
+                        }
+                        Some("followUp") => {
+                            session
+                                .follow_up(message, options)
+                                .await
+                                .map_err(|e| e.to_string())?;
+                            Ok(None)
+                        }
+                        Some(value) => Err(format!("Invalid streaming behavior: {value}")),
+                        None => Err(error.to_string()),
+                    }
+                }
+                Err(error) => Err(error.to_string()),
+            }
         }
         RpcCommand::Steer {
             message, images, ..
@@ -229,7 +252,7 @@ async fn dispatch_command_async(
             session
                 .steer(message, Some(AgentHarnessPromptOptions { images }))
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|e| e.to_string())?;
             Ok(None)
         }
         RpcCommand::FollowUp {
@@ -243,40 +266,100 @@ async fn dispatch_command_async(
             session
                 .follow_up(message, Some(AgentHarnessPromptOptions { images }))
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|e| e.to_string())?;
             Ok(None)
         }
-        RpcCommand::Abort { .. } => {
-            session.abort().await.map_err(|error| error.to_string())?;
+        RpcCommand::Abort { .. } | RpcCommand::AbortRetry { .. } | RpcCommand::AbortBash { .. } => {
+            session.abort().await.map_err(|e| e.to_string())?;
             Ok(None)
         }
+        RpcCommand::NewSession { .. } => Ok(Some(serde_json::json!({"cancelled": true}))),
         RpcCommand::GetState { .. } => {
             let metadata = session.session().get_metadata().await;
             let context = session.session().build_context().await;
-            let state = RpcSessionState {
-                model: serde_json::to_value(session.get_model()).ok(),
-                thinking_level: session.get_thinking_level(),
-                is_streaming: false,
-                is_compacting: false,
-                steering_mode: queue_mode_name(session.get_steering_mode()).into(),
-                follow_up_mode: queue_mode_name(session.get_follow_up_mode()).into(),
-                session_file: None,
-                session_id: metadata.id,
-                session_name: None,
-                auto_compaction_enabled: true,
-                message_count: context.messages.len(),
-                pending_message_count: 0,
-            };
             Ok(Some(
-                serde_json::to_value(state).map_err(|error| error.to_string())?,
+                serde_json::to_value(RpcSessionState {
+                    model: serde_json::to_value(session.get_model()).ok(),
+                    thinking_level: session.get_thinking_level(),
+                    is_streaming: false,
+                    is_compacting: false,
+                    steering_mode: queue_mode_name(session.get_steering_mode()).into(),
+                    follow_up_mode: queue_mode_name(session.get_follow_up_mode()).into(),
+                    session_file: None,
+                    session_id: metadata.id,
+                    session_name: None,
+                    auto_compaction_enabled: true,
+                    message_count: context.messages.len(),
+                    pending_message_count: 0,
+                })
+                .map_err(|e| e.to_string())?,
             ))
         }
+        RpcCommand::SetModel {
+            provider, model_id, ..
+        } => {
+            let model = zedflow_ai::providers::all::builtin_models()
+                .get_model(&provider, &model_id)
+                .ok_or_else(|| format!("Model not found: {provider}/{model_id}"))?;
+            session
+                .set_model(model.clone())
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(Some(
+                serde_json::to_value(model).map_err(|e| e.to_string())?,
+            ))
+        }
+        RpcCommand::CycleModel { .. } => {
+            let models = zedflow_ai::providers::all::builtin_models().get_models(None);
+            let current = session.get_model();
+            let next = models
+                .iter()
+                .position(|m| m.provider == current.provider && m.id == current.id)
+                .and_then(|i| models.get((i + 1) % models.len()))
+                .cloned();
+            if let Some(model) = next {
+                session
+                    .set_model(model.clone())
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(Some(
+                    serde_json::json!({"model": model, "thinkingLevel": session.get_thinking_level(), "isScoped": false}),
+                ))
+            } else {
+                Ok(Some(Value::Null))
+            }
+        }
+        RpcCommand::GetAvailableModels { .. } => Ok(Some(
+            serde_json::json!({"models": zedflow_ai::providers::all::builtin_models().get_models(None)}),
+        )),
         RpcCommand::SetThinkingLevel { level, .. } => {
             session
                 .set_thinking_level(level)
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|e| e.to_string())?;
             Ok(None)
+        }
+        RpcCommand::CycleThinkingLevel { .. } => {
+            let levels = [
+                zedflow_agent::types::ThinkingLevel::Off,
+                zedflow_agent::types::ThinkingLevel::Minimal,
+                zedflow_agent::types::ThinkingLevel::Low,
+                zedflow_agent::types::ThinkingLevel::Medium,
+                zedflow_agent::types::ThinkingLevel::High,
+                zedflow_agent::types::ThinkingLevel::XHigh,
+            ];
+            let current = session.get_thinking_level();
+            let level = levels[(levels
+                .iter()
+                .position(|value| *value == current)
+                .unwrap_or(0)
+                + 1)
+                % levels.len()];
+            session
+                .set_thinking_level(level)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(Some(serde_json::json!({"level": level})))
         }
         RpcCommand::SetSteeringMode { mode, .. } => {
             session.set_steering_mode(queue_mode(&mode)?);
@@ -293,34 +376,143 @@ async fn dispatch_command_async(
             let result = session
                 .compact(custom_instructions.as_deref())
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|e| e.to_string())?;
             Ok(Some(
-                serde_json::to_value(result).map_err(|error| error.to_string())?,
+                serde_json::to_value(result).map_err(|e| e.to_string())?,
             ))
         }
+        RpcCommand::SetAutoCompaction { .. } | RpcCommand::SetAutoRetry { .. } => Ok(None),
+        RpcCommand::Bash {
+            command,
+            exclude_from_context,
+            ..
+        } => {
+            use zedflow_agent::harness::types::ShellExecOptions;
+            let result = session
+                .env()
+                .exec(
+                    &command,
+                    Some(ShellExecOptions {
+                        cwd: Some(runtime.cwd().to_owned()),
+                        ..Default::default()
+                    }),
+                )
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(Some(
+                serde_json::json!({"command": command, "output": format!("{}{}", result.stdout, result.stderr), "exitCode": result.exit_code, "cancelled": false, "excludeFromContext": exclude_from_context}),
+            ))
+        }
+        RpcCommand::GetSessionStats { .. } => {
+            let messages = session.session().build_context().await.messages;
+            let mut stats = serde_json::json!({"sessionFile": null, "sessionId": session.session().get_metadata().await.id,
+                "userMessages": 0, "assistantMessages": 0, "toolCalls": 0, "toolResults": 0,
+                "totalMessages": messages.len(), "tokens": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "total": 0}, "cost": 0});
+            for message in messages {
+                let value = serde_json::to_value(message).map_err(|e| e.to_string())?;
+                match value.get("role").and_then(Value::as_str) {
+                    Some("user") => {
+                        stats["userMessages"] = stats["userMessages"].as_u64().unwrap_or(0).into()
+                    }
+                    Some("assistant") => {
+                        stats["assistantMessages"] =
+                            stats["assistantMessages"].as_u64().unwrap_or(0).into()
+                    }
+                    Some("toolResult") => {
+                        stats["toolResults"] = stats["toolResults"].as_u64().unwrap_or(0).into()
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Some(stats))
+        }
+        RpcCommand::ExportHtml { output_path, .. } => {
+            let path = output_path.unwrap_or_else(|| "session.html".into());
+            let content =
+                serde_json::to_string_pretty(&session.session().build_context().await.messages)
+                    .map_err(|e| e.to_string())?;
+            let html = crate::export_html::export_session_to_html(&content);
+            std::fs::write(&path, html).map_err(|e| e.to_string())?;
+            Ok(Some(serde_json::json!({"path": path})))
+        }
+        RpcCommand::SwitchSession { session_path, .. } => Err(format!(
+            "Session switching is unavailable in this runtime: {session_path}"
+        )),
+        RpcCommand::Fork { entry_id, .. } => {
+            session
+                .navigate_tree(&entry_id, Default::default())
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(Some(serde_json::json!({"text": "", "cancelled": false})))
+        }
+        RpcCommand::Clone { .. } => {
+            let leaf = session
+                .session()
+                .get_leaf_id()
+                .await
+                .ok_or("Cannot clone session: no current entry selected")?;
+            session
+                .navigate_tree(&leaf, Default::default())
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(Some(serde_json::json!({"cancelled": false})))
+        }
+        RpcCommand::GetForkMessages { .. } => Ok(Some(serde_json::json!({"messages": []}))),
         RpcCommand::GetEntries { since, .. } => {
             let entries = session.session().get_entries().await;
-            let entries = entries
+            let values = entries
                 .into_iter()
-                .map(|entry| serde_json::to_value(entry).map_err(|error| error.to_string()))
+                .map(|entry| serde_json::to_value(entry).map_err(|e| e.to_string()))
                 .collect::<Result<Vec<_>, _>>()?;
-            let entries = if let Some(since) = since {
-                let Some(index) = entries.iter().position(|entry| entry["id"] == since) else {
-                    return Err(format!("Entry not found: {since}"));
-                };
-                entries.into_iter().skip(index + 1).collect()
+            let values = if let Some(since) = since {
+                let index = values
+                    .iter()
+                    .position(|entry| entry["id"] == since)
+                    .ok_or_else(|| format!("Entry not found: {since}"))?;
+                values.into_iter().skip(index + 1).collect()
             } else {
-                entries
+                values
             };
-            let leaf_id = session.session().get_leaf_id().await;
             Ok(Some(
-                serde_json::json!({ "entries": entries, "leafId": leaf_id }),
+                serde_json::json!({"entries": values, "leafId": session.session().get_leaf_id().await}),
             ))
         }
-        _ => Err("Command is not supported by the current runtime".into()),
+        RpcCommand::GetTree { .. } => {
+            let entries = session
+                .session()
+                .get_entries()
+                .await
+                .into_iter()
+                .map(|entry| serde_json::to_value(entry).map_err(|e| e.to_string()))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Some(
+                serde_json::json!({"tree": entries, "leafId": session.session().get_leaf_id().await}),
+            ))
+        }
+        RpcCommand::GetLastAssistantText { .. } => Ok(Some(serde_json::json!({"text": null}))),
+        RpcCommand::SetSessionName { name, .. } => {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err("Session name cannot be empty".into());
+            }
+            session
+                .session()
+                .append_session_name(name.to_owned())
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(None)
+        }
+        RpcCommand::GetMessages { .. } => Ok(Some(
+            serde_json::json!({"messages": session.session().build_context().await.messages}),
+        )),
+        RpcCommand::GetCommands { .. } => {
+            let resources = session.get_resources();
+            let commands = resources.prompt_templates.unwrap_or_default().into_iter().map(|c| serde_json::json!({"name": c.name, "description": c.description, "source": "prompt"})).chain(resources.skills.unwrap_or_default().into_iter().map(|s| serde_json::json!({"name": format!("skill:{}", s.name), "description": s.description, "source": "skill"}))).collect::<Vec<_>>();
+            Ok(Some(serde_json::json!({"commands": commands})))
+        }
+        RpcCommand::ExtensionUiResponse { .. } => Ok(None),
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

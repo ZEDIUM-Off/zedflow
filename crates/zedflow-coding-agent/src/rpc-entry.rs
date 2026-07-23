@@ -5,7 +5,14 @@ use crate::{
     agent_session_runtime::AgentSessionRuntime,
     cli::{Args, parse_args},
     config,
-    core::settings_manager::SettingsManager,
+    core::{
+        resource_loader::{DefaultResourceLoader, ResourceExtensionPaths},
+        settings_manager::SettingsManager,
+        tools::{
+            edit::create_edit_tool, find::create_find_tool, grep::create_grep_tool,
+            ls::create_ls_tool, read::create_read_tool, write::create_write_tool,
+        },
+    },
     defaults::DEFAULT_THINKING_LEVEL,
     modes::rpc::rpc_mode::run_rpc_loop_with_runtime,
 };
@@ -16,11 +23,12 @@ use zedflow_agent::harness::{
     env::nodejs::NodeExecutionEnv,
     session::{
         InMemorySessionStorage, InMemorySessionStorageOptions, JsonlSessionRepo,
-        JsonlSessionStorage, JsonlSessionStorageCreateOptions, repo_utils::to_shared_session,
+        repo_utils::to_shared_session,
     },
     types::{
-        AgentHarnessOptions, FileSystem, JsonlSessionListOptions, Session as AgentSessionTrait,
-        SessionMetadata,
+        AgentHarnessOptions, AgentHarnessResources, FileSystem, JsonlSessionListOptions,
+        PromptTemplate as HarnessPromptTemplate, Session as AgentSessionTrait, SessionMetadata,
+        Skill as HarnessSkill,
     },
 };
 use zedflow_ai::{Model, Models, providers::all::builtin_models};
@@ -55,25 +63,93 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
         .map_err(|error| io::Error::other(error.to_string()))?
         .block_on(create_session(&parsed, &cwd, &cwd_string, &settings, &env))
         .map_err(io::Error::other)?;
+    let tools = configured_tools(&parsed, &cwd);
+    let active_tool_names = tools.iter().map(|tool| tool.tool.name.clone()).collect();
+    let resources = configured_resources(&parsed, &cwd);
     let session = AgentSession::new(AgentHarnessOptions {
         env,
         session,
         models,
-        tools: None,
-        resources: None,
+        tools: Some(tools),
+        resources: Some(resources),
         system_prompt: parsed
             .system_prompt
             .map(zedflow_agent::harness::types::SystemPrompt::Text),
         stream_options: None,
         model,
         thinking_level: Some(parsed.thinking.unwrap_or(DEFAULT_THINKING_LEVEL)),
-        active_tool_names: None,
+        active_tool_names: Some(active_tool_names),
         steering_mode: Some(queue_mode(&settings.get_steering_mode())),
         follow_up_mode: Some(queue_mode(&settings.get_follow_up_mode())),
     })
     .map_err(|error| io::Error::other(error.to_string()))?;
     let runtime = AgentSessionRuntime::new(session, cwd_string);
     run_rpc_loop_with_runtime(reader, writer, &runtime)
+}
+
+fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentTool> {
+    if args.no_tools || args.no_builtin_tools {
+        return Vec::new();
+    }
+    let mut tools = vec![
+        create_read_tool(cwd),
+        create_write_tool(cwd),
+        create_edit_tool(cwd),
+        create_grep_tool(cwd),
+        create_find_tool(cwd),
+        create_ls_tool(cwd),
+    ];
+    if !args.tools.is_empty() {
+        tools.retain(|tool| args.tools.iter().any(|name| name == &tool.tool.name));
+    }
+    tools.retain(|tool| {
+        !args
+            .exclude_tools
+            .iter()
+            .any(|name| name == &tool.tool.name)
+    });
+    tools
+}
+
+fn configured_resources(args: &Args, cwd: &Path) -> AgentHarnessResources {
+    if args.no_skills {
+        return AgentHarnessResources {
+            prompt_templates: Some(Vec::new()),
+            skills: Some(Vec::new()),
+        };
+    }
+    let mut loader = DefaultResourceLoader::new(cwd, config::get_agent_dir());
+    loader.extend_resources(ResourceExtensionPaths {
+        skill_paths: args.skills.iter().map(PathBuf::from).collect(),
+        ..Default::default()
+    });
+    loader.reload();
+    let skills = loader
+        .get_skills()
+        .skills
+        .iter()
+        .filter(|skill| {
+            args.skills.is_empty()
+                || args.skills.iter().any(|name| {
+                    name == &skill.name || Path::new(name) == Path::new(&skill.file_path)
+                })
+        })
+        .filter_map(|skill| {
+            std::fs::read_to_string(&skill.file_path)
+                .ok()
+                .map(|content| HarnessSkill {
+                    name: skill.name.clone(),
+                    description: skill.description.clone(),
+                    content,
+                    file_path: skill.file_path.clone(),
+                    disable_model_invocation: Some(skill.disable_model_invocation),
+                })
+        })
+        .collect::<Vec<_>>();
+    AgentHarnessResources {
+        prompt_templates: Some(Vec::<HarnessPromptTemplate>::new()),
+        skills: Some(skills),
+    }
 }
 
 async fn create_session(
@@ -158,21 +234,7 @@ async fn create_session(
                 .map_err(|error| error.to_string());
         }
 
-        let storage = JsonlSessionStorage::create(
-            Arc::clone(env) as Arc<dyn FileSystem>,
-            path,
-            JsonlSessionStorageCreateOptions {
-                cwd: cwd_string.to_owned(),
-                session_id: args
-                    .session_id
-                    .clone()
-                    .unwrap_or_else(zedflow_agent::harness::session::create_session_id),
-                parent_session_path: None,
-            },
-        )
-        .await
-        .map_err(|error| error.to_string())?;
-        return Ok(Arc::new(to_shared_session(Arc::new(storage))) as Arc<dyn AgentSessionTrait>);
+        return Err(format!("Session path does not exist: {path}"));
     }
 
     let sessions = repo
@@ -321,6 +383,33 @@ mod tests {
                 .flatten()
                 .any(|entry| entry.path().is_dir())
         );
+    }
+
+    #[test]
+    fn missing_session_path_is_rejected_instead_of_created() {
+        let cwd = std::env::current_dir().expect("current directory");
+        let cwd_string = cwd.to_string_lossy().into_owned();
+        let settings = SettingsManager::in_memory(Default::default());
+        let missing = std::env::temp_dir().join(format!(
+            "zedflow-rpc-missing-{}.jsonl",
+            zedflow_agent::harness::session::create_session_id()
+        ));
+        let args = rpc_args(&[
+            "--session".to_owned(),
+            missing.to_string_lossy().into_owned(),
+        ]);
+        let env = Arc::new(NodeExecutionEnv::with_cwd(&cwd_string));
+        let result = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(create_session(&args, &cwd, &cwd_string, &settings, &env));
+        let error = match result {
+            Ok(_) => panic!("missing path must fail"),
+            Err(error) => error,
+        };
+        assert!(error.contains("does not exist"));
+        assert!(!missing.exists());
     }
 
     #[test]
