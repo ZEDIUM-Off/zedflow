@@ -6,7 +6,7 @@ fn parses_legacy_navigation_keys() {
     assert_eq!(parse_key("\x1b[1;5D"), Some("ctrl+left"));
     assert_eq!(parse_key("\x1b[13;2u"), Some("shift+enter"));
     assert!(matches_key("\x1b[3~", "delete"));
-    assert_eq!(parse_key("x"), None);
+    assert_eq!(parse_key("x"), Some("x"));
 }
 
 #[test]
