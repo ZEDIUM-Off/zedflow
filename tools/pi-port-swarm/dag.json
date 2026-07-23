@@ -2627,22 +2627,64 @@
       "intent": "Freshly validate the repaired coding-agent utility-complements wave, preserving the failed formatting gate and focused package validation."
     },
     {
-      "id": "CA-RV-FID-V19",
-      "kind": "reviewer",
+      "id": "CA-C22-UTILITY-COMPLEMENTS",
+      "kind": "writer",
       "depends_on": [
         "CA-C21-V1-UTILITY-COMPLEMENTS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/mod.rs",
+        "crates/zedflow-coding-agent/src/utils/changelog.rs",
+        "crates/zedflow-coding-agent/src/utils/clipboard-image.rs",
+        "crates/zedflow-coding-agent/src/utils/clipboard-native.rs",
+        "crates/zedflow-coding-agent/src/utils/clipboard.rs",
+        "crates/zedflow-coding-agent/src/utils/deprecation.rs",
+        "crates/zedflow-coding-agent/src/utils/exif-orientation.rs",
+        "crates/zedflow-coding-agent/src/utils/fs-watch.rs",
+        "crates/zedflow-coding-agent/src/utils/image-convert.rs",
+        "crates/zedflow-coding-agent/src/utils/image-resize-core.rs",
+        "crates/zedflow-coding-agent/src/utils/image-resize-worker.rs",
+        "crates/zedflow-coding-agent/src/utils/image-resize.rs",
+        "crates/zedflow-coding-agent/src/utils/open-browser.rs",
+        "crates/zedflow-coding-agent/src/utils/syntax-highlight.rs",
+        "crates/zedflow-coding-agent/src/utils/version-check.rs",
+        "crates/zedflow-coding-agent/src/utils/windows-self-update.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port the missing Pi utility-complements modules and register them in the existing utility module tree."
+    },
+    {
+      "id": "CA-C22-V1-UTILITY-COMPLEMENTS",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C22-UTILITY-COMPLEMENTS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check --package zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Freshly validate the missing utility-complements port with formatting and focused package compilation."
+    },
+    {
+      "id": "CA-RV-FID-V20",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-C22-V1-UTILITY-COMPLEMENTS"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh Pi-fidelity review of coding-agent utility-complements behavior against frozen Pi."
+      "intent": "Fresh Pi-fidelity review of the completed coding-agent utility-complements port against frozen Pi."
     },
     {
       "id": "CA-NEXT-PORT-DAG-V18",
       "kind": "checkpoint",
       "depends_on": [
-        "CA-RV-FID-V19"
+        "CA-RV-FID-V20"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
