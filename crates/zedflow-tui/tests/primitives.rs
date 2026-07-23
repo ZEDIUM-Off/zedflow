@@ -1,6 +1,13 @@
 use zedflow_tui::*;
 
 #[test]
+fn parses_legacy_navigation_keys() {
+    assert_eq!(parse_key("\x1b[A"), Some("up"));
+    assert!(matches_key("\x1b[3~", "delete"));
+    assert_eq!(parse_key("x"), None);
+}
+
+#[test]
 fn fuzzy_matching_and_filtering() {
     assert!(fuzzy_match("abc", "aXbXc").matches);
     assert!(!fuzzy_match("abc", "cba").matches);
