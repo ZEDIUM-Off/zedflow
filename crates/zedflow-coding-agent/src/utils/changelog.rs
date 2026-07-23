@@ -104,7 +104,7 @@ mod tests {
         let markdown = "[file](../README.md?raw=1#top) [dir](docs/) [web](https://example.com/a) [reserved](a&b;c=x+$,@:.md) [upper](HTTPS://example.com/a)";
         assert_eq!(
             normalize_changelog_links(markdown, "1.2.3"),
-            "[file](https://github.com/earendil-works/pi/blob/v1.2.3/packages/README.md?raw=1#top) [dir](https://github.com/earendil-works/pi/tree/v1.2.3/packages/coding-agent/docs) [web](https://example.com/a) [reserved](https://github.com/earendil-works/pi/blob/v1.2.3/packages/coding-agent/a&b;c=x+$,@:.md) [upper](HTTPS://example.com/a)"
+            "[file](https://github.com/earendil-works/pi/blob/v1.2.3/packages/README.md?raw=1#top) [dir](https://github.com/earendil-works/pi/tree/v1.2.3/packages/docs) [web](https://example.com/a) [reserved](https://github.com/earendil-works/pi/blob/v1.2.3/packages/a&b;c=x+$,@:.md) [upper](HTTPS://example.com/a)"
         );
     }
 }
@@ -139,7 +139,12 @@ fn resolve_repository_path(target: &str) -> Option<String> {
             part => parts.push(part),
         }
     }
-    (!parts.is_empty()).then(|| parts.join("/"))
+    let repository_path = parts.join("/");
+    let repository_path = repository_path
+        .strip_prefix("packages/coding-agent/")
+        .map(|path| format!("packages/{path}"))
+        .unwrap_or(repository_path);
+    (!repository_path.is_empty()).then_some(repository_path)
 }
 
 fn split_local_target(target: &str) -> (&str, String, String) {
