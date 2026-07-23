@@ -148,10 +148,14 @@
     "CA-NEXT-PORT-DAG-V14",
     "CA-RV-FID-V17",
     "CA-NEXT-PORT-DAG-V16",
-    "CA-NEXT-PORT-DAG-V17"
+    "CA-NEXT-PORT-DAG-V17",
+    "CA-RV-FID-V20-R2-REPAIR",
+    "CA-RV-FID-V20-R2-CHANGELOG-URL-REPAIR",
+    "CA-RV-FID-V20-R2-V2",
+    "CA-NEXT-PORT-DAG-V18"
   ],
   "current": {
-    "id": "CA-C21-UTILITY-COMPLEMENTS",
+    "id": "CA-C23-REMAINING-UTILITY-ROWS",
     "base": "HEAD",
     "base_kind": "checkpoint-candidate",
     "worker": null,

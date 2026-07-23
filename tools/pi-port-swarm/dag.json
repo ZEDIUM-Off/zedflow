@@ -2755,6 +2755,269 @@
         "git diff --check"
       ],
       "intent": "Continue the incomplete global Pi port after the coding-agent utility-complements wave; keep remaining coding-agent rows ahead of orchestrator, and require a successor checkpoint until every manifest row and final validation/review gate is represented."
+    },
+    {
+      "id": "CA-C23-REMAINING-UTILITY-ROWS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V18"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils",
+        "crates/zedflow-coding-agent/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port the remaining dependency-light coding-agent utility manifest rows not covered by the accepted utility-complements wave, with focused tests."
+    },
+    {
+      "id": "CA-C24-CORE-SESSION-RUNTIME",
+      "kind": "writer",
+      "depends_on": [
+        "CA-C23-REMAINING-UTILITY-ROWS"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core",
+        "crates/zedflow-coding-agent/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port core agent-session, compaction, settings, session-manager, and related runtime manifest rows from frozen Pi."
+    },
+    {
+      "id": "CA-C25-RESOURCE-EXTENSION-RUNTIME",
+      "kind": "writer",
+      "depends_on": [
+        "CA-C24-CORE-SESSION-RUNTIME"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions",
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/src/core/skills.rs",
+        "crates/zedflow-coding-agent/src/core/system-prompt.rs",
+        "crates/zedflow-coding-agent/src/core/export-html",
+        "crates/zedflow-coding-agent/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port resource loading, skills, export, extension, and trust runtime rows after core session contracts exist."
+    },
+    {
+      "id": "CA-C26-CLI-RPC-MODES",
+      "kind": "writer",
+      "depends_on": [
+        "CA-C25-RESOURCE-EXTENSION-RUNTIME"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/cli",
+        "crates/zedflow-coding-agent/src/cli.rs",
+        "crates/zedflow-coding-agent/src/modes",
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/index.rs",
+        "crates/zedflow-coding-agent/src/rpc-entry.rs",
+        "crates/zedflow-coding-agent/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port the remaining CLI, print, RPC, and non-interactive mode manifest rows."
+    },
+    {
+      "id": "CA-C27-INTERACTIVE-INTEGRATION",
+      "kind": "writer",
+      "depends_on": [
+        "CA-C26-CLI-RPC-MODES"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive",
+        "crates/zedflow-coding-agent/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port the remaining coding-agent interactive integration rows without beginning the separate TUI package wave."
+    },
+    {
+      "id": "CA-V19-CODING-AGENT",
+      "kind": "validator",
+      "depends_on": [
+        "CA-C27-INTERACTIVE-INTEGRATION"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Validate all coding-agent source and test rows after the ordered port sequence."
+    },
+    {
+      "id": "CA-RV-FID-V21",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V19-CODING-AGENT"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review of the complete coding-agent wave against frozen references/pi."
+    },
+    {
+      "id": "CA-NEXT-PORT-DAG-V19",
+      "kind": "checkpoint",
+      "depends_on": [
+        "CA-RV-FID-V21"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Continue the incomplete global Pi port after all coding-agent rows; keep TUI and orchestrator downstream and require final validation and review gates."
+    },
+    {
+      "id": "TUI-C2-REMAINING-MANIFEST-ROWS",
+      "kind": "writer",
+      "depends_on": [
+        "CA-NEXT-PORT-DAG-V19"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src",
+        "crates/zedflow-tui/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port the remaining TUI source and test manifest rows after coding-agent integration is complete."
+    },
+    {
+      "id": "TUI-V2",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-C2-REMAINING-MANIFEST-ROWS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-tui --all-targets"
+      ],
+      "intent": "Validate the complete TUI manifest wave."
+    },
+    {
+      "id": "TUI-RV-FID-V2",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V2"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review of all remaining TUI rows."
+    },
+    {
+      "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-RV-FID-V2"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src",
+        "crates/zedflow-orchestrator/tests"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check"
+      ],
+      "intent": "Port the remaining orchestrator source and test manifest rows only after coding-agent and TUI waves."
+    },
+    {
+      "id": "ORCH-V1",
+      "kind": "validator",
+      "depends_on": [
+        "ORCH-C1-REMAINING-MANIFEST-ROWS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Validate the complete orchestrator manifest wave."
+    },
+    {
+      "id": "ORCH-RV-FID-V1",
+      "kind": "reviewer",
+      "depends_on": [
+        "ORCH-V1"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review of all remaining orchestrator rows."
+    },
+    {
+      "id": "FINAL-WORKSPACE-VALIDATION",
+      "kind": "validator",
+      "depends_on": [
+        "ORCH-RV-FID-V1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --workspace --all-targets --no-run"
+      ],
+      "intent": "Run the final workspace formatting, compilation, and test-build gate."
+    },
+    {
+      "id": "FINAL-RV-FID",
+      "kind": "reviewer",
+      "depends_on": [
+        "FINAL-WORKSPACE-VALIDATION"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Independent final Pi-fidelity review against every manifest row and frozen references/pi."
+    },
+    {
+      "id": "FINAL-RV-RUST",
+      "kind": "reviewer",
+      "depends_on": [
+        "FINAL-RV-FID"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Independent final Rust correctness and integration review."
+    },
+    {
+      "id": "FINAL-PORT-CHECKPOINT",
+      "kind": "checkpoint",
+      "depends_on": [
+        "FINAL-RV-RUST"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/port-swarm",
+        "docs/porting"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record completion only after every manifest row and final validation, fidelity, and Rust review gates are accepted."
     }
   ]
 }
