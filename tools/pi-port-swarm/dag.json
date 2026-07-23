@@ -3409,31 +3409,31 @@
       "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R1",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R2"
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3"
       ],
       "ownership": [],
       "validation": [],
       "intent": "Fresh Pi-fidelity review of printable TUI key decoding after the remaining repair."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R2",
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-TEST-CONTRACT-R1",
       "kind": "writer",
       "depends_on": [
         "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R1"
       ],
       "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
+        "crates/zedflow-tui/tests/primitives.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Repair the deterministic full-suite printable-key failure in keys.rs without changing unrelated TUI behavior."
+      "intent": "Reconcile the contradictory primitive parse_key(\"x\") expectation with Pi-compatible printable-key behavior and the keys.rs regression contract."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R2",
+      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R2"
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-TEST-CONTRACT-R1"
       ],
       "ownership": [],
       "validation": [
@@ -3441,7 +3441,7 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Re-run the exact blocked TUI printable-key validation after the fresh deterministic failure repair."
+      "intent": "Re-run the exact blocked TUI printable-key validation after reconciling the contradictory primitive test contract."
     }
   ]
 }
