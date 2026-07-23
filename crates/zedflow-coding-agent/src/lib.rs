@@ -6,7 +6,16 @@
 #[path = "utils/mod.rs"]
 pub mod utils;
 
+#[path = "cli.rs"]
+pub mod cli;
 pub mod config;
+#[path = "index.rs"]
+pub mod index;
+#[path = "modes/index.rs"]
+pub mod modes;
+#[path = "rpc-entry.rs"]
+pub mod rpc_entry;
+pub use index::*;
 
 #[path = "core/agent-session.rs"]
 pub mod agent_session;
@@ -92,10 +101,10 @@ pub mod write;
 pub mod core {
     pub use crate::{
         agent_session, agent_session_runtime, agent_session_services, auth_guidance, auth_storage,
-        compaction, defaults, diagnostics, event_bus, experimental, export_html, extensions,
-        http_dispatcher, messages, model_registry, model_resolver, output_guard,
-        provider_display_names, resource_loader, session_cwd, session_manager, settings_manager,
-        skills, slash_commands, source_info, system_prompt, timings,
+        cli, compaction, defaults, diagnostics, event_bus, experimental, export_html, extensions,
+        http_dispatcher, index, messages, model_registry, model_resolver, modes, output_guard,
+        provider_display_names, resource_loader, rpc_entry, session_cwd, session_manager,
+        settings_manager, skills, slash_commands, source_info, system_prompt, timings,
     };
 
     pub mod tools {
