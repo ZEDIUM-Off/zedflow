@@ -3339,7 +3339,7 @@
       "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE"
+        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
@@ -3362,10 +3362,24 @@
       "intent": "Fix parse_key semantics so unsupported one-character input returns None, preserving the diagnosed TUI test contract."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE",
-      "kind": "validator",
+      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Repair the diagnosed parse_key semantics failure so unsupported one-character navigation input returns None."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -3373,7 +3387,7 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Re-run the exact blocked TUI validation after the parse semantics repair."
+      "intent": "Re-run the exact blocked TUI validation after the fresh parse semantics repair."
     }
   ]
 }
