@@ -86,6 +86,20 @@ mod tests {
     }
 
     #[test]
+    fn normalizes_entry_version_like_pi() {
+        let entry = ChangelogEntry {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            content: String::new(),
+        };
+        assert_eq!(
+            normalize_changelog_links("[file](README.md)", &entry),
+            "[file](https://github.com/earendil-works/pi/blob/v1.2.3/packages/README.md)"
+        );
+    }
+
+    #[test]
     fn normalizes_local_changelog_links_like_pi() {
         let markdown = "[file](../README.md?raw=1#top) [dir](docs/) [web](https://example.com/a) [reserved](a&b;c=x+$,@:.md) [upper](HTTPS://example.com/a)";
         assert_eq!(
@@ -142,9 +156,45 @@ fn split_local_target(target: &str) -> (&str, String, String) {
     )
 }
 
-pub fn normalize_changelog_links(markdown: &str, version: &str) -> String {
+pub enum ChangelogVersion {
+    Text(String),
+    Entry(ChangelogEntry),
+}
+
+impl From<&str> for ChangelogVersion {
+    fn from(version: &str) -> Self {
+        Self::Text(version.to_owned())
+    }
+}
+
+impl From<String> for ChangelogVersion {
+    fn from(version: String) -> Self {
+        Self::Text(version)
+    }
+}
+
+impl From<&ChangelogEntry> for ChangelogVersion {
+    fn from(entry: &ChangelogEntry) -> Self {
+        Self::Entry(entry.clone())
+    }
+}
+
+impl From<ChangelogEntry> for ChangelogVersion {
+    fn from(entry: ChangelogEntry) -> Self {
+        Self::Entry(entry)
+    }
+}
+
+pub fn normalize_changelog_links<V: Into<ChangelogVersion>>(markdown: &str, version: V) -> String {
+    let version = version.into();
+    let version = match version {
+        ChangelogVersion::Text(version) => version,
+        ChangelogVersion::Entry(entry) => {
+            format!("{}.{}.{}", entry.major, entry.minor, entry.patch)
+        }
+    };
     let tag = if version.starts_with('v') {
-        version.to_owned()
+        version
     } else {
         format!("v{version}")
     };
