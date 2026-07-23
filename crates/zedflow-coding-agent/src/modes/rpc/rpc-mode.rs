@@ -156,10 +156,23 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
         })
     }));
 
+    let mut workers = Vec::new();
     for line in reader.lines() {
         let line = line?;
         let response = match parse_command(&line) {
-            Ok(command) => dispatch_command(runtime, command),
+            Ok(command) => {
+                let runtime = runtime.clone();
+                let writer = Arc::clone(&writer);
+                workers.push(std::thread::spawn(move || {
+                    let response = dispatch_command(&runtime, command);
+                    let mut writer = writer
+                        .lock()
+                        .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
+                    writer.write_all(serialize_json_line(&response).as_bytes())?;
+                    writer.flush()
+                }));
+                continue;
+            }
             Err(response) => response,
         };
         let mut writer = writer
@@ -167,6 +180,11 @@ pub fn run_rpc_loop_with_runtime<R: BufRead, W: Write + Send + 'static>(
             .map_err(|_| io::Error::other("RPC output lock is poisoned"))?;
         writer.write_all(serialize_json_line(&response).as_bytes())?;
         writer.flush()?;
+    }
+    for worker in workers {
+        worker
+            .join()
+            .map_err(|_| io::Error::other("RPC command worker panicked"))??;
     }
     unsubscribe();
     Ok(())
