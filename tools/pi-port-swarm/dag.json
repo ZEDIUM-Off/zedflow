@@ -3336,10 +3336,36 @@
       "intent": "Fix the diagnosed E0282 by making Kitty modifier parsing explicitly u32, without changing behavior."
     },
     {
-      "id": "REPLAN-TUI-V2-KEYS-PARSE-TYPE-VALIDATE",
+      "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh Pi-fidelity review of the repaired TUI key decoding."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR",
+      "kind": "writer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-REPAIR"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Fix parse_key semantics so unsupported one-character input returns None, preserving the diagnosed TUI test contract."
+    },
+    {
+      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-TYPE-REPAIR"
+        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR"
       ],
       "ownership": [],
       "validation": [
@@ -3347,19 +3373,7 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Re-run the exact blocked TUI validation after the parse type repair."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-REPAIR-REVIEW",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-TYPE-VALIDATE"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of the repaired TUI key decoding."
+      "intent": "Re-run the exact blocked TUI validation after the parse semantics repair."
     }
   ]
 }
