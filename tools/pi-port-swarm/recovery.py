@@ -107,10 +107,20 @@ def main() -> int:
             notify("Intervention requise", f"Le monitor recovery a échoué : {snapshot['error'][:500]}", "high", "question")
             return 0
         failed = active_failures(state, snapshot)
+        integration = subprocess.check_output(["git", "rev-parse", "automation/pi-port"], cwd=SOURCE, text=True).strip()
         if not failed:
+            ready = snapshot.get("ready")
+            unit = ready[0] if isinstance(ready, list) and ready and isinstance(ready[0], str) else None
+            if not unit:
+                return 0
+            if not bounded_action("restart", integration, unit):
+                notify("Intervention requise", f"La reprise automatique de {unit} a déjà été tentée.", "high", "question")
+            elif start_controller():
+                notify("Recovery automatique · reprise", f"Aucun blocage actif. Reprise : {unit}", "default", "arrows_counterclockwise")
+            else:
+                notify("Intervention requise", f"Le redémarrage automatique de {unit} a échoué.", "high", "question")
             return 0
 
-        integration = subprocess.check_output(["git", "rev-parse", "automation/pi-port"], cwd=SOURCE, text=True).strip()
         fingerprint_payload = json.dumps({"integration": integration, "failed": failed}, sort_keys=True, separators=(",", ":"))
         fingerprint = hashlib.sha256(fingerprint_payload.encode()).hexdigest()[:16]
         result_path = RECOVERY_DIR / f"{fingerprint}.json"
