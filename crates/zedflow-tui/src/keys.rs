@@ -101,7 +101,12 @@ fn parse_kitty_key(data: &str) -> Option<String> {
     let body = data.strip_prefix("\x1b[")?.strip_suffix('u')?;
     let (code, modifier) = body.split_once(';').map_or((body, "1"), |v| v);
     let code: u32 = code.split(':').next()?.parse().ok()?;
-    let modifier: u32 = modifier.split(':').next()?.parse().ok()?.saturating_sub(1);
+    let modifier = modifier
+        .split(':')
+        .next()?
+        .parse::<u32>()
+        .ok()?
+        .saturating_sub(1);
     let key = match code {
         13 => "enter".to_owned(),
         9 => "tab".to_owned(),
