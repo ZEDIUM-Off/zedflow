@@ -2,7 +2,7 @@
 
 use std::io;
 use zedflow_coding_agent::cli::{Mode, parse_args};
-use zedflow_coding_agent::modes::run_rpc_loop;
+use zedflow_coding_agent::rpc_entry;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -25,7 +25,7 @@ fn main() {
 
 fn dispatch_runtime_mode(mode: Option<Mode>) -> io::Result<()> {
     match mode {
-        Some(Mode::Rpc) => run_rpc_loop(io::stdin().lock(), io::stdout().lock()),
+        Some(Mode::Rpc) => rpc_entry::run(io::stdin().lock(), io::stdout()),
         Some(Mode::Text) | Some(Mode::Json) | None => Ok(()),
     }
 }
