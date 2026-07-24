@@ -471,6 +471,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                     custom_instructions,
                     Some(thinking_level),
                 )
+                .await
                 .map_err(|error| normalize_compaction_error(error.to_string()))?;
                 CompactResult {
                     summary: generated.summary,
@@ -589,6 +590,7 @@ impl AgentHarness<Skill, crate::harness::types::PromptTemplate> {
                         reserve_tokens: None,
                     },
                 )
+                .await
                 .map_err(|error| normalize_branch_error(error.to_string()))?;
                 summary_text = Some(summary.summary);
                 summary_details = Some(serde_json::json!({

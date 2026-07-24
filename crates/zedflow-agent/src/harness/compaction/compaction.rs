@@ -265,7 +265,7 @@ const TURN_PREFIX_SUMMARIZATION_PROMPT: &str = "This is the PREFIX of a turn tha
 /// # Errors
 ///
 /// Returns [`CompactionError`] when the model call aborts or reports an error.
-pub fn generate_summary(
+pub async fn generate_summary(
     current_messages: &[AgentMessage],
     models: &Models,
     model: &Model,
@@ -303,6 +303,7 @@ pub fn generate_summary(
         "Summarization",
         thinking_level,
     )
+    .await
 }
 
 /// Prepare session entries for compaction, or return `None` when compaction is not applicable.
@@ -410,7 +411,7 @@ pub fn prepare_compaction(
 /// # Errors
 ///
 /// Returns [`CompactionError`] when model summarization aborts or fails.
-pub fn compact(
+pub async fn compact(
     preparation: &CompactionPreparation,
     models: &Models,
     model: &Model,
@@ -436,7 +437,8 @@ pub fn compact(
                 custom_instructions,
                 preparation.previous_summary.as_deref(),
                 thinking_level,
-            )?
+            )
+            .await?
         };
         let turn_prefix = generate_turn_prefix_summary(
             &preparation.turn_prefix_messages,
@@ -444,7 +446,8 @@ pub fn compact(
             model,
             preparation.settings.reserve_tokens,
             thinking_level,
-        )?;
+        )
+        .await?;
         format!("{history}\n\n---\n\n**Turn Context (split turn):**\n\n{turn_prefix}")
     } else {
         generate_summary(
@@ -455,7 +458,8 @@ pub fn compact(
             custom_instructions,
             preparation.previous_summary.as_deref(),
             thinking_level,
-        )?
+        )
+        .await?
     };
 
     let file_lists = compute_file_lists(&preparation.file_ops);
@@ -644,7 +648,7 @@ fn safe_json_stringify(value: &impl Serialize) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "[unserializable]".to_string())
 }
 
-fn generate_turn_prefix_summary(
+async fn generate_turn_prefix_summary(
     messages: &[AgentMessage],
     models: &Models,
     model: &Model,
@@ -663,9 +667,10 @@ fn generate_turn_prefix_summary(
         "Turn prefix summarization",
         thinking_level,
     )
+    .await
 }
 
-pub(crate) fn complete_summary(
+pub(crate) async fn complete_summary(
     models: &Models,
     model: &Model,
     prompt_text: String,
@@ -677,15 +682,17 @@ pub(crate) fn complete_summary(
     options.stream.max_tokens = Some(max_tokens);
     options.reasoning = reasoning_option(model, thinking_level);
 
-    let response = models.complete_simple(
-        model,
-        &Context {
-            system_prompt: Some(SUMMARIZATION_SYSTEM_PROMPT.to_string()),
-            messages: vec![summary_user_message(prompt_text)],
-            tools: None,
-        },
-        Some(&options),
-    );
+    let response = models
+        .complete_simple(
+            model,
+            &Context {
+                system_prompt: Some(SUMMARIZATION_SYSTEM_PROMPT.to_string()),
+                messages: vec![summary_user_message(prompt_text)],
+                tools: None,
+            },
+            Some(&options),
+        )
+        .await;
 
     match response.stop_reason {
         StopReason::Aborted => Err(compaction_error(

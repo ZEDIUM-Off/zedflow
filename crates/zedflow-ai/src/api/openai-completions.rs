@@ -712,7 +712,12 @@ pub fn stream_live(
     let model = model.clone();
     let context = context.clone();
     let options = options.cloned().unwrap_or_default();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_openai_completions_live_worker(worker_stream, model, context, options, None).await;
     });
     Ok(stream)
@@ -839,27 +844,54 @@ async fn execute_openai_completions_live(
         )
         .await;
         match response {
-            Ok(response)
+            Ok(response) => {
+                if let Some(on_response) = options.on_response.as_ref() {
+                    on_response(
+                        provider_response_from_headers(
+                            response.status().as_u16(),
+                            response.headers(),
+                        ),
+                        model.clone(),
+                    )
+                    .await
+                    .map_err(|error| OpenAICompletionsLiveError::new(error.to_string()))?;
+                }
                 if is_retryable_openai_status(response.status().as_u16())
-                    && attempts < request.max_retries =>
-            {
-                attempts += 1;
+                    && attempts < request.max_retries
+                {
+                    let delay = crate::utils::retry::retry_after_delay(
+                        response.headers(),
+                        std::time::SystemTime::now(),
+                    )
+                    .unwrap_or_else(|| {
+                        crate::utils::retry::retry_delay(
+                            Duration::from_millis(500),
+                            attempts,
+                            Some(Duration::from_secs(8)),
+                        )
+                    });
+                    if !crate::utils::retry::wait_or_abort(delay, options.signal.as_ref()).await {
+                        return Err(OpenAICompletionsLiveError::new("Request was aborted"));
+                    }
+                    attempts += 1;
+                    continue;
+                }
+                break response;
             }
-            Ok(response) => break response,
             Err(error) if attempts < request.max_retries && !is_openai_abort_error(&error) => {
+                let delay = crate::utils::retry::retry_delay(
+                    Duration::from_millis(500),
+                    attempts,
+                    Some(Duration::from_secs(8)),
+                );
+                if !crate::utils::retry::wait_or_abort(delay, options.signal.as_ref()).await {
+                    return Err(OpenAICompletionsLiveError::new("Request was aborted"));
+                }
                 attempts += 1;
             }
             Err(error) => return Err(OpenAICompletionsLiveError::new(error)),
         }
     };
-    if let Some(on_response) = options.on_response.as_ref() {
-        on_response(
-            provider_response_from_headers(response.status().as_u16(), response.headers()),
-            model.clone(),
-        )
-        .await
-        .map_err(|error| OpenAICompletionsLiveError::new(error.to_string()))?;
-    }
     if !response.status().is_success() {
         let status = response.status().as_u16();
         let body = await_openai_or_abort(response.text(), options.signal.clone())
@@ -872,7 +904,7 @@ async fn execute_openai_completions_live(
 
     let mut state = OpenAICompletionsStreamState::new(model);
     stream.push(crate::types::AssistantMessageEvent::Start {
-        partial: canonical_message_from_completions(&state.message, model, cost),
+        partial: canonical_message_from_completions(&state.message, model, cost).into(),
     });
     let mut decoder = OpenAICompletionsSseDecoder::default();
     let mut bytes = response.bytes_stream();
@@ -946,9 +978,7 @@ async fn await_openai_or_abort<T>(
 }
 
 async fn wait_openai_abort(signal: crate::types::AbortSignal) {
-    while !signal.aborted() {
-        tokio::time::sleep(Duration::from_millis(1)).await;
-    }
+    signal.cancelled().await;
 }
 
 fn check_openai_abort(
@@ -1120,7 +1150,7 @@ fn push_canonical_completions_events(
             OpenAICompletionsStreamEvent::TextStart { content_index } => {
                 stream.push(crate::types::AssistantMessageEvent::TextStart {
                     content_index: *content_index,
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::TextDelta {
@@ -1130,7 +1160,7 @@ fn push_canonical_completions_events(
                 stream.push(crate::types::AssistantMessageEvent::TextDelta {
                     content_index: *content_index,
                     delta: delta.clone(),
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::TextEnd {
@@ -1140,13 +1170,13 @@ fn push_canonical_completions_events(
                 stream.push(crate::types::AssistantMessageEvent::TextEnd {
                     content_index: *content_index,
                     content: content.clone(),
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::ThinkingStart { content_index } => {
                 stream.push(crate::types::AssistantMessageEvent::ThinkingStart {
                     content_index: *content_index,
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::ThinkingDelta {
@@ -1156,7 +1186,7 @@ fn push_canonical_completions_events(
                 stream.push(crate::types::AssistantMessageEvent::ThinkingDelta {
                     content_index: *content_index,
                     delta: delta.clone(),
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::ThinkingEnd {
@@ -1166,13 +1196,13 @@ fn push_canonical_completions_events(
                 stream.push(crate::types::AssistantMessageEvent::ThinkingEnd {
                     content_index: *content_index,
                     content: content.clone(),
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::ToolCallStart { content_index } => {
                 stream.push(crate::types::AssistantMessageEvent::ToolcallStart {
                     content_index: *content_index,
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::ToolCallDelta {
@@ -1182,7 +1212,7 @@ fn push_canonical_completions_events(
                 stream.push(crate::types::AssistantMessageEvent::ToolcallDelta {
                     content_index: *content_index,
                     delta: delta.clone(),
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::ToolCallEnd {
@@ -1192,7 +1222,7 @@ fn push_canonical_completions_events(
                 stream.push(crate::types::AssistantMessageEvent::ToolcallEnd {
                     content_index: *content_index,
                     tool_call: canonical_tool_call_from_completions(tool_call),
-                    partial: message.clone(),
+                    partial: message.clone().into(),
                 });
             }
             OpenAICompletionsStreamEvent::Done { message: done } => {
@@ -3206,11 +3236,17 @@ pub fn stream_registered(
 ) -> crate::types::AssistantMessageEventStream {
     let stream = crate::types::AssistantMessageEventStream::new();
     let worker_stream = stream.clone();
+    let context = crate::api::transform_messages::transform_context(context, model, None);
     let local_model = registered_model(model);
-    let local_context = registered_context(context);
+    let local_context = registered_context(&context);
     let local_options = registered_options(model, options);
     let cost = model.cost.clone();
-    crate::utils::runtime::spawn_worker(async move {
+    let identity = crate::utils::runtime::StreamIdentity::new(
+        model.api.clone(),
+        model.provider.clone(),
+        model.id.clone(),
+    );
+    crate::utils::runtime::spawn_stream_worker(stream.clone(), identity, async move {
         run_openai_completions_live_worker(
             worker_stream,
             local_model,

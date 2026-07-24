@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use zedflow_ai::{
     AssistantContentBlock, AssistantMessage, AssistantMessageEvent, AssistantMessageRole,
-    DoneStopReason, ErrorStopReason, Model, StopReason, TextContent, TextContentType,
-    ThinkingContent, ThinkingContentType, ToolCall, ToolCallType, Usage, parse_streaming_json,
+    DoneStopReason, ErrorStopReason, Model, SharedAssistantMessage, StopReason, TextContent,
+    TextContentType, ThinkingContent, ThinkingContentType, ToolCall, ToolCallType, Usage,
+    parse_streaming_json,
 };
 
 /// Proxy event types sent by the Pi proxy server without bulky partial messages.
@@ -102,8 +103,8 @@ impl StdError for ProxyEventError {}
 
 /// Build the initial partial assistant message used by proxy event reconstruction.
 #[must_use]
-pub fn initial_proxy_assistant_message(model: &Model) -> AssistantMessage {
-    AssistantMessage {
+pub fn initial_proxy_assistant_message(model: &Model) -> SharedAssistantMessage {
+    SharedAssistantMessage::new(AssistantMessage {
         role: AssistantMessageRole::Assistant,
         stop_reason: StopReason::Stop,
         content: Vec::new(),
@@ -116,7 +117,7 @@ pub fn initial_proxy_assistant_message(model: &Model) -> AssistantMessage {
         usage: Usage::default(),
         error_message: None,
         timestamp: now_millis(),
-    }
+    })
 }
 
 /// Parse one proxy JSON payload.
@@ -135,7 +136,7 @@ pub fn parse_proxy_event_json(json: &str) -> serde_json::Result<ProxyAssistantMe
 /// Returns a JSON parse error or a shape error when a delta targets the wrong content kind.
 pub fn process_proxy_event_json(
     json: &str,
-    partial: &mut AssistantMessage,
+    partial: &SharedAssistantMessage,
     state: &mut ProxyEventState,
 ) -> Result<Option<AssistantMessageEvent>, Box<dyn StdError + Send + Sync>> {
     let event = parse_proxy_event_json(json)?;
@@ -150,7 +151,7 @@ pub fn process_proxy_event_json(
 /// Returns an error when a delta/end event targets content that is absent or has a different kind.
 pub fn process_proxy_event(
     proxy_event: ProxyAssistantMessageEvent,
-    partial: &mut AssistantMessage,
+    partial: &SharedAssistantMessage,
     state: &mut ProxyEventState,
 ) -> Result<Option<AssistantMessageEvent>, ProxyEventError> {
     match proxy_event {
@@ -158,15 +159,17 @@ pub fn process_proxy_event(
             partial: partial.clone(),
         })),
         ProxyAssistantMessageEvent::TextStart { content_index } => {
-            set_content(
-                partial,
-                content_index,
-                AssistantContentBlock::Text(TextContent {
-                    content_type: TextContentType::Text,
-                    text: String::new(),
-                    text_signature: None,
-                }),
-            );
+            partial.with_mut(|message| {
+                set_content(
+                    message,
+                    content_index,
+                    AssistantContentBlock::Text(TextContent {
+                        content_type: TextContentType::Text,
+                        text: String::new(),
+                        text_signature: None,
+                    }),
+                );
+            });
             Ok(Some(AssistantMessageEvent::TextStart {
                 content_index,
                 partial: partial.clone(),
@@ -176,8 +179,9 @@ pub fn process_proxy_event(
             content_index,
             delta,
         } => {
-            let text = text_content_mut(partial, content_index)?;
-            text.text.push_str(&delta);
+            partial.with_mut(|message| {
+                text_content_mut(message, content_index).map(|text| text.text.push_str(&delta))
+            })?;
             Ok(Some(AssistantMessageEvent::TextDelta {
                 content_index,
                 delta,
@@ -188,9 +192,11 @@ pub fn process_proxy_event(
             content_index,
             content_signature,
         } => {
-            let text = text_content_mut(partial, content_index)?;
-            text.text_signature = content_signature;
-            let content = text.text.clone();
+            let content = partial.with_mut(|message| {
+                let text = text_content_mut(message, content_index)?;
+                text.text_signature = content_signature;
+                Ok::<_, ProxyEventError>(text.text.clone())
+            })?;
             Ok(Some(AssistantMessageEvent::TextEnd {
                 content_index,
                 content,
@@ -198,16 +204,18 @@ pub fn process_proxy_event(
             }))
         }
         ProxyAssistantMessageEvent::ThinkingStart { content_index } => {
-            set_content(
-                partial,
-                content_index,
-                AssistantContentBlock::Thinking(ThinkingContent {
-                    content_type: ThinkingContentType::Thinking,
-                    thinking: String::new(),
-                    thinking_signature: None,
-                    redacted: None,
-                }),
-            );
+            partial.with_mut(|message| {
+                set_content(
+                    message,
+                    content_index,
+                    AssistantContentBlock::Thinking(ThinkingContent {
+                        content_type: ThinkingContentType::Thinking,
+                        thinking: String::new(),
+                        thinking_signature: None,
+                        redacted: None,
+                    }),
+                );
+            });
             Ok(Some(AssistantMessageEvent::ThinkingStart {
                 content_index,
                 partial: partial.clone(),
@@ -217,8 +225,10 @@ pub fn process_proxy_event(
             content_index,
             delta,
         } => {
-            let thinking = thinking_content_mut(partial, content_index)?;
-            thinking.thinking.push_str(&delta);
+            partial.with_mut(|message| {
+                thinking_content_mut(message, content_index)
+                    .map(|thinking| thinking.thinking.push_str(&delta))
+            })?;
             Ok(Some(AssistantMessageEvent::ThinkingDelta {
                 content_index,
                 delta,
@@ -229,9 +239,11 @@ pub fn process_proxy_event(
             content_index,
             content_signature,
         } => {
-            let thinking = thinking_content_mut(partial, content_index)?;
-            thinking.thinking_signature = content_signature;
-            let content = thinking.thinking.clone();
+            let content = partial.with_mut(|message| {
+                let thinking = thinking_content_mut(message, content_index)?;
+                thinking.thinking_signature = content_signature;
+                Ok::<_, ProxyEventError>(thinking.thinking.clone())
+            })?;
             Ok(Some(AssistantMessageEvent::ThinkingEnd {
                 content_index,
                 content,
@@ -244,17 +256,19 @@ pub fn process_proxy_event(
             tool_name,
         } => {
             state.tool_json.insert(content_index, String::new());
-            set_content(
-                partial,
-                content_index,
-                AssistantContentBlock::ToolCall(ToolCall {
-                    content_type: ToolCallType::ToolCall,
-                    id,
-                    name: tool_name,
-                    arguments: HashMap::new(),
-                    thought_signature: None,
-                }),
-            );
+            partial.with_mut(|message| {
+                set_content(
+                    message,
+                    content_index,
+                    AssistantContentBlock::ToolCall(ToolCall {
+                        content_type: ToolCallType::ToolCall,
+                        id,
+                        name: tool_name,
+                        arguments: HashMap::new(),
+                        thought_signature: None,
+                    }),
+                );
+            });
             Ok(Some(AssistantMessageEvent::ToolcallStart {
                 content_index,
                 partial: partial.clone(),
@@ -264,10 +278,13 @@ pub fn process_proxy_event(
             content_index,
             delta,
         } => {
-            let tool_call = tool_call_mut(partial, content_index)?;
             let json = state.tool_json.entry(content_index).or_default();
             json.push_str(&delta);
-            tool_call.arguments = parse_streaming_json::<HashMap<String, Value>>(Some(json));
+            let arguments = parse_streaming_json::<HashMap<String, Value>>(Some(json));
+            partial.with_mut(|message| {
+                tool_call_mut(message, content_index)
+                    .map(|tool_call| tool_call.arguments = arguments)
+            })?;
             Ok(Some(AssistantMessageEvent::ToolcallDelta {
                 content_index,
                 delta,
@@ -276,7 +293,8 @@ pub fn process_proxy_event(
         }
         ProxyAssistantMessageEvent::ToolcallEnd { content_index } => {
             state.tool_json.remove(&content_index);
-            let tool_call = tool_call_mut(partial, content_index)?.clone();
+            let tool_call =
+                partial.with_mut(|message| tool_call_mut(message, content_index).cloned())?;
             Ok(Some(AssistantMessageEvent::ToolcallEnd {
                 content_index,
                 tool_call,
@@ -284,25 +302,25 @@ pub fn process_proxy_event(
             }))
         }
         ProxyAssistantMessageEvent::Done { reason, usage } => {
-            partial.stop_reason = done_reason(reason);
-            partial.usage = usage;
-            Ok(Some(AssistantMessageEvent::Done {
-                reason,
-                message: partial.clone(),
-            }))
+            let message = partial.with_mut(|message| {
+                message.stop_reason = done_reason(reason);
+                message.usage = usage;
+                message.clone()
+            });
+            Ok(Some(AssistantMessageEvent::Done { reason, message }))
         }
         ProxyAssistantMessageEvent::Error {
             reason,
             error_message,
             usage,
         } => {
-            partial.stop_reason = error_reason(reason);
-            partial.error_message = error_message;
-            partial.usage = usage;
-            Ok(Some(AssistantMessageEvent::Error {
-                reason,
-                error: partial.clone(),
-            }))
+            let error = partial.with_mut(|message| {
+                message.stop_reason = error_reason(reason);
+                message.error_message = error_message;
+                message.usage = usage;
+                message.clone()
+            });
+            Ok(Some(AssistantMessageEvent::Error { reason, error }))
         }
     }
 }

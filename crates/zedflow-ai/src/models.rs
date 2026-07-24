@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
-use futures::executor::block_on;
+use futures::StreamExt;
 use futures::future::{BoxFuture, FutureExt, Shared, join_all};
 
 use crate::auth::resolve::{
@@ -275,7 +275,7 @@ impl Models {
     }
 
     /// Refreshes one provider, or all providers best-effort.
-    pub async fn refresh_async(&self, provider: Option<&str>) -> Result<(), ModelsError> {
+    pub async fn refresh(&self, provider: Option<&str>) -> Result<(), ModelsError> {
         if let Some(provider) = provider {
             let Some(entry) = self.get_provider(provider) else {
                 return Ok(());
@@ -295,22 +295,12 @@ impl Models {
         Ok(())
     }
 
-    /// Synchronous compatibility wrapper around [`Models::refresh_async`].
-    pub fn refresh(&self, provider: Option<&str>) -> Result<(), ModelsError> {
-        block_on(self.refresh_async(provider))
-    }
-
     /// Resolves stored or ambient provider auth for a model.
-    pub async fn get_auth_async(&self, model: &Model) -> Result<Option<ResolvedAuth>, ModelsError> {
+    pub async fn get_auth(&self, model: &Model) -> Result<Option<ResolvedAuth>, ModelsError> {
         let Some(provider) = self.get_provider(&model.provider) else {
             return Ok(None);
         };
         self.resolve_auth(provider, model, None).await
-    }
-
-    /// Synchronous compatibility wrapper around [`Models::get_auth_async`].
-    pub fn get_auth(&self, model: &Model) -> Result<Option<ResolvedAuth>, ModelsError> {
-        block_on(self.get_auth_async(model))
     }
 
     async fn resolve_auth(
@@ -332,42 +322,7 @@ impl Models {
         .await
     }
 
-    fn apply_auth_to_stream_options(
-        &self,
-        provider: &Provider,
-        model: &Model,
-        options: Option<&StreamOptions>,
-    ) -> Result<(Model, Option<StreamOptions>), ModelsError> {
-        let overrides = auth_overrides(options);
-        let resolution = block_on(self.resolve_auth(provider, model, overrides.as_ref()))?;
-        Ok(merge_resolved_auth(model, options.cloned(), resolution))
-    }
-
-    fn apply_auth_to_simple_options(
-        &self,
-        provider: &Provider,
-        model: &Model,
-        options: Option<&SimpleStreamOptions>,
-    ) -> Result<(Model, Option<SimpleStreamOptions>), ModelsError> {
-        let stream_options = options.map(|options| &options.stream);
-        let (request_model, request_stream_options) =
-            self.apply_auth_to_stream_options(provider, model, stream_options)?;
-        let request_options = match (options.cloned(), request_stream_options) {
-            (Some(mut options), Some(stream)) => {
-                options.stream = stream;
-                Some(options)
-            }
-            (Some(options), None) => Some(options),
-            (None, Some(stream)) => Some(SimpleStreamOptions {
-                stream,
-                ..SimpleStreamOptions::default()
-            }),
-            (None, None) => None,
-        };
-        Ok((request_model, request_options))
-    }
-
-    /// Opens a stream through the owning provider.
+    /// Opens a stream through the owning provider without blocking on auth.
     #[must_use]
     pub fn stream(
         &self,
@@ -375,18 +330,58 @@ impl Models {
         context: &Context,
         options: Option<&StreamOptions>,
     ) -> AssistantMessageEventStream {
-        let Some(provider) = self.get_provider(&model.provider) else {
-            return stream_error(unknown_provider_message(model, &model.provider));
-        };
-        match self.apply_auth_to_stream_options(provider, model, options) {
-            Ok((request_model, request_options)) => {
-                provider.stream(&request_model, context, request_options.as_ref())
+        let outer = AssistantMessageEventStream::new();
+        let worker_stream = outer.clone();
+        let provider = self.get_provider(&model.provider).cloned();
+        let model = model.clone();
+        let context = context.clone();
+        let options = options.cloned();
+        let credentials = Arc::clone(&self.credentials);
+        let auth_context = Arc::clone(&self.auth_context);
+        let identity = crate::utils::runtime::StreamIdentity::new(
+            model.api.clone(),
+            model.provider.clone(),
+            model.id.clone(),
+        );
+        crate::utils::runtime::spawn_stream_worker(outer.clone(), identity, async move {
+            let Some(provider) = provider else {
+                worker_stream.push(AssistantMessageEvent::Error {
+                    reason: ErrorStopReason::Error,
+                    error: unknown_provider_message(&model, &model.provider),
+                });
+                return;
+            };
+            let overrides = auth_overrides(options.as_ref());
+            let resolution = resolve_provider_auth(
+                &AuthProvider {
+                    id: provider.id.clone(),
+                    auth: provider.auth.clone(),
+                },
+                &auth_model(&model),
+                credentials.as_ref(),
+                auth_context.as_ref(),
+                overrides.as_ref(),
+            )
+            .await;
+            let (request_model, request_options) = match resolution {
+                Ok(resolution) => merge_resolved_auth(&model, options, resolution),
+                Err(error) => {
+                    worker_stream.push(AssistantMessageEvent::Error {
+                        reason: ErrorStopReason::Error,
+                        error: auth_stream_error_message(&model, error),
+                    });
+                    return;
+                }
+            };
+            let mut inner = provider.stream(&request_model, &context, request_options.as_ref());
+            while let Some(event) = inner.next().await {
+                worker_stream.push(event);
             }
-            Err(error) => stream_error(auth_stream_error_message(model, error)),
-        }
+        });
+        outer
     }
 
-    /// Opens a simple stream through the owning provider.
+    /// Opens a simple stream through the owning provider without blocking on auth.
     #[must_use]
     pub fn stream_simple(
         &self,
@@ -394,37 +389,89 @@ impl Models {
         context: &Context,
         options: Option<&SimpleStreamOptions>,
     ) -> AssistantMessageEventStream {
-        let Some(provider) = self.get_provider(&model.provider) else {
-            return stream_error(unknown_provider_message(model, &model.provider));
-        };
-        match self.apply_auth_to_simple_options(provider, model, options) {
-            Ok((request_model, request_options)) => {
-                provider.stream_simple(&request_model, context, request_options.as_ref())
+        let outer = AssistantMessageEventStream::new();
+        let worker_stream = outer.clone();
+        let provider = self.get_provider(&model.provider).cloned();
+        let model = model.clone();
+        let context = context.clone();
+        let options = options.cloned();
+        let credentials = Arc::clone(&self.credentials);
+        let auth_context = Arc::clone(&self.auth_context);
+        let identity = crate::utils::runtime::StreamIdentity::new(
+            model.api.clone(),
+            model.provider.clone(),
+            model.id.clone(),
+        );
+        crate::utils::runtime::spawn_stream_worker(outer.clone(), identity, async move {
+            let Some(provider) = provider else {
+                worker_stream.push(AssistantMessageEvent::Error {
+                    reason: ErrorStopReason::Error,
+                    error: unknown_provider_message(&model, &model.provider),
+                });
+                return;
+            };
+            let stream_options = options.as_ref().map(|options| &options.stream);
+            let overrides = auth_overrides(stream_options);
+            let resolution = resolve_provider_auth(
+                &AuthProvider {
+                    id: provider.id.clone(),
+                    auth: provider.auth.clone(),
+                },
+                &auth_model(&model),
+                credentials.as_ref(),
+                auth_context.as_ref(),
+                overrides.as_ref(),
+            )
+            .await;
+            let (request_model, request_stream_options) = match resolution {
+                Ok(resolution) => merge_resolved_auth(&model, stream_options.cloned(), resolution),
+                Err(error) => {
+                    worker_stream.push(AssistantMessageEvent::Error {
+                        reason: ErrorStopReason::Error,
+                        error: auth_stream_error_message(&model, error),
+                    });
+                    return;
+                }
+            };
+            let request_options = match (options, request_stream_options) {
+                (Some(mut options), Some(stream)) => {
+                    options.stream = stream;
+                    Some(options)
+                }
+                (Some(options), None) => Some(options),
+                (None, Some(stream)) => Some(SimpleStreamOptions {
+                    stream,
+                    ..SimpleStreamOptions::default()
+                }),
+                (None, None) => None,
+            };
+            let mut inner =
+                provider.stream_simple(&request_model, &context, request_options.as_ref());
+            while let Some(event) = inner.next().await {
+                worker_stream.push(event);
             }
-            Err(error) => stream_error(auth_stream_error_message(model, error)),
-        }
+        });
+        outer
     }
 
     /// Collects the stream into a single assistant message.
-    #[must_use]
-    pub fn complete(
+    pub async fn complete(
         &self,
         model: &Model,
         context: &Context,
         options: Option<&StreamOptions>,
     ) -> AssistantMessage {
-        block_on(self.stream(model, context, options).result())
+        self.stream(model, context, options).result().await
     }
 
     /// Collects the simple stream into a single assistant message.
-    #[must_use]
-    pub fn complete_simple(
+    pub async fn complete_simple(
         &self,
         model: &Model,
         context: &Context,
         options: Option<&SimpleStreamOptions>,
     ) -> AssistantMessage {
-        block_on(self.stream_simple(model, context, options).result())
+        self.stream_simple(model, context, options).result().await
     }
 }
 
@@ -688,8 +735,8 @@ pub fn create_provider(input: CreateProviderOptions) -> Provider {
 mod tests {
     use super::*;
 
-    #[test]
-    fn model_collection_registers_provider() {
+    #[tokio::test]
+    async fn model_collection_registers_provider() {
         let provider = create_provider(CreateProviderOptions {
             id: "p".into(),
             name: None,
@@ -737,6 +784,7 @@ mod tests {
                     &Context::default(),
                     None
                 )
+                .await
                 .content,
             vec![AssistantContentBlock::Text(TextContent {
                 content_type: TextContentType::Text,

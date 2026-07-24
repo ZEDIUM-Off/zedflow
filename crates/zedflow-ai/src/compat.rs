@@ -273,44 +273,29 @@ fn ensure_builtins_registered() {
 }
 
 fn builtin_apis() -> Vec<(&'static str, ProviderStreams)> {
-    vec![
-        (
-            "anthropic-messages",
-            crate::api::anthropic_messages_lazy::anthropic_messages_api(),
-        ),
-        (
-            "openai-completions",
-            crate::api::openai_completions_lazy::open_ai_completions_api(),
-        ),
-        (
-            "openai-responses",
-            crate::api::openai_responses_lazy::open_ai_responses_api(),
-        ),
-        (
-            "openai-codex-responses",
-            crate::api::openai_codex_responses_lazy::open_ai_codex_responses_api(),
-        ),
-        (
-            "azure-openai-responses",
-            crate::api::azure_openai_responses_lazy::azure_open_ai_responses_api(),
-        ),
-        (
-            "google-generative-ai",
-            crate::api::google_generative_ai_lazy::google_generative_ai_api(),
-        ),
-        (
-            "google-vertex",
-            crate::api::google_vertex_lazy::google_vertex_api(),
-        ),
-        (
-            "mistral-conversations",
-            crate::api::mistral_conversations_lazy::mistral_conversations_api(),
-        ),
-        (
-            "bedrock-converse-stream",
-            crate::api::bedrock_converse_stream_lazy::bedrock_converse_stream_api(),
-        ),
+    [
+        "anthropic-messages",
+        "openai-completions",
+        "openai-responses",
+        "openai-codex-responses",
+        "azure-openai-responses",
+        "google-generative-ai",
+        "google-vertex",
+        "mistral-conversations",
+        "bedrock-converse-stream",
     ]
+    .into_iter()
+    .map(|api| {
+        let streams = crate::providers::static_catalog::ready_builtin_provider_streams(api)
+            .unwrap_or_else(|| match api {
+                "bedrock-converse-stream" => {
+                    crate::api::bedrock_converse_stream_lazy::bedrock_converse_stream_api()
+                }
+                _ => unreachable!("builtin API table is exhaustive"),
+            });
+        (api, streams)
+    })
+    .collect()
 }
 
 fn api_provider_from_streams(api: &str, streams: ProviderStreams) -> ApiProvider {

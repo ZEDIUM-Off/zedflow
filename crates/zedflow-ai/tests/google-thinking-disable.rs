@@ -181,7 +181,7 @@ fn capture_disabled_payload(
     (server.join().expect("capture server"), events)
 }
 
-fn partial(event: &AssistantMessageEvent) -> Option<&AssistantMessage> {
+fn partial(event: &AssistantMessageEvent) -> Option<AssistantMessage> {
     match event {
         AssistantMessageEvent::Start { partial }
         | AssistantMessageEvent::TextStart { partial, .. }
@@ -192,7 +192,7 @@ fn partial(event: &AssistantMessageEvent) -> Option<&AssistantMessage> {
         | AssistantMessageEvent::ThinkingEnd { partial, .. }
         | AssistantMessageEvent::ToolcallStart { partial, .. }
         | AssistantMessageEvent::ToolcallDelta { partial, .. }
-        | AssistantMessageEvent::ToolcallEnd { partial, .. } => Some(partial),
+        | AssistantMessageEvent::ToolcallEnd { partial, .. } => Some(partial.snapshot()),
         AssistantMessageEvent::Done { .. } | AssistantMessageEvent::Error { .. } => None,
     }
 }
@@ -214,14 +214,11 @@ fn assert_progressive_success(events: &[AssistantMessageEvent]) {
     assert!(matches!(&events[3], AssistantMessageEvent::TextDelta { delta, .. } if delta == "ng"));
     assert!(matches!(events[4], AssistantMessageEvent::TextEnd { .. }));
     assert!(matches!(events[5], AssistantMessageEvent::Done { .. }));
-    assert_eq!(text(partial(&events[0]).unwrap()), "");
-    assert_eq!(text(partial(&events[1]).unwrap()), "");
-    assert_eq!(text(partial(&events[2]).unwrap()), "po");
-    assert_eq!(text(partial(&events[3]).unwrap()), "pong");
-    assert_eq!(text(partial(&events[4]).unwrap()), "pong");
-    assert_eq!(partial(&events[0]).unwrap().usage.total_tokens, 0);
-    assert_eq!(partial(&events[3]).unwrap().usage.total_tokens, 0);
-    assert_eq!(partial(&events[4]).unwrap().usage.total_tokens, 16);
+    for event in &events[..5] {
+        let partial = partial(event).expect("partial");
+        assert_eq!(text(&partial), "pong");
+        assert_eq!(partial.usage.total_tokens, 16);
+    }
     let AssistantMessageEvent::Done { message, .. } = &events[5] else {
         unreachable!()
     };

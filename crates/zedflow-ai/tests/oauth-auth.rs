@@ -111,8 +111,8 @@ fn github_copilot_refresh_preserves_the_enterprise_domain() {
     );
 }
 
-#[test]
-fn models_get_auth_resolves_stored_anthropic_oauth_credentials_via_lazy_flow_import() {
+#[tokio::test]
+async fn models_get_auth_resolves_stored_anthropic_oauth_credentials_via_lazy_flow_import() {
     let mut models = create_models_with_credentials(store_oauth(
         "anthropic",
         oauth_credential("stored-anthropic", "refresh", 9_999_999_999_999),
@@ -124,6 +124,7 @@ fn models_get_auth_resolves_stored_anthropic_oauth_credentials_via_lazy_flow_imp
 
     let result = models
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
 
@@ -131,8 +132,8 @@ fn models_get_auth_resolves_stored_anthropic_oauth_credentials_via_lazy_flow_imp
     assert_eq!(result.source.as_deref(), Some("OAuth"));
 }
 
-#[test]
-fn models_get_auth_resolves_stored_github_copilot_oauth_credentials_with_base_url() {
+#[tokio::test]
+async fn models_get_auth_resolves_stored_github_copilot_oauth_credentials_with_base_url() {
     let access = "tid=abc;exp=123;proxy-ep=proxy.enterprise.example;rest";
     let mut models = create_models_with_credentials(store_oauth(
         "github-copilot",
@@ -147,6 +148,7 @@ fn models_get_auth_resolves_stored_github_copilot_oauth_credentials_with_base_ur
 
     let result = models
         .get_auth(&model)
+        .await
         .expect("auth resolves")
         .expect("configured");
 

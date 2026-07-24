@@ -5,7 +5,8 @@ use std::fmt;
 use std::future::Future;
 use std::time::{Duration, Instant};
 
-use futures::channel::oneshot;
+use futures::future::{Either, select};
+use futures_timer::Delay;
 
 use crate::utils::abort_signals::AbortSignal;
 
@@ -17,7 +18,6 @@ const MINIMUM_INTERVAL: Duration = Duration::from_millis(1000);
 const DEFAULT_POLL_INTERVAL_SECONDS: f64 = 5.0;
 // RFC 8628 section 3.5: `slow_down` means the polling interval must increase by 5 seconds.
 const SLOW_DOWN_INTERVAL_INCREMENT: Duration = Duration::from_millis(5000);
-const ABORT_CHECK_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Result alias for OAuth device-code polling.
 pub type OAuthDeviceCodeFlowResult<T> = Result<T, OAuthDeviceCodeFlowError>;
@@ -50,7 +50,7 @@ impl fmt::Display for OAuthDeviceCodeFlowError {
                 after_slow_down: false,
             } => formatter.write_str(TIMEOUT_MESSAGE),
             Self::Failed(message) => formatter.write_str(message),
-            Self::Poll(error) => write!(formatter, "device code poll failed: {error}"),
+            Self::Poll(error) => write!(formatter, "{error}"),
         }
     }
 }
@@ -252,60 +252,17 @@ async fn abortable_sleep(
     duration: Duration,
     signal: Option<&AbortSignal>,
 ) -> OAuthDeviceCodeFlowResult<()> {
-    if is_aborted(signal) {
+    let Some(signal) = signal else {
+        Delay::new(duration).await;
+        return Ok(());
+    };
+    if signal.aborted() {
         return Err(OAuthDeviceCodeFlowError::Cancelled);
     }
 
-    let signal = signal.cloned();
-    let thread_signal = signal.clone();
-    let (sender, receiver) = oneshot::channel();
-    let spawn_result = std::thread::Builder::new()
-        .name("oauth-device-code-sleep".to_owned())
-        .spawn(move || {
-            let completed = sleep_until_or_abort(duration, thread_signal.as_ref());
-            let _ = sender.send(completed);
-        });
-
-    if spawn_result.is_err() {
-        return blocking_sleep_until_or_abort(duration, signal.as_ref());
-    }
-
-    match receiver.await {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(OAuthDeviceCodeFlowError::Cancelled),
-        Err(_) => Ok(()),
-    }
-}
-
-fn blocking_sleep_until_or_abort(
-    duration: Duration,
-    signal: Option<&AbortSignal>,
-) -> OAuthDeviceCodeFlowResult<()> {
-    if sleep_until_or_abort(duration, signal) {
-        Ok(())
-    } else {
-        Err(OAuthDeviceCodeFlowError::Cancelled)
-    }
-}
-
-fn sleep_until_or_abort(duration: Duration, signal: Option<&AbortSignal>) -> bool {
-    let Some(deadline) = Instant::now().checked_add(duration) else {
-        return true;
-    };
-
-    loop {
-        if is_aborted(signal) {
-            return false;
-        }
-
-        let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
-            return true;
-        };
-        if remaining.is_zero() {
-            return true;
-        }
-
-        std::thread::sleep(remaining.min(ABORT_CHECK_INTERVAL));
+    match select(Box::pin(Delay::new(duration)), Box::pin(signal.cancelled())).await {
+        Either::Left(((), _)) => Ok(()),
+        Either::Right(((), _)) => Err(OAuthDeviceCodeFlowError::Cancelled),
     }
 }
 
@@ -581,6 +538,26 @@ mod tests {
             .expect_err("aborted wait should error");
 
         assert_eq!(error.to_string(), CANCEL_MESSAGE);
+    }
+
+    #[test]
+    fn poll_error_preserves_source_display() {
+        let error = block_on(poll_oauth_device_code_flow::<(), _, _, _>(
+            OAuthDeviceCodePollOptions {
+                interval_seconds: None,
+                expires_in_seconds: Some(30.0),
+                wait_before_first_poll: false,
+                poll: || async { Err::<OAuthDeviceCodePollResult<()>, _>(PollError) },
+                signal: None,
+            },
+        ))
+        .expect_err("poll error");
+
+        assert_eq!(error.to_string(), "poll failed");
+        assert_eq!(
+            error.source().map(ToString::to_string).as_deref(),
+            Some("poll failed")
+        );
     }
 
     #[test]

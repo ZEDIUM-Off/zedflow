@@ -231,6 +231,7 @@ fn codex_probe_model(max_tokens: u32) -> Model {
         thinking_level_map: HashMap::new(),
         headers: HashMap::new(),
         max_tokens: Some(max_tokens),
+        cost: zedflow_ai::types::ModelCost::default(),
     }
 }
 

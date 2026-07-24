@@ -188,7 +188,7 @@ mod tests {
                         std::thread::spawn(move || {
                             release.wait();
                             producer.push(AssistantMessageEvent::Start {
-                                partial: message(StopReason::Stop),
+                                partial: message(StopReason::Stop).into(),
                             });
                             producer.push(AssistantMessageEvent::Done {
                                 reason: DoneStopReason::Stop,

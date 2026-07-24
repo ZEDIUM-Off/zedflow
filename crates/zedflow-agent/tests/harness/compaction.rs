@@ -399,8 +399,8 @@ fn prepares_branch_entries_and_collects_abandoned_branch() {
     assert!(prepared.file_ops.edited.contains("prior-edit.rs"));
 }
 
-#[test]
-fn generates_summaries_with_fake_models_and_parity_assertions() {
+#[tokio::test]
+async fn generates_summaries_with_fake_models_and_parity_assertions() {
     let (models, model, seen) = fake_models(
         true,
         128_000,
@@ -425,6 +425,7 @@ fn generates_summaries_with_fake_models_and_parity_assertions() {
         Some("old summary"),
         Some(ThinkingLevel::Medium),
     )
+    .await
     .expect("summary");
     assert!(summary.contains("Test summary"));
     assert_eq!(seen.reasonings(), vec![Some(AiThinkingLevel::Medium)]);
@@ -456,6 +457,7 @@ fn generates_summaries_with_fake_models_and_parity_assertions() {
         None,
         Some(ThinkingLevel::High),
     )
+    .await
     .expect("compact");
     assert!(compacted.summary.contains("Turn Context (split turn)"));
     assert!(
@@ -484,6 +486,7 @@ fn generates_summaries_with_fake_models_and_parity_assertions() {
             reserve_tokens: Some(16_384),
         },
     )
+    .await
     .expect("branch summary");
     assert!(
         branch
@@ -504,8 +507,8 @@ fn generates_summaries_with_fake_models_and_parity_assertions() {
     );
 }
 
-#[test]
-fn returns_summary_errors_without_live_calls() {
+#[tokio::test]
+async fn returns_summary_errors_without_live_calls() {
     let (models, model, _) = fake_models(
         false,
         4096,
@@ -524,6 +527,7 @@ fn returns_summary_errors_without_live_calls() {
         None,
         None,
     )
+    .await
     .expect_err("error response should fail");
     assert_eq!(
         error.code,
@@ -540,6 +544,7 @@ fn returns_summary_errors_without_live_calls() {
         None,
         None,
     )
+    .await
     .expect_err("aborted response should fail");
     assert_eq!(
         aborted.code,
