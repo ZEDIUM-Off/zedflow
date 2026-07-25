@@ -29,7 +29,7 @@ These are target/disposition facts, not semantic-completion claims. Run the cont
 
 The Stage-1 recovery blueprint is `.agents/plans/pi-stage-1-port-recovery.md`. Recovery work reconciles the latest controller fixes with the accepted integration history, enforces manifest closure, restores bounded repair/replan/resume behavior, and removes non-Pi Stage-1 crates. The CAS-managed `automation/pi-port` ref remains the runtime integration authority and must not be checked out in the controller worktree.
 
-No dispatch service should resume until the recovery commit, DAG, and external runtime identities are migrated together. The known blocked frontier is the incomplete TUI key decoder/review; the remaining intended order is TUI closure → Coding-agent closure → Orchestrator → final Stage-1 gate.
+No dispatch service should resume until the recovery commit, DAG, and external runtime identities are migrated together. The approved tail plan uses deterministic manifest gaps: 59 TUI, 237 Coding-agent, and 13 Orchestrator missing targets. The required order is TUI closure → Coding-agent closure → Orchestrator → final Stage-1 gate; a dependency replacement pauses for human arbitration.
 
 ## Stage-1 exit gate
 

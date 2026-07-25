@@ -3212,104 +3212,6 @@
       "intent": "Validate the complete TUI manifest wave."
     },
     {
-      "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
-      "kind": "writer",
-      "depends_on": [
-        "NEXT-PORT-PLAN-V20"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src",
-        "crates/zedflow-orchestrator/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check"
-      ],
-      "intent": "Port the remaining orchestrator source and test manifest rows only after coding-agent and TUI waves."
-    },
-    {
-      "id": "ORCH-V1",
-      "kind": "validator",
-      "depends_on": [
-        "ORCH-C1-REMAINING-MANIFEST-ROWS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-orchestrator --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-orchestrator"
-      ],
-      "intent": "Validate the complete orchestrator manifest wave."
-    },
-    {
-      "id": "ORCH-RV-FID-V1",
-      "kind": "reviewer",
-      "depends_on": [
-        "ORCH-V1"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of all remaining orchestrator rows."
-    },
-    {
-      "id": "FINAL-WORKSPACE-VALIDATION",
-      "kind": "validator",
-      "depends_on": [
-        "ORCH-RV-FID-V1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --workspace --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check"
-      ],
-      "intent": "Run final manifest closure plus full workspace formatting, compilation, and executed tests."
-    },
-    {
-      "id": "FINAL-RV-FID",
-      "kind": "reviewer",
-      "depends_on": [
-        "FINAL-WORKSPACE-VALIDATION"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Independent final Pi-fidelity review against every manifest row and frozen references/pi."
-    },
-    {
-      "id": "FINAL-RV-RUST",
-      "kind": "reviewer",
-      "depends_on": [
-        "FINAL-RV-FID"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Independent final Rust correctness and integration review."
-    },
-    {
-      "id": "FINAL-PORT-CHECKPOINT",
-      "kind": "checkpoint",
-      "depends_on": [
-        "FINAL-RV-RUST"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record completion only after every manifest row and final validation, fidelity, and Rust review gates are accepted."
-    },
-    {
       "id": "REPLAN-TUI-V2-KEYS-REPAIR",
       "kind": "writer",
       "depends_on": [
@@ -3503,25 +3405,6 @@
         "cargo check --workspace --all-targets"
       ],
       "intent": "Fresh Rust-quality review of the accepted TUI key repair."
-    },
-    {
-      "id": "NEXT-PORT-PLAN-V20",
-      "kind": "checkpoint",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-RUST-V5"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/plans/pi-stage-1-port-recovery.md",
-        ".agents/port-swarm/decisions.md",
-        "docs/porting/BASELINE.md",
-        "docs/porting/pi-fidelity-decisions"
-      ],
-      "validation": [
-        "python3 tools/pi-port-swarm/controller.py validate",
-        "git diff --check"
-      ],
-      "intent": "Use the approved plan-writer process and deterministic manifest gaps to replace the open tail with bounded one-to-one TUI closure, Coding-agent closure, Orchestrator, and final Stage-1 gates."
     },
     {
       "id": "RECOVERY-TUI-KEYS-R2",
@@ -3727,6 +3610,652 @@
         "cargo check --workspace --all-targets"
       ],
       "intent": "Fresh Rust-quality review of the complete fifth TUI key repair."
+    },
+    {
+      "id": "NEXT-PORT-PLAN-V20",
+      "kind": "checkpoint",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-RV-RUST-V5"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/plans/pi-stage-1-port-recovery.md",
+        ".agents/port-swarm/decisions.md",
+        "docs/porting/BASELINE.md",
+        "docs/porting/pi-fidelity-decisions"
+      ],
+      "validation": [
+        "python3 tools/pi-port-swarm/controller.py validate",
+        "git diff --check"
+      ],
+      "intent": "Use the approved plan-writer process and deterministic manifest gaps to replace the open tail with bounded one-to-one TUI closure, Coding-agent closure, Orchestrator, and final Stage-1 gates."
+    },
+    {
+      "id": "TUI-V20-SOURCE-BATCH-1",
+      "kind": "writer",
+      "depends_on": [
+        "NEXT-PORT-PLAN-V20"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/autocomplete.rs",
+        "crates/zedflow-tui/src/components/box.rs",
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/components/editor.rs",
+        "crates/zedflow-tui/src/components/image.rs",
+        "crates/zedflow-tui/src/components/input.rs",
+        "crates/zedflow-tui/src/components/loader.rs",
+        "crates/zedflow-tui/src/components/markdown.rs",
+        "crates/zedflow-tui/src/components/select-list.rs",
+        "crates/zedflow-tui/src/components/settings-list.rs",
+        "crates/zedflow-tui/src/components/spacer.rs",
+        "crates/zedflow-tui/src/components/text.rs",
+        "crates/zedflow-tui/src/components/truncated-text.rs",
+        "crates/zedflow-tui/src/editor-component.rs",
+        "crates/zedflow-tui/src/fuzzy.rs",
+        "crates/zedflow-tui/src/index.rs",
+        "crates/zedflow-tui/src/keybindings.rs",
+        "crates/zedflow-tui/src/kill-ring.rs",
+        "crates/zedflow-tui/src/native-modifiers.rs",
+        "crates/zedflow-tui/src/stdin-buffer.rs",
+        "crates/zedflow-tui/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port deterministic frozen Pi tui source manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "TUI-V20-SOURCE-BATCH-2",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V20-SOURCE-BATCH-1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/terminal-colors.rs",
+        "crates/zedflow-tui/src/terminal-image.rs",
+        "crates/zedflow-tui/src/terminal.rs",
+        "crates/zedflow-tui/src/tui.rs",
+        "crates/zedflow-tui/src/undo-stack.rs",
+        "crates/zedflow-tui/src/utils.rs",
+        "crates/zedflow-tui/src/word-navigation.rs",
+        "crates/zedflow-tui/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port deterministic frozen Pi tui source manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "TUI-V20-TEST-BATCH-1",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V20-SOURCE-BATCH-2"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/tests/autocomplete.rs",
+        "crates/zedflow-tui/tests/bug-regression-isimageline-startswith-bug.rs",
+        "crates/zedflow-tui/tests/chat-simple.rs",
+        "crates/zedflow-tui/tests/editor.rs",
+        "crates/zedflow-tui/tests/fuzzy.rs",
+        "crates/zedflow-tui/tests/image-test.rs",
+        "crates/zedflow-tui/tests/input.rs",
+        "crates/zedflow-tui/tests/key-tester.rs",
+        "crates/zedflow-tui/tests/keybindings.rs",
+        "crates/zedflow-tui/tests/markdown.rs",
+        "crates/zedflow-tui/tests/overlay-non-capturing.rs",
+        "crates/zedflow-tui/tests/overlay-options.rs",
+        "crates/zedflow-tui/tests/overlay-short-content.rs",
+        "crates/zedflow-tui/tests/regression-overlay-cjk-boundary.rs",
+        "crates/zedflow-tui/tests/regression-regional-indicator-width.rs",
+        "crates/zedflow-tui/tests/select-list.rs",
+        "crates/zedflow-tui/tests/stdin-buffer.rs",
+        "crates/zedflow-tui/tests/tab-width.rs",
+        "crates/zedflow-tui/tests/terminal-colors.rs",
+        "crates/zedflow-tui/tests/terminal-image.rs",
+        "crates/zedflow-tui/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port deterministic frozen Pi tui test manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "TUI-V20-TEST-BATCH-2",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V20-TEST-BATCH-1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/tests/terminal.rs",
+        "crates/zedflow-tui/tests/test-themes.rs",
+        "crates/zedflow-tui/tests/truncate-to-width.rs",
+        "crates/zedflow-tui/tests/truncated-text.rs",
+        "crates/zedflow-tui/tests/tui-cell-size-input.rs",
+        "crates/zedflow-tui/tests/tui-overlay-style-leak.rs",
+        "crates/zedflow-tui/tests/tui-render.rs",
+        "crates/zedflow-tui/tests/tui-shrink.rs",
+        "crates/zedflow-tui/tests/viewport-overwrite-repro.rs",
+        "crates/zedflow-tui/tests/virtual-terminal.rs",
+        "crates/zedflow-tui/tests/word-navigation.rs",
+        "crates/zedflow-tui/tests/wrap-ansi.rs",
+        "crates/zedflow-tui/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port deterministic frozen Pi tui test manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "TUI-V20-CLOSURE-VALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-V20-TEST-BATCH-2"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-tui --all-targets",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Validate deterministic tui manifest closure and executed package tests."
+    },
+    {
+      "id": "TUI-V20-CLOSURE-FIDELITY",
+      "kind": "reviewer",
+      "depends_on": [
+        "TUI-V20-CLOSURE-VALIDATE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review of the completed tui closure."
+    },
+    {
+      "id": "CA-V20-SOURCE-BATCH-1",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V20-CLOSURE-FIDELITY"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/bun/cli.rs",
+        "crates/zedflow-coding-agent/src/bun/register-bedrock.rs",
+        "crates/zedflow-coding-agent/src/bun/restore-sandbox-env.rs",
+        "crates/zedflow-coding-agent/src/core/bash-executor.rs",
+        "crates/zedflow-coding-agent/src/core/compaction/branch-summarization.rs",
+        "crates/zedflow-coding-agent/src/core/compaction/compaction.rs",
+        "crates/zedflow-coding-agent/src/core/compaction/index.rs",
+        "crates/zedflow-coding-agent/src/core/exec.rs",
+        "crates/zedflow-coding-agent/src/core/export-html/index.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/index.rs",
+        "crates/zedflow-coding-agent/src/core/footer-data-provider.rs",
+        "crates/zedflow-coding-agent/src/core/index.rs",
+        "crates/zedflow-coding-agent/src/core/keybindings.rs",
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/core/project-trust.rs",
+        "crates/zedflow-coding-agent/src/core/prompt-templates.rs",
+        "crates/zedflow-coding-agent/src/core/provider-attribution.rs",
+        "crates/zedflow-coding-agent/src/core/sdk.rs",
+        "crates/zedflow-coding-agent/src/core/telemetry.rs",
+        "crates/zedflow-coding-agent/src/core/tools/bash.rs",
+        "crates/zedflow-coding-agent/src/core/tools/index.rs",
+        "crates/zedflow-coding-agent/src/core/tools/render-utils.rs",
+        "crates/zedflow-coding-agent/src/core/tools/tool-definition-wrapper.rs",
+        "crates/zedflow-coding-agent/src/core/trust-manager.rs",
+        "crates/zedflow-coding-agent/src/migrations.rs",
+        "crates/zedflow-coding-agent/src/modes/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-SOURCE-BATCH-2",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-SOURCE-BATCH-1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/dynamic-border.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/first-time-setup.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/footer.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/keybinding-hints.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/login-dialog.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/model-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/oauth-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/scoped-models-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/settings-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/show-images-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/thinking-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/tree-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/trust-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/model-search.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs",
+        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-SOURCE-BATCH-3",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-SOURCE-BATCH-2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/image-process.rs",
+        "crates/zedflow-coding-agent/src/utils/pi-user-agent.rs",
+        "crates/zedflow-coding-agent/src/utils/tools-manager.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 3 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-TEST-BATCH-1",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-SOURCE-BATCH-3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/agent-session-auto-compaction-queue.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-branching.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-compaction.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-concurrent.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-dynamic-provider.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-dynamic-tools.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-retry.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-runtime-events.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-stats.rs",
+        "crates/zedflow-coding-agent/tests/agent-session-tree-navigation.rs",
+        "crates/zedflow-coding-agent/tests/ansi-utils.rs",
+        "crates/zedflow-coding-agent/tests/args.rs",
+        "crates/zedflow-coding-agent/tests/assistant-message.rs",
+        "crates/zedflow-coding-agent/tests/bash-close-hang-windows.rs",
+        "crates/zedflow-coding-agent/tests/bash-execution-width.rs",
+        "crates/zedflow-coding-agent/tests/block-images.rs",
+        "crates/zedflow-coding-agent/tests/changelog.rs",
+        "crates/zedflow-coding-agent/tests/clipboard-image-bmp-conversion.rs",
+        "crates/zedflow-coding-agent/tests/clipboard-image.rs",
+        "crates/zedflow-coding-agent/tests/clipboard-native.rs",
+        "crates/zedflow-coding-agent/tests/clipboard.rs",
+        "crates/zedflow-coding-agent/tests/compaction-extensions-example.rs",
+        "crates/zedflow-coding-agent/tests/compaction-extensions.rs",
+        "crates/zedflow-coding-agent/tests/compaction-serialization.rs",
+        "crates/zedflow-coding-agent/tests/compaction-summary-reasoning.rs",
+        "crates/zedflow-coding-agent/tests/compaction.rs",
+        "crates/zedflow-coding-agent/tests/config-value-migration.rs",
+        "crates/zedflow-coding-agent/tests/config.rs",
+        "crates/zedflow-coding-agent/tests/edit-tool-legacy-input.rs",
+        "crates/zedflow-coding-agent/tests/edit-tool-no-full-redraw.rs",
+        "crates/zedflow-coding-agent/tests/experimental.rs",
+        "crates/zedflow-coding-agent/tests/export-html-skill-block.rs",
+        "crates/zedflow-coding-agent/tests/export-html-whitespace.rs",
+        "crates/zedflow-coding-agent/tests/export-html-xss.rs",
+        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-TEST-BATCH-2",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-TEST-BATCH-1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/extensions-input-event.rs",
+        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
+        "crates/zedflow-coding-agent/tests/file-mutation-queue.rs",
+        "crates/zedflow-coding-agent/tests/first-time-setup-fork.rs",
+        "crates/zedflow-coding-agent/tests/first-time-setup.rs",
+        "crates/zedflow-coding-agent/tests/footer-data-provider.rs",
+        "crates/zedflow-coding-agent/tests/footer-width.rs",
+        "crates/zedflow-coding-agent/tests/format-resume-command.rs",
+        "crates/zedflow-coding-agent/tests/frontmatter.rs",
+        "crates/zedflow-coding-agent/tests/git-merge-and-resolve-extension.rs",
+        "crates/zedflow-coding-agent/tests/git-ssh-url.rs",
+        "crates/zedflow-coding-agent/tests/git-update.rs",
+        "crates/zedflow-coding-agent/tests/image-processing.rs",
+        "crates/zedflow-coding-agent/tests/image-resize-callers.rs",
+        "crates/zedflow-coding-agent/tests/initial-message.rs",
+        "crates/zedflow-coding-agent/tests/input-transform-streaming-example.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-anthropic-warning.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-clone-command.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-compaction.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-import-command.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-startup-input.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-status.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs",
+        "crates/zedflow-coding-agent/tests/keybindings-migration.rs",
+        "crates/zedflow-coding-agent/tests/oauth-selector.rs",
+        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
+        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
+        "crates/zedflow-coding-agent/tests/package-manager.rs",
+        "crates/zedflow-coding-agent/tests/path-utils.rs",
+        "crates/zedflow-coding-agent/tests/paths.rs",
+        "crates/zedflow-coding-agent/tests/pi-user-agent.rs",
+        "crates/zedflow-coding-agent/tests/plan-mode-extension.rs",
+        "crates/zedflow-coding-agent/tests/plan-mode-utils.rs",
+        "crates/zedflow-coding-agent/tests/print-mode.rs",
+        "crates/zedflow-coding-agent/tests/prompt-templates.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-TEST-BATCH-3",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-TEST-BATCH-2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/restore-sandbox-env.rs",
+        "crates/zedflow-coding-agent/tests/rpc-client-clone.rs",
+        "crates/zedflow-coding-agent/tests/rpc-client-process-exit.rs",
+        "crates/zedflow-coding-agent/tests/rpc-example.rs",
+        "crates/zedflow-coding-agent/tests/rpc-jsonl.rs",
+        "crates/zedflow-coding-agent/tests/rpc-prompt-response-semantics.rs",
+        "crates/zedflow-coding-agent/tests/rpc.rs",
+        "crates/zedflow-coding-agent/tests/sdk-codex-cache-probe-tool-loop.rs",
+        "crates/zedflow-coding-agent/tests/sdk-openrouter-attribution.rs",
+        "crates/zedflow-coding-agent/tests/sdk-session-manager.rs",
+        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
+        "crates/zedflow-coding-agent/tests/sdk-stream-options.rs",
+        "crates/zedflow-coding-agent/tests/session-cwd.rs",
+        "crates/zedflow-coding-agent/tests/session-file-invalid.rs",
+        "crates/zedflow-coding-agent/tests/session-id-readonly.rs",
+        "crates/zedflow-coding-agent/tests/session-info-modified-timestamp.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs",
+        "crates/zedflow-coding-agent/tests/session-selector-path-delete.rs",
+        "crates/zedflow-coding-agent/tests/session-selector-rename.rs",
+        "crates/zedflow-coding-agent/tests/session-selector-search.rs",
+        "crates/zedflow-coding-agent/tests/settings-manager-bug.rs",
+        "crates/zedflow-coding-agent/tests/settings-manager.rs",
+        "crates/zedflow-coding-agent/tests/skills.rs",
+        "crates/zedflow-coding-agent/tests/startup-session-name.rs",
+        "crates/zedflow-coding-agent/tests/status-indicator.rs",
+        "crates/zedflow-coding-agent/tests/stdout-cleanliness.rs",
+        "crates/zedflow-coding-agent/tests/streaming-render-debug.rs",
+        "crates/zedflow-coding-agent/tests/suite/agent-session-bash-persistence.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 3 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-TEST-BATCH-4",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-TEST-BATCH-3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
+        "crates/zedflow-coding-agent/tests/suite/agent-session-model-extension.rs",
+        "crates/zedflow-coding-agent/tests/suite/agent-session-prompt.rs",
+        "crates/zedflow-coding-agent/tests/suite/agent-session-queue.rs",
+        "crates/zedflow-coding-agent/tests/suite/agent-session-retry-events.rs",
+        "crates/zedflow-coding-agent/tests/suite/agent-session-runtime.rs",
+        "crates/zedflow-coding-agent/tests/suite/harness.rs",
+        "crates/zedflow-coding-agent/tests/suite/lax-message-content.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/1717-2113-agent-session-event-settlement.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/2023-queued-slash-command-followup.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/2753-reload-stale-resource-settings.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/2781-skill-collision-precedence.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/2791-fswatch-error-crash.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/2835-tools-allowlist-filters-extension-tools.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/2860-replaced-session-context.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3217-scoped-model-order.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3302-find-path-glob.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3303-find-nested-gitignore.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3317-network-connection-lost-retry.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3592-no-builtin-tools-keeps-extension-tools.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3616-settings-inmemory-reload.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3686-session-name-event.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3688-tree-cancel-compacting.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/3982-message-end-cost-override.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/4167-thinking-toggle-pending-tool-render.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5080-signal-shutdown-extension-cleanup.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5109-exclude-tools.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5208-late-bash-output.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5217-compaction-reason.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5303-bash-output-truncation.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5433-extension-oauth-prompt-input.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5596-missing-theme-export.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5661-uppercase-header-values.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5724-sigterm-signal-exit.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5868-rpc-unknown-command-id.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 4 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-TEST-BATCH-5",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-TEST-BATCH-4"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/suite/regressions/5943-session-start-notify.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/5996-session-name-newlines.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/6019-explicit-provider-retry-message.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/6162-extension-active-tools-next-turn.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/6260-inline-extension-naming.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/extension-factory-cache.rs",
+        "crates/zedflow-coding-agent/tests/suite/regressions/pre-prompt-compaction-no-continue.rs",
+        "crates/zedflow-coding-agent/tests/syntax-highlight.rs",
+        "crates/zedflow-coding-agent/tests/system-prompt.rs",
+        "crates/zedflow-coding-agent/tests/test-harness.rs",
+        "crates/zedflow-coding-agent/tests/test-theme-colors.rs",
+        "crates/zedflow-coding-agent/tests/theme-detection.rs",
+        "crates/zedflow-coding-agent/tests/theme-export.rs",
+        "crates/zedflow-coding-agent/tests/theme-picker.rs",
+        "crates/zedflow-coding-agent/tests/tool-execution-component.rs",
+        "crates/zedflow-coding-agent/tests/tools.rs",
+        "crates/zedflow-coding-agent/tests/tree-selector.rs",
+        "crates/zedflow-coding-agent/tests/trigger-compact-extension.rs",
+        "crates/zedflow-coding-agent/tests/truncate-to-width.rs",
+        "crates/zedflow-coding-agent/tests/trust-manager.rs",
+        "crates/zedflow-coding-agent/tests/trust-selector.rs",
+        "crates/zedflow-coding-agent/tests/user-message.rs",
+        "crates/zedflow-coding-agent/tests/utilities.rs",
+        "crates/zedflow-coding-agent/tests/version-check.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 5 one-to-one; exact paths are its ownership list."
+    },
+    {
+      "id": "CA-V20-CLOSURE-VALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "CA-V20-TEST-BATCH-5"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-coding-agent --all-targets",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
+      ],
+      "intent": "Validate deterministic coding-agent manifest closure and executed package tests."
+    },
+    {
+      "id": "CA-V20-CLOSURE-FIDELITY",
+      "kind": "reviewer",
+      "depends_on": [
+        "CA-V20-CLOSURE-VALIDATE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review of the completed coding-agent closure."
+    },
+    {
+      "id": "ORCH-V20-SOURCE-BATCH-1",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-CLOSURE-FIDELITY"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/cli.rs",
+        "crates/zedflow-orchestrator/src/config.rs",
+        "crates/zedflow-orchestrator/src/handler.rs",
+        "crates/zedflow-orchestrator/src/index.rs",
+        "crates/zedflow-orchestrator/src/ipc/client.rs",
+        "crates/zedflow-orchestrator/src/ipc/protocol.rs",
+        "crates/zedflow-orchestrator/src/ipc/server.rs",
+        "crates/zedflow-orchestrator/src/radius.rs",
+        "crates/zedflow-orchestrator/src/rpc-process.rs",
+        "crates/zedflow-orchestrator/src/serve.rs",
+        "crates/zedflow-orchestrator/src/storage.rs",
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/src/types.rs",
+        "crates/zedflow-orchestrator/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check"
+      ],
+      "intent": "Port all 13 deterministic frozen Pi orchestrator source manifest gaps one-to-one after TUI and coding-agent closure."
+    },
+    {
+      "id": "ORCH-V20-CLOSURE-VALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "ORCH-V20-SOURCE-BATCH-1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --package zedflow-orchestrator --all-targets",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-orchestrator"
+      ],
+      "intent": "Validate deterministic orchestrator closure and executed package tests."
+    },
+    {
+      "id": "ORCH-V20-CLOSURE-FIDELITY",
+      "kind": "reviewer",
+      "depends_on": [
+        "ORCH-V20-CLOSURE-VALIDATE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review of completed orchestrator closure."
+    },
+    {
+      "id": "FINAL-V20-WORKSPACE-VALIDATION",
+      "kind": "validator",
+      "depends_on": [
+        "ORCH-V20-CLOSURE-FIDELITY"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test --workspace --all-targets",
+        "python3 tools/pi-port-swarm/manifest.py check"
+      ],
+      "intent": "Run final deterministic manifest closure plus full executed workspace gates."
+    },
+    {
+      "id": "FINAL-V20-FIDELITY-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "FINAL-V20-WORKSPACE-VALIDATION"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Independent final frozen-Pi fidelity review on the final validation SHA."
+    },
+    {
+      "id": "FINAL-V20-RUST-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "FINAL-V20-FIDELITY-REVIEW"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Independent final Rust correctness review on the same final SHA."
+    },
+    {
+      "id": "FINAL-V20-PORT-CHECKPOINT",
+      "kind": "checkpoint",
+      "depends_on": [
+        "FINAL-V20-RUST-REVIEW"
+      ],
+      "ownership": [
+        "docs/porting/BASELINE.md",
+        "docs/porting/pi-fidelity-decisions"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Record Stage-1 completion only after final manifest, executed workspace, fidelity, and Rust gates accept one immutable SHA."
     }
   ]
 }

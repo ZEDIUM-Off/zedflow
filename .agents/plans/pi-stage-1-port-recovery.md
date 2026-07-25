@@ -1,104 +1,68 @@
-# Pi Stage-1 Port Recovery
+# Pi Stage-1 Port Tail Closure
 
 <a id="how-to-use"></a>
 ## How to use this plan
 
-This plan is self-contained for orchestration by fresh agent sessions.
-
-- Execute only units marked `Assignable: yes` and in wave order.
-- Every implementation subagent runs with fresh context and the exact files listed in its unit.
-- One product-code writer is active at a time. Read-only reviews may run in parallel.
-- Ordinary implementation failures enter the repair loop; they do not mutate the DAG.
-- A dependency replacement or unavoidable non-1:1 mapping stops with `ARBITRATION_REQUIRED`.
-- Stage-2 Flow/LangGraph implementation remains forbidden.
+This is the approved replacement tail for the frozen Pi TypeScript → Rust port. Run assignable units in DAG order with fresh context. Exact batch ownership below is generated from `manifest.py status` at checkpoint `NEXT-PORT-PLAN-V20`; do not expand it. One writer is active at a time. Ordinary code/test failures use the controller repair loop; only structural evidence may replan.
 
 <a id="legend"></a>
 ## Legend
 
-- `fresh`: no inherited conversation context.
-- `sequential`: starts only after dependencies are accepted.
-- `Assignable: yes`: bounded implementation unit.
-- `locally-validating`: validates owned scope.
-- `integration-validating`: owns workspace-wide gates.
-- `[CANONICAL]`: required shape.
-- `BQ`: blocking human decision.
-- `R`: implementation risk.
+`fresh` means no inherited context. `Assignable: yes` may run. `locally-validating` runs only its listed formatter; package and workspace gates are owned by validators. `[CANONICAL]` requirements are mandatory.
 
 <a id="goal"></a>
 ## Goal
 
-Restore a single auditable Stage-1 control plane, reduce the workspace to one Rust crate per frozen Pi package, enforce manifest closure and explicit dependency arbitration, recover the blocked TUI work, and resume the automatic port through TUI, Coding-agent, Orchestrator, and the final Stage-1 gate.
+Replace the stale open tail with deterministic, bounded one-to-one closure of the 59 TUI, 237 Coding-agent, and 13 Orchestrator missing manifest targets, followed by package and final Stage-1 gates.
 
 <a id="non-goals"></a>
 ## Non-goals
 
-- No Zedflow Flow, Runtime Graph, sidecar, or LangGraph implementation.
-- No speculative replacement for unresolved npm/native dependencies.
-- No wholesale rewrite of accepted AI, Agent, or Coding-agent port code.
-- No direct checkout of the CAS-managed `automation/pi-port` ref.
-- No cleanup of historical failed worktrees until the cleanup command has passed dry-run review.
+No Stage-2 work, dependency substitution, blanket placeholder/disposition, reopening accepted units, Cargo dependency selection, or mutation of the frozen Pi gitlink.
 
 <a id="review-flags"></a>
 ## Review Flags
 
 | ID | Type | Severity | Summary | Affects | Follow-up / accepted risk |
 |---|---|---:|---|---|---|
-| RF-1 | R | High | `main` contains newer controller fixes while `automation/pi-port` contains port progress. | U1 | Merge control-plane history into the recovery branch, preserving the integration DAG and port sources. |
-| RF-2 | R | High | Existing manifests measure target presence but do not disposition consolidations or dependency substitutions. | U3, U5-U7 | Add deterministic exception/arbitration records before package closure. |
-| RF-3 | R | Medium | Historical runtime retains hundreds of worktrees and refs. | U4 | Implement safe cleanup first; apply historical cleanup only after explicit review. |
+| RF-V20-1 | R | High | Mechanical gap lists prove targets, not semantic fidelity. | all closure batches | Fresh package and final fidelity reviews gate closure. |
+| RF-V20-2 | BQ | High | A needed Rust dependency has no pre-approved direct mapping. | any batch | Stop with `ARBITRATION_REQUIRED`; do not choose it. |
 
 <a id="global-acceptance"></a>
 ## Global Acceptance Criteria
 
-1. The recovery head contains the current integration sources and the tested latest controller fixes.
-2. Controller and recovery tests pass; runtime identity records controller, integration, DAG, plan, and Pi SHAs.
-3. The Stage-1 workspace contains exactly `zedflow-ai`, `zedflow-agent`, `zedflow-tui`, `zedflow-coding-agent`, and `zedflow-orchestrator`.
-4. Package dependencies match frozen Pi: Coding-agent depends on AI/Agent/TUI; Orchestrator depends on Coding-agent.
-5. Every frozen Pi source/test is inventoried and either maps to an existing Rust target or has an explicit approved disposition.
-6. Ordinary review/validation blockers enter a bounded repair loop and resume automatically; structural/dependency decisions pause safely.
-7. Successful accepted worktrees and unit refs can be cleaned safely after reachability checks.
-8. `BASELINE.md` is the only current human status; historical plans/status files are labelled historical.
-9. Final Stage-1 completion requires executed workspace tests and independent fidelity/Rust reviews on one immutable SHA.
+1. Every frozen TUI, Coding-agent, and Orchestrator row has a one-to-one target or approved disposition.
+2. Package closure validators execute manifest checks and package tests.
+3. Final validation executes `cargo fmt --all --check`, workspace check, executed workspace tests, and global manifest check.
+4. Independent final fidelity and Rust reviews accept the same immutable candidate SHA.
 
 <a id="legacy-policy"></a>
 ## Legacy / workaround policy
 
-- No compatibility shim, temporary alias, type weakening, or placeholder used only to make an intermediate compile.
-- Default mapping is one Pi package to one Rust crate and one Pi source/test to one Rust source/test.
-- Any non-1:1 mapping requires an explicit disposition; dependency replacement requires human arbitration.
-- Do not reopen accepted code without a demonstrated fidelity or build defect.
+No aliases, shims, type weakening, placeholders, or scope expansion to make an intermediate batch compile. A dependency replacement is `ARBITRATION_REQUIRED`, never a worker choice.
 
 <a id="breaking-changes"></a>
 ## Planned Breaking Changes and Propagation Map
 
 | Change | Introduced by | Expected temporary breakage | Fixed by | Forbidden workaround |
 |---|---|---|---|---|
-| Remove four non-Pi crates | U2 | `zedflow_core` imports and stale Cargo dependencies | U2 in the same unit | Reintroducing facade crates or aliases |
-| Reverse Coding-agent/Orchestrator dependency | U2 | Cargo metadata and imports | U2 | Circular dependency |
-| Replace dynamic repair replans with repair state | U1 | Existing failed TUI reviewer needs migration | U1/U5 | Reusing terminal DAG IDs |
-| Enforce manifest closure | U3 | Current partial packages cannot claim closure | U5-U7 | Weakening closure to target counts only |
+| Add missing file-for-file targets | closure batches | partial crate compilation | package closure validator | placeholder module or substitute dependency |
 
 <a id="orchestration"></a>
 ## Subagent Orchestration Plan
 
-- Wave 1: U1 sequential.
-- Wave 2: U2 sequential after U1.
-- Wave 3: U3 and U4 sequential because both modify controller/state surfaces.
-- Wave 4: U5 sequential.
-- Wave 5: U6 sequential after TUI closure.
-- Wave 6: U7 sequential after Coding-agent closure.
-- Wave 7: U8 integration validation and Stage-1 checkpoint.
-- Read-only fidelity and Rust reviewers may run in parallel after each writer candidate.
+- Wave 1: TUI source batches, then TUI test batches, validator, fidelity review.
+- Wave 2: Coding-agent source batches, then test batches, validator, fidelity review.
+- Wave 3: Orchestrator source batch, validator, fidelity review.
+- Wave 4: final workspace validation, final fidelity review, final Rust review, terminal checkpoint.
 
 <a id="parallelization-constraints"></a>
 ## Parallelization Constraints
 
 | Constraint | Reason | Affected units |
 |---|---|---|
-| One writer only | Cargo, DAG, runtime state, and docs share integration state | U1-U8 |
-| U2 precedes package continuation | Restores the required package dependency graph | U5-U7 |
-| TUI closes before Coding-agent | Frozen Coding-agent imports Pi TUI broadly | U5, U6 |
-| Coding-agent closes before Orchestrator | Frozen Orchestrator depends on Coding-agent | U6, U7 |
+| Sequential writer chain | every batch may update the crate module root and only one writer is permitted | all writer batches |
+| TUI before Coding-agent before Orchestrator | required Stage-1 recovery order and Pi dependency direction | all closure waves |
 
 <a id="canonical-line-references"></a>
 ## Canonical Line References
@@ -107,263 +71,867 @@ Restore a single auditable Stage-1 control plane, reduce the workspace to one Ru
 <!-- This block is generated by finalize-plan-lines.mjs. Do not edit manually. -->
 | ID | Anchor | Lines | Description |
 |---|---|---|---|
-| how-to-use | #how-to-use | L3-L13 | How to use this plan |
-| legend | #legend | L15-L25 | Legend |
-| goal | #goal | L27-L30 | Goal |
-| non-goals | #non-goals | L32-L39 | Non-goals |
-| review-flags | #review-flags | L41-L48 | Review Flags |
-| global-acceptance | #global-acceptance | L50-L61 | Global Acceptance Criteria |
-| legacy-policy | #legacy-policy | L63-L69 | Legacy / workaround policy |
-| breaking-changes | #breaking-changes | L71-L79 | Planned Breaking Changes and Propagation Map |
-| orchestration | #orchestration | L81-L91 | Subagent Orchestration Plan |
-| parallelization-constraints | #parallelization-constraints | L93-L101 | Parallelization Constraints |
-| canonical-line-references | #canonical-line-references | L103-L108 | Canonical Line References |
-| u1 | #u1 | L110-L147 | U1 — Recover and harden the control plane |
-| u2 | #u2 | L149-L174 | U2 — Restore the one-package/one-crate workspace |
-| u3 | #u3 | L176-L200 | U3 — Enforce deterministic manifest closure |
-| u4 | #u4 | L202-L226 | U4 — Add bounded automatic cleanup |
-| u5 | #u5 | L228-L252 | U5 — Reconcile and close TUI |
-| u6 | #u6 | L254-L277 | U6 — Reconcile and close Coding-agent |
-| u7 | #u7 | L279-L302 | U7 — Port and close Orchestrator |
-| u8 | #u8 | L304-L329 | U8 — Final Stage-1 checkpoint and promotion |
-| documentation-changes | #documentation-changes | L331-L338 | Documentation changes included across units |
-| pre-finalization-review | #pre-finalization-review | L340-L346 | Pre-finalization review summary |
+| how-to-use | #how-to-use | L3-L6 | How to use this plan |
+| legend | #legend | L8-L11 | Legend |
+| goal | #goal | L13-L16 | Goal |
+| non-goals | #non-goals | L18-L21 | Non-goals |
+| review-flags | #review-flags | L23-L29 | Review Flags |
+| global-acceptance | #global-acceptance | L31-L37 | Global Acceptance Criteria |
+| legacy-policy | #legacy-policy | L39-L42 | Legacy / workaround policy |
+| breaking-changes | #breaking-changes | L44-L49 | Planned Breaking Changes and Propagation Map |
+| orchestration | #orchestration | L51-L57 | Subagent Orchestration Plan |
+| parallelization-constraints | #parallelization-constraints | L59-L65 | Parallelization Constraints |
+| canonical-line-references | #canonical-line-references | L67-L101 | Canonical Line References |
+| tui-v20-source-batch-1 | #tui-v20-source-batch-1 | L103-L160 | TUI-V20-SOURCE-BATCH-1 |
+| tui-v20-source-batch-2 | #tui-v20-source-batch-2 | L162-L206 | TUI-V20-SOURCE-BATCH-2 |
+| tui-v20-test-batch-1 | #tui-v20-test-batch-1 | L208-L265 | TUI-V20-TEST-BATCH-1 |
+| tui-v20-test-batch-2 | #tui-v20-test-batch-2 | L267-L316 | TUI-V20-TEST-BATCH-2 |
+| ca-v20-source-batch-1 | #ca-v20-source-batch-1 | L318-L390 | CA-V20-SOURCE-BATCH-1 |
+| ca-v20-source-batch-2 | #ca-v20-source-batch-2 | L392-L464 | CA-V20-SOURCE-BATCH-2 |
+| ca-v20-source-batch-3 | #ca-v20-source-batch-3 | L466-L506 | CA-V20-SOURCE-BATCH-3 |
+| ca-v20-test-batch-1 | #ca-v20-test-batch-1 | L508-L580 | CA-V20-TEST-BATCH-1 |
+| ca-v20-test-batch-2 | #ca-v20-test-batch-2 | L582-L654 | CA-V20-TEST-BATCH-2 |
+| ca-v20-test-batch-3 | #ca-v20-test-batch-3 | L656-L728 | CA-V20-TEST-BATCH-3 |
+| ca-v20-test-batch-4 | #ca-v20-test-batch-4 | L730-L802 | CA-V20-TEST-BATCH-4 |
+| ca-v20-test-batch-5 | #ca-v20-test-batch-5 | L804-L865 | CA-V20-TEST-BATCH-5 |
+| orch-v20-source-batch-1 | #orch-v20-source-batch-1 | L867-L917 | ORCH-V20-SOURCE-BATCH-1 |
+| validators | #validators | L919-L922 | Package and final validators |
+| final-checkpoint | #final-checkpoint | L924-L929 | FINAL-V20-PORT-CHECKPOINT |
+| pre-finalization-review | #pre-finalization-review | L931-L937 | Pre-finalization review summary |
 <!-- CANONICAL_LINE_REFERENCES_END -->
 
-<a id="u1"></a>
-## U1 — Recover and harden the control plane
+<a id="tui-v20-source-batch-1"></a>
+## TUI-V20-SOURCE-BATCH-1
 
-**Assignable:** yes  
-**Wave:** 1  
-**Context:** fresh  
-**Dependencies:** none  
-**Validation:** integration-validating
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `NEXT-PORT-PLAN-V20`
+**Validation:** locally-validating
 
 ### Scope
 
-- Modify `tools/pi-port-swarm/controller.py`.
-- Modify `tools/pi-port-swarm/test_controller.py`.
-- Create or reconcile `tools/pi-port-swarm/recovery.py` and `test_recovery.py`.
-- Modify `.pi/prompts/pi-port-{worker-session,reviewer,validator,coordinator,checkpoint}.md`.
-- Modify `.agents/port-swarm/state.json` and `tools/pi-port-swarm/README.md`.
-- Read `main`-only controller commits and external runtime state; preserve product sources and the frozen Pi gitlink.
+- `crates/zedflow-tui/src/autocomplete.rs`
+- `crates/zedflow-tui/src/components/box.rs`
+- `crates/zedflow-tui/src/components/cancellable-loader.rs`
+- `crates/zedflow-tui/src/components/editor.rs`
+- `crates/zedflow-tui/src/components/image.rs`
+- `crates/zedflow-tui/src/components/input.rs`
+- `crates/zedflow-tui/src/components/loader.rs`
+- `crates/zedflow-tui/src/components/markdown.rs`
+- `crates/zedflow-tui/src/components/select-list.rs`
+- `crates/zedflow-tui/src/components/settings-list.rs`
+- `crates/zedflow-tui/src/components/spacer.rs`
+- `crates/zedflow-tui/src/components/text.rs`
+- `crates/zedflow-tui/src/components/truncated-text.rs`
+- `crates/zedflow-tui/src/editor-component.rs`
+- `crates/zedflow-tui/src/fuzzy.rs`
+- `crates/zedflow-tui/src/index.rs`
+- `crates/zedflow-tui/src/keybindings.rs`
+- `crates/zedflow-tui/src/kill-ring.rs`
+- `crates/zedflow-tui/src/native-modifiers.rs`
+- `crates/zedflow-tui/src/stdin-buffer.rs`
+- `crates/zedflow-tui/src/lib.rs` (module registration only, if needed)
 
 ### Requirements
 
-- Use unit refs outside the integration leaf namespace.
-- Replace seed `HEAD` with an immutable SHA.
-- Persist `controller_sha`, `integration_sha`, `dag_sha`, `plan_sha`, and `pi_gitlink`.
-- Classify outcomes as `REPAIRABLE`, `PLAN_CHANGE_REQUIRED`, `ARBITRATION_REQUIRED`, or `TRANSIENT`.
-- Route ordinary blockers through bounded repair attempts without DAG mutation.
-- Permit structural replans only through a coordinator that explicitly reads `/home/zedium/.agents/skills/plan-writer/SKILL.md` and `REFERENCE.md`.
-- Never reuse a terminal unit ID; verify a revised graph leaves a ready/reachable frontier.
-- Execute only allow-listed validation command forms and persist command outcome logs.
+- Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-tui --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- Controller/recovery tests pass.
-- Current failed TUI state can be represented as a repairable frontier with fresh IDs.
-- No service is restarted by this unit.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Implement U1 only. Preserve `automation/pi-port` sources and frozen Pi gitlink. Reconcile the tested controller fixes from `main`, then add the minimum repair/arbitration/identity invariants above. Do not touch Cargo crates or resume the service. Return changed files, tests, and the exact runtime-state migration required.
+Implement `TUI-V20-SOURCE-BATCH-1` only in fresh context. Port deterministic frozen Pi tui source manifest-gap batch 1 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="u2"></a>
-## U2 — Restore the one-package/one-crate workspace
+<a id="tui-v20-source-batch-2"></a>
+## TUI-V20-SOURCE-BATCH-2
 
-**Assignable:** yes  
-**Wave:** 2  
-**Context:** fresh  
-**Dependencies:** U1  
-**Validation:** integration-validating
-
-### Scope
-
-- Modify root `Cargo.toml` and `Cargo.lock`.
-- Modify Cargo manifests for the five retained crates.
-- Move `zedflow-core` error behavior into `zedflow-ai/src/error.rs` and update AI imports/tests.
-- Delete `crates/zedflow-core`, `crates/zedflow-tools`, `crates/zedflow-session`, and `crates/zedflow-langgraph`.
-- Remove Coding-agent → Orchestrator and add Orchestrator → Coding-agent.
-
-### Acceptance
-
-- Workspace contains exactly five Pi package crates.
-- `cargo fmt`, workspace check, test build, and executed tests pass.
-- No compatibility facade or circular dependency remains.
-
-### Subagent prompt
-
-Implement U2 only. Make the Rust workspace mirror the five frozen Pi packages. Migrate real error behavior into AI, remove unused substrate crates, and correct package dependency direction. Do not change port behavior or Stage-2 code. Run full Cargo gates.
-
-<a id="u3"></a>
-## U3 — Enforce deterministic manifest closure
-
-**Assignable:** yes  
-**Wave:** 3  
-**Context:** fresh  
-**Dependencies:** U2  
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `TUI-V20-SOURCE-BATCH-1`
 **Validation:** locally-validating
 
 ### Scope
 
-- Create `tools/pi-port-swarm/manifest.py` and `test_manifest.py`.
-- Extend `.agents/port-manifests/` with one exception/disposition ledger rather than duplicating current status prose.
-- Integrate manifest validation into `controller.py status`, package closure, and final closure.
-- Include every frozen `.ts`, `.tsx`, and `.d.ts` source/test according to package policy.
+- `crates/zedflow-tui/src/terminal-colors.rs`
+- `crates/zedflow-tui/src/terminal-image.rs`
+- `crates/zedflow-tui/src/terminal.rs`
+- `crates/zedflow-tui/src/tui.rs`
+- `crates/zedflow-tui/src/undo-stack.rs`
+- `crates/zedflow-tui/src/utils.rs`
+- `crates/zedflow-tui/src/word-navigation.rs`
+- `crates/zedflow-tui/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-tui --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- Missing, duplicate, consolidated, type-only, platform-specific, live-capability, and dependency-arbitration rows are reported deterministically.
-- A package cannot close with an unexplained source/test row.
-- Dependency arbitration blocks execution rather than producing a speculative placeholder.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Implement U3 only. Keep existing TSV inventories as the base mapping and add the smallest explicit exception ledger. Make closure executable and tested. Do not port missing product files in this unit.
+Implement `TUI-V20-SOURCE-BATCH-2` only in fresh context. Port deterministic frozen Pi tui source manifest-gap batch 2 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="u4"></a>
-## U4 — Add bounded automatic cleanup
+<a id="tui-v20-test-batch-1"></a>
+## TUI-V20-TEST-BATCH-1
 
-**Assignable:** yes  
-**Wave:** 3  
-**Context:** fresh  
-**Dependencies:** U3  
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `TUI-V20-SOURCE-BATCH-2`
 **Validation:** locally-validating
 
 ### Scope
 
-- Modify `controller.py` and `test_controller.py`.
-- Add `cleanup --dry-run` and `cleanup --accepted`.
-- Update `tools/pi-port-swarm/README.md`.
+- `crates/zedflow-tui/tests/autocomplete.rs`
+- `crates/zedflow-tui/tests/bug-regression-isimageline-startswith-bug.rs`
+- `crates/zedflow-tui/tests/chat-simple.rs`
+- `crates/zedflow-tui/tests/editor.rs`
+- `crates/zedflow-tui/tests/fuzzy.rs`
+- `crates/zedflow-tui/tests/image-test.rs`
+- `crates/zedflow-tui/tests/input.rs`
+- `crates/zedflow-tui/tests/key-tester.rs`
+- `crates/zedflow-tui/tests/keybindings.rs`
+- `crates/zedflow-tui/tests/markdown.rs`
+- `crates/zedflow-tui/tests/overlay-non-capturing.rs`
+- `crates/zedflow-tui/tests/overlay-options.rs`
+- `crates/zedflow-tui/tests/overlay-short-content.rs`
+- `crates/zedflow-tui/tests/regression-overlay-cjk-boundary.rs`
+- `crates/zedflow-tui/tests/regression-regional-indicator-width.rs`
+- `crates/zedflow-tui/tests/select-list.rs`
+- `crates/zedflow-tui/tests/stdin-buffer.rs`
+- `crates/zedflow-tui/tests/tab-width.rs`
+- `crates/zedflow-tui/tests/terminal-colors.rs`
+- `crates/zedflow-tui/tests/terminal-image.rs`
+- `crates/zedflow-tui/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-tui --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- Accepted worktrees are removable only when their candidate is reachable from integration and logs/state are durable.
-- Failed/blocked current attempts are retained.
-- Unit refs are deleted only after the same reachability check.
-- No historical cleanup is applied by this unit.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Implement U4 only. Add safe, test-covered cleanup with dry-run default. Never perform broad filesystem removal and do not clean the existing historical inventory during implementation.
+Implement `TUI-V20-TEST-BATCH-1` only in fresh context. Port deterministic frozen Pi tui test manifest-gap batch 1 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="u5"></a>
-## U5 — Reconcile and close TUI
+<a id="tui-v20-test-batch-2"></a>
+## TUI-V20-TEST-BATCH-2
 
-**Assignable:** yes  
-**Wave:** 4  
-**Context:** fresh  
-**Dependencies:** U4  
-**Validation:** integration-validating
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `TUI-V20-TEST-BATCH-1`
+**Validation:** locally-validating
 
 ### Scope
 
-- Repair the known Kitty CSI-u Unicode/Shift fidelity defect.
-- Reconcile all TUI source/test manifest rows.
-- Port missing TUI behavior one-to-one or emit `ARBITRATION_REQUIRED`.
-- Use fresh validator and fidelity/Rust reviewers.
+- `crates/zedflow-tui/tests/terminal.rs`
+- `crates/zedflow-tui/tests/test-themes.rs`
+- `crates/zedflow-tui/tests/truncate-to-width.rs`
+- `crates/zedflow-tui/tests/truncated-text.rs`
+- `crates/zedflow-tui/tests/tui-cell-size-input.rs`
+- `crates/zedflow-tui/tests/tui-overlay-style-leak.rs`
+- `crates/zedflow-tui/tests/tui-render.rs`
+- `crates/zedflow-tui/tests/tui-shrink.rs`
+- `crates/zedflow-tui/tests/viewport-overwrite-repro.rs`
+- `crates/zedflow-tui/tests/virtual-terminal.rs`
+- `crates/zedflow-tui/tests/word-navigation.rs`
+- `crates/zedflow-tui/tests/wrap-ansi.rs`
+- `crates/zedflow-tui/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-tui --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- TUI manifest closes with no unexplained row.
-- Focused and package tests execute successfully.
-- Reviews accept the same SHA.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Execute U5 through the recovered controller. Start from the known keys blocker, then close every frozen TUI source/test row. Prefer file-for-file ports; stop for dependency arbitration instead of inventing substitutes.
+Implement `TUI-V20-TEST-BATCH-2` only in fresh context. Port deterministic frozen Pi tui test manifest-gap batch 2 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="u6"></a>
-## U6 — Reconcile and close Coding-agent
+<a id="ca-v20-source-batch-1"></a>
+## CA-V20-SOURCE-BATCH-1
 
-**Assignable:** yes  
-**Wave:** 5  
-**Context:** fresh  
-**Dependencies:** U5  
-**Validation:** integration-validating
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `TUI-V20-CLOSURE-FIDELITY`
+**Validation:** locally-validating
 
 ### Scope
 
-- Preserve accepted Coding-agent implementations.
-- Reconcile missing source/test rows after TUI closure.
-- Port only proven residual rows one-to-one.
+- `crates/zedflow-coding-agent/src/bun/cli.rs`
+- `crates/zedflow-coding-agent/src/bun/register-bedrock.rs`
+- `crates/zedflow-coding-agent/src/bun/restore-sandbox-env.rs`
+- `crates/zedflow-coding-agent/src/core/bash-executor.rs`
+- `crates/zedflow-coding-agent/src/core/compaction/branch-summarization.rs`
+- `crates/zedflow-coding-agent/src/core/compaction/compaction.rs`
+- `crates/zedflow-coding-agent/src/core/compaction/index.rs`
+- `crates/zedflow-coding-agent/src/core/exec.rs`
+- `crates/zedflow-coding-agent/src/core/export-html/index.rs`
+- `crates/zedflow-coding-agent/src/core/extensions/index.rs`
+- `crates/zedflow-coding-agent/src/core/footer-data-provider.rs`
+- `crates/zedflow-coding-agent/src/core/index.rs`
+- `crates/zedflow-coding-agent/src/core/keybindings.rs`
+- `crates/zedflow-coding-agent/src/core/package-manager.rs`
+- `crates/zedflow-coding-agent/src/core/project-trust.rs`
+- `crates/zedflow-coding-agent/src/core/prompt-templates.rs`
+- `crates/zedflow-coding-agent/src/core/provider-attribution.rs`
+- `crates/zedflow-coding-agent/src/core/sdk.rs`
+- `crates/zedflow-coding-agent/src/core/telemetry.rs`
+- `crates/zedflow-coding-agent/src/core/tools/bash.rs`
+- `crates/zedflow-coding-agent/src/core/tools/index.rs`
+- `crates/zedflow-coding-agent/src/core/tools/render-utils.rs`
+- `crates/zedflow-coding-agent/src/core/tools/tool-definition-wrapper.rs`
+- `crates/zedflow-coding-agent/src/core/trust-manager.rs`
+- `crates/zedflow-coding-agent/src/migrations.rs`
+- `crates/zedflow-coding-agent/src/modes/index.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- Coding-agent manifest closes with no unexplained row.
-- CLI/core/session/tool/TUI integration behavior passes deterministic tests.
-- Reviews accept the same SHA.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Execute U6 through the recovered controller. Audit mappings before writing, keep accepted code, and port only real residual Coding-agent rows. Do not use Orchestrator as a dependency.
+Implement `CA-V20-SOURCE-BATCH-1` only in fresh context. Port deterministic frozen Pi coding-agent source manifest-gap batch 1 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="u7"></a>
-## U7 — Port and close Orchestrator
+<a id="ca-v20-source-batch-2"></a>
+## CA-V20-SOURCE-BATCH-2
 
-**Assignable:** yes  
-**Wave:** 6  
-**Context:** fresh  
-**Dependencies:** U6  
-**Validation:** integration-validating
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-SOURCE-BATCH-1`
+**Validation:** locally-validating
 
 ### Scope
 
-- Port the 13 frozen Orchestrator sources into `zedflow-orchestrator`.
-- Depend on Coding-agent as Pi does.
-- Add deterministic Rust tests for source behavior where Pi has no dedicated test package.
+- `crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/dynamic-border.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/first-time-setup.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/footer.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/index.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/keybinding-hints.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/login-dialog.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/model-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/oauth-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/scoped-models-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/settings-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/show-images-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/thinking-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/tree-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/trust-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/user-message-selector.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/model-search.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs`
+- `crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs`
+- `crates/zedflow-coding-agent/src/package-manager-cli.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- Orchestrator source manifest closes.
-- Package/workspace tests pass.
-- Reviews accept the same SHA.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Implement U7 only. Port frozen Pi Orchestrator file-for-file after Coding-agent closure. Keep its dependency direction identical to Pi and add the smallest deterministic tests needed to prove behavior.
+Implement `CA-V20-SOURCE-BATCH-2` only in fresh context. Port deterministic frozen Pi coding-agent source manifest-gap batch 2 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="u8"></a>
-## U8 — Final Stage-1 checkpoint and promotion
+<a id="ca-v20-source-batch-3"></a>
+## CA-V20-SOURCE-BATCH-3
 
-**Assignable:** yes  
-**Wave:** 7  
-**Context:** fresh  
-**Dependencies:** U7  
-**Validation:** integration-validating
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-SOURCE-BATCH-2`
+**Validation:** locally-validating
 
 ### Scope
 
-- Run global manifest closure.
-- Execute full Cargo format/check/tests, not `--no-run` only.
-- Classify every ignored test and placeholder.
-- Run independent fidelity and Rust reviews on the same SHA.
-- Update `docs/porting/BASELINE.md` and create the Stage-1 attestation.
-- Promote the accepted integration SHA to `main`, then rerun the final gate.
+- `crates/zedflow-coding-agent/src/utils/image-process.rs`
+- `crates/zedflow-coding-agent/src/utils/pi-user-agent.rs`
+- `crates/zedflow-coding-agent/src/utils/tools-manager.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
 
 ### Acceptance
 
-- Every Stage-1 exit criterion is proven on one immutable SHA and its promoted SHA.
-- Stage 2 remains unopened until this unit completes.
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
 
 ### Subagent prompt
 
-Execute U8 only after all five package closures. Run all executable gates and independent reviews on one SHA, publish the attestation, promote to `main`, and rerun the gate. Do not begin Stage 2.
+Implement `CA-V20-SOURCE-BATCH-3` only in fresh context. Port deterministic frozen Pi coding-agent source manifest-gap batch 3 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
 
-<a id="documentation-changes"></a>
-## Documentation changes included across units
+<a id="ca-v20-test-batch-1"></a>
+## CA-V20-TEST-BATCH-1
 
-- Delete `docs/planning/ZEDFLOW_WORKSPACE_ARCHITECTURE.md` after moving the five-package mapping into `PI_RUST_PORTING_RULES.md` and removing active links.
-- Keep `BASELINE.md` as the sole current human status generated from controller facts.
-- Mark the unlabelled AI/Agent consolidation plan and competing current-status files historical.
-- Mark `pi-fidelity-decisions/` as append-only audit evidence.
-- Leave LangGraph version discussion deferred.
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-SOURCE-BATCH-3`
+**Validation:** locally-validating
+
+### Scope
+
+- `crates/zedflow-coding-agent/tests/agent-session-auto-compaction-queue.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-branching.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-compaction.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-concurrent.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-dynamic-provider.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-dynamic-tools.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-retry.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-runtime-events.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-stats.rs`
+- `crates/zedflow-coding-agent/tests/agent-session-tree-navigation.rs`
+- `crates/zedflow-coding-agent/tests/ansi-utils.rs`
+- `crates/zedflow-coding-agent/tests/args.rs`
+- `crates/zedflow-coding-agent/tests/assistant-message.rs`
+- `crates/zedflow-coding-agent/tests/bash-close-hang-windows.rs`
+- `crates/zedflow-coding-agent/tests/bash-execution-width.rs`
+- `crates/zedflow-coding-agent/tests/block-images.rs`
+- `crates/zedflow-coding-agent/tests/changelog.rs`
+- `crates/zedflow-coding-agent/tests/clipboard-image-bmp-conversion.rs`
+- `crates/zedflow-coding-agent/tests/clipboard-image.rs`
+- `crates/zedflow-coding-agent/tests/clipboard-native.rs`
+- `crates/zedflow-coding-agent/tests/clipboard.rs`
+- `crates/zedflow-coding-agent/tests/compaction-extensions-example.rs`
+- `crates/zedflow-coding-agent/tests/compaction-extensions.rs`
+- `crates/zedflow-coding-agent/tests/compaction-serialization.rs`
+- `crates/zedflow-coding-agent/tests/compaction-summary-reasoning.rs`
+- `crates/zedflow-coding-agent/tests/compaction.rs`
+- `crates/zedflow-coding-agent/tests/config-value-migration.rs`
+- `crates/zedflow-coding-agent/tests/config.rs`
+- `crates/zedflow-coding-agent/tests/edit-tool-legacy-input.rs`
+- `crates/zedflow-coding-agent/tests/edit-tool-no-full-redraw.rs`
+- `crates/zedflow-coding-agent/tests/experimental.rs`
+- `crates/zedflow-coding-agent/tests/export-html-skill-block.rs`
+- `crates/zedflow-coding-agent/tests/export-html-whitespace.rs`
+- `crates/zedflow-coding-agent/tests/export-html-xss.rs`
+- `crates/zedflow-coding-agent/tests/extensions-discovery.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+
+### Acceptance
+
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
+
+### Subagent prompt
+
+Implement `CA-V20-TEST-BATCH-1` only in fresh context. Port deterministic frozen Pi coding-agent test manifest-gap batch 1 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+
+<a id="ca-v20-test-batch-2"></a>
+## CA-V20-TEST-BATCH-2
+
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-TEST-BATCH-1`
+**Validation:** locally-validating
+
+### Scope
+
+- `crates/zedflow-coding-agent/tests/extensions-input-event.rs`
+- `crates/zedflow-coding-agent/tests/extensions-runner.rs`
+- `crates/zedflow-coding-agent/tests/file-mutation-queue.rs`
+- `crates/zedflow-coding-agent/tests/first-time-setup-fork.rs`
+- `crates/zedflow-coding-agent/tests/first-time-setup.rs`
+- `crates/zedflow-coding-agent/tests/footer-data-provider.rs`
+- `crates/zedflow-coding-agent/tests/footer-width.rs`
+- `crates/zedflow-coding-agent/tests/format-resume-command.rs`
+- `crates/zedflow-coding-agent/tests/frontmatter.rs`
+- `crates/zedflow-coding-agent/tests/git-merge-and-resolve-extension.rs`
+- `crates/zedflow-coding-agent/tests/git-ssh-url.rs`
+- `crates/zedflow-coding-agent/tests/git-update.rs`
+- `crates/zedflow-coding-agent/tests/image-processing.rs`
+- `crates/zedflow-coding-agent/tests/image-resize-callers.rs`
+- `crates/zedflow-coding-agent/tests/initial-message.rs`
+- `crates/zedflow-coding-agent/tests/input-transform-streaming-example.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-anthropic-warning.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-clone-command.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-compaction.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-import-command.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-startup-input.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-status.rs`
+- `crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs`
+- `crates/zedflow-coding-agent/tests/keybindings-migration.rs`
+- `crates/zedflow-coding-agent/tests/oauth-selector.rs`
+- `crates/zedflow-coding-agent/tests/package-command-paths.rs`
+- `crates/zedflow-coding-agent/tests/package-manager-ssh.rs`
+- `crates/zedflow-coding-agent/tests/package-manager.rs`
+- `crates/zedflow-coding-agent/tests/path-utils.rs`
+- `crates/zedflow-coding-agent/tests/paths.rs`
+- `crates/zedflow-coding-agent/tests/pi-user-agent.rs`
+- `crates/zedflow-coding-agent/tests/plan-mode-extension.rs`
+- `crates/zedflow-coding-agent/tests/plan-mode-utils.rs`
+- `crates/zedflow-coding-agent/tests/print-mode.rs`
+- `crates/zedflow-coding-agent/tests/prompt-templates.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+
+### Acceptance
+
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
+
+### Subagent prompt
+
+Implement `CA-V20-TEST-BATCH-2` only in fresh context. Port deterministic frozen Pi coding-agent test manifest-gap batch 2 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+
+<a id="ca-v20-test-batch-3"></a>
+## CA-V20-TEST-BATCH-3
+
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-TEST-BATCH-2`
+**Validation:** locally-validating
+
+### Scope
+
+- `crates/zedflow-coding-agent/tests/resource-loader.rs`
+- `crates/zedflow-coding-agent/tests/restore-sandbox-env.rs`
+- `crates/zedflow-coding-agent/tests/rpc-client-clone.rs`
+- `crates/zedflow-coding-agent/tests/rpc-client-process-exit.rs`
+- `crates/zedflow-coding-agent/tests/rpc-example.rs`
+- `crates/zedflow-coding-agent/tests/rpc-jsonl.rs`
+- `crates/zedflow-coding-agent/tests/rpc-prompt-response-semantics.rs`
+- `crates/zedflow-coding-agent/tests/rpc.rs`
+- `crates/zedflow-coding-agent/tests/sdk-codex-cache-probe-tool-loop.rs`
+- `crates/zedflow-coding-agent/tests/sdk-openrouter-attribution.rs`
+- `crates/zedflow-coding-agent/tests/sdk-session-manager.rs`
+- `crates/zedflow-coding-agent/tests/sdk-skills.rs`
+- `crates/zedflow-coding-agent/tests/sdk-stream-options.rs`
+- `crates/zedflow-coding-agent/tests/session-cwd.rs`
+- `crates/zedflow-coding-agent/tests/session-file-invalid.rs`
+- `crates/zedflow-coding-agent/tests/session-id-readonly.rs`
+- `crates/zedflow-coding-agent/tests/session-info-modified-timestamp.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/build-context.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/file-operations.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/labels.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/migration.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/save-entry.rs`
+- `crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs`
+- `crates/zedflow-coding-agent/tests/session-selector-path-delete.rs`
+- `crates/zedflow-coding-agent/tests/session-selector-rename.rs`
+- `crates/zedflow-coding-agent/tests/session-selector-search.rs`
+- `crates/zedflow-coding-agent/tests/settings-manager-bug.rs`
+- `crates/zedflow-coding-agent/tests/settings-manager.rs`
+- `crates/zedflow-coding-agent/tests/skills.rs`
+- `crates/zedflow-coding-agent/tests/startup-session-name.rs`
+- `crates/zedflow-coding-agent/tests/status-indicator.rs`
+- `crates/zedflow-coding-agent/tests/stdout-cleanliness.rs`
+- `crates/zedflow-coding-agent/tests/streaming-render-debug.rs`
+- `crates/zedflow-coding-agent/tests/suite/agent-session-bash-persistence.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+
+### Acceptance
+
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
+
+### Subagent prompt
+
+Implement `CA-V20-TEST-BATCH-3` only in fresh context. Port deterministic frozen Pi coding-agent test manifest-gap batch 3 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+
+<a id="ca-v20-test-batch-4"></a>
+## CA-V20-TEST-BATCH-4
+
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-TEST-BATCH-3`
+**Validation:** locally-validating
+
+### Scope
+
+- `crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs`
+- `crates/zedflow-coding-agent/tests/suite/agent-session-model-extension.rs`
+- `crates/zedflow-coding-agent/tests/suite/agent-session-prompt.rs`
+- `crates/zedflow-coding-agent/tests/suite/agent-session-queue.rs`
+- `crates/zedflow-coding-agent/tests/suite/agent-session-retry-events.rs`
+- `crates/zedflow-coding-agent/tests/suite/agent-session-runtime.rs`
+- `crates/zedflow-coding-agent/tests/suite/harness.rs`
+- `crates/zedflow-coding-agent/tests/suite/lax-message-content.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/1717-2113-agent-session-event-settlement.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/2023-queued-slash-command-followup.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/2753-reload-stale-resource-settings.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/2781-skill-collision-precedence.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/2791-fswatch-error-crash.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/2835-tools-allowlist-filters-extension-tools.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/2860-replaced-session-context.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3217-scoped-model-order.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3302-find-path-glob.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3303-find-nested-gitignore.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3317-network-connection-lost-retry.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3592-no-builtin-tools-keeps-extension-tools.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3616-settings-inmemory-reload.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3686-session-name-event.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3688-tree-cancel-compacting.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/3982-message-end-cost-override.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/4167-thinking-toggle-pending-tool-render.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5080-signal-shutdown-extension-cleanup.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5109-exclude-tools.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5208-late-bash-output.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5217-compaction-reason.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5303-bash-output-truncation.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5433-extension-oauth-prompt-input.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5596-missing-theme-export.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5661-uppercase-header-values.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5724-sigterm-signal-exit.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5868-rpc-unknown-command-id.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+
+### Acceptance
+
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
+
+### Subagent prompt
+
+Implement `CA-V20-TEST-BATCH-4` only in fresh context. Port deterministic frozen Pi coding-agent test manifest-gap batch 4 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+
+<a id="ca-v20-test-batch-5"></a>
+## CA-V20-TEST-BATCH-5
+
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-TEST-BATCH-4`
+**Validation:** locally-validating
+
+### Scope
+
+- `crates/zedflow-coding-agent/tests/suite/regressions/5943-session-start-notify.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/5996-session-name-newlines.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/6019-explicit-provider-retry-message.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/6162-extension-active-tools-next-turn.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/6260-inline-extension-naming.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/extension-factory-cache.rs`
+- `crates/zedflow-coding-agent/tests/suite/regressions/pre-prompt-compaction-no-continue.rs`
+- `crates/zedflow-coding-agent/tests/syntax-highlight.rs`
+- `crates/zedflow-coding-agent/tests/system-prompt.rs`
+- `crates/zedflow-coding-agent/tests/test-harness.rs`
+- `crates/zedflow-coding-agent/tests/test-theme-colors.rs`
+- `crates/zedflow-coding-agent/tests/theme-detection.rs`
+- `crates/zedflow-coding-agent/tests/theme-export.rs`
+- `crates/zedflow-coding-agent/tests/theme-picker.rs`
+- `crates/zedflow-coding-agent/tests/tool-execution-component.rs`
+- `crates/zedflow-coding-agent/tests/tools.rs`
+- `crates/zedflow-coding-agent/tests/tree-selector.rs`
+- `crates/zedflow-coding-agent/tests/trigger-compact-extension.rs`
+- `crates/zedflow-coding-agent/tests/truncate-to-width.rs`
+- `crates/zedflow-coding-agent/tests/trust-manager.rs`
+- `crates/zedflow-coding-agent/tests/trust-selector.rs`
+- `crates/zedflow-coding-agent/tests/user-message.rs`
+- `crates/zedflow-coding-agent/tests/utilities.rs`
+- `crates/zedflow-coding-agent/tests/version-check.rs`
+- `crates/zedflow-coding-agent/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/coding-agent` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-coding-agent --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+
+### Acceptance
+
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
+
+### Subagent prompt
+
+Implement `CA-V20-TEST-BATCH-5` only in fresh context. Port deterministic frozen Pi coding-agent test manifest-gap batch 5 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+
+<a id="orch-v20-source-batch-1"></a>
+## ORCH-V20-SOURCE-BATCH-1
+
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `CA-V20-CLOSURE-FIDELITY`
+**Validation:** locally-validating
+
+### Scope
+
+- `crates/zedflow-orchestrator/src/cli.rs`
+- `crates/zedflow-orchestrator/src/config.rs`
+- `crates/zedflow-orchestrator/src/handler.rs`
+- `crates/zedflow-orchestrator/src/index.rs`
+- `crates/zedflow-orchestrator/src/ipc/client.rs`
+- `crates/zedflow-orchestrator/src/ipc/protocol.rs`
+- `crates/zedflow-orchestrator/src/ipc/server.rs`
+- `crates/zedflow-orchestrator/src/radius.rs`
+- `crates/zedflow-orchestrator/src/rpc-process.rs`
+- `crates/zedflow-orchestrator/src/serve.rs`
+- `crates/zedflow-orchestrator/src/storage.rs`
+- `crates/zedflow-orchestrator/src/supervisor.rs`
+- `crates/zedflow-orchestrator/src/types.rs`
+- `crates/zedflow-orchestrator/src/lib.rs` (module registration only, if needed)
+
+### Requirements
+
+- Read the corresponding frozen `references/pi/packages/orchestrator` files and the exact manifest rows first.
+- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+
+### Validation
+
+`cargo fmt --package zedflow-orchestrator --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+
+### Acceptance
+
+Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+
+### Handoff
+
+The next sequential batch receives this candidate; the package validator owns manifest closure.
+
+### Subagent prompt
+
+Implement `ORCH-V20-SOURCE-BATCH-1` only in fresh context. Port all 13 deterministic frozen Pi orchestrator source manifest gaps one-to-one after TUI and coding-agent closure. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+
+<a id="validators"></a>
+## Package and final validators
+
+All validator/reviewer units are **Assignable: yes**, fresh, sequential, read-only except validation logs, and own no product files. They use the exact commands recorded in `tools/pi-port-swarm/dag.json`. Package validators run after all batches for their package; final validators/reviewers run after Orchestrator fidelity. They must stop on a failing command and must not add compatibility fixes.
+
+<a id="final-checkpoint"></a>
+## FINAL-V20-PORT-CHECKPOINT
+
+**Assignable:** yes; **Context:** fresh; **Dependencies:** `FINAL-V20-RUST-REVIEW`; **Validation:** `git diff --check`.
+
+Update only its declared human-status/evidence files to attest completion on the accepted SHA. Do not start Stage 2.
 
 <a id="pre-finalization-review"></a>
 ## Pre-finalization review summary
 
-- Feasibility: current integration and latest controller histories share a merge base and can be reconciled without discarding accepted port commits.
-- Sequencing: TUI must close before Coding-agent because frozen Coding-agent imports Pi TUI broadly; Orchestrator follows Coding-agent.
-- Scope isolation: each writer unit is sequential; read-only reviews may parallelize.
-- Accepted human decisions: delete non-Pi Stage-1 crates, enforce one-to-one mapping, require dependency arbitration, use `plan-writer`, add automatic cleanup, and retain one current status.
+- Feasibility: `manifest.py status` deterministically reports 59 TUI, 237 Coding-agent, and 13 Orchestrator missing targets at this checkpoint.
+- Sequencing: source targets precede tests; packages remain TUI → Coding-agent → Orchestrator.
+- Scope isolation: each writer owns a stable lexical batch plus only its crate module root; validators own closure gates.
+- Fresh IDs: all replacement-tail IDs are new and no accepted unit is changed.
