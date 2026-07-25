@@ -56,6 +56,11 @@ class ControllerTests(unittest.TestCase):
             controller.validate_dag(value)
         value["units"][2]["depends_on"] = ["B"]
         self.assertEqual(len(controller.validate_dag(value)), 3)
+        nested = dag()
+        nested["units"][0]["ownership"] = ["crates/a"]
+        nested["units"][2]["ownership"] = ["crates/a/src/file.rs"]
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_dag(nested)
 
     def test_readiness_is_dependency_and_file_order_deterministic(self) -> None:
         value = dag()
@@ -191,6 +196,41 @@ class ControllerTests(unittest.TestCase):
         git("add", "owned/one")
         git("commit", "-qm", "candidate")
         return repo, base, git("rev-parse", "HEAD")
+
+    def test_upgrade_control_preserves_history_and_supersedes_active_failed_frontier(self) -> None:
+        repo, _initial, _candidate = self.port_repo()
+        pin = controller.git(repo, "ls-tree", "HEAD", "references/pi").split()[2]
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        old_dag = {"version": 2, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 1, "units": [
+            {"id": "OLD", "kind": "reviewer", "depends_on": [], "ownership": [], "validation": [], "intent": "failed"},
+            {"id": "DOWN", "kind": "writer", "depends_on": ["OLD"], "ownership": ["owned"], "validation": [], "intent": "blocked"},
+        ]}
+        dag_path.write_text(json.dumps(old_dag), encoding="utf-8")
+        plan_path = repo / controller.PLAN_FILE
+        plan_path.parent.mkdir(parents=True)
+        plan_path.write_text("# approved\n", encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE, controller.PLAN_FILE)
+        controller.git(repo, "commit", "-qm", "old control")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base)
+        target_dag = copy.deepcopy(old_dag)
+        target_dag["units"].append({"id": "NEXT", "kind": "writer", "depends_on": [], "ownership": ["recovery"], "validation": [], "intent": "next"})
+        dag_path.write_text(json.dumps(target_dag), encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-qm", "recovery")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "state.json"
+            state = {"version": 4, "integration_ref": controller.INTEGRATION_REF, "pi_gitlink": pin, "units": {"OLD": {"status": "FAILED", "blocker": "stale"}}, "terminal_ids": ["OLD"], "history": [{"unit": "OLD"}]}
+            controller.atomic_json(state_path, state)
+            revised = controller.upgrade_control(repo, state_path, state, candidate, ["OLD"], "approved recovery")
+            self.assertEqual(revised, target_dag)
+            self.assertEqual(controller.integration_sha(repo), candidate)
+            self.assertEqual(state["units"]["OLD"]["status"], "SUPERSEDED")
+            checkpoint = f"CONTROL-RECOVERY-{candidate[:12].upper()}"
+            self.assertEqual(state["units"][checkpoint]["status"], "ACCEPTED")
+            self.assertEqual(state["controller_sha"], candidate)
 
     def test_cleanup_only_removes_durable_reachable_accepted_worktrees(self) -> None:
         repo, _base, candidate = self.port_repo()

@@ -101,6 +101,16 @@ def load_dag(source: Path, dag_path: Path, integration_ref: str) -> dict[str, An
         raise ControllerError(f"cannot read integration DAG: {error}") from error
 
 
+def load_json_at_revision(source: Path, revision: str, relative: str) -> dict[str, Any]:
+    try:
+        value = json.loads(git(source, "show", f"{revision}:{relative}"))
+    except json.JSONDecodeError as error:
+        raise ControllerError(f"cannot read {relative} at {revision}: {error}") from error
+    if not isinstance(value, dict):
+        raise ControllerError(f"{relative} at {revision} must contain an object")
+    return value
+
+
 def dag_hash(dag: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(dag, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
@@ -168,7 +178,8 @@ def validate_dag(dag: dict[str, Any]) -> list[dict[str, Any]]:
     mutating = [unit for unit in units if unit["kind"] in MUTATING_KINDS]
     for index, left in enumerate(mutating):
         for right in mutating[index + 1:]:
-            if set(left["ownership"]) & set(right["ownership"]) and not (depends(left["id"], right["id"]) or depends(right["id"], left["id"])):
+            overlap = any(owns(left["ownership"], path) for path in right["ownership"]) or any(owns(right["ownership"], path) for path in left["ownership"])
+            if overlap and not (depends(left["id"], right["id"]) or depends(right["id"], left["id"])):
                 raise ControllerError(f"concurrent ownership conflict: {left['id']} and {right['id']}")
     return units
 
@@ -298,10 +309,11 @@ def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integratio
         if state.get("version") != RUNTIME_VERSION or state.get("integration_ref") != integration_ref:
             raise ControllerError("runtime state requires the U1 identity migration")
         expected = identity(source, dag, integration_ref)
+        control_upgrade_pending = any(record.get("status") == "ACCEPTING" and str(record.get("unit", "")).startswith("CONTROL-RECOVERY-") and record.get("candidate") == expected["controller_sha"] for record in state.get("units", {}).values())
         for key in ("controller_sha", "plan_sha", "pi_gitlink"):
-            if state.get(key) != expected[key]:
+            if state.get(key) != expected[key] and not (control_upgrade_pending and key in {"controller_sha", "plan_sha"}):
                 raise ControllerError(f"runtime state {key} differs from this immutable control plane")
-        if state.get("dag_sha") != dag_hash(dag):
+        if state.get("dag_sha") != dag_hash(dag) and not pending_dag_change(state):
             raise ControllerError("runtime state dag_sha differs from the integration DAG")
         if state.get("integration_sha") != expected["integration_sha"]:
             accepting = any(record.get("status") == "ACCEPTING" and record.get("candidate") == expected["integration_sha"] for record in state.get("units", {}).values())
@@ -335,6 +347,13 @@ def reconcile_runtime(source: Path, dag: dict[str, Any], state: dict[str, Any], 
             record["status"] = "SUPERSEDED" if record.get("plan_change") else "ACCEPTED"
             if record.get("revised_dag_sha256"):
                 state["dag_sha256"] = record["revised_dag_sha256"]
+                state["dag_sha"] = record["revised_dag_sha256"]
+            for superseded in record.get("supersede_ids", []):
+                superseded_record = state.get("units", {}).get(superseded)
+                if superseded_record:
+                    superseded_record.update(status="SUPERSEDED", superseded_by=record.get("unit"), blocker=None)
+                    if superseded not in state.setdefault("terminal_ids", []):
+                        state["terminal_ids"].append(superseded)
             record["blocker"] = None
         elif ref == base:
             record["status"] = "FAILED"
@@ -448,7 +467,7 @@ def validation_argv(command: str) -> list[str]:
     manifest_commands = {"python3 tools/pi-port-swarm/manifest.py check"} | {f"python3 tools/pi-port-swarm/manifest.py check --package {package}" for package in KNOWN_PACKAGES}
     if command == legacy_harness_listing:
         return ["__legacy_harness_listing__"]
-    if command in manifest_commands:
+    if command == "python3 tools/pi-port-swarm/controller.py validate" or command in manifest_commands:
         return shlex.split(command)
     if not args or any(token in {"|", "&&", ";", ">", "<"} for token in args):
         raise ControllerError(f"validation command is not allow-listed: {command}")
@@ -824,6 +843,72 @@ def cleanup_accepted(source: Path, actions: list[dict[str, str]]) -> None:
         git(source, "update-ref", "-d", action["ref"], action["candidate"])
 
 
+def upgrade_control(source: Path, state_path: Path, state: dict[str, Any], candidate: str, supersede_ids: list[str], reason: str) -> dict[str, Any]:
+    """CAS-adopt one reviewed recovery checkpoint without discarding runtime history."""
+    base = integration_sha(source, INTEGRATION_REF)
+    if not is_full_sha(candidate) or candidate != git(source, "rev-parse", "HEAD"):
+        raise ControllerError("upgrade candidate must be the checked-out 40-hex HEAD")
+    if git(source, "status", "--porcelain"):
+        raise ControllerError("upgrade source worktree must be clean")
+    if not git_ok(source, "merge-base", "--is-ancestor", base, candidate):
+        raise ControllerError("upgrade candidate must descend from integration")
+    current_dag = load_dag(source, source / DAG_FILE, INTEGRATION_REF)
+    current_units = validate_dag(current_dag)
+    target_dag = load_json_at_revision(source, candidate, DAG_FILE)
+    target_units = validate_dag(target_dag)
+    current_ids = {unit["id"] for unit in current_units}
+    reused = ({unit["id"] for unit in target_units} - current_ids) & set(state.get("terminal_ids", []))
+    if reused:
+        raise ControllerError(f"upgrade DAG reuses terminal IDs: {sorted(reused)}")
+    if pinned_gitlink(target_dag) != state.get("pi_gitlink") or git(source, "ls-tree", candidate, "references/pi").split()[2] != pinned_gitlink(target_dag):
+        raise ControllerError("upgrade candidate changed the frozen Pi gitlink")
+    if not git_ok(source, "cat-file", "-e", f"{candidate}:{PLAN_FILE}"):
+        raise ControllerError("upgrade candidate lacks the approved recovery plan")
+    active_blockers = set(progress(current_units, state)["blockers"])
+    if not supersede_ids or set(supersede_ids) != active_blockers:
+        raise ControllerError(f"upgrade must supersede exactly the active failed blockers: {sorted(active_blockers)}")
+    for identifier in supersede_ids:
+        record = state.get("units", {}).get(identifier)
+        if not record or record.get("status") not in {"FAILED", "BLOCKED"}:
+            raise ControllerError(f"upgrade can supersede only failed/blocked units: {identifier}")
+    checkpoint = f"CONTROL-RECOVERY-{candidate[:12].upper()}"
+    if checkpoint in state.get("terminal_ids", []) or checkpoint in state.get("units", {}):
+        raise ControllerError("recovery checkpoint ID already exists")
+    prospective = json.loads(json.dumps(state))
+    for identifier in supersede_ids:
+        prospective["units"][identifier].update(status="SUPERSEDED", blocker=None)
+    prospective.setdefault("units", {})[checkpoint] = {"status": "ACCEPTED", "candidate": candidate}
+    if not ready_units(target_units, prospective) and not graph_complete(target_units, prospective):
+        raise ControllerError("upgrade DAG leaves no ready/reachable frontier")
+    revised_hash = dag_hash(target_dag)
+    state.setdefault("units", {})[checkpoint] = {
+        "unit": checkpoint,
+        "status": "ACCEPTING",
+        "base": base,
+        "candidate": candidate,
+        "revised_dag_sha256": revised_hash,
+        "supersede_ids": supersede_ids,
+        "reason": reason,
+    }
+    atomic_json(state_path, state)
+    git(source, "update-ref", INTEGRATION_REF, candidate, base)
+    reconcile_runtime(source, target_dag, state, INTEGRATION_REF)
+    state.update(
+        version=RUNTIME_VERSION,
+        controller_sha=candidate,
+        integration_sha=candidate,
+        dag_sha=revised_hash,
+        dag_sha256=revised_hash,
+        plan_sha=git(source, "rev-parse", f"{candidate}:{PLAN_FILE}"),
+        pi_gitlink=pinned_gitlink(target_dag),
+    )
+    if checkpoint not in state.setdefault("terminal_ids", []):
+        state["terminal_ids"].append(checkpoint)
+    append_history(state, {"unit": checkpoint, "status": "ACCEPTED", "base": base, "candidate": candidate, "superseded": supersede_ids, "reason": reason, "at": int(time.time())})
+    atomic_json(state_path, state)
+    return target_dag
+
+
 def paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
     source = Path(args.source).resolve()
     root = Path(git(source, "rev-parse", "--show-toplevel"))
@@ -854,6 +939,10 @@ def main() -> int:
     cleanup_mode = cleanup_parser.add_mutually_exclusive_group()
     cleanup_mode.add_argument("--dry-run", action="store_true")
     cleanup_mode.add_argument("--accepted", action="store_true")
+    upgrade_parser = sub.add_parser("upgrade")
+    upgrade_parser.add_argument("--candidate", required=True)
+    upgrade_parser.add_argument("--supersede", action="append", default=[])
+    upgrade_parser.add_argument("--reason", required=True)
     recover_parser = sub.add_parser("recover")
     recover_parser.add_argument("--unit", required=True)
     recover_parser.add_argument("--classification", required=True, choices=sorted(OUTCOME_CLASSES))
@@ -883,6 +972,10 @@ def main() -> int:
             except BlockingIOError:
                 return 75
             state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=args.command != "cleanup")
+            if args.command == "upgrade":
+                target_dag = upgrade_control(source, state_path, state, args.candidate, args.supersede, args.reason)
+                print(json.dumps({"status": "upgraded", **snapshot(source, target_dag, state, INTEGRATION_REF)}, sort_keys=True))
+                return 0
             if args.command == "cleanup":
                 eligible, retained = cleanup_candidates(source, state_dir, state_path, state)
                 cleanup_accepted(source, eligible)

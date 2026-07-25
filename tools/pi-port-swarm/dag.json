@@ -3215,7 +3215,7 @@
       "id": "ORCH-C1-REMAINING-MANIFEST-ROWS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R2"
+        "NEXT-PORT-PLAN-V20"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
@@ -3446,6 +3446,82 @@
         "git diff --check"
       ],
       "intent": "Re-run the exact blocked TUI printable-key validation after reconciling the contradictory primitive test contract."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-R1",
+      "kind": "writer",
+      "depends_on": [
+        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs",
+        "crates/zedflow-tui/src/lib.rs",
+        "crates/zedflow-tui/tests/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Repair the proven Kitty CSI-u Unicode/Shift key-decoding fidelity gap with focused one-to-one tests; no dependency substitution."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-V1",
+      "kind": "validator",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets",
+        "git diff --check"
+      ],
+      "intent": "Validate the focused TUI key repair on the exact candidate SHA."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-FID-V1",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-V1"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review of the repaired Kitty CSI-u Unicode/Shift behavior."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-RUST-V1",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-RV-FID-V1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Fresh Rust-quality review of the accepted TUI key repair."
+    },
+    {
+      "id": "NEXT-PORT-PLAN-V20",
+      "kind": "checkpoint",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-RV-RUST-V1"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/dag.json",
+        ".agents/plans/pi-stage-1-port-recovery.md",
+        ".agents/port-swarm/decisions.md",
+        "docs/porting/BASELINE.md",
+        "docs/porting/pi-fidelity-decisions"
+      ],
+      "validation": [
+        "python3 tools/pi-port-swarm/controller.py validate",
+        "git diff --check"
+      ],
+      "intent": "Use the approved plan-writer process and deterministic manifest gaps to replace the open tail with bounded one-to-one TUI closure, Coding-agent closure, Orchestrator, and final Stage-1 gates."
     }
   ]
 }

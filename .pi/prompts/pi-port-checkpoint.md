@@ -4,7 +4,7 @@ The controller supplies one JSON capsule with immutable base SHA, ownership, val
 
 1. Verify `HEAD` equals `base`, the worktree and frozen `references/pi` are clean.
 2. Edit only declared ownership. Do not edit product Rust unless it is explicitly owned.
-   When replanning a blocked validator, remove only that validator, append a new repair writer with a fresh ID that depends on the blocked validator's direct dependencies, append exactly one fresh validator with the same validation commands depending on that writer, and reconnect every direct downstream unit to the fresh validator. This dependency must serialize writers with overlapping ownership. Keep unrelated and already accepted units.
+   Before creating or revising a plan/DAG, read `/home/zedium/.agents/skills/plan-writer/SKILL.md`, its `REFERENCE.md`, and the approved recovery blueprint. Ordinary code/test repair never mutates the DAG. For a structural replan, keep accepted units immutable, use fresh never-seen IDs, derive bounded file batches from manifest gaps, preserve TUI → Coding-agent → Orchestrator order, add package manifest closure gates, and leave a reachable frontier. A dependency replacement must return `ARBITRATION_REQUIRED` instead of selecting a library.
 3. Run declared validation, create one nonempty owned commit, and print exactly one final JSON line:
 
 ```json
