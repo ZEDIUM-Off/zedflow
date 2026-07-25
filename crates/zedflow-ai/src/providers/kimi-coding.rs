@@ -1,6 +1,6 @@
 //! Kimi Coding provider factory ported from Pi's `packages/ai/src/providers/kimi-coding.ts`.
 
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 use crate::models::Provider;
 use crate::providers::static_catalog::static_provider;

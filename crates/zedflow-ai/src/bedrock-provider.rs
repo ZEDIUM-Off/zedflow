@@ -3,7 +3,7 @@
 use crate::api::bedrock_converse_stream::{
     AssistantMessageEventStream, BedrockOptions, Context, Model, stream, stream_simple,
 };
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 /// Bedrock stream function signature exported by Pi's Bedrock provider module.
 pub type BedrockStreamFn =

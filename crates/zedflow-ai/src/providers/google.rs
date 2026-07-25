@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 use crate::models::{Provider, ProviderApi};
 use crate::providers::static_catalog::{models_from_catalog, static_provider};

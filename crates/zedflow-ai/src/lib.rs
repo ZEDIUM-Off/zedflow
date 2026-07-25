@@ -2,6 +2,9 @@
 
 //! Zedflow ai crate.
 
+/// Error and placeholder conventions for the Pi AI package port.
+pub mod error;
+
 /// CLI helpers ported from Pi's `packages/ai/src/cli.ts`.
 pub mod cli;
 

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 use crate::api::openrouter_images as api;
 use crate::image_models::{KnownImagesProvider, get_image_models};

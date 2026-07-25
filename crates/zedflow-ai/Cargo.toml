@@ -9,7 +9,6 @@ homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
-zedflow-core = { path = "../zedflow-core" }
 aws-config = "1.9"
 aws-sdk-bedrockruntime = "1.136"
 aws-smithy-http-client = { version = "1.2", features = ["rustls-aws-lc"] }

@@ -1,4 +1,4 @@
-//! Shared error conventions for the Pi package port.
+//! Error and placeholder conventions for the Pi AI package port.
 
 use std::error::Error as StdError;
 use std::fmt;
@@ -6,10 +6,17 @@ use std::fmt;
 /// Canonical reason text for unresolved third-party replacements.
 pub const PORT_PLACEHOLDER_REASON: &str = "no Rust replacement selected yet";
 
-/// Convenient result type for ported package crates.
+/// Exact marker required on every source-level port placeholder.
+pub const PORT_PLACEHOLDER_MARKER: &str = r#"/// PORT PLACEHOLDER:
+/// Original dependency: `<npm package / API>`.
+/// Reason: no Rust replacement selected yet.
+/// Required behavior: `<exact Pi behavior to preserve>`.
+/// Replacement decision needed before production use."#;
+
+/// Convenient result type for ported AI package code.
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Common error type for shared porting infrastructure.
+/// Common error type for AI porting infrastructure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Error {
@@ -89,4 +96,25 @@ impl From<PortPlaceholderError> for Error {
     fn from(value: PortPlaceholderError) -> Self {
         Self::PortPlaceholder(value)
     }
+}
+
+/// Builds a placeholder error for a documented missing replacement.
+#[must_use]
+pub const fn placeholder(
+    original_dependency: &'static str,
+    required_behavior: &'static str,
+) -> PortPlaceholderError {
+    PortPlaceholderError::new(original_dependency, required_behavior)
+}
+
+/// Returns an error for a documented missing replacement.
+///
+/// # Errors
+///
+/// Always returns [`Error::PortPlaceholder`] with the supplied Pi parity context.
+pub fn unsupported<T>(
+    original_dependency: &'static str,
+    required_behavior: &'static str,
+) -> Result<T> {
+    Err(placeholder(original_dependency, required_behavior).into())
 }

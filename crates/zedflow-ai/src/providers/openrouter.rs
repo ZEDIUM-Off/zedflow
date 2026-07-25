@@ -1,6 +1,6 @@
 //! OpenRouter provider factory ported from Pi's `packages/ai/src/providers/openrouter.ts`.
 
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 use crate::models::Provider;
 use crate::providers::static_catalog::{models_from_catalog, static_provider};

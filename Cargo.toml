@@ -1,14 +1,10 @@
 [workspace]
 members = [
-    "crates/zedflow-core",
     "crates/zedflow-ai",
     "crates/zedflow-agent",
     "crates/zedflow-coding-agent",
     "crates/zedflow-orchestrator",
     "crates/zedflow-tui",
-    "crates/zedflow-tools",
-    "crates/zedflow-session",
-    "crates/zedflow-langgraph",
 ]
 resolver = "3"
 

@@ -8,11 +8,11 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
+use crate::error::{Error, PortPlaceholderError};
 use crate::types::{
     Api, AssistantMessage, AssistantMessageEventStream, Context, Model, ProviderEnv, ProviderId,
     ProviderStreams, SimpleStreamOptions, StreamOptions,
 };
-use zedflow_core::error::{Error as CoreError, PortPlaceholderError};
 
 /// Result type returned by the compat registry and dispatch functions.
 pub type Result<T> = std::result::Result<T, CompatError>;
@@ -155,11 +155,10 @@ impl From<PortPlaceholderError> for CompatError {
     }
 }
 
-impl From<CoreError> for CompatError {
-    fn from(value: CoreError) -> Self {
+impl From<Error> for CompatError {
+    fn from(value: Error) -> Self {
         match value {
-            CoreError::PortPlaceholder(placeholder) => Self::PortPlaceholder(placeholder),
-            other => Self::Porting(other.to_string()),
+            Error::PortPlaceholder(placeholder) => Self::PortPlaceholder(placeholder),
         }
     }
 }
@@ -348,9 +347,9 @@ pub fn register_faux_provider(options: RegisterFauxProviderOptions) -> FauxProvi
 }
 
 /// Returns a builtin model from Pi's generated catalog.
-pub fn get_model(provider: &str, id: &str) -> zedflow_core::error::Result<Model> {
+pub fn get_model(provider: &str, id: &str) -> crate::error::Result<Model> {
     let Some(model) = crate::providers::all::get_builtin_model(provider, id) else {
-        return Err(zedflow_core::error::Error::port_placeholder(
+        return Err(crate::error::Error::port_placeholder(
             PortPlaceholderError::new(
                 "references/pi/packages/ai/src/providers/all.ts getBuiltinModel missing row",
                 "return undefined for unknown builtin models once the compat API can represent absence",
@@ -361,7 +360,7 @@ pub fn get_model(provider: &str, id: &str) -> zedflow_core::error::Result<Model>
 }
 
 /// Returns all builtin models from Pi's generated catalog.
-pub fn get_models() -> zedflow_core::error::Result<Vec<Model>> {
+pub fn get_models() -> crate::error::Result<Vec<Model>> {
     Ok(crate::providers::all::get_builtin_providers()
         .into_iter()
         .flat_map(crate::providers::all::get_builtin_models)
@@ -493,7 +492,7 @@ fn thinking_level_map(provider: &str, id: &str) -> Option<ThinkingLevelMap> {
 }
 
 /// Returns all builtin provider identifiers from Pi's generated catalog.
-pub fn get_providers() -> zedflow_core::error::Result<Vec<ProviderId>> {
+pub fn get_providers() -> crate::error::Result<Vec<ProviderId>> {
     Ok(crate::providers::all::get_builtin_providers()
         .into_iter()
         .map(str::to_owned)

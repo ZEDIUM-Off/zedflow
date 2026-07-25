@@ -3553,9 +3553,6 @@ dependencies = [
  "wait-timeout",
  "yaml_serde",
  "zedflow-ai",
- "zedflow-core",
- "zedflow-session",
- "zedflow-tools",
 ]
 
 [[package]]
@@ -3581,7 +3578,6 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "url",
- "zedflow-core",
  "zstd",
 ]
 
@@ -3603,49 +3599,19 @@ dependencies = [
  "unicode-normalization",
  "zedflow-agent",
  "zedflow-ai",
- "zedflow-orchestrator",
  "zedflow-tui",
-]
-
-[[package]]
-name = "zedflow-core"
-version = "0.1.0"
-
-[[package]]
-name = "zedflow-langgraph"
-version = "0.1.0"
-dependencies = [
- "zedflow-core",
 ]
 
 [[package]]
 name = "zedflow-orchestrator"
 version = "0.1.0"
 dependencies = [
- "zedflow-core",
- "zedflow-langgraph",
-]
-
-[[package]]
-name = "zedflow-session"
-version = "0.1.0"
-dependencies = [
- "zedflow-core",
-]
-
-[[package]]
-name = "zedflow-tools"
-version = "0.1.0"
-dependencies = [
- "zedflow-core",
+ "zedflow-coding-agent",
 ]
 
 [[package]]
 name = "zedflow-tui"
 version = "0.1.0"
-dependencies = [
- "zedflow-core",
-]
 
 [[package]]
 name = "zerocopy"

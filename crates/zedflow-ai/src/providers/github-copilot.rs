@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 use crate::api::github_copilot_headers::build_copilot_dynamic_headers_for_context;
 use crate::models::{Provider, ProviderApi};

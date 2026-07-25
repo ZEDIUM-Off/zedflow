@@ -23,5 +23,4 @@ tokio = { version = "1", features = ["fs", "macros", "process", "rt-multi-thread
 unicode-normalization = "0.1"
 zedflow-agent = { path = "../zedflow-agent" }
 zedflow-ai = { path = "../zedflow-ai" }
-zedflow-orchestrator = { path = "../zedflow-orchestrator" }
 zedflow-tui = { path = "../zedflow-tui" }

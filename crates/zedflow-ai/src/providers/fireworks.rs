@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use zedflow_core::error::Result;
+use crate::error::Result;
 
 use crate::models::{Provider, ProviderApi};
 use crate::providers::fireworks_models::FireworksModel;
