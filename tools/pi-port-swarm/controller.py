@@ -407,7 +407,10 @@ def result_line(stdout: str) -> dict[str, Any]:
             matches.append(value)
     if len(matches) != 1:
         raise ControllerError("Pi must emit exactly one structured final result line")
-    return matches[0]
+    result = matches[0]
+    if result.get("candidate") in {"", "absent", "none", "null"}:
+        result.pop("candidate", None)
+    return result
 
 
 def pi_command(prompt: Path, session_dir: Path, name: str, message: str) -> list[str]:
@@ -429,7 +432,7 @@ def result_schema(unit: dict[str, Any]) -> dict[str, str]:
     if unit["kind"] in MUTATING_KINDS:
         return {"status": "DONE|BLOCKED|PLAN_CHANGE", **base, "candidate": "40-hex for DONE"}
     statuses = "DONE|BLOCKED|PLAN_CHANGE" if unit["kind"] == "reviewer" else "DONE|BLOCKED"
-    return {"status": statuses, **base, "candidate": "absent"}
+    return {"status": statuses, **base, "candidate": "omit the field or use JSON null; never the string 'absent'"}
 
 
 def outcome_class(result: dict[str, Any]) -> str:

@@ -72,6 +72,8 @@ class ControllerTests(unittest.TestCase):
     def test_result_requires_exactly_one_final_schema(self) -> None:
         result = controller.result_line('noise\n{"status":"DONE"}\n')
         self.assertEqual(result["status"], "DONE")
+        sentinel = controller.result_line('{"status":"PLAN_CHANGE","candidate":"absent"}')
+        self.assertNotIn("candidate", sentinel)
         with self.assertRaises(controller.ControllerError):
             controller.result_line('{"status":"DONE"}\n{"status":"BLOCKED"}')
 

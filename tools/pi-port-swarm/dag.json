@@ -3508,7 +3508,7 @@
       "id": "NEXT-PORT-PLAN-V20",
       "kind": "checkpoint",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-RUST-V2"
+        "RECOVERY-TUI-KEYS-RV-RUST-V4"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
@@ -3583,17 +3583,60 @@
       "intent": "Fresh frozen-Pi fidelity review of Kitty keypad/functional CSI-u and raw backspace decoding."
     },
     {
-      "id": "RECOVERY-TUI-KEYS-RV-RUST-V2",
+      "id": "RECOVERY-TUI-KEYS-R4",
+      "kind": "writer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs",
+        "crates/zedflow-tui/tests/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Match frozen Pi raw 0x08 ambiguity: Ctrl+Backspace only for local Windows Terminal and plain Backspace otherwise, while preserving accepted Kitty keypad/special-key decoding and focused tests."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-V4",
+      "kind": "validator",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R4"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets",
+        "git diff --check"
+      ],
+      "intent": "Validate the complete fourth TUI key repair on the exact candidate SHA."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-FID-V4",
       "kind": "reviewer",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-FID-V3"
+        "RECOVERY-TUI-KEYS-V4"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review of raw 0x08, Unicode/base-layout, keypad, and special Kitty keys."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-RUST-V4",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-RV-FID-V4"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --all --check",
         "cargo check --workspace --all-targets"
       ],
-      "intent": "Fresh Rust-quality review of the complete second TUI key repair."
+      "intent": "Fresh Rust-quality review of the complete fourth TUI key repair."
     }
   ]
 }
