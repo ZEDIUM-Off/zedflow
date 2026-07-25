@@ -3492,23 +3492,38 @@
       "intent": "Fresh frozen-Pi fidelity review of the repaired Kitty CSI-u Unicode/Shift behavior."
     },
     {
-      "id": "RECOVERY-TUI-KEYS-RV-RUST-V1",
-      "kind": "reviewer",
+      "id": "RECOVERY-TUI-KEYS-R2-NONPRINTABLE-CODES",
+      "kind": "writer",
       "depends_on": [
         "RECOVERY-TUI-KEYS-RV-FID-V1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Repair Kitty non-printable code handling so the existing Enter, Tab, and Backspace mappings remain reachable without a base-layout code; no dependency substitution."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-RUST-V2",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R2-NONPRINTABLE-CODES"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --all --check",
         "cargo check --workspace --all-targets"
       ],
-      "intent": "Fresh Rust-quality review of the accepted TUI key repair."
+      "intent": "Fresh Rust-quality review of the repaired non-printable Kitty key-code handling."
     },
     {
       "id": "NEXT-PORT-PLAN-V20",
       "kind": "checkpoint",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-RUST-V1"
+        "RECOVERY-TUI-KEYS-RV-RUST-V2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
