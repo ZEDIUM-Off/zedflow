@@ -1,4 +1,8 @@
+use std::sync::Mutex;
+
 use zedflow_tui::parse_key;
+
+static TERMINAL_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn with_terminal_env(vars: &[(&str, Option<&str>)], test: impl FnOnce()) {
     let saved: Vec<_> = vars
@@ -28,6 +32,7 @@ fn with_terminal_env(vars: &[(&str, Option<&str>)], test: impl FnOnce()) {
 
 #[test]
 fn disambiguates_raw_backspace_for_local_windows_terminal_only() {
+    let _terminal_env_lock = TERMINAL_ENV_LOCK.lock().unwrap();
     with_terminal_env(
         &[
             ("WT_SESSION", Some("test-session")),
@@ -57,6 +62,7 @@ fn decodes_kitty_unicode_base_layout_and_shifted_keys() {
 
 #[test]
 fn decodes_raw_and_modified_backspace() {
+    let _terminal_env_lock = TERMINAL_ENV_LOCK.lock().unwrap();
     assert_eq!(parse_key("\x08"), Some("backspace"));
     assert_eq!(parse_key("\x7f"), Some("backspace"));
     assert_eq!(parse_key("\x1b[127;6u"), Some("shift+ctrl+backspace"));
