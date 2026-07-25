@@ -72,6 +72,13 @@ fn decodes_kitty_keypad_and_functional_codes() {
 }
 
 #[test]
+fn formats_kitty_keys_for_escape_space_and_super() {
+    assert_eq!(parse_key("\x1b[27u"), Some("escape"));
+    assert_eq!(parse_key("\x1b[32;9u"), Some("super+space"));
+    assert_eq!(parse_key("\x1b[27;13u"), Some("ctrl+super+escape"));
+}
+
+#[test]
 fn keeps_modified_kitty_special_keys_reachable() {
     assert_eq!(parse_key("\r"), Some("enter"));
     assert_eq!(parse_key("\t"), Some("tab"));

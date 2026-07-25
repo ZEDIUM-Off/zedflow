@@ -145,27 +145,33 @@ fn parse_kitty_key(data: &str) -> Option<String> {
     } else {
         code
     };
-    let code = if matches!(code, 9 | 13 | 127 | 32..=126) || kitty_functional_key(code).is_some() {
-        code
-    } else {
-        base_layout_code?
-    };
+    let code =
+        if matches!(code, 9 | 13 | 27 | 127 | 32..=126) || kitty_functional_key(code).is_some() {
+            code
+        } else {
+            base_layout_code?
+        };
     let key = match code {
+        27 => "escape".to_owned(),
         13 => "enter".to_owned(),
         9 => "tab".to_owned(),
+        32 => "space".to_owned(),
         127 => "backspace".to_owned(),
-        32..=126 => char::from_u32(code)?.to_string(),
+        33..=126 => char::from_u32(code)?.to_string(),
         _ => kitty_functional_key(code)?.to_owned(),
     };
     let mut prefix = String::new();
     if modifier & 1 != 0 {
         prefix.push_str("shift+");
     }
+    if modifier & 4 != 0 {
+        prefix.push_str("ctrl+");
+    }
     if modifier & 2 != 0 {
         prefix.push_str("alt+");
     }
-    if modifier & 4 != 0 {
-        prefix.push_str("ctrl+");
+    if modifier & 8 != 0 {
+        prefix.push_str("super+");
     }
     Some(format!("{prefix}{key}"))
 }
