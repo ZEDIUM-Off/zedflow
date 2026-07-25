@@ -20,7 +20,14 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
     match data {
         "\r" | "\n" => return Some("enter"),
         "\t" => return Some("tab"),
-        "\x08" | "\x7f" => return Some("backspace"),
+        "\x08" => {
+            return Some(if is_local_windows_terminal() {
+                "ctrl+backspace"
+            } else {
+                "backspace"
+            });
+        }
+        "\x7f" => return Some("backspace"),
         _ => {}
     }
     if data.len() == 1 {
@@ -107,6 +114,13 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
         _ => return None,
     };
     Some(key)
+}
+
+fn is_local_windows_terminal() -> bool {
+    std::env::var("WT_SESSION").is_ok_and(|value| !value.is_empty())
+        && ["SSH_CONNECTION", "SSH_CLIENT", "SSH_TTY"]
+            .iter()
+            .all(|name| std::env::var(name).map_or(true, |value| value.is_empty()))
 }
 
 fn parse_kitty_key(data: &str) -> Option<String> {

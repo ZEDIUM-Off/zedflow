@@ -1,5 +1,53 @@
 use zedflow_tui::parse_key;
 
+fn with_terminal_env(vars: &[(&str, Option<&str>)], test: impl FnOnce()) {
+    let saved: Vec<_> = vars
+        .iter()
+        .map(|(name, _)| (*name, std::env::var_os(name)))
+        .collect();
+    for (name, value) in vars {
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(name, value);
+            } else {
+                std::env::remove_var(name);
+            }
+        }
+    }
+    test();
+    for (name, value) in saved {
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(name, value);
+            } else {
+                std::env::remove_var(name);
+            }
+        }
+    }
+}
+
+#[test]
+fn disambiguates_raw_backspace_for_local_windows_terminal_only() {
+    with_terminal_env(
+        &[
+            ("WT_SESSION", Some("test-session")),
+            ("SSH_CONNECTION", None),
+            ("SSH_CLIENT", None),
+            ("SSH_TTY", None),
+        ],
+        || assert_eq!(parse_key("\x08"), Some("ctrl+backspace")),
+    );
+    with_terminal_env(
+        &[
+            ("WT_SESSION", Some("test-session")),
+            ("SSH_CONNECTION", Some("127.0.0.1 22 22 127.0.0.1")),
+            ("SSH_CLIENT", None),
+            ("SSH_TTY", None),
+        ],
+        || assert_eq!(parse_key("\x08"), Some("backspace")),
+    );
+}
+
 #[test]
 fn decodes_kitty_unicode_base_layout_and_shifted_keys() {
     assert_eq!(parse_key("\x1b[1089::99;5u"), Some("ctrl+c"));
