@@ -3672,22 +3672,38 @@
       "intent": "Revalidate the complete fifth TUI key repair after serializing its process-environment-dependent Backspace tests on the exact candidate SHA."
     },
     {
-      "id": "RECOVERY-TUI-KEYS-RV-FID-V5",
-      "kind": "reviewer",
+      "id": "RECOVERY-TUI-KEYS-R7",
+      "kind": "writer",
       "depends_on": [
         "RECOVERY-TUI-KEYS-V6"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs",
+        "crates/zedflow-tui/tests/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Match frozen Pi raw Ctrl+Space decoding (\\x00) while preserving accepted raw, Unicode/base-layout, keypad, Escape, Space, and modifier Kitty behavior; add a focused regression test."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-FID-V6",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R7"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh frozen-Pi fidelity review of raw, Unicode/base-layout, keypad, Escape, Space, and modifier Kitty semantics."
+      "intent": "Fresh frozen-Pi fidelity review of raw Ctrl+Space plus all accepted raw, Unicode/base-layout, keypad, Escape, Space, and modifier Kitty semantics."
     },
     {
       "id": "RECOVERY-TUI-KEYS-RV-RUST-V5",
       "kind": "reviewer",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-FID-V5"
+        "RECOVERY-TUI-KEYS-RV-FID-V6"
       ],
       "ownership": [],
       "validation": [
