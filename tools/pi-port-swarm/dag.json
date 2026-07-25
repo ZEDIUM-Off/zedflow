@@ -3555,22 +3555,38 @@
       "intent": "Validate the second focused TUI key repair on the exact candidate SHA."
     },
     {
-      "id": "RECOVERY-TUI-KEYS-RV-FID-V2",
-      "kind": "reviewer",
+      "id": "RECOVERY-TUI-KEYS-R3",
+      "kind": "writer",
       "depends_on": [
         "RECOVERY-TUI-KEYS-V2"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs",
+        "crates/zedflow-tui/tests/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Repair Pi-fidelity gaps for Kitty keypad/functional CSI-u codes and raw backspace decoding; add focused regression tests."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-FID-V3",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R3"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh frozen-Pi fidelity review of Unicode/base-layout fallback and all raw/CSI-u special keys."
+      "intent": "Fresh frozen-Pi fidelity review of Kitty keypad/functional CSI-u and raw backspace decoding."
     },
     {
       "id": "RECOVERY-TUI-KEYS-RV-RUST-V2",
       "kind": "reviewer",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-FID-V2"
+        "RECOVERY-TUI-KEYS-RV-FID-V3"
       ],
       "ownership": [],
       "validation": [
