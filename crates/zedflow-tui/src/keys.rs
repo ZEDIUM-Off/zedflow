@@ -105,14 +105,30 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
 
 fn parse_kitty_key(data: &str) -> Option<String> {
     let body = data.strip_prefix("\x1b[")?.strip_suffix('u')?;
-    let (code, modifier) = body.split_once(';').map_or((body, "1"), |v| v);
-    let code: u32 = code.split(':').next()?.parse().ok()?;
+    let (key_codes, modifier) = body.split_once(';').map_or((body, "1"), |v| v);
+    let mut key_codes = key_codes.split(':');
+    let code: u32 = key_codes.next()?.parse().ok()?;
+    let _shifted = key_codes.next();
+    let base_layout_code = key_codes
+        .next()
+        .filter(|code| !code.is_empty())
+        .and_then(|code| code.parse().ok());
     let modifier = modifier
         .split(':')
         .next()?
         .parse::<u32>()
         .ok()?
         .saturating_sub(1);
+    let code = if modifier & 1 != 0 && (65..=90).contains(&code) {
+        code + 32
+    } else {
+        code
+    };
+    let code = if (32..=126).contains(&code) {
+        code
+    } else {
+        base_layout_code?
+    };
     let key = match code {
         13 => "enter".to_owned(),
         9 => "tab".to_owned(),
