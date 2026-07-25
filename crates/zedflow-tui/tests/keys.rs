@@ -90,6 +90,14 @@ fn formats_kitty_keys_for_escape_space_and_super() {
 }
 
 #[test]
+fn rejects_unsupported_kitty_modifiers_but_ignores_lock_modifiers() {
+    assert_eq!(parse_key("\x1b[99;0u"), None);
+    assert_eq!(parse_key("\x1b[99;18u"), None);
+    assert_eq!(parse_key("\x1b[99;65u"), Some("c"));
+    assert_eq!(parse_key("\x1b[32;73u"), Some("super+space"));
+}
+
+#[test]
 fn keeps_modified_kitty_special_keys_reachable() {
     assert_eq!(parse_key("\r"), Some("enter"));
     assert_eq!(parse_key("\t"), Some("tab"));

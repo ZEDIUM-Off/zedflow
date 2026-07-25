@@ -139,7 +139,13 @@ fn parse_kitty_key(data: &str) -> Option<String> {
         .next()?
         .parse::<u32>()
         .ok()?
-        .saturating_sub(1);
+        .checked_sub(1)?;
+    const KITTY_MODIFIERS: u32 = 1 | 2 | 4 | 8;
+    const KITTY_LOCK_MODIFIERS: u32 = 64 | 128;
+    if modifier & !(KITTY_MODIFIERS | KITTY_LOCK_MODIFIERS) != 0 {
+        return None;
+    }
+    let modifier = modifier & !KITTY_LOCK_MODIFIERS;
     let code = normalize_kitty_functional_code(code);
     let code = if modifier & 1 != 0 && (65..=90).contains(&code) {
         code + 32
