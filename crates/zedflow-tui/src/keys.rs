@@ -20,6 +20,7 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
     match data {
         "\r" | "\n" => return Some("enter"),
         "\t" => return Some("tab"),
+        "\x00" => return Some("ctrl+space"),
         "\x08" => {
             return Some(if is_local_windows_terminal() {
                 "ctrl+backspace"

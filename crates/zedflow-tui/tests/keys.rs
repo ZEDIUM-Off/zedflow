@@ -61,6 +61,11 @@ fn decodes_kitty_unicode_base_layout_and_shifted_keys() {
 }
 
 #[test]
+fn decodes_raw_ctrl_space() {
+    assert_eq!(parse_key("\x00"), Some("ctrl+space"));
+}
+
+#[test]
 fn decodes_raw_and_modified_backspace() {
     let _terminal_env_lock = TERMINAL_ENV_LOCK.lock().unwrap();
     assert_eq!(parse_key("\x08"), Some("backspace"));
