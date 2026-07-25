@@ -16,6 +16,9 @@ SPEC.loader.exec_module(recovery)
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_recovery_uses_its_tracked_control_checkout(self) -> None:
+        self.assertEqual(recovery.SOURCE, ROOT)
+
     def test_final_result_requires_one_known_classification(self) -> None:
         result = recovery.final_result('{"classification":"PLAN_CHANGE_REQUIRED","unit":"V1","summary":"tests/a.rs:7"}\n')
         self.assertEqual(result["classification"], "PLAN_CHANGE_REQUIRED")

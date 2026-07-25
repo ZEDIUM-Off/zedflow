@@ -869,12 +869,15 @@ def upgrade_control(source: Path, state_path: Path, state: dict[str, Any], candi
     if not git_ok(source, "cat-file", "-e", f"{candidate}:{PLAN_FILE}"):
         raise ControllerError("upgrade candidate lacks the approved recovery plan")
     active_blockers = set(progress(current_units, state)["blockers"])
-    if not supersede_ids or set(supersede_ids) != active_blockers:
-        raise ControllerError(f"upgrade must supersede exactly the active failed blockers: {sorted(active_blockers)}")
-    for identifier in supersede_ids:
-        record = state.get("units", {}).get(identifier)
-        if not record or record.get("status") not in {"FAILED", "BLOCKED"}:
-            raise ControllerError(f"upgrade can supersede only failed/blocked units: {identifier}")
+    if supersede_ids:
+        if set(supersede_ids) != active_blockers:
+            raise ControllerError(f"upgrade must supersede exactly the active failed blockers: {sorted(active_blockers)}")
+        for identifier in supersede_ids:
+            record = state.get("units", {}).get(identifier)
+            if not record or record.get("status") not in {"FAILED", "BLOCKED"}:
+                raise ControllerError(f"upgrade can supersede only failed/blocked units: {identifier}")
+    elif dag_hash(target_dag) != dag_hash(current_dag):
+        raise ControllerError("control-only upgrade without supersession must preserve the active DAG")
     checkpoint = f"CONTROL-RECOVERY-{candidate[:12].upper()}"
     if checkpoint in state.get("terminal_ids", []) or checkpoint in state.get("units", {}):
         raise ControllerError("recovery checkpoint ID already exists")
@@ -882,7 +885,7 @@ def upgrade_control(source: Path, state_path: Path, state: dict[str, Any], candi
     for identifier in supersede_ids:
         prospective["units"][identifier].update(status="SUPERSEDED", blocker=None)
     prospective.setdefault("units", {})[checkpoint] = {"status": "ACCEPTED", "candidate": candidate}
-    if not ready_units(target_units, prospective) and not graph_complete(target_units, prospective):
+    if supersede_ids and not ready_units(target_units, prospective) and not graph_complete(target_units, prospective):
         raise ControllerError("upgrade DAG leaves no ready/reachable frontier")
     revised_hash = dag_hash(target_dag)
     state.setdefault("units", {})[checkpoint] = {

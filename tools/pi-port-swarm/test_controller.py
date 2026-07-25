@@ -254,6 +254,35 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(state["units"][checkpoint]["status"], "ACCEPTED")
             self.assertEqual(state["controller_sha"], candidate)
 
+    def test_control_only_upgrade_preserves_active_dag_and_blocker(self) -> None:
+        repo, _initial, _candidate = self.port_repo()
+        pin = controller.git(repo, "ls-tree", "HEAD", "references/pi").split()[2]
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        dag = {"version": 2, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 1, "units": [
+            {"id": "BLOCKED", "kind": "validator", "depends_on": [], "ownership": [], "validation": [], "intent": "blocked"},
+            {"id": "DOWN", "kind": "writer", "depends_on": ["BLOCKED"], "ownership": ["owned"], "validation": [], "intent": "downstream"},
+        ]}
+        dag_path.write_text(json.dumps(dag), encoding="utf-8")
+        plan_path = repo / controller.PLAN_FILE
+        plan_path.parent.mkdir(parents=True)
+        plan_path.write_text("# approved\n", encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE, controller.PLAN_FILE)
+        controller.git(repo, "commit", "-qm", "blocked control")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base)
+        (repo / "control.txt").write_text("fix\n")
+        controller.git(repo, "add", "control.txt")
+        controller.git(repo, "commit", "-qm", "control fix")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "state.json"
+            state = {"version": 4, "integration_ref": controller.INTEGRATION_REF, "pi_gitlink": pin, "units": {"BLOCKED": {"status": "BLOCKED", "blocker": "test"}}, "terminal_ids": ["BLOCKED"], "history": []}
+            controller.atomic_json(state_path, state)
+            controller.upgrade_control(repo, state_path, state, candidate, [], "control-only")
+            self.assertEqual(state["units"]["BLOCKED"]["status"], "BLOCKED")
+            self.assertEqual(controller.integration_sha(repo), candidate)
+
     def test_cleanup_only_removes_durable_reachable_accepted_worktrees(self) -> None:
         repo, _base, candidate = self.port_repo()
         controller.git(repo, "update-ref", controller.INTEGRATION_REF, candidate)

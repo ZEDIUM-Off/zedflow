@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 HOME = Path.home()
-SOURCE = HOME / ".local/share/zedflow-worktrees/zedflow-main"
+SOURCE = Path(__file__).resolve().parents[2]
 STATE_DIR = Path(os.environ.get("XDG_STATE_HOME", HOME / ".local/state")) / "zedflow-pi-port"
 STATE_PATH = STATE_DIR / "state.json"
 CONTROLLER = SOURCE / "tools/pi-port-swarm/controller.py"
@@ -95,9 +95,20 @@ def main() -> int:
         result_path = RECOVERY_DIR / f"{fingerprint}.json"
         if result_path.exists(): return 0
         capsule = {"fingerprint": fingerprint, "integration_sha": integration, "failed": failed, "ready": snapshot.get("ready", []), "dag_progress": snapshot.get("dag_progress"), "source": str(SOURCE)}
-        completed = subprocess.run(["pi", "-p", "--approve", "--no-extensions", "--no-skills", "--no-prompt-templates", "--tools", "read,grep,find,ls", "--session-dir", str(RECOVERY_DIR / f"session-{int(time.time())}-{fingerprint}"), "--name", f"zedflow-port-recovery-{fingerprint}", f"@{PROMPT}", json.dumps(capsule, separators=(",", ":"))], cwd=SOURCE, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=900)
-        try: result = final_result(completed.stdout) if completed.returncode == 0 else {"classification": "TRANSIENT", "summary": completed.stderr[:300]}
-        except RuntimeError as error: result = {"classification": "ARBITRATION_REQUIRED", "summary": str(error)}
+        if len(failed) == 1:
+            unit, record = next(iter(failed.items()))
+            classification = record.get("classification")
+            if classification in OUTCOMES:
+                reason = str(record.get("blocker") or "classified controller blocker")
+                result = {"unit": unit, "classification": classification, "summary": reason, "reason": reason}
+            else:
+                result = {}
+        else:
+            result = {}
+        if not result:
+            completed = subprocess.run(["pi", "-p", "--approve", "--no-extensions", "--no-skills", "--no-prompt-templates", "--tools", "read,grep,find,ls", "--session-dir", str(RECOVERY_DIR / f"session-{int(time.time())}-{fingerprint}"), "--name", f"zedflow-port-recovery-{fingerprint}", f"@{PROMPT}", json.dumps(capsule, separators=(",", ":"))], cwd=SOURCE, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=900)
+            try: result = final_result(completed.stdout) if completed.returncode == 0 else {"classification": "TRANSIENT", "summary": completed.stderr[:300]}
+            except RuntimeError as error: result = {"classification": "ARBITRATION_REQUIRED", "summary": str(error)}
         unit, classification = str(result.get("unit", "")), result["classification"]
         if classification != "ARBITRATION_REQUIRED" and unit in failed and bounded_action(classification, integration, unit):
             result["resumed"] = resume(classification, unit, str(result.get("reason") or result.get("summary", "")))
