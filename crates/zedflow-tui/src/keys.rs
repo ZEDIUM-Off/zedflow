@@ -17,6 +17,12 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
     if let Some(key) = parse_kitty_key(data) {
         return Some(Box::leak(key.into_boxed_str()));
     }
+    match data {
+        "\r" | "\n" => return Some("enter"),
+        "\t" => return Some("tab"),
+        "\x7f" => return Some("backspace"),
+        _ => {}
+    }
     if data.len() == 1 {
         let byte = data.as_bytes()[0];
         if (1..=26).contains(&byte) {
@@ -124,7 +130,7 @@ fn parse_kitty_key(data: &str) -> Option<String> {
     } else {
         code
     };
-    let code = if (32..=126).contains(&code) {
+    let code = if matches!(code, 9 | 13 | 127 | 32..=126) {
         code
     } else {
         base_layout_code?
