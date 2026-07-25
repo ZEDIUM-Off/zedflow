@@ -70,6 +70,10 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(controller.ControllerError):
             controller.result_line('{"status":"DONE"}\n{"status":"BLOCKED"}')
 
+    def test_blocked_reason_preserves_recovery_evidence(self) -> None:
+        self.assertEqual(controller.blocked_reason({"summary": "cargo check: tests/a.rs:7 E0308"}), "cargo check: tests/a.rs:7 E0308")
+        self.assertEqual(controller.blocked_reason({"reason": "exact", "summary": "short"}), "exact")
+
     def test_fixed_integration_ref(self) -> None:
         controller.require_integration_ref(controller.INTEGRATION_REF)
         with self.assertRaises(controller.ControllerError):
@@ -79,6 +83,20 @@ class ControllerTests(unittest.TestCase):
         units = dag()["units"]
         state = {"units": {"A": {"status": "ACCEPTED"}, "B": {"status": "FAILED"}, "C": {"status": "ACCEPTED"}}}
         self.assertFalse(controller.graph_complete(units, state))
+
+    def test_progress_ignores_historical_failures_outside_active_dag(self) -> None:
+        units = dag()["units"]
+        state = {"units": {"A": {"status": "ACCEPTED"}, "B": {"status": "FAILED", "blocker": "active"}, "OLD": {"status": "FAILED", "blocker": "stale"}}}
+        self.assertEqual(controller.progress(units, state)["blockers"], {"B": "active"})
+
+    def test_progress_prioritizes_failure_blocking_downstream(self) -> None:
+        units = [
+            {"id": "OLD", "kind": "reviewer", "depends_on": [], "ownership": [], "validation": []},
+            {"id": "V", "kind": "validator", "depends_on": [], "ownership": [], "validation": []},
+            {"id": "NEXT", "kind": "reviewer", "depends_on": ["V"], "ownership": [], "validation": []},
+        ]
+        state = {"units": {"OLD": {"status": "FAILED", "blocker": "stale"}, "V": {"status": "BLOCKED", "blocker": "active"}}}
+        self.assertEqual(controller.progress(units, state)["blockers"], {"V": "active"})
 
     def test_assignment_command_is_fresh_and_has_no_resume(self) -> None:
         first = controller.pi_command(Path("worker.md"), Path("/tmp/session-one"), "one", "capsule")
@@ -154,6 +172,14 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(controller.ControllerError):
             controller.git(repo, "update-ref", "refs/heads/automation/pi-port", base, base)
 
+    def test_worktree_head_overrides_a_misreported_candidate(self) -> None:
+        repo, _base, candidate = self.port_repo()
+        unit = {"id": "A", "kind": "writer"}
+        reported = "9" * 40
+        result = controller.authoritative_result(unit, {"status": "DONE", "candidate": reported}, repo)
+        self.assertEqual(result["candidate"], candidate)
+        self.assertEqual(result["reported_candidate"], reported)
+
     def test_integration_ref_is_created_only_from_null_oid(self) -> None:
         repo, base, candidate = self.port_repo()
         controller.ensure_integration_ref(repo, controller.INTEGRATION_REF, base)
@@ -214,8 +240,9 @@ class ControllerTests(unittest.TestCase):
             controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base}, base)
             with self.assertRaises(controller.ControllerError):
                 controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base, "candidate": base}, base)
-            with self.assertRaises(controller.ControllerError):
-                controller.validate_result(unit, {"status": "PLAN_CHANGE", "unit": unit["id"], "base": base}, base)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_result(units[2], {"status": "PLAN_CHANGE", "unit": "V1", "base": base}, base)
+        controller.validate_result(units[3], {"status": "PLAN_CHANGE", "unit": "RV-FID", "base": base}, base)
         with self.assertRaises(controller.ControllerError):
             controller.validate_result(units[0], {"status": "DONE", "unit": "W", "base": base}, base)
 
@@ -229,9 +256,66 @@ class ControllerTests(unittest.TestCase):
             controller.atomic_json(path, state)
             with self.assertRaises(controller.ControllerError):
                 controller.load_runtime(ROOT, revised, path)
-            controller.mark_plan_acceptance(state, "AG-R1-JSONL-LEAF-ERROR", "b" * 40, "repair order", controller.dag_hash(revised))
+            controller.mark_plan_acceptance(state, "AG-R1-JSONL-LEAF-ERROR", "b" * 40, "repair order", controller.dag_hash(revised), True)
             controller.atomic_json(path, state)
             self.assertEqual(controller.load_runtime(ROOT, revised, path)["dag_sha256"], controller.dag_hash(revised))
+
+    def test_checkpoint_dag_transition_recovers_legacy_and_interrupted_state(self) -> None:
+        repo, _, _ = self.port_repo()
+        initial = {
+            "version": 2,
+            "source_gitlink": "references/pi@" + "a" * 40,
+            "max_active_writers": 1,
+            "units": [{"id": "NEXT", "kind": "checkpoint", "depends_on": [], "ownership": [controller.DAG_FILE], "validation": []}],
+        }
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        dag_path.write_text(json.dumps(initial))
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-m", "initial dag")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        revised = copy.deepcopy(initial)
+        revised["units"] = [{"id": "LATER", "kind": "reviewer", "depends_on": [], "ownership": [], "validation": []}]
+        dag_path.write_text(json.dumps(revised))
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-m", "extend dag")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, candidate)
+
+        legacy = {"dag_sha256": controller.dag_hash(initial), "units": {"NEXT": {"status": "ACCEPTED", "base": base, "candidate": candidate, "dag_sha256": controller.dag_hash(initial)}}}
+        self.assertTrue(controller.recover_accepted_checkpoint_dag(repo, revised, legacy, controller.INTEGRATION_REF))
+        self.assertEqual(legacy["dag_sha256"], controller.dag_hash(revised))
+
+        interrupted = {"dag_sha256": controller.dag_hash(initial), "units": {"NEXT": {"status": "ACCEPTING", "base": base, "candidate": candidate, "dag_sha256": controller.dag_hash(initial), "revised_dag_sha256": controller.dag_hash(revised)}}}
+        self.assertTrue(controller.reconcile_runtime(repo, revised, interrupted, controller.INTEGRATION_REF))
+        self.assertEqual(interrupted["units"]["NEXT"]["status"], "ACCEPTED")
+        self.assertEqual(interrupted["dag_sha256"], controller.dag_hash(revised))
+
+    def test_validator_replan_preserves_gate_and_downstream(self) -> None:
+        original = [
+            {"id": "A", "kind": "writer", "depends_on": [], "ownership": ["a"], "validation": []},
+            {"id": "X", "kind": "writer", "depends_on": ["A"], "ownership": ["x"], "validation": []},
+            {"id": "V1", "kind": "validator", "depends_on": ["A"], "ownership": [], "validation": ["cargo check"]},
+            {"id": "RV", "kind": "reviewer", "depends_on": ["V1", "X"], "ownership": [], "validation": []},
+        ]
+        revised = [
+            original[0],
+            original[1],
+            {"id": "FIX", "kind": "writer", "depends_on": ["A"], "ownership": ["fix"], "validation": ["cargo test"]},
+            {"id": "V2", "kind": "validator", "depends_on": ["FIX"], "ownership": [], "validation": ["cargo check"]},
+            {"id": "RV", "kind": "reviewer", "depends_on": ["V2", "X"], "ownership": [], "validation": []},
+        ]
+        controller.validate_replan_transition(original[2], original, revised)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_replan_transition(original[2], original, [original[0]])
+        bypass = copy.deepcopy(revised)
+        bypass[3]["depends_on"] = ["A"]
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_replan_transition(original[2], original, bypass)
+        dropped_dependency = copy.deepcopy(revised)
+        dropped_dependency[4]["depends_on"] = ["V2"]
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_replan_transition(original[2], original, dropped_dependency)
 
     def test_continuous_replan_reaches_later_read_only_units(self) -> None:
         revised = {

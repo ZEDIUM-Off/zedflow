@@ -8,4 +8,8 @@ Run or inspect only the declared validation on the supplied base. The controller
 {"status":"DONE","unit":"<id>","base":"<40-hex>","summary":"validation observed"}
 ```
 
-Return `BLOCKED` with a concise failing command or unavailable capability and no candidate. Never return a candidate or `PLAN_CHANGE`.
+Return `BLOCKED` with a `reason` containing the failing command plus exact diagnostic file and line, and no candidate. This evidence is consumed by automatic recovery. Never return a candidate or `PLAN_CHANGE`.
+
+```json
+{"status":"BLOCKED","unit":"<id>","base":"<40-hex>","reason":"<command: file:line failure>","summary":"validation blocked"}
+```
