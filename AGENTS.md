@@ -16,7 +16,8 @@ Canonical references:
 - Pi TypeScript reference submodule: `references/pi`
 - LangGraph reference submodule: `references/langgraph`
 - Product context: `CONTEXT.md`
-- Current planning docs: `docs/planning/ZEDFLOW_MIGRATION_INTENT.md`, `docs/planning/ZEDFLOW_MVP_PRD.md`, `docs/planning/ZEDFLOW_WORKSPACE_ARCHITECTURE.md`
+- Current planning docs: `docs/planning/ZEDFLOW_MIGRATION_INTENT.md`, `docs/planning/ZEDFLOW_MVP_PRD.md`
+- Current Stage-1 status and exit gate: `docs/porting/BASELINE.md`
 
 ## Ground rules
 
@@ -48,21 +49,19 @@ mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR"
 
 ## Pi port coordination
 
-`tools/pi-port-swarm/controller.py` is the stage-1 controller. Each unit runs in a fresh `pi -p` session and short-lived worktree; runtime state lives under `$XDG_STATE_HOME/zedflow-pi-port`. The controller alone selects units, verifies ownership/ancestry/gitlink/validations, and advances `refs/heads/automation/pi-port` by compare-and-swap. Workers never edit plan state; only an evidenced `PLAN_CHANGE` launches a fresh control-plane coordinator.
+`tools/pi-port-swarm/controller.py` is the stage-1 controller. Each unit runs in a fresh `pi -p` session and short-lived worktree; runtime state lives under `$XDG_STATE_HOME/zedflow-pi-port`. The controller alone selects units, verifies ownership/ancestry/gitlink/validations, and advances `refs/heads/automation/pi-port` by compare-and-swap. Workers never edit plan state. Ordinary technical blockers enter the bounded repair loop; a structural `PLAN_CHANGE` launches a fresh coordinator that must follow the global `plan-writer` skill. Dependency substitutions return `ARBITRATION_REQUIRED` and pause for human approval.
 
 There is no scheduled port execution. `controller.py monitor` is deterministic and read-only; a separately managed timer may invoke it, but it must never dispatch work.
 
-Port each Pi package into its matching crate, following the package split in `references/pi/packages/`:
+Stage 1 is one-to-one: each Pi package maps to exactly one Rust crate, and files/tests map one-to-one unless an explicit disposition records why that is impossible:
 
-- `zedflow-core`
-- `zedflow-ai`
-- `zedflow-agent`
-- `zedflow-coding-agent`
-- `zedflow-orchestrator`
-- `zedflow-tui`
-- `zedflow-tools`
-- `zedflow-session`
-- `zedflow-langgraph`
+- `packages/ai` → `zedflow-ai`
+- `packages/agent` → `zedflow-agent`
+- `packages/tui` → `zedflow-tui`
+- `packages/coding-agent` → `zedflow-coding-agent`
+- `packages/orchestrator` → `zedflow-orchestrator`
+
+No Flow, LangGraph, shared-core, tools, or session crate belongs to Stage 1.
 
 ## CocoIndex
 

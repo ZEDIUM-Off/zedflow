@@ -1,6 +1,6 @@
 <!-- migration-document-status: SUPERSEDED -->
 > [!CAUTION]
-> **Migration status: SUPERSEDED.** Historical plan only. Use `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md` and `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md` for current work.
+> **Migration status: SUPERSEDED.** Historical plan only. Use `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md` and `docs/porting/BASELINE.md` for current work.
 
 # Zedflow Agent Pi Agent Port
 

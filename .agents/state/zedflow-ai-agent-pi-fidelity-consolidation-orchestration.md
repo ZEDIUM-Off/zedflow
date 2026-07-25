@@ -1,6 +1,6 @@
-<!-- migration-document-status: ACTIVE TRACKER -->
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
 > [!IMPORTANT]
-> **Migration status: ACTIVE TRACKER.** Current interpretation is summarized in `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md`.
+> **Migration status: SUPERSEDED / HISTORICAL.** Current interpretation is summarized in `docs/porting/BASELINE.md`.
 
 # Zedflow AI + Agent Pi Fidelity Consolidation — Orchestration
 

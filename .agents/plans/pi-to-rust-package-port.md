@@ -1,6 +1,6 @@
 <!-- migration-document-status: SUPERSEDED -->
 > [!CAUTION]
-> **Migration status: SUPERSEDED.** Historical plan only. Use `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md` and `.agents/state/zedflow-ai-agent-pi-fidelity-current-status.md` for current work.
+> **Migration status: SUPERSEDED.** Historical plan only. Use `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md` and `docs/porting/BASELINE.md` for current work.
 
 # Pi to Rust Package Port
 
@@ -194,7 +194,7 @@ Files:
 Required context package:
 - Plan references: goal, global acceptance, legacy policy, RF1.
 - Required skills: read `/home/zedium/workspaces/zedflow/.agents/skills/rust-skills/SKILL.md` completely enough to apply documentation, API, error, async, and testing rules.
-- Required files/symbols to read: root `Cargo.toml`, all `crates/zedflow-*/Cargo.toml`, `docs/planning/ZEDFLOW_WORKSPACE_ARCHITECTURE.md`.
+- Required files/symbols to read: root `Cargo.toml`, all `crates/zedflow-*/Cargo.toml`, `docs/planning/PI_RUST_PORTING_RULES.md`.
 - Required URLs/docs: none.
 - Dependency outputs to read: none.
 - Neighboring out-of-scope units: all package source/test chains.

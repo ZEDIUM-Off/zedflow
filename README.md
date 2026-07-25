@@ -12,7 +12,7 @@ Stage 2 does not begin until the stage-1 port and its deterministic tests are co
 - Product context: [`CONTEXT.md`](CONTEXT.md)
 - Migration intent: [`docs/planning/ZEDFLOW_MIGRATION_INTENT.md`](docs/planning/ZEDFLOW_MIGRATION_INTENT.md)
 - MVP PRD: [`docs/planning/ZEDFLOW_MVP_PRD.md`](docs/planning/ZEDFLOW_MVP_PRD.md)
-- Workspace architecture: [`docs/planning/ZEDFLOW_WORKSPACE_ARCHITECTURE.md`](docs/planning/ZEDFLOW_WORKSPACE_ARCHITECTURE.md)
+- Stage-1 porting rules: [`docs/planning/PI_RUST_PORTING_RULES.md`](docs/planning/PI_RUST_PORTING_RULES.md)
 - Pi TypeScript reference: `references/pi`
 - LangGraph reference: `references/langgraph`
 

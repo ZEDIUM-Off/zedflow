@@ -1,3 +1,7 @@
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
+
+> Superseded AI/Agent consolidation blueprint. Use `docs/porting/BASELINE.md` and `.agents/plans/pi-stage-1-port-recovery.md`.
+
 # Zedflow AI and Agent Pi Fidelity Consolidation
 
 <a id="how-to-use"></a>

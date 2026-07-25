@@ -1,10 +1,10 @@
 # Port coordination decisions
 
-- The V2 controller is event-driven: accepted work immediately makes the next DAG unit eligible; no cron dispatches port work.
-- Every unit has a fresh Pi session and worktree. Durable progress is external runtime state plus Git, not a growing model conversation.
-- Only one writer is active. The controller validates exact base/result SHA, candidate-worktree HEAD/cleanliness, frozen Pi gitlink/submodule state, ownership, declared commands, and CAS before acceptance.
-- Workers commit only their owned unit. Only a structured, evidence-backed `PLAN_CHANGE` can invoke a fresh coordinator to mutate open DAG/state/docs control paths.
-- Context is bounded: workers receive a compact assignment capsule; reviews are fresh and wave-scoped; the coordinator is invoked only for plan mutation.
-- `ACCEPTING` is persisted before CAS; startup reconciles interrupted acceptance and requires explicit `retry --unit` for failures. A monitoring timer may call the deterministic read-only `monitor` command. It must never run, repair, or mutate the port.
-- `AG-R1-JSONL-LEAF-ERROR` is an audit-discovered prerequisite before the remaining AG-P units.
-- `CA-NEXT-PORT-DAG-V19` is accepted after `CA-RV-FID-V21-R12`; TUI remains the next bounded wave, with orchestrator and final validation/review gates downstream.
+- Stage 1 is a one-to-one port of the five frozen Pi packages; package/file exceptions require manifest disposition, and dependency substitutions require human arbitration.
+- The controller is event-driven: accepted work immediately makes the next DAG unit eligible; no cron dispatches port work.
+- Every unit has a fresh Pi session/worktree. Only one writer is active. Durable progress is external runtime state plus Git.
+- The controller verifies exact base/result SHA, candidate cleanliness, frozen Pi gitlink, ownership, manifest/package gates, declared commands, and CAS before acceptance.
+- Ordinary technical blockers use bounded repair/validation/review loops without DAG mutation. Structural replans use the approved `plan-writer` process and fresh IDs. Arbitration pauses.
+- `ACCEPTING` is persisted before CAS and startup reconciles interrupted acceptance. Newly accepted worktrees are cleaned after durable evidence; historical cleanup is explicit and dry-run first.
+- `docs/porting/BASELINE.md` is the sole current human status. `.agents/state/` and `docs/porting/pi-fidelity-decisions/` retain historical evidence only.
+- The current recovery order is TUI closure → Coding-agent closure → Orchestrator → final Stage-1 gate. Recovery must migrate controller/DAG/runtime identities together before dispatch resumes.

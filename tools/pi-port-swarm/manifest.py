@@ -85,13 +85,15 @@ def report(root: Path, package: str | None = None, revision: str | None = None) 
         for source in duplicate_sources:
             errors.append(f"{value}: duplicate mapping for {source}")
         exception_sources = Counter(row["source"] for row in dispositions[value])
+        mapping_targets = {source: target for source, target, _ in mappings}
         for source, count in sorted(exception_sources.items()):
             if count > 1:
                 errors.append(f"{value}: duplicate disposition for {source}")
             if source not in inventory:
                 errors.append(f"{value}: disposition source is not frozen: {source}")
-            if source in sources:
-                errors.append(f"{value}: source has both mapping and disposition: {source}")
+            rows = [row for row in dispositions[value] if row["source"] == source]
+            if source in sources and any(row["disposition"] not in {"consolidated", "platform-specific", "live-capability"} or row["target"] != mapping_targets[source] for row in rows):
+                errors.append(f"{value}: mapping/disposition target mismatch: {source}")
         mapped = set(sources) | set(exception_sources)
         unlisted = sorted(set(inventory) - mapped)
         for source in unlisted:
@@ -117,8 +119,10 @@ def report(root: Path, package: str | None = None, revision: str | None = None) 
             if not row["target"] or consolidated_targets[row["target"]] < 2:
                 errors.append(f"{value}: consolidated disposition needs at least two sources for target: {row['source']}")
         duplicate_targets = {target: sorted(source_list) for target, source_list in target_sources.items() if len(source_list) > 1}
-        for target in sorted(duplicate_targets):
-            errors.append(f"{value}: duplicate exact target requires disposition rows instead: {target}")
+        consolidated_pairs = {(row["source"], row["target"]) for row in consolidated_rows}
+        for target, source_list in sorted(duplicate_targets.items()):
+            if any((source, target) not in consolidated_pairs for source in source_list):
+                errors.append(f"{value}: duplicate exact target requires matching consolidated dispositions: {target}")
         arbitration = sorted(row["source"] for row in dispositions[value] if row["disposition"] == "dependency-arbitration")
         packages[f"zedflow-{value}"] = {
             "inventory": len(inventory),

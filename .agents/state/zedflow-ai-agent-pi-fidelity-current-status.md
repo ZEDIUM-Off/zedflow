@@ -1,9 +1,13 @@
+<!-- migration-document-status: SUPERSEDED / HISTORICAL -->
+
+> Historical AI/Agent snapshot. Current authority is `docs/porting/BASELINE.md` plus controller/manifest status.
+
 # Zedflow AI/Agent Pi fidelity — current status
 
-**Status:** CANONICAL EXECUTION STATUS
+**Status:** HISTORICAL AI/AGENT SNAPSHOT
 **Audited:** 2026-07-13
-**Active plan:** `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md`
-**Active tracker:** `.agents/state/zedflow-ai-agent-pi-fidelity-consolidation-orchestration.md`
+**Historical plan:** `.agents/plans/zedflow-ai-agent-pi-fidelity-consolidation.md`
+**Historical tracker:** `.agents/state/zedflow-ai-agent-pi-fidelity-consolidation-orchestration.md`
 
 ## Source-of-truth order
 
