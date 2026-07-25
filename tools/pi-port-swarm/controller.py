@@ -297,7 +297,7 @@ def migrate_runtime_v3(source: Path, dag: dict[str, Any], state: dict[str, Any],
     return migrated
 
 
-def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integration_ref: str = INTEGRATION_REF, write: bool = False) -> dict[str, Any]:
+def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integration_ref: str = INTEGRATION_REF, write: bool = False, allow_control_upgrade: bool = False) -> dict[str, Any]:
     require_integration_ref(integration_ref)
     if state_path.exists():
         state = load_json(state_path)
@@ -311,7 +311,8 @@ def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integratio
         expected = identity(source, dag, integration_ref)
         control_upgrade_pending = any(record.get("status") == "ACCEPTING" and str(record.get("unit", "")).startswith("CONTROL-RECOVERY-") and record.get("candidate") == expected["controller_sha"] for record in state.get("units", {}).values())
         for key in ("controller_sha", "plan_sha", "pi_gitlink"):
-            if state.get(key) != expected[key] and not (control_upgrade_pending and key in {"controller_sha", "plan_sha"}):
+            control_identity_change = key in {"controller_sha", "plan_sha"} and (control_upgrade_pending or allow_control_upgrade)
+            if state.get(key) != expected[key] and not control_identity_change:
                 raise ControllerError(f"runtime state {key} differs from this immutable control plane")
         if state.get("dag_sha") != dag_hash(dag) and not pending_dag_change(state):
             raise ControllerError("runtime state dag_sha differs from the integration DAG")
@@ -950,14 +951,16 @@ def main() -> int:
     args = parser.parse_args()
     try:
         source, dag_path, state_dir, state_path = paths(args)
+        if args.command == "validate":
+            candidate_dag = load_json(dag_path)
+            validate_dag(candidate_dag)
+            verify_gitlink(source, "HEAD", pinned_gitlink(candidate_dag))
+            print(json.dumps({"status": "valid", "dag_sha256": dag_hash(candidate_dag), "pi_gitlink": pinned_gitlink(candidate_dag)}, sort_keys=True))
+            return 0
         dag = load_dag(source, dag_path, INTEGRATION_REF)
         units = validate_dag(dag)
         verify_gitlink(source, "HEAD", pinned_gitlink(dag))
-        if args.command == "validate":
-            load_runtime(source, dag, state_path, INTEGRATION_REF, write=False)
-            print(json.dumps({"status": "valid", "dag_sha256": dag_hash(dag), "pi_gitlink": pinned_gitlink(dag)}, sort_keys=True))
-            return 0
-        state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=False)
+        state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=False, allow_control_upgrade=args.command == "upgrade")
         if args.command in {"status", "monitor"}:
             print(json.dumps(snapshot(source, dag, state, INTEGRATION_REF), sort_keys=True))
             return 0
@@ -971,7 +974,7 @@ def main() -> int:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return 75
-            state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=args.command != "cleanup")
+            state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=args.command != "cleanup", allow_control_upgrade=args.command == "upgrade")
             if args.command == "upgrade":
                 target_dag = upgrade_control(source, state_path, state, args.candidate, args.supersede, args.reason)
                 print(json.dumps({"status": "upgraded", **snapshot(source, target_dag, state, INTEGRATION_REF)}, sort_keys=True))

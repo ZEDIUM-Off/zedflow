@@ -3508,7 +3508,7 @@
       "id": "NEXT-PORT-PLAN-V20",
       "kind": "checkpoint",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-RUST-V1"
+        "RECOVERY-TUI-KEYS-RV-RUST-V2"
       ],
       "ownership": [
         "tools/pi-port-swarm/dag.json",
@@ -3522,6 +3522,62 @@
         "git diff --check"
       ],
       "intent": "Use the approved plan-writer process and deterministic manifest gaps to replace the open tail with bounded one-to-one TUI closure, Coding-agent closure, Orchestrator, and final Stage-1 gates."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-R2",
+      "kind": "writer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-RV-FID-V1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/keys.rs",
+        "crates/zedflow-tui/tests/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Repair the accepted Kitty base-layout fallback so raw Enter, Tab, Backspace, and modified CSI-u special keys remain reachable; add focused regression tests."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-V2",
+      "kind": "validator",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R2"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets",
+        "cargo test -p zedflow-tui --all-targets",
+        "git diff --check"
+      ],
+      "intent": "Validate the second focused TUI key repair on the exact candidate SHA."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-FID-V2",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-V2"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review of Unicode/base-layout fallback and all raw/CSI-u special keys."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-RV-RUST-V2",
+      "kind": "reviewer",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-RV-FID-V2"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Fresh Rust-quality review of the complete second TUI key repair."
     }
   ]
 }

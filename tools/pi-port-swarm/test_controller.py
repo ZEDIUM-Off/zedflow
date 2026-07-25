@@ -168,6 +168,26 @@ class ControllerTests(unittest.TestCase):
                 self.assertIn("mechanical_port_inventory", completed.stdout)
             self.assertEqual(before, list(state_home.rglob("*")))
 
+    def test_validate_is_static_and_does_not_read_runtime_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            state_home = Path(temporary)
+            (state_home / "state.json").write_text('{"invalid":"runtime"}')
+            completed = subprocess.run([sys.executable, str(ROOT / "tools/pi-port-swarm/controller.py"), "--source", str(ROOT), "--state-dir", str(state_home), "validate"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn('"status": "valid"', completed.stdout)
+
+    def test_control_upgrade_may_change_only_pinned_control_identity(self) -> None:
+        actual = json.loads((ROOT / "tools/pi-port-swarm/dag.json").read_text())
+        state = controller.seed_runtime(ROOT, actual)
+        state.update(controller_sha="0" * 40, plan_sha="1" * 40)
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            controller.atomic_json(path, state)
+            with self.assertRaises(controller.ControllerError):
+                controller.load_runtime(ROOT, actual, path)
+            loaded = controller.load_runtime(ROOT, actual, path, allow_control_upgrade=True)
+            self.assertEqual(loaded["pi_gitlink"], controller.pinned_gitlink(actual))
+
     def port_repo(self) -> tuple[Path, str, str]:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
