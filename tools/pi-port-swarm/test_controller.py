@@ -192,6 +192,49 @@ class ControllerTests(unittest.TestCase):
         git("commit", "-qm", "candidate")
         return repo, base, git("rev-parse", "HEAD")
 
+    def test_cleanup_only_removes_durable_reachable_accepted_worktrees(self) -> None:
+        repo, _base, candidate = self.port_repo()
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, candidate)
+        with tempfile.TemporaryDirectory() as temporary:
+            state_dir = Path(temporary)
+            worktree = state_dir / "worktrees" / "a-1-test"
+            session = state_dir / "sessions" / "a-1-test"
+            session.mkdir(parents=True)
+            (session / "controller.log").write_text("durable", encoding="utf-8")
+            branch = "automation/pi-port-unit/a-1-test"
+            controller.git(repo, "worktree", "add", "-b", branch, str(worktree), candidate)
+            state_path = state_dir / "state.json"
+            controller.atomic_json(state_path, {"durable": True})
+            state = {"units": {
+                "A": {"status": "ACCEPTED", "candidate": candidate, "worktree": str(worktree), "session": str(session)},
+                "FAILED": {"status": "FAILED", "candidate": candidate, "worktree": str(worktree), "session": str(session)},
+            }}
+            eligible, retained = controller.cleanup_candidates(repo, state_dir, state_path, state)
+            self.assertEqual([action["unit"] for action in eligible], ["A"])
+            self.assertIn({"unit": "FAILED", "reason": "not accepted"}, retained)
+            self.assertTrue(worktree.is_dir())  # dry-run discovery is read-only
+            controller.cleanup_accepted(repo, eligible)
+            self.assertFalse(worktree.exists())
+            self.assertFalse(controller.git_ok(repo, "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"))
+
+    def test_cleanup_retains_accepted_candidate_not_reachable_from_integration(self) -> None:
+        repo, base, candidate = self.port_repo()
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base)
+        with tempfile.TemporaryDirectory() as temporary:
+            state_dir = Path(temporary)
+            worktree = state_dir / "worktrees" / "a-1-test"
+            session = state_dir / "sessions" / "a-1-test"
+            session.mkdir(parents=True)
+            (session / "controller.log").write_text("durable", encoding="utf-8")
+            controller.git(repo, "worktree", "add", "-b", "automation/pi-port-unit/a-1-test", str(worktree), candidate)
+            state_path = state_dir / "state.json"
+            controller.atomic_json(state_path, {"durable": True})
+            state = {"units": {"A": {"status": "ACCEPTED", "candidate": candidate, "worktree": str(worktree), "session": str(session)}}}
+            eligible, retained = controller.cleanup_candidates(repo, state_dir, state_path, state)
+            self.assertEqual(eligible, [])
+            self.assertIn({"unit": "A", "reason": "candidate is not reachable from integration"}, retained)
+            self.assertTrue(worktree.is_dir())
+
     def test_candidate_acceptance_and_cas_shape(self) -> None:
         repo, base, candidate = self.port_repo()
         unit = {"id": "A", "kind": "writer", "ownership": ["owned"], "validation": []}

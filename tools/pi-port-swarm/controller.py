@@ -26,6 +26,7 @@ from manifest import report as manifest_report
 KINDS = {"writer", "checkpoint", "validator", "reviewer"}
 MUTATING_KINDS = {"writer", "checkpoint"}
 INTEGRATION_REF = "refs/heads/automation/pi-port"
+UNIT_REF_PREFIX = "refs/heads/automation/pi-port-unit/"
 NULL_OID = "0" * 40
 DAG_FILE = "tools/pi-port-swarm/dag.json"
 PLAN_FILE = ".agents/plans/pi-stage-1-port-recovery.md"
@@ -716,6 +717,16 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
             state["terminal_ids"].append(unit["id"])
         append_history(state, {"unit": unit["id"], "status": record["status"], "classification": record.get("classification"), "base": base, "candidate": record.get("candidate"), "at": int(time.time())})
         atomic_json(state_path, state)
+        if record["status"] == "ACCEPTED":
+            eligible, _ = cleanup_candidates(source, state_dir, state_path, state)
+            current = [action for action in eligible if action["unit"] == unit["id"]]
+            if current:
+                try:
+                    cleanup_accepted(source, current)
+                    record.update(cleanup="removed", cleanup_at=int(time.time()))
+                except ControllerError as error:
+                    record["cleanup_error"] = str(error)
+                atomic_json(state_path, state)
         return "replanned" if record.get("plan_change") else ("repairing" if record["status"] == "RETRY" else record["status"].lower())
     except ControllerError as error:
         record.update(status="FAILED", blocker=str(error))
@@ -754,6 +765,65 @@ def should_continue(outcome: str, continuous: bool) -> bool:
     return continuous and outcome in {"accepted", "replanned", "repairing"}
 
 
+def worktree_branches(source: Path) -> dict[Path, tuple[str, str]]:
+    """Return registered owned-branch worktrees keyed by their resolved paths."""
+    entries: dict[Path, tuple[str, str]] = {}
+    current: dict[str, str] = {}
+    for line in git(source, "worktree", "list", "--porcelain").splitlines() + [""]:
+        if not line:
+            path, head, branch = current.get("worktree"), current.get("HEAD"), current.get("branch")
+            if path and head and branch:
+                entries[Path(path).resolve()] = (head, branch)
+            current = {}
+        elif " " in line:
+            key, value = line.split(" ", 1)
+            current[key] = value
+    return entries
+
+
+def cleanup_candidates(source: Path, state_dir: Path, state_path: Path, state: dict[str, Any]) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """Find only accepted, durable controller worktrees safe for explicit removal."""
+    worktree_root = (state_dir / "worktrees").resolve()
+    registered = worktree_branches(source)
+    integration = integration_sha(source, INTEGRATION_REF)
+    eligible: list[dict[str, str]] = []
+    retained: list[dict[str, str]] = []
+    for unit, record in sorted(state.get("units", {}).items()):
+        if record.get("status") != "ACCEPTED":
+            retained.append({"unit": unit, "reason": "not accepted"})
+            continue
+        candidate, worktree, session = record.get("candidate") or record.get("base"), record.get("worktree"), record.get("session")
+        if not is_full_sha(candidate) or not isinstance(worktree, str) or not isinstance(session, str):
+            retained.append({"unit": unit, "reason": "missing candidate, worktree, or session evidence"})
+            continue
+        path = Path(worktree).resolve()
+        if not path.is_relative_to(worktree_root) or not path.is_dir():
+            retained.append({"unit": unit, "reason": "worktree is not an owned existing path"})
+            continue
+        if not state_path.is_file() or not (Path(session) / "controller.log").is_file():
+            retained.append({"unit": unit, "reason": "state or session log is not durable"})
+            continue
+        registered_worktree = registered.get(path)
+        expected_ref = UNIT_REF_PREFIX + path.name
+        if not registered_worktree or registered_worktree != (candidate, expected_ref):
+            retained.append({"unit": unit, "reason": "worktree is not registered to its exact unit ref"})
+            continue
+        if git(path, "status", "--porcelain"):
+            retained.append({"unit": unit, "reason": "worktree is dirty"})
+            continue
+        if not git_ok(source, "merge-base", "--is-ancestor", candidate, integration):
+            retained.append({"unit": unit, "reason": "candidate is not reachable from integration"})
+            continue
+        eligible.append({"unit": unit, "candidate": candidate, "worktree": str(path), "ref": registered_worktree[1]})
+    return eligible, retained
+
+
+def cleanup_accepted(source: Path, actions: list[dict[str, str]]) -> None:
+    for action in actions:
+        git(source, "worktree", "remove", action["worktree"])
+        git(source, "update-ref", "-d", action["ref"], action["candidate"])
+
+
 def paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
     source = Path(args.source).resolve()
     root = Path(git(source, "rev-parse", "--show-toplevel"))
@@ -780,6 +850,10 @@ def main() -> int:
     replan_parser = sub.add_parser("replan")
     replan_parser.add_argument("--unit", required=True)
     replan_parser.add_argument("--reason", required=True)
+    cleanup_parser = sub.add_parser("cleanup")
+    cleanup_mode = cleanup_parser.add_mutually_exclusive_group()
+    cleanup_mode.add_argument("--dry-run", action="store_true")
+    cleanup_mode.add_argument("--accepted", action="store_true")
     recover_parser = sub.add_parser("recover")
     recover_parser.add_argument("--unit", required=True)
     recover_parser.add_argument("--classification", required=True, choices=sorted(OUTCOME_CLASSES))
@@ -798,13 +872,22 @@ def main() -> int:
         if args.command in {"status", "monitor"}:
             print(json.dumps(snapshot(source, dag, state, INTEGRATION_REF), sort_keys=True))
             return 0
+        if args.command == "cleanup" and not args.accepted:
+            eligible, retained = cleanup_candidates(source, state_dir, state_path, state)
+            print(json.dumps({"status": "dry-run", "eligible": eligible, "retained": retained}, sort_keys=True))
+            return 0
         state_dir.mkdir(parents=True, exist_ok=True)
         with (state_dir / "controller.lock").open("w") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 return 75
-            state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=True)
+            state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=args.command != "cleanup")
+            if args.command == "cleanup":
+                eligible, retained = cleanup_candidates(source, state_dir, state_path, state)
+                cleanup_accepted(source, eligible)
+                print(json.dumps({"status": "cleaned", "eligible": eligible, "retained": retained}, sort_keys=True))
+                return 0
             if reconcile_runtime(source, dag, state, INTEGRATION_REF):
                 atomic_json(state_path, state)
             if args.command == "recover":
