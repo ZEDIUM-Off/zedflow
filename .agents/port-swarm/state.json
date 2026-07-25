@@ -157,7 +157,7 @@
   ],
   "current": {
     "id": "TUI-C2-REMAINING-MANIFEST-ROWS",
-    "base": "HEAD",
+    "base": "2e72cf258e5e55b17cdbed4dad7bc86f4ad6e9b7",
     "base_kind": "checkpoint-candidate",
     "worker": null,
     "status": "ready",

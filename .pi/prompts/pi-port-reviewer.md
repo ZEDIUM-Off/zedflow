@@ -10,6 +10,8 @@ Print exactly one final JSON line:
 
 ```json
 {"status":"DONE","unit":"<id>","base":"<40-hex>","summary":"no owned blocker"}
+
+A blocker result includes `"classification":"PLAN_CHANGE_REQUIRED"`, `"ARBITRATION_REQUIRED"`, or `"TRANSIENT"`.
 ```
 
-Return `PLAN_CHANGE` with concrete file/line evidence, `reason`, and `blocker` when a repair unit or dependency change can represent the finding safely. Return `BLOCKED` only when a human product decision is required. Never return a candidate.
+Return `PLAN_CHANGE` with `classification: "PLAN_CHANGE_REQUIRED"`, concrete file/line evidence, `reason`, and `blocker` only when a structural repair unit is necessary. Return `BLOCKED` with `classification: "ARBITRATION_REQUIRED"` only for a human product decision, or `TRANSIENT` for an environmental interruption. Never return a candidate.

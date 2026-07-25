@@ -14,4 +14,4 @@ Keep context bounded: read only assigned Pi/Rust paths, direct callers, and focu
 {"status":"DONE","unit":"<id>","base":"<40-hex>","candidate":"<40-hex>","summary":"..."}
 ```
 
-If implementation cannot proceed without a human product decision, return `BLOCKED` with `blocker` and no candidate. If evidence proves that the remaining DAG order/dependency/ownership is wrong, return `PLAN_CHANGE` with `reason`, `blocker`, and no candidate. Do not repair the plan yourself.
+For every `BLOCKED` or `PLAN_CHANGE`, include exactly one `classification`: `REPAIRABLE` (one bounded retry of this writer can fix owned code), `PLAN_CHANGE_REQUIRED` (a structural graph change is necessary), `ARBITRATION_REQUIRED` (a dependency/product decision is required), or `TRANSIENT` (environmental retry only). `REPAIRABLE` never edits the DAG; the controller supplies its evidence to the next bounded attempt. If evidence proves that the remaining DAG order/dependency/ownership is wrong, return `PLAN_CHANGE` with `classification: "PLAN_CHANGE_REQUIRED"`, `reason`, and `blocker`. Do not repair the plan yourself.

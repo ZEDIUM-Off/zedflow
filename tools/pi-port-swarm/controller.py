@@ -12,6 +12,7 @@ import fcntl
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,13 @@ MUTATING_KINDS = {"writer", "checkpoint"}
 INTEGRATION_REF = "refs/heads/automation/pi-port"
 NULL_OID = "0" * 40
 DAG_FILE = "tools/pi-port-swarm/dag.json"
+PLAN_FILE = ".agents/plans/pi-stage-1-port-recovery.md"
+RUNTIME_VERSION = 4
+MAX_REPAIR_ATTEMPTS = 2
+MAX_HISTORY = 200
+MAX_VALIDATION_SUMMARY = 4000
+KNOWN_PACKAGES = {"zedflow-ai", "zedflow-agent", "zedflow-tui", "zedflow-coding-agent", "zedflow-orchestrator"}
+OUTCOME_CLASSES = {"REPAIRABLE", "PLAN_CHANGE_REQUIRED", "ARBITRATION_REQUIRED", "TRANSIENT"}
 CONTROL_OWNERSHIP = (DAG_FILE, ".agents/port-swarm/state.json", "docs/porting")
 PROMPTS = {
     "writer": "pi-port-worker-session.md",
@@ -127,6 +135,7 @@ def validate_dag(dag: dict[str, Any]) -> list[dict[str, Any]]:
         for field in ("depends_on", "ownership", "validation"):
             if not isinstance(unit.get(field), list) or not all(isinstance(value, str) for value in unit[field]):
                 raise ControllerError(f"{identifier}: {field} must be a list of strings")
+        validate_commands(unit["validation"])
         if unit["kind"] in MUTATING_KINDS and not unit["ownership"]:
             raise ControllerError(f"{identifier}: mutating unit requires ownership")
         for prefix in unit["ownership"]:
@@ -187,6 +196,17 @@ def verify_candidate_worktree(worktree: Path, candidate: str, pin: str) -> None:
     clean_worktree(submodule)
 
 
+def identity(source: Path, dag: dict[str, Any], integration_ref: str) -> dict[str, str]:
+    """Immutable identities required to interpret one runtime state file."""
+    return {
+        "controller_sha": git(source, "rev-parse", "HEAD"),
+        "integration_sha": integration_sha(source, integration_ref),
+        "dag_sha": dag_hash(dag),
+        "plan_sha": git(source, "rev-parse", f"HEAD:{PLAN_FILE}"),
+        "pi_gitlink": pinned_gitlink(dag),
+    }
+
+
 def seed_runtime(source: Path, dag: dict[str, Any], integration_ref: str = INTEGRATION_REF) -> dict[str, Any]:
     require_integration_ref(integration_ref)
     seed = load_json(source / ".agents/port-swarm/state.json")
@@ -200,14 +220,16 @@ def seed_runtime(source: Path, dag: dict[str, Any], integration_ref: str = INTEG
     if not isinstance(current, dict) or current.get("id") not in ids or current["id"] in closed:
         raise ControllerError("tracked state current is invalid")
     base = current.get("base")
-    if not isinstance(base, str) or len(base) != 40 or not git_ok(source, "merge-base", "--is-ancestor", base, "HEAD"):
-        raise ControllerError("tracked state current.base must be an immutable ancestor of the controller baseline")
+    if not is_full_sha(base) or not git_ok(source, "merge-base", "--is-ancestor", base, "HEAD"):
+        raise ControllerError("tracked state current.base must be an immutable ancestor SHA of the controller baseline")
+    identities = identity(source, dag, integration_ref)
     return {
-        "version": 3,
+        "version": RUNTIME_VERSION,
         "integration_ref": integration_ref,
-        "pi_gitlink": pinned_gitlink(dag),
-        "dag_sha256": dag_hash(dag),
+        **identities,
+        "dag_sha256": identities["dag_sha"],
         "units": {identifier: {"status": "ACCEPTED"} for identifier in closed},
+        "terminal_ids": list(closed),
         "history": [],
     }
 
@@ -244,14 +266,46 @@ def recover_accepted_checkpoint_dag(source: Path, dag: dict[str, Any], state: di
     return True
 
 
+def migrate_runtime_v3(source: Path, dag: dict[str, Any], state: dict[str, Any], integration_ref: str) -> dict[str, Any]:
+    """Pure v3→v4 migration; preserve and verify existing control evidence."""
+    if state.get("version") != 3 or state.get("integration_ref") != integration_ref:
+        raise ControllerError("runtime state does not match this controller integration ref")
+    migrated = json.loads(json.dumps(state))
+    if migrated.get("pi_gitlink") != pinned_gitlink(dag):
+        raise ControllerError("runtime state Pi gitlink differs from DAG")
+    if migrated.get("dag_sha256") != dag_hash(dag) and not pending_dag_change(migrated):
+        if not recover_accepted_checkpoint_dag(source, dag, migrated, integration_ref):
+            raise ControllerError("runtime state DAG revision differs from the integration DAG")
+    terminal = {identifier for identifier, record in migrated.get("units", {}).items() if record.get("status") in {"ACCEPTED", "FAILED", "BLOCKED", "SUPERSEDED"}}
+    terminal.update(migrated.get("terminal_ids", []))
+    identities = identity(source, dag, integration_ref)
+    migrated.update(version=RUNTIME_VERSION, **identities, terminal_ids=sorted(terminal))
+    return migrated
+
+
 def load_runtime(source: Path, dag: dict[str, Any], state_path: Path, integration_ref: str = INTEGRATION_REF, write: bool = False) -> dict[str, Any]:
     require_integration_ref(integration_ref)
     if state_path.exists():
         state = load_json(state_path)
-        if state.get("version") != 3 or state.get("integration_ref") != integration_ref:
-            raise ControllerError("runtime state does not match this controller integration ref")
-        if state.get("pi_gitlink") != pinned_gitlink(dag):
-            raise ControllerError("runtime state Pi gitlink differs from DAG")
+        migrated = state.get("version") == 3
+        if migrated:
+            state = migrate_runtime_v3(source, dag, state, integration_ref)
+            if write:
+                atomic_json(state_path, state)
+        if state.get("version") != RUNTIME_VERSION or state.get("integration_ref") != integration_ref:
+            raise ControllerError("runtime state requires the U1 identity migration")
+        expected = identity(source, dag, integration_ref)
+        for key in ("controller_sha", "plan_sha", "pi_gitlink"):
+            if state.get(key) != expected[key]:
+                raise ControllerError(f"runtime state {key} differs from this immutable control plane")
+        if state.get("dag_sha") != dag_hash(dag):
+            raise ControllerError("runtime state dag_sha differs from the integration DAG")
+        if state.get("integration_sha") != expected["integration_sha"]:
+            accepting = any(record.get("status") == "ACCEPTING" and record.get("candidate") == expected["integration_sha"] for record in state.get("units", {}).values())
+            if not accepting:
+                raise ControllerError("runtime state integration_sha differs from the integration ref")
+        if not isinstance(state.get("terminal_ids", []), list) or not all(isinstance(value, str) for value in state["terminal_ids"]):
+            raise ControllerError("runtime state terminal_ids must be a string list")
         recovered = False
         if state.get("dag_sha256") != dag_hash(dag) and not pending_dag_change(state):
             recovered = recover_accepted_checkpoint_dag(source, dag, state, integration_ref)
@@ -275,10 +329,7 @@ def reconcile_runtime(source: Path, dag: dict[str, Any], state: dict[str, Any], 
             continue
         base, candidate = record.get("base"), record.get("candidate")
         if record.get("status") == "ACCEPTING" and candidate and ref == candidate:
-            if record.get("plan_change"):
-                record["status"] = "RETRY" if record.get("replan_retry") else "SUPERSEDED"
-            else:
-                record["status"] = "ACCEPTED"
+            record["status"] = "SUPERSEDED" if record.get("plan_change") else "ACCEPTED"
             if record.get("revised_dag_sha256"):
                 state["dag_sha256"] = record["revised_dag_sha256"]
             record["blocker"] = None
@@ -291,6 +342,8 @@ def reconcile_runtime(source: Path, dag: dict[str, Any], state: dict[str, Any], 
             record["status"] = "FAILED"
             record["blocker"] = "integration ref changed while recovering interrupted unit"
         changed = True
+    if changed:
+        state["integration_sha"] = ref
     if state.get("dag_sha256") != dag_hash(dag) and not pending_dag_change(state):
         raise ControllerError("runtime state DAG revision differs from the integration DAG")
     return changed
@@ -356,12 +409,23 @@ def result_schema(unit: dict[str, Any]) -> dict[str, str]:
     return {"status": statuses, **base, "candidate": "absent"}
 
 
+def outcome_class(result: dict[str, Any]) -> str:
+    classification = result.get("classification")
+    if classification not in OUTCOME_CLASSES:
+        raise ControllerError("BLOCKED and PLAN_CHANGE results require a valid classification")
+    return classification
+
+
 def validate_result(unit: dict[str, Any], result: dict[str, Any], base: str) -> None:
     if result.get("unit") != unit["id"] or result.get("base") != base:
         raise ControllerError("result unit/base does not match dispatch capsule")
     status, candidate = result.get("status"), result.get("candidate")
     if status not in {"DONE", "BLOCKED", "PLAN_CHANGE"}:
         raise ControllerError("result has an invalid status")
+    if status in {"BLOCKED", "PLAN_CHANGE"}:
+        outcome_class(result)
+    if status == "PLAN_CHANGE" and outcome_class(result) != "PLAN_CHANGE_REQUIRED":
+        raise ControllerError("PLAN_CHANGE must be structural")
     if status == "PLAN_CHANGE" and unit["kind"] not in MUTATING_KINDS | {"reviewer"}:
         raise ControllerError("this unit kind cannot request a plan change")
     if status == "DONE" and unit["kind"] in MUTATING_KINDS:
@@ -369,6 +433,61 @@ def validate_result(unit: dict[str, Any], result: dict[str, Any], base: str) -> 
             raise ControllerError("mutating unit must return a full candidate SHA")
     elif candidate is not None:
         raise ControllerError("non-mutating result must not return a candidate")
+
+
+def validation_argv(command: str) -> list[str]:
+    """Allow only deterministic cargo gates and git's whitespace check."""
+    try:
+        args = shlex.split(command)
+    except ValueError as error:
+        raise ControllerError(f"invalid validation command: {error}") from error
+    legacy_harness_listing = "cargo test -p zedflow-agent --test harness -- --list | grep -Fqx 'storage::jsonl_set_leaf_id_reports_leaf_append_context: test' && cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context -- --exact"
+    if command == legacy_harness_listing:
+        return ["__legacy_harness_listing__"]
+    if not args or any(token in {"|", "&&", ";", ">", "<"} for token in args):
+        raise ControllerError(f"validation command is not allow-listed: {command}")
+    if args == ["git", "diff", "--check"]:
+        return args
+    if args[0] != "cargo" or len(args) < 2 or args[1] not in {"fmt", "check", "test"}:
+        raise ControllerError(f"validation command is not allow-listed: {command}")
+    safe = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/.:=")
+    if any(not token or any(character not in safe for character in token) for token in args):
+        raise ControllerError(f"validation command is not allow-listed: {command}")
+    for index, token in enumerate(args[:-1]):
+        if token in {"-p", "--package"} and args[index + 1] not in KNOWN_PACKAGES:
+            raise ControllerError(f"validation package is not allow-listed: {args[index + 1]}")
+    if any(token in {"--manifest-path", "--target-dir", "--config"} for token in args):
+        raise ControllerError(f"validation command is not allow-listed: {command}")
+    return args
+
+
+def validate_commands(commands: list[str]) -> None:
+    for command in commands:
+        validation_argv(command)
+
+
+def run_validations(worktree: Path, commands: list[str], log_dir: Path | None = None) -> list[dict[str, Any]]:
+    outcomes = []
+    if log_dir:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    for command in commands:
+        args = validation_argv(command)
+        if args == ["__legacy_harness_listing__"]:
+            listing = subprocess.run(["cargo", "test", "-p", "zedflow-agent", "--test", "harness", "--", "--list"], cwd=worktree, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            expected = "storage::jsonl_set_leaf_id_reports_leaf_append_context: test"
+            listed = listing.returncode == 0 and expected in listing.stdout.splitlines()
+            completed = subprocess.run(["cargo", "test", "-p", "zedflow-agent", "--test", "harness", "storage::jsonl_set_leaf_id_reports_leaf_append_context", "--", "--exact"], cwd=worktree, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) if listed else listing
+        else:
+            completed = subprocess.run(args, cwd=worktree, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        detail = {"command": command, "returncode": completed.returncode, "stdout": completed.stdout, "stderr": completed.stderr, "at": int(time.time())}
+        log_path = log_dir / f"{len(outcomes):02d}.json" if log_dir else None
+        if log_path:
+            atomic_json(log_path, detail)
+        outcome = {"command": command, "returncode": completed.returncode, "log": str(log_path) if log_path else None, "stdout_summary": completed.stdout[-MAX_VALIDATION_SUMMARY:], "stderr_summary": completed.stderr[-MAX_VALIDATION_SUMMARY:], "at": detail["at"]}
+        outcomes.append(outcome)
+        if completed.returncode:
+            raise ControllerError(f"declared validation failed: {command}\n{completed.stdout}{completed.stderr}")
+    return outcomes
 
 
 def blocked_reason(result: dict[str, Any]) -> str:
@@ -385,7 +504,7 @@ def allowed_changes(source: Path, base: str, candidate: str, ownership: list[str
     return changed
 
 
-def validate_candidate(source: Path, worktree: Path, base: str, candidate: str, unit: dict[str, Any], pin: str) -> None:
+def validate_candidate(source: Path, worktree: Path, base: str, candidate: str, unit: dict[str, Any], pin: str, log_dir: Path | None = None) -> list[dict[str, Any]]:
     if not is_full_sha(candidate):
         raise ControllerError("candidate must be a full SHA")
     if not git_ok(source, "merge-base", "--is-ancestor", base, candidate):
@@ -393,10 +512,7 @@ def validate_candidate(source: Path, worktree: Path, base: str, candidate: str, 
     verify_candidate_worktree(worktree, candidate, pin)
     allowed_changes(source, base, candidate, unit["ownership"])
     verify_gitlink(source, candidate, pin)
-    for command in unit["validation"]:
-        completed = subprocess.run(command, cwd=worktree, shell=True, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if completed.returncode:
-            raise ControllerError(f"declared validation failed: {command}\n{completed.stdout}{completed.stderr}")
+    return run_validations(worktree, unit["validation"], log_dir)
 
 
 def create_worktree(source: Path, state_dir: Path, base: str, unit: dict[str, Any], attempt: int, pin: str) -> tuple[Path, Path]:
@@ -422,7 +538,7 @@ def authoritative_result(unit: dict[str, Any], result: dict[str, Any], worktree:
 
 def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any], base: str, coordinator: bool = False) -> dict[str, Any]:
     prompt = prompt_for(source, unit, coordinator)
-    capsule = {"unit": unit, "base": base, "ownership": unit["ownership"], "validation": unit["validation"], "intent": unit.get("intent", ""), "result_schema": result_schema(unit)}
+    capsule = {"unit": unit, "base": base, "ownership": unit["ownership"], "validation": unit["validation"], "intent": unit.get("intent", ""), "repair_context": unit.get("repair_context"), "result_schema": result_schema(unit)}
     session_dir.mkdir(parents=True, exist_ok=True)
     command = pi_command(prompt, session_dir, f"pi-port-{unit['id'].lower()}-{uuid.uuid4().hex[:8]}", json.dumps(capsule, separators=(",", ":")))
     completed = run_cmd(command, worktree, check=False)
@@ -431,6 +547,12 @@ def launch(source: Path, worktree: Path, session_dir: Path, unit: dict[str, Any]
     if completed.returncode:
         raise ControllerError(f"Pi exited {completed.returncode}; see {log}")
     return authoritative_result(unit, result_line(completed.stdout), worktree)
+
+
+def append_history(state: dict[str, Any], record: dict[str, Any]) -> None:
+    history = state.setdefault("history", [])
+    history.append(record)
+    del history[:-MAX_HISTORY]
 
 
 def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, reason: Any, revised_hash: str, replan_retry: bool) -> None:
@@ -442,16 +564,17 @@ def mark_plan_acceptance(state: dict[str, Any], unit_id: str, candidate: str, re
         revised_dag_sha256=revised_hash,
     )
     state["dag_sha256"] = revised_hash
+    state["dag_sha"] = revised_hash
 
 
 def validate_replan_transition(source_unit: dict[str, Any], original_units: list[dict[str, Any]], revised_units: list[dict[str, Any]]) -> None:
-    if source_unit["kind"] != "validator":
-        return
     source_id = source_unit["id"]
     original_ids = {unit["id"] for unit in original_units}
     revised = {unit["id"]: unit for unit in revised_units}
     if source_id in revised:
-        raise ControllerError("validator replan must supersede the blocked validator")
+        raise ControllerError("structural replan must supersede its terminal source unit")
+    if source_unit["kind"] != "validator":
+        return
     downstream = [unit for unit in original_units if source_id in unit["depends_on"]]
     replacements = [
         unit for unit in revised_units
@@ -471,6 +594,8 @@ def validate_replan_transition(source_unit: dict[str, Any], original_units: list
 
 def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str, Any], result: dict[str, Any], pin: str, integration_ref: str, state: dict[str, Any], state_path: Path) -> tuple[str, bool]:
     require_integration_ref(integration_ref)
+    if outcome_class(result) != "PLAN_CHANGE_REQUIRED":
+        raise ControllerError("only PLAN_CHANGE_REQUIRED may invoke the coordinator")
     control = {
         "id": f"REPLAN-{unit['id']}",
         "kind": "checkpoint",
@@ -493,18 +618,25 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
     revised_units = validate_dag(revised)
     original_units = validate_dag(json.loads(git(source, "show", f"{base}:{DAG_FILE}")))
     validate_replan_transition(unit, original_units, revised_units)
+    original_ids = {original["id"] for original in original_units}
+    added_ids = {revised_unit["id"] for revised_unit in revised_units} - original_ids
+    terminal_ids = set(state.get("terminal_ids", []))
+    if added_ids & terminal_ids:
+        raise ControllerError("structural replan reuses a terminal unit ID")
     if pinned_gitlink(revised) != pin:
         raise ControllerError("coordinator changed the frozen Pi gitlink")
     revised_hash = dag_hash(revised)
-    replan_retry = any(revised_unit["id"] == unit["id"] for revised_unit in revised_units)
     prospective = json.loads(json.dumps(state))
-    prospective.setdefault("units", {})[unit["id"]] = {"status": "RETRY" if replan_retry else "SUPERSEDED"}
+    prospective.setdefault("units", {})[unit["id"]] = {"status": "SUPERSEDED"}
     if not ready_units(revised_units, prospective) and not graph_complete(revised_units, prospective):
-        raise ControllerError("PLAN_CHANGE leaves no reachable replacement or ready unit")
-    mark_plan_acceptance(state, unit["id"], candidate, result.get("reason"), revised_hash, replan_retry)
+        raise ControllerError("PLAN_CHANGE leaves no ready or reachable frontier")
+    mark_plan_acceptance(state, unit["id"], candidate, result.get("reason"), revised_hash, False)
+    state.setdefault("terminal_ids", []).append(unit["id"])
     atomic_json(state_path, state)
     git(source, "update-ref", integration_ref, candidate, base)
-    return candidate, replan_retry
+    state["integration_sha"] = candidate
+    state["dag_sha"] = revised_hash
+    return candidate, False
 
 
 def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
@@ -520,17 +652,26 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
     pin = pinned_gitlink(dag)
     base = integration_sha(source, integration_ref)
     ensure_integration_ref(source, integration_ref, base)
-    attempt = state.get("units", {}).get(unit["id"], {}).get("attempt", 0) + 1
-    worktree, session = create_worktree(source, state_dir, base, unit, attempt, pin)
-    record = {"status": "RUNNING", "attempt": attempt, "base": base, "dag_sha256": dag_hash(dag), "worktree": str(worktree), "session": str(session), "candidate": None, "blocker": None}
+    previous = state.get("units", {}).get(unit["id"], {})
+    attempt = previous.get("attempt", 0) + 1
+    dispatch_unit = {**unit, "repair_context": previous.get("repair_context")}
+    worktree, session = create_worktree(source, state_dir, base, dispatch_unit, attempt, pin)
+    record = {"status": "RUNNING", "attempt": attempt, "base": base, "dag_sha256": dag_hash(dag), "worktree": str(worktree), "session": str(session), "candidate": None, "blocker": None, "repair_context": previous.get("repair_context")}
     state.setdefault("units", {})[unit["id"]] = record
     atomic_json(state_path, state)
     try:
-        result = launch(source, worktree, session, unit, base)
+        result = launch(source, worktree, session, dispatch_unit, base)
         validate_result(unit, result, base)
         if result["status"] == "BLOCKED":
-            record.update(status="BLOCKED", blocker=blocked_reason(result))
+            classification = outcome_class(result)
+            record.update(classification=classification, blocker=blocked_reason(result))
+            if classification == "REPAIRABLE" and unit["kind"] == "writer" and attempt < MAX_REPAIR_ATTEMPTS:
+                record.update(status="RETRY", repair_context=blocked_reason(result))
+            else:
+                record.update(status="BLOCKED")
         elif result["status"] == "PLAN_CHANGE":
+            classification = outcome_class(result)
+            record.update(classification=classification)
             record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "plan change requested")
             atomic_json(state_path, state)
             candidate, replan_retry = accept_plan_change(source, state_dir, base, unit, result, pin, integration_ref, state, state_path)
@@ -538,7 +679,7 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
         else:
             candidate = result.get("candidate")
             if unit["kind"] in MUTATING_KINDS:
-                validate_candidate(source, worktree, base, candidate, unit, pin)
+                record["validation_outcomes"] = validate_candidate(source, worktree, base, candidate, unit, pin, session / "validation")
                 revised_hash = None
                 if unit["kind"] == "checkpoint" and not git_ok(source, "diff", "--quiet", f"{base}..{candidate}", "--", DAG_FILE):
                     revised = load_json(worktree / DAG_FILE)
@@ -557,19 +698,20 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
                 atomic_json(state_path, state)
                 git(source, "update-ref", integration_ref, candidate, base)
                 record.update(status="ACCEPTED", candidate=candidate)
+                state["integration_sha"] = candidate
                 if revised_hash:
                     state["dag_sha256"] = revised_hash
+                    state["dag_sha"] = revised_hash
             else:
                 if candidate is not None or integration_sha(source, integration_ref) != base:
                     raise ControllerError("read-only unit must not change the integration ref")
-                for command in unit["validation"]:
-                    completed = subprocess.run(command, cwd=worktree, shell=True)
-                    if completed.returncode:
-                        raise ControllerError(f"declared validation failed: {command}")
+                record["validation_outcomes"] = run_validations(worktree, unit["validation"], session / "validation")
                 record.update(status="ACCEPTED")
-        state.setdefault("history", []).append({"unit": unit["id"], "status": record["status"], "base": base, "candidate": record.get("candidate"), "at": int(time.time())})
+        if record["status"] in {"ACCEPTED", "SUPERSEDED"} and unit["id"] not in state.setdefault("terminal_ids", []):
+            state["terminal_ids"].append(unit["id"])
+        append_history(state, {"unit": unit["id"], "status": record["status"], "classification": record.get("classification"), "base": base, "candidate": record.get("candidate"), "at": int(time.time())})
         atomic_json(state_path, state)
-        return "replanned" if record.get("plan_change") else record["status"].lower()
+        return "replanned" if record.get("plan_change") else ("repairing" if record["status"] == "RETRY" else record["status"].lower())
     except ControllerError as error:
         record.update(status="FAILED", blocker=str(error))
         atomic_json(state_path, state)
@@ -619,7 +761,7 @@ def snapshot(source: Path, dag: dict[str, Any], state: dict[str, Any], integrati
 
 
 def should_continue(outcome: str, continuous: bool) -> bool:
-    return continuous and outcome in {"accepted", "replanned"}
+    return continuous and outcome in {"accepted", "replanned", "repairing"}
 
 
 def paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
@@ -643,9 +785,15 @@ def main() -> int:
     run_parser.add_argument("--continuous", action="store_true")
     retry_parser = sub.add_parser("retry")
     retry_parser.add_argument("--unit", required=True)
+    repair_parser = sub.add_parser("repair")
+    repair_parser.add_argument("--unit", required=True)
     replan_parser = sub.add_parser("replan")
     replan_parser.add_argument("--unit", required=True)
     replan_parser.add_argument("--reason", required=True)
+    recover_parser = sub.add_parser("recover")
+    recover_parser.add_argument("--unit", required=True)
+    recover_parser.add_argument("--classification", required=True, choices=sorted(OUTCOME_CLASSES))
+    recover_parser.add_argument("--reason", required=True)
     args = parser.parse_args()
     try:
         source, dag_path, state_dir, state_path = paths(args)
@@ -669,25 +817,62 @@ def main() -> int:
             state = load_runtime(source, dag, state_path, INTEGRATION_REF, write=True)
             if reconcile_runtime(source, dag, state, INTEGRATION_REF):
                 atomic_json(state_path, state)
+            if args.command == "recover":
+                record = state.get("units", {}).get(args.unit)
+                unit = next((value for value in units if value["id"] == args.unit), None)
+                if not unit or not record or record.get("status") not in {"FAILED", "BLOCKED"}:
+                    raise ControllerError("recover requires an active failed or blocked unit")
+                record.update(classification=args.classification, blocker=args.reason)
+                if args.classification == "ARBITRATION_REQUIRED":
+                    atomic_json(state_path, state)
+                    print(json.dumps({"status": "arbitration-required", **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))
+                    return 2
+                if args.classification == "REPAIRABLE":
+                    if unit["kind"] != "writer" or record.get("attempt", 0) >= MAX_REPAIR_ATTEMPTS:
+                        raise ControllerError("REPAIRABLE recovery requires a bounded writer attempt")
+                    record.update(status="RETRY", candidate=None, repair_context=args.reason)
+                elif args.classification == "TRANSIENT":
+                    record.update(status="RETRY", candidate=None)
+                else:
+                    base = integration_sha(source, INTEGRATION_REF)
+                    record["base"] = base
+                    result = {"status": "PLAN_CHANGE", "classification": "PLAN_CHANGE_REQUIRED", "unit": args.unit, "base": base, "reason": args.reason}
+                    candidate, replan_retry = accept_plan_change(source, state_dir, base, unit, result, pinned_gitlink(dag), INTEGRATION_REF, state, state_path)
+                    record.update(status="RETRY" if replan_retry else "SUPERSEDED", candidate=candidate, blocker=None, plan_change=args.reason, replan_retry=replan_retry)
+                append_history(state, {"unit": args.unit, "status": record["status"], "classification": args.classification, "at": int(time.time())})
+                atomic_json(state_path, state)
+                revised = load_dag(source, dag_path, INTEGRATION_REF)
+                print(json.dumps({"status": "recovered", **snapshot(source, revised, state, INTEGRATION_REF)}, sort_keys=True))
+                return 0
             if args.command == "retry":
                 record = state.get("units", {}).get(args.unit)
-                if not record or record.get("status") not in {"FAILED", "BLOCKED", "SUPERSEDED"}:
-                    raise ControllerError("retry requires a FAILED, BLOCKED, or SUPERSEDED unit")
+                if not record or record.get("classification") != "TRANSIENT" or record.get("status") not in {"FAILED", "BLOCKED"}:
+                    raise ControllerError("retry requires a TRANSIENT failed or blocked unit")
                 record.update(status="RETRY", candidate=None, blocker=None)
                 atomic_json(state_path, state)
                 print(json.dumps({"status": "retry-ready", **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))
                 return 0
+            if args.command == "repair":
+                record = state.get("units", {}).get(args.unit)
+                unit = next((value for value in units if value["id"] == args.unit), None)
+                if not unit or unit["kind"] != "writer" or not record or record.get("classification") != "REPAIRABLE" or record.get("status") != "BLOCKED" or record.get("attempt", 0) >= MAX_REPAIR_ATTEMPTS:
+                    raise ControllerError("repair requires a bounded REPAIRABLE writer blocker")
+                record.update(status="RETRY", candidate=None, repair_context=record.get("blocker"))
+                atomic_json(state_path, state)
+                print(json.dumps({"status": "repair-ready", **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))
+                return 0
             if args.command == "replan":
+
                 unit = next((unit for unit in units if unit["id"] == args.unit), None)
                 record = state.get("units", {}).get(args.unit)
-                if not unit or not record or record.get("status") not in {"FAILED", "BLOCKED"}:
-                    raise ControllerError("replan requires an active FAILED or BLOCKED unit")
+                if not unit or not record or record.get("status") not in {"FAILED", "BLOCKED"} or record.get("classification") != "PLAN_CHANGE_REQUIRED":
+                    raise ControllerError("replan requires a structural blocker")
                 base = integration_sha(source, INTEGRATION_REF)
                 record["base"] = base
-                result = {"status": "PLAN_CHANGE", "unit": args.unit, "base": base, "reason": args.reason}
+                result = {"status": "PLAN_CHANGE", "classification": "PLAN_CHANGE_REQUIRED", "unit": args.unit, "base": base, "reason": args.reason}
                 candidate, replan_retry = accept_plan_change(source, state_dir, base, unit, result, pinned_gitlink(dag), INTEGRATION_REF, state, state_path)
                 record.update(status="RETRY" if replan_retry else "SUPERSEDED", candidate=candidate, blocker=None, plan_change=args.reason, replan_retry=replan_retry)
-                state.setdefault("history", []).append({"unit": args.unit, "status": record["status"], "base": base, "candidate": candidate, "at": int(time.time())})
+                append_history(state, {"unit": args.unit, "status": record["status"], "base": base, "candidate": candidate, "at": int(time.time())})
                 atomic_json(state_path, state)
                 revised = load_dag(source, dag_path, INTEGRATION_REF)
                 print(json.dumps({"status": "replanned", **snapshot(source, revised, state, INTEGRATION_REF)}, sort_keys=True))

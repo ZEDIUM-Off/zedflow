@@ -116,10 +116,35 @@ class ControllerTests(unittest.TestCase):
         repo = ROOT
         actual = json.loads((repo / "tools/pi-port-swarm/dag.json").read_text())
         state = controller.seed_runtime(repo, actual, "refs/heads/automation/pi-port")
-        self.assertEqual(state["version"], 3)
+        self.assertEqual(state["version"], controller.RUNTIME_VERSION)
+        self.assertEqual(set(("controller_sha", "integration_sha", "dag_sha", "plan_sha", "pi_gitlink")), {key for key in state if key in {"controller_sha", "integration_sha", "dag_sha", "plan_sha", "pi_gitlink"}})
         self.assertIn("AG-P1", state["units"])
-        self.assertNotIn("AG-R1-JSONL-LEAF-ERROR", state["units"])
+        self.assertIn("AG-R1-JSONL-LEAF-ERROR", state["units"])
         self.assertEqual(len(state["pi_gitlink"]), 40)
+
+    def test_v3_migration_is_in_memory_until_explicit_write(self) -> None:
+        actual = json.loads((ROOT / "tools/pi-port-swarm/dag.json").read_text())
+        v3 = controller.seed_runtime(ROOT, actual)
+        v3["version"] = 3
+        v3.pop("controller_sha"); v3.pop("integration_sha"); v3.pop("dag_sha"); v3.pop("plan_sha"); v3.pop("terminal_ids")
+        v3["units"]["AG-P1"].update(blocker="kept", worktree="/tmp/worktree")
+        v3["history"] = [{"unit": "AG-P1", "status": "FAILED"}]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "state.json"
+            controller.atomic_json(path, v3)
+            migrated = controller.load_runtime(ROOT, actual, path, write=False)
+            self.assertEqual(migrated["version"], 4)
+            self.assertEqual(migrated["units"]["AG-P1"]["worktree"], "/tmp/worktree")
+            self.assertEqual(controller.load_json(path)["version"], 3)
+            controller.load_runtime(ROOT, actual, path, write=True)
+            self.assertEqual(controller.load_json(path)["version"], 4)
+
+    def test_v3_migration_rejects_mismatched_pi_pin(self) -> None:
+        actual = json.loads((ROOT / "tools/pi-port-swarm/dag.json").read_text())
+        v3 = controller.seed_runtime(ROOT, actual)
+        v3.update(version=3, pi_gitlink="0" * 40)
+        with self.assertRaises(controller.ControllerError):
+            controller.migrate_runtime_v3(ROOT, actual, v3, controller.INTEGRATION_REF)
 
     def test_status_and_monitor_are_nonmutating(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -242,7 +267,11 @@ class ControllerTests(unittest.TestCase):
                 controller.validate_result(unit, {"status": "DONE", "unit": unit["id"], "base": base, "candidate": base}, base)
         with self.assertRaises(controller.ControllerError):
             controller.validate_result(units[2], {"status": "PLAN_CHANGE", "unit": "V1", "base": base}, base)
-        controller.validate_result(units[3], {"status": "PLAN_CHANGE", "unit": "RV-FID", "base": base}, base)
+        controller.validate_result(units[3], {"status": "PLAN_CHANGE", "unit": "RV-FID", "base": base, "classification": "PLAN_CHANGE_REQUIRED"}, base)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_result(units[3], {"status": "PLAN_CHANGE", "unit": "RV-FID", "base": base, "classification": "ARBITRATION_REQUIRED"}, base)
+        with self.assertRaises(controller.ControllerError):
+            controller.validate_result(units[3], {"status": "PLAN_CHANGE", "unit": "RV-FID", "base": base}, base)
         with self.assertRaises(controller.ControllerError):
             controller.validate_result(units[0], {"status": "DONE", "unit": "W", "base": base}, base)
 
@@ -289,6 +318,7 @@ class ControllerTests(unittest.TestCase):
         interrupted = {"dag_sha256": controller.dag_hash(initial), "units": {"NEXT": {"status": "ACCEPTING", "base": base, "candidate": candidate, "dag_sha256": controller.dag_hash(initial), "revised_dag_sha256": controller.dag_hash(revised)}}}
         self.assertTrue(controller.reconcile_runtime(repo, revised, interrupted, controller.INTEGRATION_REF))
         self.assertEqual(interrupted["units"]["NEXT"]["status"], "ACCEPTED")
+        self.assertEqual(interrupted["integration_sha"], candidate)
         self.assertEqual(interrupted["dag_sha256"], controller.dag_hash(revised))
 
     def test_validator_replan_preserves_gate_and_downstream(self) -> None:
@@ -334,6 +364,23 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(controller.should_continue("accepted", True))
         self.assertFalse(controller.should_continue("blocked", True))
         self.assertEqual([unit["id"] for unit in controller.ready_units(revised["units"], state)], ["V1"])
+
+    def test_validation_commands_are_allow_listed(self) -> None:
+        self.assertEqual(controller.validation_argv("cargo check --workspace --all-targets")[:2], ["cargo", "check"])
+        self.assertEqual(controller.validation_argv("git diff --check"), ["git", "diff", "--check"])
+        with self.assertRaises(controller.ControllerError):
+            controller.validation_argv("python3 -c 'import os'")
+        with self.assertRaises(controller.ControllerError):
+            controller.validation_argv("cargo test; rm -rf /")
+        with self.assertRaises(controller.ControllerError):
+            controller.validation_argv("cargo test -p untrusted-package")
+
+    def test_repairable_writer_retries_without_dag_mutation(self) -> None:
+        units = dag()["units"]
+        state = {"units": {"A": {"status": "RETRY", "attempt": 1, "classification": "REPAIRABLE"}}}
+        self.assertEqual([unit["id"] for unit in controller.ready_units(units, state)], ["A"])
+        self.assertTrue(controller.should_continue("repairing", True))
+        self.assertFalse(controller.should_continue("repairing", False))
 
     def test_nonblocking_lock_semantics(self) -> None:
         # The controller uses LOCK_NB and returns 75; the primitive is explicit and portable.
