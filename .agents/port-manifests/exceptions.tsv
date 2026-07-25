@@ -1,0 +1,4 @@
+ai	bedrock-provider.d.ts	type-only		Ambient package declaration for the Bedrock provider export; no runtime module exists to port.
+coding-agent	test/test-harness.test.ts	consolidated	crates/zedflow-coding-agent/tests/test-harness.rs	Vitest assertions and the shared harness map to the one Rust harness target.
+coding-agent	test/test-harness.ts	consolidated	crates/zedflow-coding-agent/tests/test-harness.rs	Shared TypeScript test support is exercised by the consolidated Rust harness target.
+coding-agent	src/utils/highlight-js-lib-index.d.ts	type-only		Ambient declaration for highlight.js/lib/index.js; no runtime module exists to port.

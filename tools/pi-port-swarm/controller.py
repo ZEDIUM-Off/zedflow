@@ -21,6 +21,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from manifest import report as manifest_report
+
 KINDS = {"writer", "checkpoint", "validator", "reviewer"}
 MUTATING_KINDS = {"writer", "checkpoint"}
 INTEGRATION_REF = "refs/heads/automation/pi-port"
@@ -442,8 +444,11 @@ def validation_argv(command: str) -> list[str]:
     except ValueError as error:
         raise ControllerError(f"invalid validation command: {error}") from error
     legacy_harness_listing = "cargo test -p zedflow-agent --test harness -- --list | grep -Fqx 'storage::jsonl_set_leaf_id_reports_leaf_append_context: test' && cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context -- --exact"
+    manifest_commands = {"python3 tools/pi-port-swarm/manifest.py check"} | {f"python3 tools/pi-port-swarm/manifest.py check --package {package}" for package in KNOWN_PACKAGES}
     if command == legacy_harness_listing:
         return ["__legacy_harness_listing__"]
+    if command in manifest_commands:
+        return shlex.split(command)
     if not args or any(token in {"|", "&&", ";", ">", "<"} for token in args):
         raise ControllerError(f"validation command is not allow-listed: {command}")
     if args == ["git", "diff", "--check"]:
@@ -735,23 +740,8 @@ def progress(units: list[dict[str, Any]], state: dict[str, Any]) -> dict[str, An
 
 
 def mechanical_manifest_progress(source: Path, integration_ref: str) -> dict[str, Any]:
-    """Cheap mapping inventory; target presence is not semantic port completion."""
-    manifests = source / ".agents/port-manifests"
-    packages: dict[str, dict[str, Any]] = {}
-    revision = integration_sha(source, integration_ref)
-    for manifest in sorted(manifests.glob("*.tsv")):
-        name, _, kind = manifest.stem.rpartition("-")
-        if kind not in {"src", "tests"}:
-            continue
-        rows = [line.split("\t") for line in manifest.read_text(encoding="utf-8").splitlines() if line]
-        present = sum(git_ok(source, "cat-file", "-e", f"{revision}:{row[1]}") for row in rows if len(row) >= 2)
-        package = packages.setdefault(name, {"source_rows": 0, "source_targets_present": 0, "test_rows": 0, "test_targets_present": 0})
-        field = "source" if kind == "src" else "test"
-        package[f"{field}_rows"] = len(rows)
-        package[f"{field}_targets_present"] = present
-    ignored = len(git(source, "grep", "-l", "#\\[ignore", revision, "--", "crates", check=False).splitlines())
-    placeholders = len(git(source, "grep", "-l", "PORT PLACEHOLDER", revision, "--", "crates", check=False).splitlines())
-    return {"label": "mechanical mapping/target presence only; not fidelity completion", "packages": packages, "ignored_test_files": ignored, "port_placeholder_files": placeholders}
+    """Frozen manifest closure report at the moving integration ref."""
+    return manifest_report(source, revision=integration_sha(source, integration_ref))
 
 
 def snapshot(source: Path, dag: dict[str, Any], state: dict[str, Any], integration_ref: str) -> dict[str, Any]:

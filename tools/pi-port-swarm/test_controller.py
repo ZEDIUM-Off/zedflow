@@ -106,6 +106,12 @@ class ControllerTests(unittest.TestCase):
         self.assertNotIn("--resume", first)
         self.assertNotEqual(first, second)
 
+    def test_manifest_closure_commands_are_allow_listed(self) -> None:
+        self.assertEqual(controller.validation_argv("python3 tools/pi-port-swarm/manifest.py check"), ["python3", "tools/pi-port-swarm/manifest.py", "check"])
+        self.assertEqual(controller.validation_argv("python3 tools/pi-port-swarm/manifest.py check --package zedflow-ai")[-1], "zedflow-ai")
+        with self.assertRaises(controller.ControllerError):
+            controller.validation_argv("python3 tools/pi-port-swarm/manifest.py status")
+
     def test_ownership_and_control_restriction(self) -> None:
         self.assertTrue(controller.owns(["docs/porting"], "docs/porting/a.md"))
         self.assertFalse(controller.owns(["docs/porting"], "docs/planning/a.md"))

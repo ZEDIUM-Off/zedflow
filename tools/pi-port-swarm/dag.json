@@ -3236,7 +3236,8 @@
       "validation": [
         "cargo fmt --all --check",
         "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-orchestrator --all-targets"
+        "cargo test --package zedflow-orchestrator --all-targets",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-orchestrator"
       ],
       "intent": "Validate the complete orchestrator manifest wave."
     },
@@ -3262,9 +3263,10 @@
       "validation": [
         "cargo fmt --all --check",
         "cargo check --workspace --all-targets",
-        "cargo test --workspace --all-targets --no-run"
+        "cargo test --workspace --all-targets",
+        "python3 tools/pi-port-swarm/manifest.py check"
       ],
-      "intent": "Run the final workspace formatting, compilation, and test-build gate."
+      "intent": "Run final manifest closure plus full workspace formatting, compilation, and executed tests."
     },
     {
       "id": "FINAL-RV-FID",
