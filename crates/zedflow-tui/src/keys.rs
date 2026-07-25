@@ -20,7 +20,7 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
     match data {
         "\r" | "\n" => return Some("enter"),
         "\t" => return Some("tab"),
-        "\x7f" => return Some("backspace"),
+        "\x08" | "\x7f" => return Some("backspace"),
         _ => {}
     }
     if data.len() == 1 {
@@ -125,12 +125,13 @@ fn parse_kitty_key(data: &str) -> Option<String> {
         .parse::<u32>()
         .ok()?
         .saturating_sub(1);
+    let code = normalize_kitty_functional_code(code);
     let code = if modifier & 1 != 0 && (65..=90).contains(&code) {
         code + 32
     } else {
         code
     };
-    let code = if matches!(code, 9 | 13 | 127 | 32..=126) {
+    let code = if matches!(code, 9 | 13 | 127 | 32..=126) || kitty_functional_key(code).is_some() {
         code
     } else {
         base_layout_code?
@@ -140,7 +141,7 @@ fn parse_kitty_key(data: &str) -> Option<String> {
         9 => "tab".to_owned(),
         127 => "backspace".to_owned(),
         32..=126 => char::from_u32(code)?.to_string(),
-        _ => return None,
+        _ => kitty_functional_key(code)?.to_owned(),
     };
     let mut prefix = String::new();
     if modifier & 1 != 0 {
@@ -153,6 +154,37 @@ fn parse_kitty_key(data: &str) -> Option<String> {
         prefix.push_str("ctrl+");
     }
     Some(format!("{prefix}{key}"))
+}
+
+fn normalize_kitty_functional_code(code: u32) -> u32 {
+    match code {
+        57399..=57408 => code - 57399 + b'0' as u32,
+        57409 => b'.' as u32,
+        57410 => b'/' as u32,
+        57411 => b'*' as u32,
+        57412 => b'-' as u32,
+        57413 => b'+' as u32,
+        57415 => b'=' as u32,
+        57416 => b',' as u32,
+        _ => code,
+    }
+}
+
+fn kitty_functional_key(code: u32) -> Option<&'static str> {
+    match code {
+        57414 => Some("enter"),
+        57417 => Some("left"),
+        57418 => Some("right"),
+        57419 => Some("up"),
+        57420 => Some("down"),
+        57421 => Some("pageUp"),
+        57422 => Some("pageDown"),
+        57423 => Some("home"),
+        57424 => Some("end"),
+        57425 => Some("insert"),
+        57426 => Some("delete"),
+        _ => None,
+    }
 }
 
 pub fn is_key_release(data: &str) -> bool {
