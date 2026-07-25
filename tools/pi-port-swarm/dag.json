@@ -3642,10 +3642,25 @@
       "intent": "Match frozen Pi Kitty CSI-u formatting for Escape and Space key names and the Super modifier while preserving all accepted raw/Unicode/keypad behavior and focused tests."
     },
     {
-      "id": "RECOVERY-TUI-KEYS-V5",
-      "kind": "validator",
+      "id": "RECOVERY-TUI-KEYS-R6",
+      "kind": "writer",
       "depends_on": [
         "RECOVERY-TUI-KEYS-R5"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/tests/keys.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui keys"
+      ],
+      "intent": "Serialize the process-environment-dependent raw Backspace tests so their expected local Windows Terminal state cannot race the unmodified raw Backspace assertion."
+    },
+    {
+      "id": "RECOVERY-TUI-KEYS-V6",
+      "kind": "validator",
+      "depends_on": [
+        "RECOVERY-TUI-KEYS-R6"
       ],
       "ownership": [],
       "validation": [
@@ -3654,13 +3669,13 @@
         "cargo test -p zedflow-tui --all-targets",
         "git diff --check"
       ],
-      "intent": "Validate the complete fifth TUI key repair on the exact candidate SHA."
+      "intent": "Revalidate the complete fifth TUI key repair after serializing its process-environment-dependent Backspace tests on the exact candidate SHA."
     },
     {
       "id": "RECOVERY-TUI-KEYS-RV-FID-V5",
       "kind": "reviewer",
       "depends_on": [
-        "RECOVERY-TUI-KEYS-V5"
+        "RECOVERY-TUI-KEYS-V6"
       ],
       "ownership": [],
       "validation": [
