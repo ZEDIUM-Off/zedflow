@@ -1,20 +1,25 @@
 use crate::{components::Loader, Component};
 
+/// A loader that stops when Escape is pressed.
 pub struct CancellableLoader {
     pub loader: Loader,
-    pub cancelled: bool,
+    aborted: bool,
 }
 
 impl CancellableLoader {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             loader: Loader::new(message),
-            cancelled: false,
+            aborted: false,
         }
     }
 
-    pub fn cancel(&mut self) {
-        self.cancelled = true;
+    pub fn abort(&mut self) {
+        self.aborted = true;
+    }
+
+    pub fn aborted(&self) -> bool {
+        self.aborted
     }
 }
 
@@ -25,7 +30,7 @@ impl Component for CancellableLoader {
 
     fn handle_input(&mut self, data: &str) {
         if data == "\x1b" {
-            self.cancel();
+            self.abort();
         }
     }
 }
