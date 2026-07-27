@@ -3656,7 +3656,7 @@
       "intent": "Port the approved TUI dependency-first foundation: exact markdown 1.0.0, icu_properties 2.2.0, icu_segmenter 2.2.0, and emojis 0.9.0 pins, plus frozen Pi foundation modules and composite Unicode width policy."
     },
     {
-      "id": "TUI-V21-COMPONENTS",
+      "id": "TUI-V21-COMPONENTS-R1",
       "kind": "writer",
       "depends_on": [
         "TUI-V21-FOUNDATION"
@@ -3685,13 +3685,39 @@
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Port the approved TUI component batch one-to-one, retaining Pi terminal Markdown rendering, streaming fence repair, source recovery, ANSI/OSC-8 behavior, and width-aware wrapping."
+      "intent": "Fresh equivalent repair of the TUI component batch; preserve the frozen Pi one-to-one component port and do not modify files outside this ownership."
+    },
+    {
+      "id": "TUI-V21-COMPONENTS-R2-UTILS",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V21-COMPONENTS-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/utils.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port the diagnosed TUI utils surface separately from the component writer, preserving the frozen Pi behavior."
+    },
+    {
+      "id": "TUI-V21-COMPONENTS-RV",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-V21-COMPONENTS-R2-UTILS"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Fresh equivalent validation after the structurally repaired component and utils writers."
     },
     {
       "id": "TUI-V21-TEST-BATCH-1",
       "kind": "writer",
       "depends_on": [
-        "TUI-V21-COMPONENTS"
+        "TUI-V21-COMPONENTS-RV"
       ],
       "ownership": [
         "crates/zedflow-tui/tests/autocomplete.rs",
