@@ -20,6 +20,7 @@ pub mod git;
 pub mod html;
 #[path = "image-convert.rs"]
 pub mod image_convert;
+#[path = "image-process.rs"]
 pub mod image_process;
 #[path = "image-resize.rs"]
 pub mod image_resize;
@@ -34,12 +35,14 @@ pub mod open_browser;
 #[path = "paths.rs"]
 pub mod paths;
 pub mod photon;
+#[path = "pi-user-agent.rs"]
 pub mod pi_user_agent;
 #[path = "shell.rs"]
 pub mod shell;
 pub mod sleep;
 #[path = "syntax-highlight.rs"]
 pub mod syntax_highlight;
+#[path = "tools-manager.rs"]
 pub mod tools_manager;
 #[path = "version-check.rs"]
 pub mod version_check;
