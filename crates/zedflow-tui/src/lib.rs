@@ -2,7 +2,17 @@
 
 //! Dependency-light TUI runtime primitives.
 
+pub mod autocomplete;
+pub mod components;
+#[path = "editor-component.rs"]
+pub mod editor_component;
+pub mod fuzzy;
+pub mod index;
+#[path = "keybindings.rs"]
+pub mod keybindings;
 pub mod keys;
+#[path = "kill-ring.rs"]
+pub mod kill_ring;
 #[path = "native-modifiers.rs"]
 pub mod native_modifiers;
 pub mod primitives;

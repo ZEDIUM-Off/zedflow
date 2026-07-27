@@ -37,3 +37,42 @@ mod tests {
         assert_eq!(visible_width("界"), 2);
     }
 }
+
+pub fn truncate_to_width(text: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        let n = visible_width(&c.to_string());
+        if used + n > width {
+            break;
+        }
+        out.push(c);
+        used += n;
+    }
+    out
+}
+pub fn slice_by_column(text: &str, start: usize, end: usize) -> String {
+    let mut out = String::new();
+    let mut col = 0;
+    for c in text.chars() {
+        let n = visible_width(&c.to_string());
+        if col + n > start && col < end {
+            out.push(c)
+        }
+        col += n;
+    }
+    out
+}
+pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
+    text.lines()
+        .flat_map(|l| {
+            if width == 0 {
+                return vec![l.to_string()];
+            };
+            let cs: Vec<char> = l.chars().collect();
+            cs.chunks(width)
+                .map(|x| x.iter().collect())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
