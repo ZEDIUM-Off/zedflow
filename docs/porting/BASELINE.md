@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Zedflow is in **Stage 1: faithful one-to-one Pi TypeScript port**. The frozen source is the `references/pi` gitlink recorded by `tools/pi-port-swarm/dag.json`. Stage-2 Flow/Runtime Graph/LangGraph work is deferred.
+Zedflow is in **Stage 1: incomplete semantic Pi TypeScript → Rust port**. The frozen source is the `references/pi` gitlink recorded by `tools/pi-port-swarm/dag.json`. The completed automation DAG proved file presence and selected tests, but a 2026-07-27 end-user audit invalidated its semantic completion claim. Stage-2 Flow/Runtime Graph/LangGraph work remains forbidden.
 
 This is the sole current human status document. Operational facts come from the integration ref, frozen gitlink, committed DAG, and external controller state exposed by:
 
@@ -15,34 +15,33 @@ Historical plans, trackers, and fidelity decisions are evidence, not current sta
 
 ## Stage-1 package map
 
-| Package | Mechanical closure at the accepted final workspace candidate | State |
+| Package | Mechanical inventory | Semantic state |
 |---|---:|---|
-| AI | 247/247 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
-| Agent | 45/45 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
-| TUI | 61/61 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
-| Coding-agent | 332 inventoried rows, 331 mapped targets, 3 explicit disposition rows | mechanically closed; final fidelity and Rust gates accepted |
-| Orchestrator | 13/13 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
+| AI | 247/247 rows accounted for | open: explicit transport placeholder, placeholder error path, and 24 ignored tests require disposition/implementation |
+| Agent | 45/45 rows accounted for | open: four ignored behaviors require implementation or exact justified disposition |
+| TUI | 61/61 rows accounted for | **invalid**: 23 source files are dead/unwired; terminal/TUI/components are skeletal; no full-screen runtime |
+| Coding-agent | 332 rows accounted for | **invalid**: 70/170 source files are marker-only stubs; 164/184 test targets contain no executable test |
+| Orchestrator | 13/13 rows accounted for | **invalid**: all 12 runtime modules are marker-only stubs; no Rust tests |
 
-These are target/disposition facts, not semantic-completion claims. Run the controller/manifest commands for the live projection after the integration ref advances.
+Mechanical mapping is not completion evidence. Audit artifacts: `.pi-subagents/artifacts/44c53eb4_pi-port-scout_{0,1,2}_output.md`.
 
 ## Current control-plane recovery
 
-The Stage-1 recovery blueprint is `.agents/plans/pi-stage-1-port-recovery.md`. Recovery work reconciles the latest controller fixes with the accepted integration history, enforces manifest closure, restores bounded repair/replan/resume behavior, and removes non-Pi Stage-1 crates. The CAS-managed `automation/pi-port` ref remains the runtime integration authority and must not be checked out in the controller worktree.
+`automation/pi-port@f83a96fe` is retained as mechanical evidence, not an accepted Stage-1 product. Its completed DAG must not trigger promotion or Stage 2. A local test candidate `69dc24a8` wires a minimal canonical-input terminal chat so the Rust runtime can be exercised, but explicitly does not satisfy Pi TUI parity.
 
-The approved tail plan uses deterministic manifest gaps: 59 TUI, 237 Coding-agent, and 13 Orchestrator missing targets. The required order is TUI closure → Coding-agent closure → Orchestrator → final Stage-1 gate. The first TUI batch stopped because its component modules depend on foundation modules and Cargo dependencies outside its ownership.
-
-The user approved the TUI dependency mapping on 2026-07-27: exact pins `markdown 1.0.0`, `icu_properties 2.2.0`, `icu_segmenter 2.2.0`, and `emojis 0.9.0`, while retaining Pi's custom terminal Markdown rendering and grapheme-width policy. Dispatch resumes only after the control protocol, dependency-first TUI DAG, and external runtime identities are migrated together.
+The recovery must first harden closure checks against marker-only modules/tests, dead mapped modules, ignored implementation gaps, and unwired CLI modes. It must then replace every stub with the frozen Pi behavior in the required order: TUI/runtime surface → Coding-agent interactive/runtime surface → Orchestrator → AI/Agent residuals → full differential and end-user gates. The approved exact TUI dependency pins remain `markdown 1.0.0`, `icu_properties 2.2.0`, `icu_segmenter 2.2.0`, and `emojis 0.9.0`.
 
 ## Stage-1 exit gate
 
 Stage 1 is complete only when all of the following hold on one recorded commit SHA:
 
-1. Every frozen Pi source/test has an existing one-to-one Rust target or an approved explicit disposition.
-2. No `dependency-arbitration`, unexplained missing row, convenience placeholder, or implementation-gap ignore remains.
-3. Public contracts, errors, streaming, cancellation, sessions, tools, CLI, and TUI behavior pass independent Pi-fidelity review.
-4. `cargo fmt --all --check`, `cargo check --workspace --all-targets`, and executed `cargo test --workspace --all-targets` pass.
-5. Independent fidelity and Rust-quality reviews accept the same SHA.
-6. The accepted integration SHA is promoted to `main`, and the gate passes again on the promoted SHA.
+1. Every frozen Pi source/test has an existing one-to-one Rust implementation/test or an approved explicit disposition; marker constants and empty test targets do not count.
+2. No `dependency-arbitration`, dead mapped module, convenience placeholder, explicit runtime no-op, unwired CLI mode, or implementation-gap ignore remains.
+3. Default interactive TUI, print/text/json, RPC, sessions, tools, extensions, skills, themes, package management, and Orchestrator execute end to end with differential Pi tests.
+4. Provider transport, errors, streaming, cancellation, compaction, and persistence pass independent Pi-fidelity review, including every formerly ignored non-live test.
+5. `cargo fmt --all --check`, `cargo check --workspace --all-targets`, and executed `cargo test --workspace --all-targets` pass with no unexplained ignore.
+6. Independent end-user, fidelity, and Rust-quality reviews accept the same immutable SHA.
+7. The accepted integration SHA is promoted to `main`, and every gate passes again on the promoted SHA.
 
 Only then may Stage 2 begin.
 
