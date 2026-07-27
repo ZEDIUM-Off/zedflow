@@ -51,6 +51,16 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
     reader: R,
     writer: W,
 ) -> io::Result<()> {
+    let setup = create_runtime(args)?;
+    run_rpc_loop_with_runtime_and_session_file(reader, writer, &setup.runtime, setup.session_file)
+}
+
+pub struct RuntimeSetup {
+    pub runtime: AgentSessionRuntime,
+    pub session_file: Option<String>,
+}
+
+pub fn create_runtime(args: &[String]) -> io::Result<RuntimeSetup> {
     let cwd = std::env::current_dir()?;
     let cwd_string = cwd.to_string_lossy().into_owned();
     let parsed = rpc_args(args);
@@ -85,8 +95,10 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
         follow_up_mode: Some(queue_mode(&settings.get_follow_up_mode())),
     })
     .map_err(|error| io::Error::other(error.to_string()))?;
-    let runtime = AgentSessionRuntime::new(session, cwd_string);
-    run_rpc_loop_with_runtime_and_session_file(reader, writer, &runtime, session_file)
+    Ok(RuntimeSetup {
+        runtime: AgentSessionRuntime::new(session, cwd_string),
+        session_file,
+    })
 }
 
 fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentTool> {
