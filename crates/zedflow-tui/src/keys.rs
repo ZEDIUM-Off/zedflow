@@ -1,8 +1,13 @@
-//! Minimal terminal key decoding shared by TUI consumers.
+//! Terminal key decoding compatible with Pi's legacy, Kitty CSI-u, and xterm modes.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static KITTY_PROTOCOL_ACTIVE: AtomicBool = AtomicBool::new(false);
+const SHIFT: u32 = 1;
+const ALT: u32 = 2;
+const CTRL: u32 = 4;
+const SUPER: u32 = 8;
+const LOCKS: u32 = 64 | 128;
 
 pub fn set_kitty_protocol_active(active: bool) {
     KITTY_PROTOCOL_ACTIVE.store(active, Ordering::Relaxed);
@@ -11,60 +16,204 @@ pub fn is_kitty_protocol_active() -> bool {
     KITTY_PROTOCOL_ACTIVE.load(Ordering::Relaxed)
 }
 
-/// Decode the legacy escape sequences used by terminals for navigation keys.
-pub fn parse_key(data: &str) -> Option<&'static str> {
-    // Legacy sequences, plus Kitty CSI-u and xterm modifier forms.
-    if let Some(key) = parse_kitty_key(data) {
-        return Some(Box::leak(key.into_boxed_str()));
+#[derive(Debug)]
+struct ParsedSequence {
+    code: i32,
+    shifted: Option<u32>,
+    base: Option<u32>,
+    modifiers: u32,
+}
+
+fn parse_u32(value: Option<&str>, default: u32) -> Option<u32> {
+    match value {
+        Some("") | None => Some(default),
+        Some(value) => value.parse().ok(),
     }
-    match data {
-        "\r" | "\n" => return Some("enter"),
-        "\t" => return Some("tab"),
-        "\x00" => return Some("ctrl+space"),
-        "\x08" => {
-            return Some(if is_local_windows_terminal() {
-                "ctrl+backspace"
-            } else {
-                "backspace"
+}
+
+fn parse_sequence(data: &str) -> Option<ParsedSequence> {
+    let body = data.strip_prefix("\x1b[")?;
+    if let Some(body) = body.strip_suffix('u') {
+        let (keys, modifier_event) = body.split_once(';').unwrap_or((body, "1"));
+        let mut key_parts = keys.split(':');
+        let code = key_parts.next()?.parse::<u32>().ok()?;
+        let shifted = key_parts
+            .next()
+            .filter(|v| !v.is_empty())
+            .and_then(|v| v.parse().ok());
+        let base = key_parts
+            .next()
+            .filter(|v| !v.is_empty())
+            .and_then(|v| v.parse().ok());
+        let modifiers = parse_u32(modifier_event.split(':').next(), 1)?.checked_sub(1)?;
+        return Some(ParsedSequence {
+            code: normalize_functional(code),
+            shifted,
+            base,
+            modifiers,
+        });
+    }
+    if let Some(body) = body.strip_suffix('~') {
+        let parts: Vec<_> = body.split([';', ':']).collect();
+        if parts.first() == Some(&"27") && parts.len() >= 3 {
+            return Some(ParsedSequence {
+                code: parts[2].parse::<u32>().ok()? as i32,
+                shifted: None,
+                base: None,
+                modifiers: parts[1].parse::<u32>().ok()?.checked_sub(1)?,
             });
         }
-        "\x7f" => return Some("backspace"),
-        _ => {}
+        let code = match parts.first()?.parse::<u32>().ok()? {
+            2 => -11,
+            3 => -10,
+            5 => -12,
+            6 => -13,
+            7 => -14,
+            8 => -15,
+            _ => return None,
+        };
+        return Some(ParsedSequence {
+            code,
+            shifted: None,
+            base: None,
+            modifiers: parse_u32(parts.get(1).copied(), 1)?.checked_sub(1)?,
+        });
     }
-    if data.len() == 1 {
-        let byte = data.as_bytes()[0];
-        if (1..=26).contains(&byte) {
-            return Some(Box::leak(
-                format!("ctrl+{}", (b'a' + byte - 1) as char).into_boxed_str(),
-            ));
-        }
+    let suffix = body.chars().last()?;
+    if matches!(suffix, 'A' | 'B' | 'C' | 'D' | 'H' | 'F') {
+        let params = body[..body.len() - 1].strip_prefix("1;")?;
+        return Some(ParsedSequence {
+            code: match suffix {
+                'A' => -1,
+                'B' => -2,
+                'C' => -3,
+                'D' => -4,
+                'H' => -14,
+                'F' => -15,
+                _ => unreachable!(),
+            },
+            shifted: None,
+            base: None,
+            modifiers: parse_u32(params.split(':').next(), 1)?.checked_sub(1)?,
+        });
     }
-    if let Some(rest) = data.strip_prefix('\x1b') {
-        if rest.len() == 1 {
-            let byte = rest.as_bytes()[0];
-            if (b'a'..=b'z').contains(&byte) || (b'0'..=b'9').contains(&byte) {
-                return Some(Box::leak(format!("alt+{}", byte as char).into_boxed_str()));
-            }
-            if (1..=26).contains(&byte) {
-                return Some(Box::leak(
-                    format!("ctrl+alt+{}", (b'a' + byte - 1) as char).into_boxed_str(),
-                ));
-            }
-        }
+    None
+}
+
+fn normalize_functional(code: u32) -> i32 {
+    match code {
+        57399..=57408 => (code - 57399 + 48) as i32,
+        57409 => 46,
+        57410 => 47,
+        57411 => 42,
+        57412 => 45,
+        57413 => 43,
+        57414 => 13,
+        57415 => 61,
+        57416 => 44,
+        57417 => -4,
+        57418 => -3,
+        57419 => -1,
+        57420 => -2,
+        57421 => -12,
+        57422 => -13,
+        57423 => -14,
+        57424 => -15,
+        57425 => -11,
+        57426 => -10,
+        _ => code as i32,
     }
-    // Pi treats a raw printable character as its own key identifier.
-    if data.chars().count() == 1 {
-        let character = data.chars().next().unwrap();
-        if character > ' ' && character != '\x7f' {
-            return Some(Box::leak(data.to_owned().into_boxed_str()));
+}
+
+fn supported_symbol(c: char) -> bool {
+    "`-=[]\\;',./!@#$%^&*()_+|~{}:<>?".contains(c)
+}
+
+fn format_sequence(mut sequence: ParsedSequence) -> Option<String> {
+    if sequence.modifiers & !(SHIFT | ALT | CTRL | SUPER | LOCKS) != 0 {
+        return None;
+    }
+    let modifiers = sequence.modifiers & !LOCKS;
+    if modifiers & SHIFT != 0 && (65..=90).contains(&sequence.code) {
+        sequence.code += 32;
+    }
+    let recognized = matches!(sequence.code, 9 | 13 | 27 | 32 | 127 | -15..=-10 | -4..=-1)
+        || u32::try_from(sequence.code)
+            .ok()
+            .and_then(char::from_u32)
+            .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || supported_symbol(c));
+    if !recognized {
+        sequence.code = sequence.base? as i32;
+    }
+    let key = match sequence.code {
+        27 => "escape".into(),
+        9 => "tab".into(),
+        13 => "enter".into(),
+        32 => "space".into(),
+        127 => "backspace".into(),
+        -1 => "up".into(),
+        -2 => "down".into(),
+        -3 => "right".into(),
+        -4 => "left".into(),
+        -10 => "delete".into(),
+        -11 => "insert".into(),
+        -12 => "pageUp".into(),
+        -13 => "pageDown".into(),
+        -14 => "home".into(),
+        -15 => "end".into(),
+        code => char::from_u32(code.try_into().ok()?)?.to_string(),
+    };
+    let mut prefix = String::new();
+    if modifiers & SHIFT != 0 {
+        prefix.push_str("shift+");
+    }
+    if modifiers & CTRL != 0 {
+        prefix.push_str("ctrl+");
+    }
+    if modifiers & ALT != 0 {
+        prefix.push_str("alt+");
+    }
+    if modifiers & SUPER != 0 {
+        prefix.push_str("super+");
+    }
+    Some(prefix + &key)
+}
+
+fn parse_key_owned(data: &str) -> Option<String> {
+    if let Some(sequence) = parse_sequence(data) {
+        return format_sequence(sequence);
+    }
+    if is_kitty_protocol_active() {
+        if data == "\x1b\r" || data == "\n" {
+            return Some("shift+enter".into());
         }
     }
     let key = match data {
         "\x1b" => "escape",
-        "\r" | "\n" => "enter",
+        "\x1c" => "ctrl+\\",
+        "\x1d" => "ctrl+]",
+        "\x1f" => "ctrl+-",
+        "\x1b\x1b" => "ctrl+alt+[",
+        "\x1b\x1c" => "ctrl+alt+\\",
+        "\x1b\x1d" => "ctrl+alt+]",
+        "\x1b\x1f" => "ctrl+alt+-",
         "\t" => "tab",
+        "\r" | "\x1bOM" => "enter",
+        "\n" if !is_kitty_protocol_active() => "enter",
+        "\x00" => "ctrl+space",
         " " => "space",
         "\x7f" => "backspace",
+        "\x08" => {
+            if is_local_windows_terminal() {
+                "ctrl+backspace"
+            } else {
+                "backspace"
+            }
+        }
+        "\x1b[Z" => "shift+tab",
+        "\x1b\r" if !is_kitty_protocol_active() => "alt+enter",
+        "\x1b " if !is_kitty_protocol_active() => "alt+space",
+        "\x1b\x7f" | "\x1b\x08" => "alt+backspace",
         "\x1b[A" | "\x1bOA" => "up",
         "\x1b[B" | "\x1bOB" => "down",
         "\x1b[C" | "\x1bOC" => "right",
@@ -80,7 +229,7 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
         "\x1bOQ" | "\x1b[12~" | "\x1b[[B" => "f2",
         "\x1bOR" | "\x1b[13~" | "\x1b[[C" => "f3",
         "\x1bOS" | "\x1b[14~" | "\x1b[[D" => "f4",
-        "\x1b[15~" => "f5",
+        "\x1b[15~" | "\x1b[[E" => "f5",
         "\x1b[17~" => "f6",
         "\x1b[18~" => "f7",
         "\x1b[19~" => "f8",
@@ -100,21 +249,107 @@ pub fn parse_key(data: &str) -> Option<&'static str> {
         "\x1b[3$" => "shift+delete",
         "\x1b[2^" => "ctrl+insert",
         "\x1b[3^" => "ctrl+delete",
-        "\x1b[1;2A" => "shift+up",
-        "\x1b[1;2B" => "shift+down",
-        "\x1b[1;2C" => "shift+right",
-        "\x1b[1;2D" => "shift+left",
-        "\x1b[1;5A" => "ctrl+up",
-        "\x1b[1;5B" => "ctrl+down",
-        "\x1b[1;5C" => "ctrl+right",
-        "\x1b[1;5D" => "ctrl+left",
-        "\x1b[13;2u" => "shift+enter",
-        "\x1b[13;5u" => "ctrl+enter",
-        "\x1b[9;3u" => "alt+tab",
-        // Unsupported input, including unsupported one-character input.
-        _ => return None,
+        "\x1bb" | "\x1bB" if !is_kitty_protocol_active() => "alt+left",
+        "\x1bf" | "\x1bF" if !is_kitty_protocol_active() => "alt+right",
+        "\x1bp" => "alt+up",
+        "\x1bn" => "alt+down",
+        _ => {
+            let bytes = data.as_bytes();
+            if bytes.len() == 1 && (1..=26).contains(&bytes[0]) {
+                return Some(format!("ctrl+{}", (b'a' + bytes[0] - 1) as char));
+            }
+            if let Some(rest) = data.strip_prefix('\x1b') {
+                let b = rest.as_bytes();
+                if b.len() == 1 && (1..=26).contains(&b[0]) {
+                    return Some(format!("ctrl+alt+{}", (b'a' + b[0] - 1) as char));
+                }
+                if !is_kitty_protocol_active()
+                    && b.len() == 1
+                    && (b[0].is_ascii_lowercase() || b[0].is_ascii_digit())
+                {
+                    return Some(format!("alt+{}", b[0] as char));
+                }
+            }
+            if data.chars().count() == 1 && data.chars().next().is_some_and(|c| !c.is_control()) {
+                return Some(data.into());
+            }
+            return None;
+        }
     };
-    Some(key)
+    Some(key.into())
+}
+
+pub fn parse_key(data: &str) -> Option<&'static str> {
+    parse_key_owned(data).map(|key| Box::leak(key.into_boxed_str()) as &'static str)
+}
+
+fn normalized_id(id: &str) -> Option<(u32, String)> {
+    let mut modifiers = 0;
+    let mut key = None;
+    for part in id.split('+') {
+        match part.to_ascii_lowercase().as_str() {
+            "shift" => modifiers |= SHIFT,
+            "ctrl" => modifiers |= CTRL,
+            "alt" => modifiers |= ALT,
+            "super" => modifiers |= SUPER,
+            value => {
+                key = Some(
+                    match value {
+                        "esc" => "escape",
+                        "return" => "enter",
+                        other => other,
+                    }
+                    .to_owned(),
+                )
+            }
+        }
+    }
+    Some((modifiers, key?))
+}
+
+pub fn matches_key(data: &str, key: &str) -> bool {
+    let Some(expected) = normalized_id(key) else {
+        return false;
+    };
+    if expected.0 == CTRL && expected.1.len() == 1 {
+        let c = expected.1.as_bytes()[0];
+        let raw = match c {
+            b'a'..=b'z' => c & 0x1f,
+            b'[' => 27,
+            b'\\' => 28,
+            b']' => 29,
+            b'-' | b'_' => 31,
+            _ => 255,
+        };
+        if data.as_bytes() == [raw] {
+            return true;
+        }
+    }
+    if parse_key(data).and_then(|id| normalized_id(&id)).as_ref() == Some(&expected) {
+        return true;
+    }
+    if expected.0 == SHIFT && expected.1.len() == 1 {
+        return data == expected.1.to_ascii_uppercase();
+    }
+    false
+}
+
+pub fn decode_kitty_printable(data: &str) -> Option<String> {
+    let sequence = parse_sequence(data)?;
+    let modifiers = sequence.modifiers & !LOCKS;
+    if modifiers & !SHIFT != 0 || sequence.code < 32 {
+        return None;
+    }
+    let code = if modifiers & SHIFT != 0 {
+        sequence.shifted.unwrap_or(sequence.code as u32)
+    } else {
+        sequence.code as u32
+    };
+    char::from_u32(code).map(|c| c.to_string())
+}
+
+pub fn decode_printable_key(data: &str) -> Option<String> {
+    decode_kitty_printable(data)
 }
 
 fn is_local_windows_terminal() -> bool {
@@ -124,123 +359,15 @@ fn is_local_windows_terminal() -> bool {
             .all(|name| std::env::var(name).map_or(true, |value| value.is_empty()))
 }
 
-fn parse_kitty_key(data: &str) -> Option<String> {
-    let body = data.strip_prefix("\x1b[")?.strip_suffix('u')?;
-    let (key_codes, modifier) = body.split_once(';').map_or((body, "1"), |v| v);
-    let mut key_codes = key_codes.split(':');
-    let code: u32 = key_codes.next()?.parse().ok()?;
-    let _shifted = key_codes.next();
-    let base_layout_code = key_codes
-        .next()
-        .filter(|code| !code.is_empty())
-        .and_then(|code| code.parse().ok());
-    let modifier = modifier
-        .split(':')
-        .next()?
-        .parse::<u32>()
-        .ok()?
-        .checked_sub(1)?;
-    const KITTY_MODIFIERS: u32 = 1 | 2 | 4 | 8;
-    const KITTY_LOCK_MODIFIERS: u32 = 64 | 128;
-    if modifier & !(KITTY_MODIFIERS | KITTY_LOCK_MODIFIERS) != 0 {
-        return None;
-    }
-    let modifier = modifier & !KITTY_LOCK_MODIFIERS;
-    let code = normalize_kitty_functional_code(code);
-    let code = if modifier & 1 != 0 && (65..=90).contains(&code) {
-        code + 32
-    } else {
-        code
-    };
-    let code =
-        if matches!(code, 9 | 13 | 27 | 127 | 32..=126) || kitty_functional_key(code).is_some() {
-            code
-        } else {
-            base_layout_code?
-        };
-    let key = match code {
-        27 => "escape".to_owned(),
-        13 => "enter".to_owned(),
-        9 => "tab".to_owned(),
-        32 => "space".to_owned(),
-        127 => "backspace".to_owned(),
-        33..=126 => char::from_u32(code)?.to_string(),
-        _ => kitty_functional_key(code)?.to_owned(),
-    };
-    let mut prefix = String::new();
-    if modifier & 1 != 0 {
-        prefix.push_str("shift+");
-    }
-    if modifier & 4 != 0 {
-        prefix.push_str("ctrl+");
-    }
-    if modifier & 2 != 0 {
-        prefix.push_str("alt+");
-    }
-    if modifier & 8 != 0 {
-        prefix.push_str("super+");
-    }
-    Some(format!("{prefix}{key}"))
-}
-
-fn normalize_kitty_functional_code(code: u32) -> u32 {
-    match code {
-        57399..=57408 => code - 57399 + b'0' as u32,
-        57409 => b'.' as u32,
-        57410 => b'/' as u32,
-        57411 => b'*' as u32,
-        57412 => b'-' as u32,
-        57413 => b'+' as u32,
-        57415 => b'=' as u32,
-        57416 => b',' as u32,
-        _ => code,
-    }
-}
-
-fn kitty_functional_key(code: u32) -> Option<&'static str> {
-    match code {
-        57414 => Some("enter"),
-        57417 => Some("left"),
-        57418 => Some("right"),
-        57419 => Some("up"),
-        57420 => Some("down"),
-        57421 => Some("pageUp"),
-        57422 => Some("pageDown"),
-        57423 => Some("home"),
-        57424 => Some("end"),
-        57425 => Some("insert"),
-        57426 => Some("delete"),
-        _ => None,
-    }
-}
-
 pub fn is_key_release(data: &str) -> bool {
     !data.contains("\x1b[200~")
         && [":3u", ":3~", ":3A", ":3B", ":3C", ":3D", ":3H", ":3F"]
             .iter()
             .any(|s| data.contains(s))
 }
-
 pub fn is_key_repeat(data: &str) -> bool {
     !data.contains("\x1b[200~")
         && [":2u", ":2~", ":2A", ":2B", ":2C", ":2D", ":2H", ":2F"]
             .iter()
             .any(|s| data.contains(s))
-}
-
-pub fn matches_key(data: &str, key: &str) -> bool {
-    parse_key(data) == Some(key)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_key;
-
-    #[test]
-    fn parses_raw_printable_input() {
-        assert_eq!(parse_key("a"), Some("a"));
-        assert_eq!(parse_key("é"), Some("é"));
-        assert_eq!(parse_key(" "), Some("space"));
-        assert_eq!(parse_key("\x01"), Some("ctrl+a"));
-    }
 }

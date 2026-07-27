@@ -17,6 +17,8 @@ fn preserves_ansi_sequences_and_osc_zero_width() {
     let lines = wrap_text_with_ansi("\x1b[31mred text that wraps\x1b[0m", 8);
     assert!(lines.iter().all(|line| visible_width(line) <= 8));
     assert!(lines[0].contains("\x1b[31m"));
+    assert!(lines[0].ends_with("\x1b[0m"));
+    assert!(lines[1].starts_with("\x1b[31m"));
     assert_eq!(visible_width("\x1b]133;A\x07hello\x1b]133;B\x07"), 5);
     assert_eq!(visible_width("🇨🇳"), 2);
 }

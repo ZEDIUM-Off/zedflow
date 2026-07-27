@@ -1,6 +1,6 @@
 use std::sync::Mutex;
 
-use zedflow_tui::parse_key;
+use zedflow_tui::{decode_kitty_printable, decode_printable_key, matches_key, parse_key};
 
 static TERMINAL_ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -103,4 +103,9 @@ fn keeps_modified_kitty_special_keys_reachable() {
     assert_eq!(parse_key("\t"), Some("tab"));
     assert_eq!(parse_key("\x1b[13;3u"), Some("alt+enter"));
     assert_eq!(parse_key("\x1b[9;5u"), Some("ctrl+tab"));
+    assert!(matches_key("\n", "ctrl+j"));
+    assert!(matches_key("\x1b[27;5;99~", "ctrl+c"));
+    assert_eq!(parse_key("\x1b[27;6;69~"), Some("shift+ctrl+e"));
+    assert_eq!(decode_kitty_printable("\x1b[99:67;2u"), Some("C".into()));
+    assert_eq!(decode_printable_key("\x1b[27;2;196~"), Some("Ä".into()));
 }
