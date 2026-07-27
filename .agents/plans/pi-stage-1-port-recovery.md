@@ -3,7 +3,7 @@
 <a id="how-to-use"></a>
 ## How to use this plan
 
-This is the approved replacement tail for the frozen Pi TypeScript → Rust port. Run assignable units in DAG order with fresh context. Exact batch ownership below is generated from `manifest.py status` at checkpoint `NEXT-PORT-PLAN-V20`; do not expand it. One writer is active at a time. Ordinary code/test failures use the controller repair loop; only structural evidence may replan.
+This is the approved replacement tail for the frozen Pi TypeScript → Rust port. Run assignable units in DAG order with fresh context. Exact batch ownership below is generated from `manifest.py status` at checkpoint `NEXT-PORT-PLAN-V20`; do not expand it. One writer is active at a time. Ordinary code/test failures use the controller repair loop; only structural evidence may replan. The 2026-07-27 human arbitration approves the exact TUI dependency mapping recorded below.
 
 <a id="legend"></a>
 ## Legend
@@ -18,7 +18,7 @@ Replace the stale open tail with deterministic, bounded one-to-one closure of th
 <a id="non-goals"></a>
 ## Non-goals
 
-No Stage-2 work, dependency substitution, blanket placeholder/disposition, reopening accepted units, Cargo dependency selection, or mutation of the frozen Pi gitlink.
+No Stage-2 work, unapproved dependency substitution, blanket placeholder/disposition, reopening accepted units, or mutation of the frozen Pi gitlink. Do not replace Pi's terminal Markdown renderer or composite width policy with a crate-level shortcut.
 
 <a id="review-flags"></a>
 ## Review Flags
@@ -26,7 +26,7 @@ No Stage-2 work, dependency substitution, blanket placeholder/disposition, reope
 | ID | Type | Severity | Summary | Affects | Follow-up / accepted risk |
 |---|---|---:|---|---|---|
 | RF-V20-1 | R | High | Mechanical gap lists prove targets, not semantic fidelity. | all closure batches | Fresh package and final fidelity reviews gate closure. |
-| RF-V20-2 | BQ | High | A needed Rust dependency has no pre-approved direct mapping. | any batch | Stop with `ARBITRATION_REQUIRED`; do not choose it. |
+| RF-V20-2 | BQ resolved | High | TUI requires Rust mappings for `marked`, scalar EAW, `Intl.Segmenter`, Unicode properties, and RGI emoji. | TUI-V21 foundation/components | User approved proposal A on 2026-07-27; use only the exact pins and adapter policy below. |
 
 <a id="global-acceptance"></a>
 ## Global Acceptance Criteria
@@ -39,19 +39,20 @@ No Stage-2 work, dependency substitution, blanket placeholder/disposition, reope
 <a id="legacy-policy"></a>
 ## Legacy / workaround policy
 
-No aliases, shims, type weakening, placeholders, or scope expansion to make an intermediate batch compile. A dependency replacement is `ARBITRATION_REQUIRED`, never a worker choice.
+No aliases, shims, type weakening, placeholders, or scope expansion to make an intermediate batch compile. The approved TUI mapping below is the only dependency substitution authorized by this plan; any additional replacement remains `ARBITRATION_REQUIRED`.
 
 <a id="breaking-changes"></a>
 ## Planned Breaking Changes and Propagation Map
 
 | Change | Introduced by | Expected temporary breakage | Fixed by | Forbidden workaround |
 |---|---|---|---|---|
-| Add missing file-for-file targets | closure batches | partial crate compilation | package closure validator | placeholder module or substitute dependency |
+| Add approved TUI parser/Unicode crates | TUI-V21 foundation | Cargo lockfile and width/segmentation contracts | TUI-V21 components/tests and closure validator | `unicode-width`, Unicode-16 `east-asian-width`, HTML renderer, or direct crate width policy |
+| Add missing file-for-file targets | closure batches | partial crate compilation | package closure validator | placeholder module or unapproved substitute dependency |
 
 <a id="orchestration"></a>
 ## Subagent Orchestration Plan
 
-- Wave 1: TUI source batches, then TUI test batches, validator, fidelity review.
+- Wave 1: TUI dependency/foundation batch, component batch, test batches, validator, fidelity review.
 - Wave 2: Coding-agent source batches, then test batches, validator, fidelity review.
 - Wave 3: Orchestrator source batch, validator, fidelity review.
 - Wave 4: final workspace validation, final fidelity review, final Rust review, terminal checkpoint.
@@ -62,6 +63,7 @@ No aliases, shims, type weakening, placeholders, or scope expansion to make an i
 | Constraint | Reason | Affected units |
 |---|---|---|
 | Sequential writer chain | every batch may update the crate module root and only one writer is permitted | all writer batches |
+| TUI foundations precede components | Pi components import `tui`, `utils`, `undo-stack`, `word-navigation`, and `terminal-image` | TUI-V21 source units |
 | TUI before Coding-agent before Orchestrator | required Stage-1 recovery order and Pi dependency direction | all closure waves |
 
 <a id="canonical-line-references"></a>
@@ -78,35 +80,88 @@ No aliases, shims, type weakening, placeholders, or scope expansion to make an i
 | review-flags | #review-flags | L23-L29 | Review Flags |
 | global-acceptance | #global-acceptance | L31-L37 | Global Acceptance Criteria |
 | legacy-policy | #legacy-policy | L39-L42 | Legacy / workaround policy |
-| breaking-changes | #breaking-changes | L44-L49 | Planned Breaking Changes and Propagation Map |
-| orchestration | #orchestration | L51-L57 | Subagent Orchestration Plan |
-| parallelization-constraints | #parallelization-constraints | L59-L65 | Parallelization Constraints |
-| canonical-line-references | #canonical-line-references | L67-L101 | Canonical Line References |
-| tui-v20-source-batch-1 | #tui-v20-source-batch-1 | L103-L160 | TUI-V20-SOURCE-BATCH-1 |
-| tui-v20-source-batch-2 | #tui-v20-source-batch-2 | L162-L206 | TUI-V20-SOURCE-BATCH-2 |
-| tui-v20-test-batch-1 | #tui-v20-test-batch-1 | L208-L265 | TUI-V20-TEST-BATCH-1 |
-| tui-v20-test-batch-2 | #tui-v20-test-batch-2 | L267-L316 | TUI-V20-TEST-BATCH-2 |
-| ca-v20-source-batch-1 | #ca-v20-source-batch-1 | L318-L390 | CA-V20-SOURCE-BATCH-1 |
-| ca-v20-source-batch-2 | #ca-v20-source-batch-2 | L392-L464 | CA-V20-SOURCE-BATCH-2 |
-| ca-v20-source-batch-3 | #ca-v20-source-batch-3 | L466-L506 | CA-V20-SOURCE-BATCH-3 |
-| ca-v20-test-batch-1 | #ca-v20-test-batch-1 | L508-L580 | CA-V20-TEST-BATCH-1 |
-| ca-v20-test-batch-2 | #ca-v20-test-batch-2 | L582-L654 | CA-V20-TEST-BATCH-2 |
-| ca-v20-test-batch-3 | #ca-v20-test-batch-3 | L656-L728 | CA-V20-TEST-BATCH-3 |
-| ca-v20-test-batch-4 | #ca-v20-test-batch-4 | L730-L802 | CA-V20-TEST-BATCH-4 |
-| ca-v20-test-batch-5 | #ca-v20-test-batch-5 | L804-L865 | CA-V20-TEST-BATCH-5 |
-| orch-v20-source-batch-1 | #orch-v20-source-batch-1 | L867-L917 | ORCH-V20-SOURCE-BATCH-1 |
-| validators | #validators | L919-L922 | Package and final validators |
-| final-checkpoint | #final-checkpoint | L924-L929 | FINAL-V20-PORT-CHECKPOINT |
-| pre-finalization-review | #pre-finalization-review | L931-L937 | Pre-finalization review summary |
+| breaking-changes | #breaking-changes | L44-L50 | Planned Breaking Changes and Propagation Map |
+| orchestration | #orchestration | L52-L58 | Subagent Orchestration Plan |
+| parallelization-constraints | #parallelization-constraints | L60-L67 | Parallelization Constraints |
+| canonical-line-references | #canonical-line-references | L69-L103 | Canonical Line References |
+| tui-v21-foundation | #tui-v21-foundation | L105-L156 | TUI-V21-FOUNDATION |
+| tui-v21-components | #tui-v21-components | L158-L215 | TUI-V21-COMPONENTS |
+| tui-v21-test-batch-1 | #tui-v21-test-batch-1 | L217-L275 | TUI-V21-TEST-BATCH-1 |
+| tui-v21-test-batch-2 | #tui-v21-test-batch-2 | L277-L327 | TUI-V21-TEST-BATCH-2 |
+| ca-v20-source-batch-1 | #ca-v20-source-batch-1 | L329-L401 | CA-V20-SOURCE-BATCH-1 |
+| ca-v20-source-batch-2 | #ca-v20-source-batch-2 | L403-L475 | CA-V20-SOURCE-BATCH-2 |
+| ca-v20-source-batch-3 | #ca-v20-source-batch-3 | L477-L517 | CA-V20-SOURCE-BATCH-3 |
+| ca-v20-test-batch-1 | #ca-v20-test-batch-1 | L519-L591 | CA-V20-TEST-BATCH-1 |
+| ca-v20-test-batch-2 | #ca-v20-test-batch-2 | L593-L665 | CA-V20-TEST-BATCH-2 |
+| ca-v20-test-batch-3 | #ca-v20-test-batch-3 | L667-L739 | CA-V20-TEST-BATCH-3 |
+| ca-v20-test-batch-4 | #ca-v20-test-batch-4 | L741-L813 | CA-V20-TEST-BATCH-4 |
+| ca-v20-test-batch-5 | #ca-v20-test-batch-5 | L815-L876 | CA-V20-TEST-BATCH-5 |
+| orch-v20-source-batch-1 | #orch-v20-source-batch-1 | L878-L928 | ORCH-V20-SOURCE-BATCH-1 |
+| validators | #validators | L930-L933 | Package and final validators |
+| final-checkpoint | #final-checkpoint | L935-L940 | FINAL-V20-PORT-CHECKPOINT |
+| pre-finalization-review | #pre-finalization-review | L942-L949 | Pre-finalization review summary |
 <!-- CANONICAL_LINE_REFERENCES_END -->
 
-<a id="tui-v20-source-batch-1"></a>
-## TUI-V20-SOURCE-BATCH-1
+<a id="tui-v21-foundation"></a>
+## TUI-V21-FOUNDATION
 
 **Assignable:** yes
 **Wave:** sequential
 **Context:** fresh
 **Dependencies:** `NEXT-PORT-PLAN-V20`
+**Validation:** locally-validating
+
+### Scope
+
+- `Cargo.lock`
+- `crates/zedflow-tui/Cargo.toml`
+- `crates/zedflow-tui/src/native-modifiers.rs`
+- `crates/zedflow-tui/src/stdin-buffer.rs`
+- `crates/zedflow-tui/src/terminal-colors.rs`
+- `crates/zedflow-tui/src/terminal-image.rs`
+- `crates/zedflow-tui/src/terminal.rs`
+- `crates/zedflow-tui/src/tui.rs`
+- `crates/zedflow-tui/src/undo-stack.rs`
+- `crates/zedflow-tui/src/utils.rs`
+- `crates/zedflow-tui/src/word-navigation.rs`
+- `crates/zedflow-tui/src/lib.rs` (module registration only)
+
+### Requirements
+
+- Read the frozen Pi counterparts, `references/pi/packages/tui/package.json`, and exact manifest rows first.
+- Add only the human-approved exact pins: `markdown = "=1.0.0"`, `icu_properties = "=2.2.0"`, `icu_segmenter = "=2.2.0"`, and `emojis = "=0.9.0"`. Configure ICU compiled data/word auto segmentation explicitly if default features are disabled.
+- Port the owned foundation modules one-to-one before components. Preserve Pi's sequence: ANSI stripping → grapheme segmentation → zero-width clusters → RGI emoji/isolated regional indicator width 2 → scalar Unicode-17 EAW → Thai/Lao and FF00–FFEF adjustments.
+- Use ICU properties/segmentation as primitives; do not delegate Pi's composite policy to `unicode-width`, `unicode-display-width`, or Unicode-16 `east-asian-width`.
+- `emojis::get` is not alone equivalent to `RGI_Emoji`; require canonical-sequence equality and scalar emoji-component handling, with later differential tests.
+- Do not modify components, tests, DAG, or any neighboring crate. Any additional dependency is `ARBITRATION_REQUIRED`.
+
+### Validation
+
+`cargo fmt --package zedflow-tui --check` only. Do not run workspace gates while closure is incomplete.
+
+### Output contract
+
+Commit one nonempty owned diff and report paths, dependency features, formatter result, and remaining arbitration.
+
+### Acceptance
+
+Every owned target exists, exact dependency pins are locked, the frozen Pi width/segmentation policy is represented without a shortcut, and no out-of-scope file changes.
+
+### Handoff
+
+`TUI-V21-COMPONENTS` receives compiled foundation contracts and the approved Markdown parser dependency.
+
+### Subagent prompt
+
+Implement `TUI-V21-FOUNDATION` only in fresh context. Read the frozen Pi counterparts and manifest rows. Add exactly `markdown 1.0.0`, `icu_properties 2.2.0`, `icu_segmenter 2.2.0`, and `emojis 0.9.0`; port only the owned foundation modules. Preserve Pi's exact grapheme-width and segmentation order rather than calling a generic string-width policy. Do not touch components/tests or add another dependency. Run only the listed formatter check.
+
+<a id="tui-v21-components"></a>
+## TUI-V21-COMPONENTS
+
+**Assignable:** yes
+**Wave:** sequential
+**Context:** fresh
+**Dependencies:** `TUI-V21-FOUNDATION`
 **Validation:** locally-validating
 
 ### Scope
@@ -129,15 +184,15 @@ No aliases, shims, type weakening, placeholders, or scope expansion to make an i
 - `crates/zedflow-tui/src/index.rs`
 - `crates/zedflow-tui/src/keybindings.rs`
 - `crates/zedflow-tui/src/kill-ring.rs`
-- `crates/zedflow-tui/src/native-modifiers.rs`
-- `crates/zedflow-tui/src/stdin-buffer.rs`
-- `crates/zedflow-tui/src/lib.rs` (module registration only, if needed)
+- `crates/zedflow-tui/src/lib.rs` (module registration only)
 
 ### Requirements
 
-- Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
-- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
-- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
+- Read the corresponding frozen Pi files and exact manifest rows first; port only the owned one-to-one rows.
+- Use `markdown-rs` only as the lexer/AST primitive. Keep Pi's ANSI/OSC-8 terminal renderer, streaming partial-fence repair, list marker/source recovery, loose-list behavior, table fallback, and width-aware wrapping local.
+- Enable only Pi-relevant GFM constructs and set `gfm_strikethrough_single_tilde = false`; do not blindly enable unrelated GFM footnotes.
+- Recover raw escapes, ordered-list delimiters, and fence evidence from source offsets where the AST normalizes values.
+- Do not modify foundation files, Cargo manifests, tests, DAG, or plan. Any additional dependency is `ARBITRATION_REQUIRED`.
 
 ### Validation
 
@@ -145,73 +200,27 @@ No aliases, shims, type weakening, placeholders, or scope expansion to make an i
 
 ### Output contract
 
-Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
+Commit one nonempty owned diff and report paths, parser configuration, formatter result, and remaining arbitration.
 
 ### Acceptance
 
-Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
+Every owned target exists and maps to its frozen source; Markdown behavior remains Pi-owned rather than replaced by HTML or a generic renderer; no out-of-scope change.
 
 ### Handoff
 
-The next sequential batch receives this candidate; the package validator owns manifest closure.
+The TUI test batches receive the complete source surface; the package validator owns closure.
 
 ### Subagent prompt
 
-Implement `TUI-V20-SOURCE-BATCH-1` only in fresh context. Port deterministic frozen Pi tui source manifest-gap batch 1 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+Implement `TUI-V21-COMPONENTS` only in fresh context. Port the exact owned frozen Pi source rows. Use `markdown-rs` as lexer/AST only with strict double-tilde behavior; preserve Pi's terminal rendering, source markers, streaming fence repair, ANSI state, hyperlinks, and width-aware tables locally. Do not modify foundation/Cargo/tests or add another dependency. Run only the listed formatter check.
 
-<a id="tui-v20-source-batch-2"></a>
-## TUI-V20-SOURCE-BATCH-2
+<a id="tui-v21-test-batch-1"></a>
+## TUI-V21-TEST-BATCH-1
 
 **Assignable:** yes
 **Wave:** sequential
 **Context:** fresh
-**Dependencies:** `TUI-V20-SOURCE-BATCH-1`
-**Validation:** locally-validating
-
-### Scope
-
-- `crates/zedflow-tui/src/terminal-colors.rs`
-- `crates/zedflow-tui/src/terminal-image.rs`
-- `crates/zedflow-tui/src/terminal.rs`
-- `crates/zedflow-tui/src/tui.rs`
-- `crates/zedflow-tui/src/undo-stack.rs`
-- `crates/zedflow-tui/src/utils.rs`
-- `crates/zedflow-tui/src/word-navigation.rs`
-- `crates/zedflow-tui/src/lib.rs` (module registration only, if needed)
-
-### Requirements
-
-- Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
-- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
-- Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
-
-### Validation
-
-`cargo fmt --package zedflow-tui --check` only. Do not run workspace gates while closure is incomplete.
-
-### Output contract
-
-Commit one nonempty owned diff and report paths, focused tests, and unresolved dependency arbitration.
-
-### Acceptance
-
-Every owned target exists and corresponds to its frozen source/test row; no out-of-scope change.
-
-### Handoff
-
-The next sequential batch receives this candidate; the package validator owns manifest closure.
-
-### Subagent prompt
-
-Implement `TUI-V20-SOURCE-BATCH-2` only in fresh context. Port deterministic frozen Pi tui source manifest-gap batch 2 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
-
-<a id="tui-v20-test-batch-1"></a>
-## TUI-V20-TEST-BATCH-1
-
-**Assignable:** yes
-**Wave:** sequential
-**Context:** fresh
-**Dependencies:** `TUI-V20-SOURCE-BATCH-2`
+**Dependencies:** `TUI-V21-COMPONENTS`
 **Validation:** locally-validating
 
 ### Scope
@@ -241,7 +250,8 @@ Implement `TUI-V20-SOURCE-BATCH-2` only in fresh context. Port deterministic fro
 ### Requirements
 
 - Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
-- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Port only these one-to-one rows against the approved TUI dependency mapping. Any additional dependency is `ARBITRATION_REQUIRED`.
+- Include the owned differential regressions for strict strike, partial fences, source markers, ANSI/OSC-8, Unicode-17 EAW, RGI/RI/ZWJ/VS, combining marks, Thai/Lao, fullwidth, and narrow table fallback.
 - Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
 
 ### Validation
@@ -262,15 +272,15 @@ The next sequential batch receives this candidate; the package validator owns ma
 
 ### Subagent prompt
 
-Implement `TUI-V20-TEST-BATCH-1` only in fresh context. Port deterministic frozen Pi tui test manifest-gap batch 1 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+Implement `TUI-V21-TEST-BATCH-1` only in fresh context. Port deterministic frozen Pi tui test manifest-gap batch 1 one-to-one; exact paths are its ownership list. Add the owned differential Markdown/Unicode-17 regressions for the approved mapping. Do not change Cargo or add a dependency. Run only the listed local formatter check.
 
-<a id="tui-v20-test-batch-2"></a>
-## TUI-V20-TEST-BATCH-2
+<a id="tui-v21-test-batch-2"></a>
+## TUI-V21-TEST-BATCH-2
 
 **Assignable:** yes
 **Wave:** sequential
 **Context:** fresh
-**Dependencies:** `TUI-V20-TEST-BATCH-1`
+**Dependencies:** `TUI-V21-TEST-BATCH-1`
 **Validation:** locally-validating
 
 ### Scope
@@ -292,7 +302,8 @@ Implement `TUI-V20-TEST-BATCH-1` only in fresh context. Port deterministic froze
 ### Requirements
 
 - Read the corresponding frozen `references/pi/packages/tui` files and the exact manifest rows first.
-- Port only these one-to-one rows. Do not select a replacement dependency; return `ARBITRATION_REQUIRED` if one is necessary.
+- Port only these one-to-one rows against the approved TUI dependency mapping. Any additional dependency is `ARBITRATION_REQUIRED`.
+- Complete the owned differential wrapping, segmentation, word-navigation, terminal rendering, and ANSI regressions.
 - Do not modify a neighboring batch, Cargo manifest, DAG, or plan. No compatibility workaround.
 
 ### Validation
@@ -313,7 +324,7 @@ The next sequential batch receives this candidate; the package validator owns ma
 
 ### Subagent prompt
 
-Implement `TUI-V20-TEST-BATCH-2` only in fresh context. Port deterministic frozen Pi tui test manifest-gap batch 2 one-to-one; exact paths are its ownership list. Read frozen Pi counterparts and manifest rows. Keep the mapping one-to-one, use no substitute library, and stop with `ARBITRATION_REQUIRED` for a dependency replacement. Run only the listed local formatter check.
+Implement `TUI-V21-TEST-BATCH-2` only in fresh context. Port deterministic frozen Pi tui test manifest-gap batch 2 one-to-one; exact paths are its ownership list. Complete the owned wrapping, segmentation, and terminal regressions for the approved mapping. Do not change Cargo or add a dependency. Run only the listed local formatter check.
 
 <a id="ca-v20-source-batch-1"></a>
 ## CA-V20-SOURCE-BATCH-1
@@ -321,7 +332,7 @@ Implement `TUI-V20-TEST-BATCH-2` only in fresh context. Port deterministic froze
 **Assignable:** yes
 **Wave:** sequential
 **Context:** fresh
-**Dependencies:** `TUI-V20-CLOSURE-FIDELITY`
+**Dependencies:** `TUI-V21-CLOSURE-FIDELITY`
 **Validation:** locally-validating
 
 ### Scope
@@ -919,7 +930,7 @@ Implement `ORCH-V20-SOURCE-BATCH-1` only in fresh context. Port all 13 determini
 <a id="validators"></a>
 ## Package and final validators
 
-All validator/reviewer units are **Assignable: yes**, fresh, sequential, read-only except validation logs, and own no product files. They use the exact commands recorded in `tools/pi-port-swarm/dag.json`. Package validators run after all batches for their package; final validators/reviewers run after Orchestrator fidelity. They must stop on a failing command and must not add compatibility fixes.
+All validator/reviewer units are **Assignable: yes**, fresh, sequential, read-only except validation logs, and own no product files. They use the exact commands recorded in `tools/pi-port-swarm/dag.json`. `TUI-V21-CLOSURE-VALIDATE` follows `TUI-V21-TEST-BATCH-2`, and `TUI-V21-CLOSURE-FIDELITY` follows that validator before Coding-agent begins. Package validators run after all batches for their package; final validators/reviewers run after Orchestrator fidelity. They must stop on a failing command and must not add compatibility fixes.
 
 <a id="final-checkpoint"></a>
 ## FINAL-V20-PORT-CHECKPOINT
@@ -932,6 +943,7 @@ Update only its declared human-status/evidence files to attest completion on the
 ## Pre-finalization review summary
 
 - Feasibility: `manifest.py status` deterministically reports 59 TUI, 237 Coding-agent, and 13 Orchestrator missing targets at this checkpoint.
-- Sequencing: source targets precede tests; packages remain TUI → Coding-agent → Orchestrator.
-- Scope isolation: each writer owns a stable lexical batch plus only its crate module root; validators own closure gates.
-- Fresh IDs: all replacement-tail IDs are new and no accepted unit is changed.
+- Sequencing: dependency and runtime foundations precede TUI components/tests; packages remain TUI → Coding-agent → Orchestrator.
+- Scope isolation: the foundation owns TUI Cargo and prerequisite modules; the component/test writers are sequential and validators own closure gates.
+- Arbitration: proposal A is recorded with exact pins; any fifth dependency remains a human blocker.
+- Fresh IDs: all V21 TUI replacement IDs are new and no accepted unit is changed.

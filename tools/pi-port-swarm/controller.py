@@ -49,6 +49,13 @@ class ControllerError(RuntimeError):
     pass
 
 
+class OutcomeBlocker(ControllerError):
+    def __init__(self, classification: str, reason: str):
+        super().__init__(f"{classification}: {reason}")
+        self.classification = classification
+        self.reason = reason
+
+
 def run_cmd(args: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(args, cwd=cwd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check)
@@ -633,13 +640,27 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
         "validation": ["python3 tools/pi-port-swarm/controller.py validate"],
         "intent": result.get("reason", "evidence-backed plan mutation"),
         "source_unit": unit,
+        "repair_context": {
+            "classification": outcome_class(result),
+            "reason": blocked_reason(result),
+            "source_result": result,
+        },
     }
     worktree, session = create_worktree(source, state_dir, base, control, 1, pin)
     coordinator_result = launch(source, worktree, session, control, base, coordinator=True)
     validate_result(control, coordinator_result, base)
     candidate = coordinator_result.get("candidate")
     if coordinator_result.get("status") != "DONE":
-        raise ControllerError("coordinator did not return a plan-mutation candidate")
+        classification, reason = outcome_class(coordinator_result), blocked_reason(coordinator_result)
+        state.setdefault("units", {}).setdefault(unit["id"], {}).update(
+            status="BLOCKED",
+            classification=classification,
+            blocker=reason,
+            coordinator_result=coordinator_result,
+        )
+        append_history(state, {"unit": unit["id"], "status": "BLOCKED", "classification": classification, "base": base, "candidate": None, "at": int(time.time())})
+        atomic_json(state_path, state)
+        raise OutcomeBlocker(classification, reason)
     validate_candidate(source, worktree, base, candidate, control, pin)
     if git_ok(source, "diff", "--quiet", f"{base}..{candidate}", "--", "tools/pi-port-swarm/dag.json"):
         raise ControllerError("PLAN_CHANGE coordinator did not modify dag.json")
@@ -700,8 +721,12 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
                 record.update(status="BLOCKED")
         elif result["status"] == "PLAN_CHANGE":
             classification = outcome_class(result)
-            record.update(classification=classification)
-            record.update(status="BLOCKED", blocker=result.get("blocker") or result.get("reason") or "plan change requested")
+            record.update(
+                status="BLOCKED",
+                classification=classification,
+                blocker=result.get("blocker") or result.get("reason") or "plan change requested",
+                plan_change_result=result,
+            )
             atomic_json(state_path, state)
             candidate, replan_retry = accept_plan_change(source, state_dir, base, unit, result, pin, integration_ref, state, state_path)
             record.update(status="RETRY" if replan_retry else "SUPERSEDED", candidate=candidate, plan_change=result.get("reason"), replan_retry=replan_retry)
@@ -751,6 +776,8 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
                     record["cleanup_error"] = str(error)
                 atomic_json(state_path, state)
         return "replanned" if record.get("plan_change") else ("repairing" if record["status"] == "RETRY" else record["status"].lower())
+    except OutcomeBlocker:
+        raise
     except ControllerError as error:
         record.update(status="FAILED", blocker=str(error))
         atomic_json(state_path, state)

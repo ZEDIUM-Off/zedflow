@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("controller", ROOT / "tools/pi-port-swarm/controller.py")
@@ -80,6 +81,37 @@ class ControllerTests(unittest.TestCase):
     def test_blocked_reason_preserves_recovery_evidence(self) -> None:
         self.assertEqual(controller.blocked_reason({"summary": "cargo check: tests/a.rs:7 E0308"}), "cargo check: tests/a.rs:7 E0308")
         self.assertEqual(controller.blocked_reason({"reason": "exact", "summary": "short"}), "exact")
+
+    def test_coordinator_receives_source_evidence_and_persists_arbitration(self) -> None:
+        unit = dag()["units"][0]
+        result = {
+            "status": "PLAN_CHANGE",
+            "unit": "A",
+            "base": "b" * 40,
+            "classification": "PLAN_CHANGE_REQUIRED",
+            "reason": "needs dependency ownership",
+        }
+        blocked = {
+            "status": "BLOCKED",
+            "unit": "REPLAN-A",
+            "base": "b" * 40,
+            "classification": "ARBITRATION_REQUIRED",
+            "reason": "dependency choice required",
+        }
+        state = {"units": {"A": {"status": "BLOCKED"}}, "history": []}
+        with tempfile.TemporaryDirectory() as directory:
+            state_path = Path(directory) / "state.json"
+            with (
+                patch.object(controller, "create_worktree", return_value=(Path(directory), Path(directory) / "session")),
+                patch.object(controller, "launch", return_value=blocked) as launch,
+            ):
+                with self.assertRaises(controller.OutcomeBlocker):
+                    controller.accept_plan_change(ROOT, Path(directory), "b" * 40, unit, result, "a" * 40, controller.INTEGRATION_REF, state, state_path)
+            control = launch.call_args.args[3]
+            self.assertEqual(control["repair_context"]["source_result"], result)
+            self.assertEqual(state["units"]["A"]["classification"], "ARBITRATION_REQUIRED")
+            self.assertEqual(state["units"]["A"]["blocker"], "dependency choice required")
+            self.assertEqual(json.loads(state_path.read_text())["units"]["A"]["coordinator_result"], blocked)
 
     def test_fixed_integration_ref(self) -> None:
         controller.require_integration_ref(controller.INTEGRATION_REF)

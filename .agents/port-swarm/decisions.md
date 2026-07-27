@@ -10,3 +10,4 @@
 - The current recovery order is TUI closure → Coding-agent closure → Orchestrator → final Stage-1 gate. Recovery must migrate controller/DAG/runtime identities together before dispatch resumes.
 
 - `NEXT-PORT-PLAN-V20` replaces the unaccepted downstream tail after the declared TUI recovery ancestry with fresh, deterministic manifest-gap batches: 59 TUI rows, 237 Coding-agent rows, then 13 Orchestrator rows, before package and final gates.
+- On 2026-07-27 the user approved TUI dependency arbitration proposal A: exact pins `markdown = 1.0.0`, `icu_properties = 2.2.0`, `icu_segmenter = 2.2.0`, and `emojis = 0.9.0`. Rust must retain Pi's terminal Markdown renderer and composite grapheme-width policy; `unicode-width` and Unicode-16 `east-asian-width` are not direct substitutes. Acceptance requires differential coverage against frozen Pi Markdown tests and Unicode 17 EAW/segmentation/emoji regressions.
