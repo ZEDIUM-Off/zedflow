@@ -4195,26 +4195,26 @@
       "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 5 one-to-one; exact paths are its ownership list."
     },
     {
-      "id": "REPLAN-CA-V20-CLOSURE-SOURCE-FILES",
+      "id": "REPLAN-CA-V20-CLOSURE-SOURCE-FILES-R1",
       "kind": "writer",
       "depends_on": [
         "CA-V20-TEST-BATCH-5"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/utils/image-process.rs",
-        "crates/zedflow-coding-agent/src/utils/pi-user-agent.rs",
-        "crates/zedflow-coding-agent/src/utils/tools-manager.rs"
+        "crates/zedflow-coding-agent/src/utils/image_process.rs",
+        "crates/zedflow-coding-agent/src/utils/pi_user_agent.rs",
+        "crates/zedflow-coding-agent/src/utils/tools_manager.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port the three deterministic frozen Pi coding-agent source targets diagnosed missing by CA-V20-CLOSURE-VALIDATE; exact paths are the only repair ownership."
+      "intent": "Repair the deterministic coding-agent source closure with the exact underscore-separated target paths diagnosed by the ownership failure."
     },
     {
-      "id": "REPLAN-CA-V20-CLOSURE-VALIDATE",
+      "id": "REPLAN-CA-V20-CLOSURE-VALIDATE-R1",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-CA-V20-CLOSURE-SOURCE-FILES"
+        "REPLAN-CA-V20-CLOSURE-SOURCE-FILES-R1"
       ],
       "ownership": [],
       "validation": [
@@ -4223,13 +4223,13 @@
         "cargo test --package zedflow-coding-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
       ],
-      "intent": "Freshly re-run the failed coding-agent closure validation after the diagnosed source-target repair."
+      "intent": "Freshly re-run the failed coding-agent closure validation after the corrected-path source repair."
     },
     {
       "id": "CA-V20-CLOSURE-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-CA-V20-CLOSURE-VALIDATE"
+        "REPLAN-CA-V20-CLOSURE-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
