@@ -293,3 +293,26 @@ fn resized_result(
         was_resized: true,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ProcessImageOptions, process_image};
+
+    #[test]
+    fn process_image_normalizes_jpeg_alias_and_parameters() {
+        let bytes = b"already-encoded";
+        let result = process_image(
+            bytes,
+            "IMAGE/JPG; charset=binary",
+            ProcessImageOptions {
+                auto_resize_images: false,
+                ..ProcessImageOptions::default()
+            },
+        )
+        .expect("supported MIME aliases should normalize");
+
+        assert_eq!(result.mime_type, "image/jpeg");
+        assert_eq!(result.data, "YWxyZWFkeS1lbmNvZGVk");
+        assert!(result.hints.is_empty());
+    }
+}
