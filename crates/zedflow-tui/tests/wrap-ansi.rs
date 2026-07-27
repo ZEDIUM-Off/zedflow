@@ -1,0 +1,22 @@
+use zedflow_tui::utils::{visible_width, wrap_text_with_ansi};
+
+#[test]
+fn wraps_plain_and_cjk_text_at_terminal_columns() {
+    let lines = wrap_text_with_ansi("hello world this is a test", 10);
+    assert!(lines.len() > 1);
+    assert!(lines.iter().all(|line| visible_width(line) <= 10));
+    let lines = wrap_text_with_ansi(
+        "This is an example 中文汉字测试段落内容中文汉字测试段落内容.",
+        40,
+    );
+    assert!(lines.iter().all(|line| visible_width(line) <= 40));
+}
+
+#[test]
+fn preserves_ansi_sequences_and_osc_zero_width() {
+    let lines = wrap_text_with_ansi("\x1b[31mred text that wraps\x1b[0m", 8);
+    assert!(lines.iter().all(|line| visible_width(line) <= 8));
+    assert!(lines[0].contains("\x1b[31m"));
+    assert_eq!(visible_width("\x1b]133;A\x07hello\x1b]133;B\x07"), 5);
+    assert_eq!(visible_width("🇨🇳"), 2);
+}
