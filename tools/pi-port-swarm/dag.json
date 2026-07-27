@@ -66,12 +66,14 @@
       "intent": "Port Pi TUI lifecycle, render scheduling, differential redraw, viewport overwrite, overlays, focus and logical cursor. Export the runtime from the crate root; do not replace it with Ratatui or a full-screen abstraction."
     },
     {
-      "id": "SEM-TUI-V3-INPUT-EDITING",
+      "id": "SEM-TUI-V3-INPUT-EDITING-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-TUI-V2-RENDERER"
       ],
       "ownership": [
+        "crates/zedflow-tui/src/lib.rs",
+        "crates/zedflow-tui/src/index.rs",
         "crates/zedflow-tui/src/keys.rs",
         "crates/zedflow-tui/src/keybindings.rs",
         "crates/zedflow-tui/src/autocomplete.rs",
@@ -96,13 +98,25 @@
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Complete Pi key parsing/keybindings, editor semantics, history/undo/kill ring, autocomplete/fuzzy matching, ANSI wrapping and Unicode-17 composite width behavior with executable differential tests."
+      "intent": "Complete Pi key parsing/keybindings, editor semantics, history/undo/kill ring, autocomplete/fuzzy matching, ANSI wrapping and Unicode-17 composite width behavior with executable differential tests. Declare and export all owned modules from the crate roots."
+    },
+    {
+      "id": "SEM-TUI-V3-INPUT-EDITING-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-TUI-V3-INPUT-EDITING-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Freshly validate the repaired input-editing unit with its original declared gate; no source edits."
     },
     {
       "id": "SEM-TUI-V4-COMPONENTS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V3-INPUT-EDITING"
+        "SEM-TUI-V3-INPUT-EDITING-VALIDATE-R1"
       ],
       "ownership": [
         "Cargo.lock",
