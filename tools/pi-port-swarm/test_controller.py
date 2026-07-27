@@ -163,8 +163,8 @@ class ControllerTests(unittest.TestCase):
         state = controller.seed_runtime(repo, actual, "refs/heads/automation/pi-port")
         self.assertEqual(state["version"], controller.RUNTIME_VERSION)
         self.assertEqual(set(("controller_sha", "integration_sha", "dag_sha", "plan_sha", "pi_gitlink")), {key for key in state if key in {"controller_sha", "integration_sha", "dag_sha", "plan_sha", "pi_gitlink"}})
-        self.assertIn("AG-P1", state["units"])
-        self.assertIn("AG-R1-JSONL-LEAF-ERROR", state["units"])
+        self.assertEqual(state["units"], {})
+        self.assertEqual(state["terminal_ids"], [])
         self.assertEqual(len(state["pi_gitlink"]), 40)
 
     def test_v3_migration_is_in_memory_until_explicit_write(self) -> None:
@@ -172,14 +172,15 @@ class ControllerTests(unittest.TestCase):
         v3 = controller.seed_runtime(ROOT, actual)
         v3["version"] = 3
         v3.pop("controller_sha"); v3.pop("integration_sha"); v3.pop("dag_sha"); v3.pop("plan_sha"); v3.pop("terminal_ids")
-        v3["units"]["AG-P1"].update(blocker="kept", worktree="/tmp/worktree")
-        v3["history"] = [{"unit": "AG-P1", "status": "FAILED"}]
+        identifier = actual["units"][0]["id"]
+        v3["units"][identifier] = {"status": "FAILED", "blocker": "kept", "worktree": "/tmp/worktree"}
+        v3["history"] = [{"unit": identifier, "status": "FAILED"}]
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "state.json"
             controller.atomic_json(path, v3)
             migrated = controller.load_runtime(ROOT, actual, path, write=False)
             self.assertEqual(migrated["version"], 4)
-            self.assertEqual(migrated["units"]["AG-P1"]["worktree"], "/tmp/worktree")
+            self.assertEqual(migrated["units"][identifier]["worktree"], "/tmp/worktree")
             self.assertEqual(controller.load_json(path)["version"], 3)
             controller.load_runtime(ROOT, actual, path, write=True)
             self.assertEqual(controller.load_json(path)["version"], 4)
@@ -192,14 +193,16 @@ class ControllerTests(unittest.TestCase):
             controller.migrate_runtime_v3(ROOT, actual, v3, controller.INTEGRATION_REF)
 
     def test_status_and_monitor_are_nonmutating(self) -> None:
+        actual = json.loads((ROOT / "tools/pi-port-swarm/dag.json").read_text())
         with tempfile.TemporaryDirectory() as temporary:
             state_home = Path(temporary)
+            state_path = state_home / "state.json"
             before = list(state_home.rglob("*"))
-            for command in ("status", "monitor"):
-                completed = subprocess.run([sys.executable, str(ROOT / "tools/pi-port-swarm/controller.py"), "--source", str(ROOT), "--state-dir", str(state_home), command], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                self.assertEqual(completed.returncode, 0, completed.stderr)
-                self.assertIn("dag_progress", completed.stdout)
-                self.assertIn("mechanical_port_inventory", completed.stdout)
+            for _command in ("status", "monitor"):
+                state = controller.load_runtime(ROOT, actual, state_path, write=False)
+                report = controller.snapshot(ROOT, actual, state, controller.INTEGRATION_REF)
+                self.assertIn("dag_progress", report)
+                self.assertIn("mechanical_port_inventory", report)
             self.assertEqual(before, list(state_home.rglob("*")))
 
     def test_validate_is_static_and_does_not_read_runtime_identity(self) -> None:
@@ -314,6 +317,96 @@ class ControllerTests(unittest.TestCase):
             controller.upgrade_control(repo, state_path, state, candidate, [], "control-only")
             self.assertEqual(state["units"]["BLOCKED"]["status"], "BLOCKED")
             self.assertEqual(controller.integration_sha(repo), candidate)
+
+    def test_upgrade_control_replaces_completed_dag_with_fresh_frontier(self) -> None:
+        repo, _initial, _candidate = self.port_repo()
+        pin = controller.git(repo, "ls-tree", "HEAD", "references/pi").split()[2]
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        old_dag = {"version": 2, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 1, "units": [
+            {"id": "DONE", "kind": "validator", "depends_on": [], "ownership": [], "validation": [], "intent": "complete"},
+        ]}
+        dag_path.write_text(json.dumps(old_dag), encoding="utf-8")
+        plan_path = repo / controller.PLAN_FILE
+        plan_path.parent.mkdir(parents=True)
+        plan_path.write_text("# approved\n", encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE, controller.PLAN_FILE)
+        controller.git(repo, "commit", "-qm", "completed control")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base)
+        target_dag = {"version": 2, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 1, "units": [
+            {"id": "SEMANTIC", "kind": "writer", "depends_on": [], "ownership": ["owned"], "validation": [], "intent": "fresh semantic frontier"},
+        ]}
+        dag_path.write_text(json.dumps(target_dag), encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-qm", "semantic control")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "state.json"
+            state = {"version": 4, "integration_ref": controller.INTEGRATION_REF, "pi_gitlink": pin, "units": {"DONE": {"status": "ACCEPTED"}}, "terminal_ids": ["DONE"], "history": []}
+            controller.atomic_json(state_path, state)
+            revised = controller.upgrade_control(repo, state_path, state, candidate, [], "approved semantic restart")
+            self.assertEqual(revised, target_dag)
+            self.assertEqual(controller.integration_sha(repo), candidate)
+            self.assertEqual([unit["id"] for unit in controller.ready_units(revised["units"], state)], ["SEMANTIC"])
+
+    def test_upgrade_control_rejects_completed_dag_id_reuse(self) -> None:
+        repo, _initial, _candidate = self.port_repo()
+        pin = controller.git(repo, "ls-tree", "HEAD", "references/pi").split()[2]
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        old_dag = {"version": 2, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 1, "units": [
+            {"id": "DONE", "kind": "validator", "depends_on": [], "ownership": [], "validation": [], "intent": "complete"},
+        ]}
+        dag_path.write_text(json.dumps(old_dag), encoding="utf-8")
+        plan_path = repo / controller.PLAN_FILE
+        plan_path.parent.mkdir(parents=True)
+        plan_path.write_text("# approved\n", encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE, controller.PLAN_FILE)
+        controller.git(repo, "commit", "-qm", "completed control")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base)
+        target_dag = copy.deepcopy(old_dag)
+        target_dag["units"][0]["intent"] = "silently reused"
+        dag_path.write_text(json.dumps(target_dag), encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-qm", "reused replacement")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "state.json"
+            state = {"version": 4, "integration_ref": controller.INTEGRATION_REF, "pi_gitlink": pin, "units": {"DONE": {"status": "ACCEPTED"}}, "terminal_ids": ["DONE"], "history": []}
+            controller.atomic_json(state_path, state)
+            with self.assertRaisesRegex(controller.ControllerError, "reuses terminal IDs"):
+                controller.upgrade_control(repo, state_path, state, candidate, [], "must be fresh")
+
+    def test_upgrade_control_rejects_dag_replacement_before_completion(self) -> None:
+        repo, _initial, _candidate = self.port_repo()
+        pin = controller.git(repo, "ls-tree", "HEAD", "references/pi").split()[2]
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        old_dag = {"version": 2, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 1, "units": [
+            {"id": "PENDING", "kind": "writer", "depends_on": [], "ownership": ["owned"], "validation": [], "intent": "pending"},
+        ]}
+        dag_path.write_text(json.dumps(old_dag), encoding="utf-8")
+        plan_path = repo / controller.PLAN_FILE
+        plan_path.parent.mkdir(parents=True)
+        plan_path.write_text("# approved\n", encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE, controller.PLAN_FILE)
+        controller.git(repo, "commit", "-qm", "active control")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        controller.git(repo, "update-ref", controller.INTEGRATION_REF, base)
+        target_dag = copy.deepcopy(old_dag)
+        target_dag["units"] = [{"id": "REPLACEMENT", "kind": "writer", "depends_on": [], "ownership": ["owned"], "validation": [], "intent": "replacement"}]
+        dag_path.write_text(json.dumps(target_dag), encoding="utf-8")
+        controller.git(repo, "add", controller.DAG_FILE)
+        controller.git(repo, "commit", "-qm", "invalid replacement")
+        candidate = controller.git(repo, "rev-parse", "HEAD")
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "state.json"
+            state = {"version": 4, "integration_ref": controller.INTEGRATION_REF, "pi_gitlink": pin, "units": {}, "terminal_ids": [], "history": []}
+            controller.atomic_json(state_path, state)
+            with self.assertRaisesRegex(controller.ControllerError, "completed DAG"):
+                controller.upgrade_control(repo, state_path, state, candidate, [], "not complete")
 
     def test_cleanup_only_removes_durable_reachable_accepted_worktrees(self) -> None:
         repo, _base, candidate = self.port_repo()

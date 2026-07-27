@@ -476,9 +476,10 @@ def validation_argv(command: str) -> list[str]:
         raise ControllerError(f"invalid validation command: {error}") from error
     legacy_harness_listing = "cargo test -p zedflow-agent --test harness -- --list | grep -Fqx 'storage::jsonl_set_leaf_id_reports_leaf_append_context: test' && cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context -- --exact"
     manifest_commands = {"python3 tools/pi-port-swarm/manifest.py check"} | {f"python3 tools/pi-port-swarm/manifest.py check --package {package}" for package in KNOWN_PACKAGES}
+    control_tests = {f"python3 tools/pi-port-swarm/{name}" for name in ("test_controller.py", "test_manifest.py", "test_recovery.py")}
     if command == legacy_harness_listing:
         return ["__legacy_harness_listing__"]
-    if command == "python3 tools/pi-port-swarm/controller.py validate" or command in manifest_commands:
+    if command == "python3 tools/pi-port-swarm/controller.py validate" or command in manifest_commands or command in control_tests:
         return shlex.split(command)
     if not args or any(token in {"|", "&&", ";", ">", "<"} for token in args):
         raise ControllerError(f"validation command is not allow-listed: {command}")
@@ -888,7 +889,11 @@ def upgrade_control(source: Path, state_path: Path, state: dict[str, Any], candi
     target_dag = load_json_at_revision(source, candidate, DAG_FILE)
     target_units = validate_dag(target_dag)
     current_ids = {unit["id"] for unit in current_units}
-    reused = ({unit["id"] for unit in target_units} - current_ids) & set(state.get("terminal_ids", []))
+    target_ids = {unit["id"] for unit in target_units}
+    dag_changed = dag_hash(target_dag) != dag_hash(current_dag)
+    completed_replacement = dag_changed and not supersede_ids and graph_complete(current_units, state)
+    reuse_candidates = target_ids if completed_replacement else target_ids - current_ids
+    reused = reuse_candidates & set(state.get("terminal_ids", []))
     if reused:
         raise ControllerError(f"upgrade DAG reuses terminal IDs: {sorted(reused)}")
     if pinned_gitlink(target_dag) != state.get("pi_gitlink") or git(source, "ls-tree", candidate, "references/pi").split()[2] != pinned_gitlink(target_dag):
@@ -903,8 +908,8 @@ def upgrade_control(source: Path, state_path: Path, state: dict[str, Any], candi
             record = state.get("units", {}).get(identifier)
             if not record or record.get("status") not in {"FAILED", "BLOCKED"}:
                 raise ControllerError(f"upgrade can supersede only failed/blocked units: {identifier}")
-    elif dag_hash(target_dag) != dag_hash(current_dag):
-        raise ControllerError("control-only upgrade without supersession must preserve the active DAG")
+    elif dag_changed and not graph_complete(current_units, state):
+        raise ControllerError("control-only upgrade may replace only a completed DAG")
     checkpoint = f"CONTROL-RECOVERY-{candidate[:12].upper()}"
     if checkpoint in state.get("terminal_ids", []) or checkpoint in state.get("units", {}):
         raise ControllerError("recovery checkpoint ID already exists")
@@ -912,7 +917,7 @@ def upgrade_control(source: Path, state_path: Path, state: dict[str, Any], candi
     for identifier in supersede_ids:
         prospective["units"][identifier].update(status="SUPERSEDED", blocker=None)
     prospective.setdefault("units", {})[checkpoint] = {"status": "ACCEPTED", "candidate": candidate}
-    if supersede_ids and not ready_units(target_units, prospective) and not graph_complete(target_units, prospective):
+    if dag_changed and not ready_units(target_units, prospective) and not graph_complete(target_units, prospective):
         raise ControllerError("upgrade DAG leaves no ready/reachable frontier")
     revised_hash = dag_hash(target_dag)
     state.setdefault("units", {})[checkpoint] = {
