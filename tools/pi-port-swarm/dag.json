@@ -3631,10 +3631,35 @@
       "intent": "Use the approved plan-writer process and deterministic manifest gaps to replace the open tail with bounded one-to-one TUI closure, Coding-agent closure, Orchestrator, and final Stage-1 gates."
     },
     {
-      "id": "TUI-V20-SOURCE-BATCH-1",
+      "id": "TUI-V21-FOUNDATION",
       "kind": "writer",
       "depends_on": [
         "NEXT-PORT-PLAN-V20"
+      ],
+      "ownership": [
+        "Cargo.lock",
+        "crates/zedflow-tui/Cargo.toml",
+        "crates/zedflow-tui/src/native-modifiers.rs",
+        "crates/zedflow-tui/src/stdin-buffer.rs",
+        "crates/zedflow-tui/src/terminal-colors.rs",
+        "crates/zedflow-tui/src/terminal-image.rs",
+        "crates/zedflow-tui/src/terminal.rs",
+        "crates/zedflow-tui/src/tui.rs",
+        "crates/zedflow-tui/src/undo-stack.rs",
+        "crates/zedflow-tui/src/utils.rs",
+        "crates/zedflow-tui/src/word-navigation.rs",
+        "crates/zedflow-tui/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port the approved TUI dependency-first foundation: exact markdown 1.0.0, icu_properties 2.2.0, icu_segmenter 2.2.0, and emojis 0.9.0 pins, plus frozen Pi foundation modules and composite Unicode width policy."
+    },
+    {
+      "id": "TUI-V21-COMPONENTS",
+      "kind": "writer",
+      "depends_on": [
+        "TUI-V21-FOUNDATION"
       ],
       "ownership": [
         "crates/zedflow-tui/src/autocomplete.rs",
@@ -3655,41 +3680,18 @@
         "crates/zedflow-tui/src/index.rs",
         "crates/zedflow-tui/src/keybindings.rs",
         "crates/zedflow-tui/src/kill-ring.rs",
-        "crates/zedflow-tui/src/native-modifiers.rs",
-        "crates/zedflow-tui/src/stdin-buffer.rs",
         "crates/zedflow-tui/src/lib.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Port deterministic frozen Pi tui source manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+      "intent": "Port the approved TUI component batch one-to-one, retaining Pi terminal Markdown rendering, streaming fence repair, source recovery, ANSI/OSC-8 behavior, and width-aware wrapping."
     },
     {
-      "id": "TUI-V20-SOURCE-BATCH-2",
+      "id": "TUI-V21-TEST-BATCH-1",
       "kind": "writer",
       "depends_on": [
-        "TUI-V20-SOURCE-BATCH-1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/terminal-colors.rs",
-        "crates/zedflow-tui/src/terminal-image.rs",
-        "crates/zedflow-tui/src/terminal.rs",
-        "crates/zedflow-tui/src/tui.rs",
-        "crates/zedflow-tui/src/undo-stack.rs",
-        "crates/zedflow-tui/src/utils.rs",
-        "crates/zedflow-tui/src/word-navigation.rs",
-        "crates/zedflow-tui/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Port deterministic frozen Pi tui source manifest-gap batch 2 one-to-one; exact paths are its ownership list."
-    },
-    {
-      "id": "TUI-V20-TEST-BATCH-1",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V20-SOURCE-BATCH-2"
+        "TUI-V21-COMPONENTS"
       ],
       "ownership": [
         "crates/zedflow-tui/tests/autocomplete.rs",
@@ -3717,13 +3719,13 @@
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Port deterministic frozen Pi tui test manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+      "intent": "Port the approved TUI test batch 1 one-to-one, including Markdown, Unicode-17 EAW, RGI/RI/ZWJ/VS, combining, Thai/Lao, fullwidth, ANSI, and table regressions."
     },
     {
-      "id": "TUI-V20-TEST-BATCH-2",
+      "id": "TUI-V21-TEST-BATCH-2",
       "kind": "writer",
       "depends_on": [
-        "TUI-V20-TEST-BATCH-1"
+        "TUI-V21-TEST-BATCH-1"
       ],
       "ownership": [
         "crates/zedflow-tui/tests/terminal.rs",
@@ -3743,13 +3745,13 @@
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Port deterministic frozen Pi tui test manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+      "intent": "Port the approved TUI test batch 2 one-to-one, covering wrapping, segmentation, word navigation, terminal rendering, and ANSI regressions."
     },
     {
-      "id": "TUI-V20-CLOSURE-VALIDATE",
+      "id": "TUI-V21-CLOSURE-VALIDATE",
       "kind": "validator",
       "depends_on": [
-        "TUI-V20-TEST-BATCH-2"
+        "TUI-V21-TEST-BATCH-2"
       ],
       "ownership": [],
       "validation": [
@@ -3758,25 +3760,25 @@
         "cargo test --package zedflow-tui --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Validate deterministic tui manifest closure and executed package tests."
+      "intent": "Fresh mechanical acceptance of the complete approved TUI manifest wave; stop on failure and do not add compatibility fixes."
     },
     {
-      "id": "TUI-V20-CLOSURE-FIDELITY",
+      "id": "TUI-V21-CLOSURE-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "TUI-V20-CLOSURE-VALIDATE"
+        "TUI-V21-CLOSURE-VALIDATE"
       ],
       "ownership": [],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Fresh frozen-Pi fidelity review of the completed tui closure."
+      "intent": "Fresh read-only frozen Pi fidelity review of the approved TUI dependency-first closure before Coding-agent begins."
     },
     {
       "id": "CA-V20-SOURCE-BATCH-1",
       "kind": "writer",
       "depends_on": [
-        "TUI-V20-CLOSURE-FIDELITY"
+        "TUI-V21-CLOSURE-FIDELITY"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/bun/cli.rs",
