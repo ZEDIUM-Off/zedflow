@@ -31,9 +31,9 @@ impl Component for Editor {
 }
 impl Focusable for Editor {
     fn set_focused(&mut self, v: bool) {
-        self.input.set_focused(v)
+        Focusable::set_focused(&mut self.input, v)
     }
     fn is_focused(&self) -> bool {
-        self.input.is_focused()
+        Focusable::is_focused(&self.input)
     }
 }

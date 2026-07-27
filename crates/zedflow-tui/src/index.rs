@@ -1,4 +1,5 @@
 pub use crate::autocomplete::*;
+pub use crate::components::*;
 pub use crate::editor_component::*;
 pub use crate::fuzzy::*;
 pub use crate::keybindings::*;

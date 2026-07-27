@@ -9,6 +9,7 @@ homepage.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64 = "0.22"
 markdown = "=1.0.0"
 # ICU data is pinned to match the Pi segmentation/Unicode policy.
 icu_properties = "=2.2.0"

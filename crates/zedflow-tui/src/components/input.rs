@@ -26,16 +26,28 @@ impl Input {
 }
 impl Component for Input {
     fn render(&self, w: usize) -> Vec<String> {
-        vec![crate::utils::truncate_to_width(&self.value, w)]
+        vec![crate::utils::truncate_to_width(&self.value, w, "", false)]
     }
     fn handle_input(&mut self, d: &str) {
         if d == "\x7f" {
-            self.value.pop();
-            self.cursor = self.value.len()
-        } else if d.chars().count() == 1 {
+            if self.cursor > 0 {
+                let start = self.value[..self.cursor]
+                    .char_indices()
+                    .next_back()
+                    .map_or(0, |(i, _)| i);
+                self.value.replace_range(start..self.cursor, "");
+                self.cursor = start;
+            }
+        } else if d.chars().all(|c| !c.is_control()) {
             self.value.insert_str(self.cursor, d);
             self.cursor += d.len()
         }
+    }
+    fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+    }
+    fn is_focused(&self) -> bool {
+        self.focused
     }
 }
 impl Focusable for Input {

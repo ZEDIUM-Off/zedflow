@@ -34,14 +34,17 @@ impl Default for Text {
 }
 impl Component for Text {
     fn render(&self, width: usize) -> Vec<String> {
-        let w = width.saturating_sub(self.padding_x * 2);
+        if self.text.trim().is_empty() {
+            return vec![];
+        }
+        let w = width.saturating_sub(self.padding_x * 2).max(1);
         let mut out = Vec::new();
         let pad = " ".repeat(self.padding_x);
         for _ in 0..self.padding_y {
             out.push(" ".repeat(width));
         }
-        for l in self.text.lines() {
-            let s = format!("{}{}", pad, truncate_to_width(l, w));
+        for l in crate::utils::wrap_text_with_ansi(&self.text.replace('\t', "   "), w) {
+            let s = format!("{}{}", pad, truncate_to_width(&l, w, "", false));
             let s = format!(
                 "{}{}",
                 s,

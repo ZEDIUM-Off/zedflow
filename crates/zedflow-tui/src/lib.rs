@@ -3,6 +3,7 @@
 //! Dependency-light TUI runtime primitives.
 
 pub mod autocomplete;
+pub mod components;
 #[path = "editor-component.rs"]
 pub mod editor_component;
 pub mod fuzzy;
@@ -29,6 +30,7 @@ pub mod utils;
 pub mod word_navigation;
 
 pub use autocomplete::*;
+pub use components::*;
 pub use editor_component::*;
 pub use fuzzy::*;
 pub use keybindings::*;
