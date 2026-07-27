@@ -3656,42 +3656,27 @@
       "intent": "Port the approved TUI dependency-first foundation: exact markdown 1.0.0, icu_properties 2.2.0, icu_segmenter 2.2.0, and emojis 0.9.0 pins, plus frozen Pi foundation modules and composite Unicode width policy."
     },
     {
-      "id": "TUI-V21-COMPONENTS-R1",
+      "id": "TUI-V21-COMPONENTS-R2-COMPONENT-FILES",
       "kind": "writer",
       "depends_on": [
         "TUI-V21-FOUNDATION"
       ],
       "ownership": [
-        "crates/zedflow-tui/src/autocomplete.rs",
-        "crates/zedflow-tui/src/components/box.rs",
-        "crates/zedflow-tui/src/components/cancellable-loader.rs",
-        "crates/zedflow-tui/src/components/editor.rs",
-        "crates/zedflow-tui/src/components/image.rs",
-        "crates/zedflow-tui/src/components/input.rs",
-        "crates/zedflow-tui/src/components/loader.rs",
-        "crates/zedflow-tui/src/components/markdown.rs",
-        "crates/zedflow-tui/src/components/select-list.rs",
-        "crates/zedflow-tui/src/components/settings-list.rs",
-        "crates/zedflow-tui/src/components/spacer.rs",
-        "crates/zedflow-tui/src/components/text.rs",
-        "crates/zedflow-tui/src/components/truncated-text.rs",
-        "crates/zedflow-tui/src/editor-component.rs",
-        "crates/zedflow-tui/src/fuzzy.rs",
-        "crates/zedflow-tui/src/index.rs",
-        "crates/zedflow-tui/src/keybindings.rs",
-        "crates/zedflow-tui/src/kill-ring.rs",
-        "crates/zedflow-tui/src/lib.rs"
+        "crates/zedflow-tui/src/components/cancellable_loader.rs",
+        "crates/zedflow-tui/src/components/select_list.rs",
+        "crates/zedflow-tui/src/components/settings_list.rs",
+        "crates/zedflow-tui/src/components/truncated_text.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Fresh equivalent repair of the TUI component batch; preserve the frozen Pi one-to-one component port and do not modify files outside this ownership."
+      "intent": "Fresh equivalent repair of the four diagnosed TUI component files; preserve the frozen Pi one-to-one component port and do not modify files outside this ownership."
     },
     {
       "id": "TUI-V21-COMPONENTS-R2-UTILS",
       "kind": "writer",
       "depends_on": [
-        "TUI-V21-COMPONENTS-R1"
+        "TUI-V21-COMPONENTS-R2-COMPONENT-FILES"
       ],
       "ownership": [
         "crates/zedflow-tui/src/utils.rs"
