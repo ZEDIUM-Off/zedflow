@@ -1,10 +1,10 @@
-use zedflow_tui::utils::{apply_background_to_line, visible_width};
+use zedflow_tui::{composite_line_at, visible_width};
 
 #[test]
-fn background_padding_does_not_change_visible_width() {
-    let line = apply_background_to_line("\x1b[3mXXXXX\x1b[23m", 20, |s| {
-        format!("\x1b[44m{s}\x1b[0m")
-    });
+fn compositing_inserts_resets_between_styled_segments() {
+    let base = format!("\x1b[3m{}\x1b[23m", "X".repeat(20));
+    let line = composite_line_at(&base, "OVR", 5, 3, 20);
+
     assert_eq!(visible_width(&line), 20);
-    assert!(line.starts_with("\x1b[44m"));
+    assert!(line.matches("\x1b[0m\x1b]8;;\x07").count() >= 2);
 }

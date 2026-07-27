@@ -1,13 +1,19 @@
 use zedflow_tui::{Component, Tui};
-struct Empty;
-impl Component for Empty {
+
+struct Lines(&'static [&'static str]);
+impl Component for Lines {
     fn render(&self, _: usize) -> Vec<String> {
-        vec![]
+        self.0.iter().map(|line| (*line).into()).collect()
     }
 }
+
 #[test]
-fn empty_overlay_content_is_valid() {
+fn centered_overlay_is_visible_when_base_is_shorter_than_viewport() {
     let mut tui = Tui::new();
-    tui.show_overlay(Empty);
-    assert!(tui.render(80).is_empty());
+    tui.root.add_child(Lines(&["one", "two", "three"]));
+    tui.show_overlay(Lines(&["OVERLAY"]));
+
+    let frame = tui.render_frame(40, 10);
+    assert_eq!(frame.len(), 10);
+    assert!(frame[4].contains("OVERLAY"));
 }
