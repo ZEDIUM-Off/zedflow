@@ -3790,10 +3790,27 @@
       "intent": "Port the diagnosed missing TUI source targets from the frozen Pi manifest one-to-one; do not add placeholders or compatibility fixes."
     },
     {
-      "id": "TUI-V21-CLOSURE-VALIDATE-R1",
-      "kind": "validator",
+      "id": "TUI-V21-CLOSURE-MANIFEST-SOURCES-R2",
+      "kind": "writer",
       "depends_on": [
         "TUI-V21-CLOSURE-MANIFEST-SOURCES"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/components/select-list.rs",
+        "crates/zedflow-tui/src/components/settings-list.rs",
+        "crates/zedflow-tui/src/components/truncated-text.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Repair the four TUI manifest source targets diagnosed missing by TUI-V21-CLOSURE-VALIDATE-R1; port the frozen Pi files one-to-one without placeholders or compatibility fixes."
+    },
+    {
+      "id": "TUI-V21-CLOSURE-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-V21-CLOSURE-MANIFEST-SOURCES-R2"
       ],
       "ownership": [],
       "validation": [
@@ -3802,13 +3819,13 @@
         "cargo test --package zedflow-tui --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Fresh mechanical revalidation of TUI closure after the diagnosed manifest source targets are restored; preserve all original acceptance gates."
+      "intent": "Fresh mechanical revalidation of TUI closure after the diagnosed four source targets are repaired; preserve all original acceptance gates."
     },
     {
       "id": "TUI-V21-CLOSURE-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "TUI-V21-CLOSURE-VALIDATE-R1"
+        "TUI-V21-CLOSURE-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [
