@@ -4211,10 +4211,26 @@
       "intent": "Repair the deterministic coding-agent source closure with the exact underscore-separated target paths diagnosed by the ownership failure."
     },
     {
-      "id": "REPLAN-CA-V20-CLOSURE-VALIDATE-R1",
+      "id": "REPLAN-CA-V20-CLOSURE-MANIFEST-TARGETS-R2",
+      "kind": "writer",
+      "depends_on": [
+        "CA-V20-TEST-BATCH-5"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/utils/image-process.rs",
+        "crates/zedflow-coding-agent/src/utils/pi-user-agent.rs",
+        "crates/zedflow-coding-agent/src/utils/tools-manager.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Repair the deterministic coding-agent manifest closure by adding the three exact hyphenated source target paths reported missing by manifest.py; preserve one-to-one Pi source coverage and do not add placeholders or compatibility fixes."
+    },
+    {
+      "id": "REPLAN-CA-V20-CLOSURE-VALIDATE-R2",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-CA-V20-CLOSURE-SOURCE-FILES-R1"
+        "REPLAN-CA-V20-CLOSURE-MANIFEST-TARGETS-R2"
       ],
       "ownership": [],
       "validation": [
@@ -4223,13 +4239,13 @@
         "cargo test --package zedflow-coding-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
       ],
-      "intent": "Freshly re-run the failed coding-agent closure validation after the corrected-path source repair."
+      "intent": "Freshly re-run the failed coding-agent closure validation, including the exact manifest check, after the hyphenated source target repair."
     },
     {
       "id": "CA-V20-CLOSURE-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-CA-V20-CLOSURE-VALIDATE-R1"
+        "REPLAN-CA-V20-CLOSURE-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [
