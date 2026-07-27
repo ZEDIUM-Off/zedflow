@@ -4333,10 +4333,62 @@
       "intent": "Independent final Rust correctness review on the same final SHA."
     },
     {
-      "id": "FINAL-V20-PORT-CHECKPOINT",
-      "kind": "checkpoint",
+      "id": "REPLAN-FINAL-V20-PORT-DOCS",
+      "kind": "writer",
       "depends_on": [
         "FINAL-V20-RUST-REVIEW"
+      ],
+      "ownership": [
+        "docs/porting/BASELINE.md"
+      ],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Update the stale Stage-1 baseline package closure facts after the accepted final workspace, fidelity, and Rust gates."
+    },
+    {
+      "id": "REPLAN-FINAL-V20-PORT-DOCS-VALIDATE",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-FINAL-V20-PORT-DOCS"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check",
+        "python3 tools/pi-port-swarm/manifest.py check"
+      ],
+      "intent": "Validate the corrected Stage-1 baseline and deterministic manifest closure without changing product code."
+    },
+    {
+      "id": "REPLAN-FINAL-V20-FIDELITY-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-FINAL-V20-PORT-DOCS-VALIDATE"
+      ],
+      "ownership": [],
+      "validation": [
+        "git diff --check"
+      ],
+      "intent": "Fresh frozen-Pi fidelity review after the final baseline correction."
+    },
+    {
+      "id": "REPLAN-FINAL-V20-RUST-REVIEW",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-FINAL-V20-FIDELITY-REVIEW"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --all --check",
+        "cargo check --workspace --all-targets"
+      ],
+      "intent": "Fresh Rust correctness review on the same SHA as the corrected final baseline."
+    },
+    {
+      "id": "REPLAN-FINAL-V20-PORT-CHECKPOINT",
+      "kind": "checkpoint",
+      "depends_on": [
+        "REPLAN-FINAL-V20-RUST-REVIEW"
       ],
       "ownership": [
         "docs/porting/BASELINE.md",
@@ -4345,7 +4397,7 @@
       "validation": [
         "git diff --check"
       ],
-      "intent": "Record Stage-1 completion only after final manifest, executed workspace, fidelity, and Rust gates accept one immutable SHA."
+      "intent": "Record Stage-1 completion only after the corrected baseline and fresh final reviews accept one immutable SHA."
     }
   ]
 }

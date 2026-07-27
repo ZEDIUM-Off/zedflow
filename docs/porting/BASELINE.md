@@ -15,13 +15,13 @@ Historical plans, trackers, and fidelity decisions are evidence, not current sta
 
 ## Stage-1 package map
 
-| Package | Mechanical closure at `automation/pi-port@c9cb37dd` | State |
+| Package | Mechanical closure at the accepted final workspace candidate | State |
 |---|---:|---|
 | AI | 247/247 inventoried rows, no missing target | mechanically closed; fidelity evidence retained |
 | Agent | 45/45 inventoried rows, no missing target | mechanically closed; fidelity evidence retained |
-| TUI | 1/61 exact targets present | incomplete; last review found Kitty CSI-u Unicode/Shift drift |
-| Coding-agent | 237 mapped target paths still missing; 3 explicit disposition rows | incomplete; accepted code is preserved |
-| Orchestrator | 0/13 targets present | not started |
+| TUI | 61/61 inventoried rows, no missing target | mechanically closed; final Stage-1 review pending |
+| Coding-agent | 332 inventoried rows, 331 mapped targets, 3 explicit disposition rows | mechanically closed; final Stage-1 review pending |
+| Orchestrator | 13/13 inventoried rows, no missing target | mechanically closed; final Stage-1 review pending |
 
 These are target/disposition facts, not semantic-completion claims. Run the controller/manifest commands for the live projection after the integration ref advances.
 
