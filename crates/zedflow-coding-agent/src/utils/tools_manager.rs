@@ -73,16 +73,7 @@ fn offline_mode() -> bool {
 }
 
 fn managed_binary_path(tool: &str) -> Option<PathBuf> {
-    let agent_dir = if let Some(configured) = env::var_os("PI_CODING_AGENT_DIR") {
-        crate::path_utils::expand_path(&configured.to_string_lossy()).ok()?
-    } else {
-        PathBuf::from(env::var_os("HOME").or_else(|| env::var_os("USERPROFILE"))?).join(".pi/agent")
-    };
-    Some(
-        agent_dir
-            .join("bin")
-            .join(format!("{tool}{}", env::consts::EXE_SUFFIX)),
-    )
+    Some(crate::config::get_bin_dir().join(format!("{tool}{}", env::consts::EXE_SUFFIX)))
 }
 
 fn download_tool(tool: &str) -> Result<PathBuf, String> {

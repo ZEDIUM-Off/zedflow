@@ -293,3 +293,23 @@ fn resized_result(
         was_resized: true,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CONVERSION_FAILURE, ProcessImageOptions, process_image};
+
+    #[test]
+    fn unsupported_image_conversion_reports_pi_message() {
+        assert_eq!(
+            process_image(
+                b"not an image",
+                "image/tiff",
+                ProcessImageOptions {
+                    auto_resize_images: false,
+                    ..ProcessImageOptions::default()
+                }
+            ),
+            Err(CONVERSION_FAILURE)
+        );
+    }
+}
