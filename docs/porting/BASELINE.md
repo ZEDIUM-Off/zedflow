@@ -17,11 +17,11 @@ Historical plans, trackers, and fidelity decisions are evidence, not current sta
 
 | Package | Mechanical closure at the accepted final workspace candidate | State |
 |---|---:|---|
-| AI | 247/247 inventoried rows, no missing target | mechanically closed; fidelity evidence retained |
-| Agent | 45/45 inventoried rows, no missing target | mechanically closed; fidelity evidence retained |
-| TUI | 61/61 inventoried rows, no missing target | mechanically closed; final Stage-1 review pending |
-| Coding-agent | 332 inventoried rows, 331 mapped targets, 3 explicit disposition rows | mechanically closed; final Stage-1 review pending |
-| Orchestrator | 13/13 inventoried rows, no missing target | mechanically closed; final Stage-1 review pending |
+| AI | 247/247 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
+| Agent | 45/45 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
+| TUI | 61/61 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
+| Coding-agent | 332 inventoried rows, 331 mapped targets, 3 explicit disposition rows | mechanically closed; final fidelity and Rust gates accepted |
+| Orchestrator | 13/13 inventoried rows, no missing target | mechanically closed; final fidelity and Rust gates accepted |
 
 These are target/disposition facts, not semantic-completion claims. Run the controller/manifest commands for the live projection after the integration ref advances.
 
