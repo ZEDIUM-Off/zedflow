@@ -8,6 +8,46 @@ pub mod utils;
 
 pub mod config;
 
+#[path = "bun/cli.rs"]
+pub mod bun_cli;
+#[path = "bun/register-bedrock.rs"]
+pub mod bun_register_bedrock;
+#[path = "bun/restore-sandbox-env.rs"]
+pub mod bun_restore_sandbox_env;
+#[path = "migrations.rs"]
+pub mod migrations;
+
+#[path = "core/bash-executor.rs"]
+pub mod bash_executor;
+#[path = "core/tools/bash.rs"]
+pub mod bash_tool;
+#[path = "core/exec.rs"]
+pub mod exec;
+#[path = "core/footer-data-provider.rs"]
+pub mod footer_data_provider;
+#[path = "core/keybindings.rs"]
+pub mod keybindings;
+#[path = "core/package-manager.rs"]
+pub mod package_manager;
+#[path = "core/project-trust.rs"]
+pub mod project_trust;
+#[path = "core/prompt-templates.rs"]
+pub mod prompt_templates;
+#[path = "core/provider-attribution.rs"]
+pub mod provider_attribution;
+#[path = "core/tools/render-utils.rs"]
+pub mod render_utils;
+#[path = "core/sdk.rs"]
+pub mod sdk;
+#[path = "core/telemetry.rs"]
+pub mod telemetry;
+#[path = "core/tools/tool-definition-wrapper.rs"]
+pub mod tool_definition_wrapper;
+#[path = "core/tools/index.rs"]
+pub mod tools_index;
+#[path = "core/trust-manager.rs"]
+pub mod trust_manager;
+
 #[path = "cli/mod.rs"]
 pub mod cli;
 #[path = "index.rs"]
