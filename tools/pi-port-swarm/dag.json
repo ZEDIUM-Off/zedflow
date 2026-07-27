@@ -3759,10 +3759,41 @@
       "intent": "Port the approved TUI test batch 2 one-to-one, covering wrapping, segmentation, word navigation, terminal rendering, and ANSI regressions."
     },
     {
-      "id": "TUI-V21-CLOSURE-VALIDATE",
-      "kind": "validator",
+      "id": "TUI-V21-CLOSURE-MANIFEST-SOURCES",
+      "kind": "writer",
       "depends_on": [
         "TUI-V21-TEST-BATCH-2"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/autocomplete.rs",
+        "crates/zedflow-tui/src/components/box.rs",
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/components/editor.rs",
+        "crates/zedflow-tui/src/components/image.rs",
+        "crates/zedflow-tui/src/components/input.rs",
+        "crates/zedflow-tui/src/components/loader.rs",
+        "crates/zedflow-tui/src/components/markdown.rs",
+        "crates/zedflow-tui/src/components/select-list.rs",
+        "crates/zedflow-tui/src/components/settings-list.rs",
+        "crates/zedflow-tui/src/components/spacer.rs",
+        "crates/zedflow-tui/src/components/text.rs",
+        "crates/zedflow-tui/src/components/truncated-text.rs",
+        "crates/zedflow-tui/src/editor-component.rs",
+        "crates/zedflow-tui/src/fuzzy.rs",
+        "crates/zedflow-tui/src/index.rs",
+        "crates/zedflow-tui/src/keybindings.rs",
+        "crates/zedflow-tui/src/kill-ring.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check"
+      ],
+      "intent": "Port the diagnosed missing TUI source targets from the frozen Pi manifest one-to-one; do not add placeholders or compatibility fixes."
+    },
+    {
+      "id": "TUI-V21-CLOSURE-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "TUI-V21-CLOSURE-MANIFEST-SOURCES"
       ],
       "ownership": [],
       "validation": [
@@ -3771,13 +3802,13 @@
         "cargo test --package zedflow-tui --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Fresh mechanical acceptance of the complete approved TUI manifest wave; stop on failure and do not add compatibility fixes."
+      "intent": "Fresh mechanical revalidation of TUI closure after the diagnosed manifest source targets are restored; preserve all original acceptance gates."
     },
     {
       "id": "TUI-V21-CLOSURE-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "TUI-V21-CLOSURE-VALIDATE"
+        "TUI-V21-CLOSURE-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
