@@ -3949,27 +3949,22 @@
       "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 2 one-to-one; exact paths are its ownership list."
     },
     {
-      "id": "CA-V20-SOURCE-BATCH-3",
-      "kind": "writer",
+      "id": "CA-V20-SOURCE-BATCH-3-EXISTING-VALIDATE",
+      "kind": "validator",
       "depends_on": [
         "CA-V20-SOURCE-BATCH-2"
       ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/image-process.rs",
-        "crates/zedflow-coding-agent/src/utils/pi-user-agent.rs",
-        "crates/zedflow-coding-agent/src/utils/tools-manager.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
+      "ownership": [],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 3 one-to-one; exact paths are its ownership list."
+      "intent": "Freshly validate the already-present deterministic frozen Pi coding-agent source manifest-gap batch 3 targets; no source mutation is required."
     },
     {
       "id": "CA-V20-TEST-BATCH-1",
       "kind": "writer",
       "depends_on": [
-        "CA-V20-SOURCE-BATCH-3"
+        "CA-V20-SOURCE-BATCH-3-EXISTING-VALIDATE"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/agent-session-auto-compaction-queue.rs",
