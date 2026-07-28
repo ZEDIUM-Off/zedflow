@@ -227,20 +227,39 @@
       "intent": "Port the frozen Pi Markdown component into Rust with themed token rendering, padding, width-aware wrapping, caching and options; replace the external-dependency-only test with executable tests of the Rust component. Preserve ANSI/OSC-8 behavior and reject raw-source wrapping as implementation."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-TERMINAL-EVENTS-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-MARKDOWN-R1"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/terminal.rs",
+        "crates/zedflow-tui/src/tui.rs",
+        "crates/zedflow-tui/tests/terminal.rs",
+        "crates/zedflow-tui/tests/tui-render.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test terminal --test tui-render",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Wire ProcessTerminal to native stdin and resize events and route those callbacks into the live Tui instead of no-op closures. Preserve Pi raw-byte framing, Kitty negotiation, render scheduling and terminal restoration; add executable integration coverage that exercises native event delivery rather than calling feed_input or dispatch methods directly."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-TERMINAL-EVENTS-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust: terminal lifecycle/restoration, raw input and Kitty, differential renderer, overlays, components, Markdown, Unicode 17, images and native-platform behavior. Reject dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust, including native stdin and resize delivery through ProcessTerminal into Tui, terminal lifecycle/restoration, raw input and Kitty, differential renderer, overlays, components, Markdown, Unicode 17, images and native-platform behavior. Reject manual-dispatch-only coverage, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R1"
+        "SEM-TUI-V7-FIDELITY-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
