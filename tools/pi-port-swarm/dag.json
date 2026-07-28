@@ -401,20 +401,36 @@
       "intent": "Connect the public owner-cooperative Tui event pump and terminal lifecycle to the downstream InteractiveMode owner: keep the live Tui on its owning thread, pump queued native stdin and resize events during the interactive runtime, and stop/resume the Tui around external-editor suspension with start-stop-start delivery and terminal restoration. Replace the vacuous suspend test with executable public-runtime coverage. Preserve non-Send component ownership; do not use cross-thread dispatch, TestTerminal-only delivery, detached readers, a blocking start, a line REPL, a placeholder, or a new dependency, and do not implement neighboring full interactive-mode features."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R9",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-EXECUTABLE-INTERACTIVE-WIRING-REPAIR-R10",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-INTERACTIVE-OWNER-PUMP-REPAIR-R9"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend"
+      ],
+      "intent": "Wire the default interactive executable route in main.rs to construct and drive InteractiveMode's live owner-thread Tui event pump instead of returning Ok(()). Stop and resume that live Tui around external-editor suspension, preserving real start-stop-start stdin and resize delivery plus terminal restoration. Extend the existing interactive-mode-suspend executable public-runtime coverage so it fails when the CLI bypasses InteractiveMode. Preserve non-Send ownership; do not implement neighboring print or other CLI modes, use a line REPL, add a placeholder or dependency, or dispatch across threads."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R10",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-EXECUTABLE-INTERACTIVE-WIRING-REPAIR-R10"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify through executable public-runtime coverage that downstream InteractiveMode owns and drives the live Tui pump and stops/resumes it around external-editor suspension; reject an unconnected helper or TestTerminal-only claim. Verify SelectList theme/layout/keybinding behavior; verify that every matching CancellableLoader cancel input invokes on_abort even after its AbortSignal is already aborted while cancellation signaling and disposal remain correct; verify executable component tests and unambiguous canonical component module reachability with no tracked dead duplicates. Reject autonomous cross-thread dispatch, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify through executable public-runtime coverage that downstream InteractiveMode owns and drives the live Tui pump and stops/resumes it around external-editor suspension; reject an unconnected helper or TestTerminal-only claim. Verify SelectList theme/layout/keybinding behavior; verify that every matching CancellableLoader cancel input invokes on_abort even after its AbortSignal is already aborted while cancellation signaling and disposal remain correct; verify executable component tests and unambiguous canonical component module reachability with no tracked dead duplicates. Reject autonomous cross-thread dispatch, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests. Additionally verify that the default executable route in main.rs constructs and drives InteractiveMode rather than returning without entering the interactive runtime, and that executable public-runtime coverage fails if this production wiring is removed."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R9"
+        "SEM-TUI-V7-FIDELITY-R10"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
