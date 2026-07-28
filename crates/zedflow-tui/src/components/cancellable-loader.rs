@@ -35,10 +35,9 @@ impl CancellableLoader {
     }
 
     pub fn abort(&mut self) {
-        if !self.signal.0.swap(true, Ordering::AcqRel) {
-            if let Some(callback) = &mut self.on_abort {
-                callback();
-            }
+        self.signal.0.store(true, Ordering::Release);
+        if let Some(callback) = &mut self.on_abort {
+            callback();
         }
     }
 

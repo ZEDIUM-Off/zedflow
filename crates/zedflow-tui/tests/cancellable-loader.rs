@@ -5,7 +5,7 @@ use zedflow_tui::{
 };
 
 #[test]
-fn cancellable_loader_signals_and_calls_abort_once() {
+fn cancellable_loader_signals_and_calls_abort_for_every_cancel_input() {
     let mut user = HashMap::new();
     user.insert("tui.select.cancel".into(), vec!["ctrl+x".into()]);
     set_keybindings(KeybindingsManager::new(tui_keybindings(), user));
@@ -24,7 +24,7 @@ fn cancellable_loader_signals_and_calls_abort_once() {
     loader.handle_input("\x18");
     assert!(loader.aborted());
     assert!(signal.aborted());
-    assert_eq!(calls.get(), 1);
+    assert_eq!(calls.get(), 2);
     loader.dispose();
 
     set_keybindings(KeybindingsManager::new(tui_keybindings(), HashMap::new()));
