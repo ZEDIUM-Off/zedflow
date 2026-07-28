@@ -1,6 +1,13 @@
 //! Interactive-mode contracts that do not require the TUI package.
 
-use std::collections::{HashSet, VecDeque};
+use std::{
+    collections::{HashSet, VecDeque},
+    io,
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    time::Duration,
+};
+
+use zedflow_tui::{ProcessTerminal, Terminal, Tui};
 
 /// Parse the first argument of an interactive path command (`/import` or
 /// `/export`). The command must be a complete token; quoted arguments have
@@ -74,9 +81,9 @@ pub enum InteractiveState {
     Stopped,
 }
 
-#[derive(Debug, Default)]
 pub struct InteractiveMode {
     state: InteractiveState,
+    tui: Tui,
     pending_user_inputs: VecDeque<String>,
     last_status: Option<String>,
 }
@@ -86,17 +93,75 @@ impl Default for InteractiveState {
         Self::Created
     }
 }
+
+impl Default for InteractiveMode {
+    fn default() -> Self {
+        Self::with_terminal(ProcessTerminal::new())
+    }
+}
+
 impl InteractiveMode {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn run(&mut self) {
+
+    #[must_use]
+    pub fn with_terminal(terminal: impl Terminal + 'static) -> Self {
+        Self {
+            state: InteractiveState::Created,
+            tui: Tui::with_terminal(terminal),
+            pending_user_inputs: VecDeque::new(),
+            last_status: None,
+        }
+    }
+
+    pub fn tui_mut(&mut self) -> &mut Tui {
+        &mut self.tui
+    }
+
+    pub fn run(&mut self) -> io::Result<()> {
+        self.tui.start()?;
         self.state = InteractiveState::Running;
+        Ok(())
     }
-    pub fn stop(&mut self) {
+
+    /// Pump terminal input and resize events on the thread that owns this mode.
+    pub fn pump_events(&mut self, timeout: Duration) -> io::Result<usize> {
+        self.tui.pump_events(timeout)
+    }
+
+    pub fn stop(&mut self) -> io::Result<()> {
+        let result = self.tui.stop();
         self.state = InteractiveState::Stopped;
+        result
     }
+
+    /// Restore the terminal while an external editor owns it, then resume the TUI.
+    pub fn suspend_for_external_editor<T>(
+        &mut self,
+        edit: impl FnOnce() -> io::Result<T>,
+    ) -> io::Result<T> {
+        self.stop()?;
+        let edit = catch_unwind(AssertUnwindSafe(edit));
+        let resume = self.tui.start();
+        if resume.is_ok() {
+            self.state = InteractiveState::Running;
+        }
+        let resume = resume.and_then(|()| self.tui.request_render(true));
+
+        match edit {
+            Ok(edit) => {
+                resume?;
+                edit
+            }
+            Err(payload) => {
+                let _ = resume;
+                resume_unwind(payload)
+            }
+        }
+    }
+
     #[must_use]
     pub fn state(&self) -> InteractiveState {
         self.state
