@@ -74,6 +74,16 @@ class ManifestTests(unittest.TestCase):
                 (root / path).write_text(content, encoding="utf-8")
                 self.assertTrue(any(expected in error for error in manifest.report(root, "zedflow-ai")["errors"]))
 
+    def test_raw_identifier_module_declaration_is_wired(self) -> None:
+        root = self.fixture()
+        source = root / "crates/zedflow-ai/src"
+        (source / "a.rs").rename(source / "box.rs")
+        (source / "lib.rs").write_text("mod r#box;\n", encoding="utf-8")
+        (root / ".agents/port-manifests/ai-src.tsv").write_text(
+            "src/a.ts\tcrates/zedflow-ai/src/box.rs\n", encoding="utf-8"
+        )
+        self.assertEqual(manifest.report(root, "zedflow-ai")["status"], "valid")
+
     def test_coding_agent_noop_cli_modes_are_rejected(self) -> None:
         root = self.fixture("coding-agent")
         (root / "crates/zedflow-coding-agent/src/main.rs").write_text(

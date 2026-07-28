@@ -103,7 +103,7 @@ def module_wired(target: str, sources: dict[str, str]) -> bool:
                 return True
     module = relative.parent.name if relative.name == "mod.rs" else relative.stem
     parent = relative.parent.parent if relative.name == "mod.rs" else relative.parent
-    declarations = re.compile(rf"\b(?:pub\s+)?mod\s+{re.escape(module)}\s*;")
+    declarations = re.compile(rf"\b(?:pub\s+)?mod\s+(?:r#)?{re.escape(module)}\s*;")
     candidates = []
     if parent == PurePosixPath("."):
         candidates = [path.with_name("lib.rs").as_posix(), path.with_name("main.rs").as_posix()]
