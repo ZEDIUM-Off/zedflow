@@ -344,20 +344,44 @@
       "intent": "Freshly validate real native stdin and resize delivery from ProcessTerminal through the public owner-thread Tui event pump, including start-stop-start, external-editor pause/resume, terminal restoration and rendering. Reject TestTerminal-only injection, direct dispatch, detached readers or callbacks, cross-thread non-Send access, blocking start semantics and external-editor input theft. No source edits."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R6",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-COMPONENT-API-REPAIR-R7",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-OWNER-EVENT-PUMP-VALIDATE-R6"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/components/mod.rs",
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/components/select-list.rs",
+        "crates/zedflow-tui/src/components/cancellable_loader.rs",
+        "crates/zedflow-tui/src/components/select_list.rs",
+        "crates/zedflow-tui/src/components/settings_list.rs",
+        "crates/zedflow-tui/src/components/truncated_text.rs",
+        "crates/zedflow-tui/tests/cancellable-loader.rs",
+        "crates/zedflow-tui/tests/select-list.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test cancellable-loader --test select-list",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Restore frozen Pi component fidelity in the canonical hyphen-named modules: add SelectList theme/layout APIs, themed rendering, configurable primary-column bounds and truncation, and global keybinding behavior; add CancellableLoader keybinding-driven cancellation signaling, one-shot abort callback and disposal/stop behavior. Replace the vacuous SelectList test and add executable CancellableLoader coverage. Delete the four byte-identical tracked underscore-named duplicates while keeping mod.rs wired unambiguously to the canonical hyphen-named files. Do not alter the canonical settings-list or truncated-text implementations, add a dependency, or weaken tests."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R7",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-COMPONENT-API-REPAIR-R7"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Confirm downstream interactive owners can drive the public pump; reject autonomous cross-thread dispatch claims, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify SelectList theme/layout/keybinding behavior, CancellableLoader cancellation/callback/disposal behavior, executable component tests, and unambiguous canonical component module reachability with no tracked dead duplicates. Confirm downstream interactive owners can drive the public pump; reject autonomous cross-thread dispatch claims, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R6"
+        "SEM-TUI-V7-FIDELITY-R7"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
