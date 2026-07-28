@@ -1,4 +1,4 @@
-use crate::{components::Loader, Component};
+use crate::{Component, components::Loader};
 
 /// A loader that stops when Escape is pressed.
 pub struct CancellableLoader {

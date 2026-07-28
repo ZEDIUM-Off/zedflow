@@ -1,4 +1,4 @@
-use crate::{fuzzy::fuzzy_filter, utils::truncate_to_width, Component};
+use crate::{Component, fuzzy::fuzzy_filter, utils::truncate_to_width};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SettingItem {
@@ -47,7 +47,12 @@ impl SettingsList {
 impl Component for SettingsList {
     fn render(&self, width: usize) -> Vec<String> {
         if self.filtered_items.is_empty() {
-            return vec![truncate_to_width("  No matching settings", width, "", false)];
+            return vec![truncate_to_width(
+                "  No matching settings",
+                width,
+                "",
+                false,
+            )];
         }
         let start = self
             .selected
@@ -56,7 +61,14 @@ impl Component for SettingsList {
         let end = (start + self.max_visible).min(self.filtered_items.len());
         self.filtered_items[start..end]
             .iter()
-            .map(|item| truncate_to_width(&format!("{}: {}", item.label, item.current_value), width, "", false))
+            .map(|item| {
+                truncate_to_width(
+                    &format!("{}: {}", item.label, item.current_value),
+                    width,
+                    "",
+                    false,
+                )
+            })
             .collect()
     }
 
@@ -65,14 +77,25 @@ impl Component for SettingsList {
             return;
         }
         match data {
-            "\x1b[A" => self.selected = self.selected.checked_sub(1).unwrap_or(self.filtered_items.len() - 1),
+            "\x1b[A" => {
+                self.selected = self
+                    .selected
+                    .checked_sub(1)
+                    .unwrap_or(self.filtered_items.len() - 1)
+            }
             "\x1b[B" => self.selected = (self.selected + 1) % self.filtered_items.len(),
             "\r" | "\n" | " " => {
-                let Some(item) = self.filtered_items.get_mut(self.selected) else { return };
+                let Some(item) = self.filtered_items.get_mut(self.selected) else {
+                    return;
+                };
                 if item.values.is_empty() {
                     return;
                 }
-                let index = item.values.iter().position(|v| v == &item.current_value).unwrap_or(0);
+                let index = item
+                    .values
+                    .iter()
+                    .position(|v| v == &item.current_value)
+                    .unwrap_or(0);
                 item.current_value = item.values[(index + 1) % item.values.len()].clone();
                 if let Some(source) = self.items.iter_mut().find(|source| source.id == item.id) {
                     source.current_value = item.current_value.clone();

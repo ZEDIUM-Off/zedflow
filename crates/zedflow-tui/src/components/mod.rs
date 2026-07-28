@@ -1,14 +1,18 @@
 mod r#box;
+#[path = "cancellable-loader.rs"]
 mod cancellable_loader;
 mod editor;
 mod image;
 mod input;
 mod loader;
 mod markdown;
+#[path = "select-list.rs"]
 mod select_list;
+#[path = "settings-list.rs"]
 mod settings_list;
 mod spacer;
 mod text;
+#[path = "truncated-text.rs"]
 mod truncated_text;
 
 pub use r#box::Box;

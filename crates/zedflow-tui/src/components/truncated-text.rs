@@ -1,4 +1,7 @@
-use crate::{utils::{truncate_to_width, visible_width}, Component};
+use crate::{
+    Component,
+    utils::{truncate_to_width, visible_width},
+};
 
 /// Text component that displays only the first line and fits the viewport.
 pub struct TruncatedText {
@@ -9,7 +12,11 @@ pub struct TruncatedText {
 
 impl TruncatedText {
     pub fn new(text: impl Into<String>, padding_x: usize, padding_y: usize) -> Self {
-        Self { text: text.into(), padding_x, padding_y }
+        Self {
+            text: text.into(),
+            padding_x,
+            padding_y,
+        }
     }
 
     pub fn set_text(&mut self, text: impl Into<String>) {
@@ -22,7 +29,7 @@ impl Component for TruncatedText {
         let empty = " ".repeat(width);
         let text = self.text.split('\n').next().unwrap_or_default();
         let available = (width.saturating_sub(self.padding_x * 2)).max(1);
-        let content = truncate_to_width(text, available, "…", false);
+        let content = truncate_to_width(text, available, "...", false);
         let line = format!(
             "{}{}{}",
             " ".repeat(self.padding_x),
