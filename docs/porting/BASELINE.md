@@ -37,7 +37,7 @@ TUI terminal/runtime/components/native gates
 
 The user approved exact `crossterm = "=0.29.0"` for safe raw mode, size/restoration and portable console services only. Pi's byte framing, Kitty parser, renderer, Markdown ANSI/OSC-8, Unicode policy and component model remain local Rust ports. The existing exact pins remain `markdown = "=1.0.0"`, `icu_properties = "=2.2.0"`, `icu_segmenter = "=2.2.0"`, and `emojis = "=0.9.0"`; workspace `base64 = "0.22"` may be reused. No Ratatui or alternate-screen redesign is authorized.
 
-Additional native macOS/Windows dependencies, unsafe boundaries, and Rust PTY/ConPTY dev-dependencies remain arbitration-gated. Frozen Node/@xterm-headless is the differential visual oracle until separately replaced.
+The user subsequently approved exact target-specific `windows-sys = "=0.61.2"` (`Win32_Foundation`, `Win32_System_Console`) and `objc2-core-graphics = "=0.3.2"` (`default-features = false`, `CGEventSource`, `CGEventTypes`). One documented Windows-only `unsafe` boundary may enable `ENABLE_VIRTUAL_TERMINAL_INPUT`; unsafe remains denied everywhere else. Rust PTY/ConPTY dev-dependencies remain arbitration-gated. Frozen Node/@xterm-headless is the differential visual oracle until separately replaced.
 
 The controller now permits a reviewed CAS upgrade from a fully completed DAG to a fresh, non-reused, reachable DAG while preserving all external runtime history. The semantic controller candidate must descend from `f83a96fe`, preserve the Pi gitlink, pass control tests, atomically upgrade `automation/pi-port`, and only then restart dispatch.
 
