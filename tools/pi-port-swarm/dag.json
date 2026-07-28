@@ -161,10 +161,25 @@
       "intent": "Close native parity using the approved target-specific windows-sys =0.61.2 (Win32_Foundation, Win32_System_Console) and objc2-core-graphics =0.3.2 (default-features=false; CGEventSource, CGEventTypes): validate Windows Shift-Tab/Ctrl-Space/AltGr/keypad/Unicode/repeat semantics and Apple Terminal modifier polling. Replace crate-wide forbid(unsafe_code) with deny-by-default and allow one documented unsafe boundary only in the cfg(windows) terminal code that enables ENABLE_VIRTUAL_TERMINAL_INPUT."
     },
     {
-      "id": "SEM-TUI-V6-VALIDATE-R1",
-      "kind": "validator",
+      "id": "SEM-TUI-V6-MANIFEST-RAW-MOD-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V5-NATIVE-BACKENDS-R1"
+      ],
+      "ownership": [
+        "tools/pi-port-swarm/manifest.py",
+        "tools/pi-port-swarm/test_manifest.py"
+      ],
+      "validation": [
+        "python3 tools/pi-port-swarm/test_manifest.py"
+      ],
+      "intent": "Repair the semantic module-reachability guard to recognize Rust raw-identifier declarations such as mod r#box; and add a focused regression test. Do not disposition mapped modules or weaken any other closure check."
+    },
+    {
+      "id": "SEM-TUI-V6-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-TUI-V6-MANIFEST-RAW-MOD-R1"
       ],
       "ownership": [],
       "validation": [
@@ -173,13 +188,13 @@
         "cargo test -p zedflow-tui --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Freshly validate the repaired native-backends unit plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
+      "intent": "Freshly validate the manifest raw-module repair plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
     },
     {
       "id": "SEM-TUI-V7-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-TUI-V6-VALIDATE-R1"
+        "SEM-TUI-V6-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [],
