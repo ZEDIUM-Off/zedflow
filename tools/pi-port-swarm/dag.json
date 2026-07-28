@@ -261,20 +261,37 @@
       "intent": "Validate on the repair candidate that native stdin and resize events flow through ProcessTerminal into the live Tui via the caller-owned event loop, without direct feed_input or dispatch methods, while preserving raw framing, Kitty negotiation, render scheduling and restoration. No source edits."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R2",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-KITTY-IMAGE-LIFECYCLE-R3",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-TERMINAL-EVENTS-VALIDATE-R2"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/tui.rs",
+        "crates/zedflow-tui/tests/tui-render.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test tui-render",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Port frozen Pi Kitty image lifecycle behavior through the live differential renderer: preserve image rows during reset normalization and overlay compositing, track and delete stale image IDs, and expand changed ranges across reserved image rows. Add executable runtime renderer coverage; reuse existing image protocol helpers and do not alter unrelated renderer behavior."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-KITTY-IMAGE-LIFECYCLE-R3"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust, including native stdin and resize delivery through ProcessTerminal into Tui, terminal lifecycle/restoration, raw input and Kitty, differential renderer, overlays, components, Markdown, Unicode 17, images and native-platform behavior. Reject manual-dispatch-only coverage, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust after the Kitty lifecycle repair, including native stdin and resize delivery through ProcessTerminal into Tui, terminal lifecycle/restoration, raw input and Kitty image-row normalization, stale-ID deletion, reserved-row differential redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Reject manual-dispatch-only coverage, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R2"
+        "SEM-TUI-V7-FIDELITY-R3"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
