@@ -1,8 +1,3 @@
-//! Pi coding-agent module: `core/compaction/index.rs`.
-//!
-//! This manifest entry is kept explicit so the Rust crate mirrors the frozen
-//! TypeScript package layout. Host-specific behavior remains in the owning
-//! runtime modules.
+//! Compaction module exports matching Pi's `core/compaction/index.ts`.
 
-#[allow(dead_code)]
-pub const MODULE_PATH: &str = "core/compaction/index.rs";
+pub use super::{branch_summarization::*, compaction::*, utils::*};

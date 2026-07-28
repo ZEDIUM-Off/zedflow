@@ -218,16 +218,17 @@ pub mod write;
 pub mod core {
     pub use crate::{
         agent_session, agent_session_runtime, agent_session_services, auth_guidance, auth_storage,
-        compaction, defaults, diagnostics, event_bus, experimental, export_html, extensions,
-        http_dispatcher, messages, model_registry, model_resolver, output_guard,
-        provider_display_names, resource_loader, session_cwd, session_manager, settings_manager,
-        skills, slash_commands, source_info, system_prompt, timings,
+        bash_executor, compaction, defaults, diagnostics, event_bus, exec, experimental,
+        export_html, extensions, http_dispatcher, messages, model_registry, model_resolver,
+        output_guard, provider_display_names, resource_loader, session_cwd, session_manager,
+        settings_manager, skills, slash_commands, source_info, system_prompt, timings,
     };
 
     pub mod tools {
         pub use crate::{
-            edit, edit_diff, file_mutation_queue, find, grep, ls, output_accumulator, path_utils,
-            read, truncate, write,
+            bash_tool as bash, edit, edit_diff, file_mutation_queue, find, grep, ls,
+            output_accumulator, path_utils, read, render_utils, tool_definition_wrapper,
+            tools_index, truncate, write,
         };
     }
 }

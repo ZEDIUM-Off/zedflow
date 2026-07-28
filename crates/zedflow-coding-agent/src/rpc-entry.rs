@@ -9,8 +9,9 @@ use crate::{
         resource_loader::{DefaultResourceLoader, ResourceExtensionPaths},
         settings_manager::SettingsManager,
         tools::{
-            edit::create_edit_tool, find::create_find_tool, grep::create_grep_tool,
-            ls::create_ls_tool, read::create_read_tool, write::create_write_tool,
+            bash::create_bash_tool, edit::create_edit_tool, find::create_find_tool,
+            grep::create_grep_tool, ls::create_ls_tool, read::create_read_tool,
+            write::create_write_tool,
         },
     },
     defaults::DEFAULT_THINKING_LEVEL,
@@ -95,6 +96,7 @@ fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentT
     }
     let mut tools = vec![
         create_read_tool(cwd),
+        create_bash_tool(cwd),
         create_write_tool(cwd),
         create_edit_tool(cwd),
         create_grep_tool(cwd),
@@ -672,5 +674,11 @@ mod tests {
         std::fs::remove_file(&path).expect("remove prompt template");
 
         assert!(templates.is_empty());
+    }
+
+    #[test]
+    fn rpc_registers_the_bash_tool() {
+        let tools = configured_tools(&rpc_args(&[]), Path::new("."));
+        assert!(tools.iter().any(|tool| tool.tool.name == "bash"));
     }
 }
