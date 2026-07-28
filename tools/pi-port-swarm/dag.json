@@ -368,20 +368,37 @@
       "intent": "Restore frozen Pi component fidelity in the canonical hyphen-named modules: add SelectList theme/layout APIs, themed rendering, configurable primary-column bounds and truncation, and global keybinding behavior; add CancellableLoader keybinding-driven cancellation signaling, one-shot abort callback and disposal/stop behavior. Replace the vacuous SelectList test and add executable CancellableLoader coverage. Delete the four byte-identical tracked underscore-named duplicates while keeping mod.rs wired unambiguously to the canonical hyphen-named files. Do not alter the canonical settings-list or truncated-text implementations, add a dependency, or weaken tests."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R7",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-CANCELLABLE-LOADER-REPAIR-R8",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-COMPONENT-API-REPAIR-R7"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/tests/cancellable-loader.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test cancellable-loader",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Restore frozen Pi CancellableLoader abort callback fidelity: every matching cancel input invokes on_abort, including inputs after the AbortSignal is already aborted. Keep abort signaling idempotent, correct the executable test that currently expects a single callback, and do not change unrelated component behavior or add a dependency."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R8",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-CANCELLABLE-LOADER-REPAIR-R8"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify SelectList theme/layout/keybinding behavior, CancellableLoader cancellation/callback/disposal behavior, executable component tests, and unambiguous canonical component module reachability with no tracked dead duplicates. Confirm downstream interactive owners can drive the public pump; reject autonomous cross-thread dispatch claims, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify SelectList theme/layout/keybinding behavior; verify that every matching CancellableLoader cancel input invokes on_abort even after its AbortSignal is already aborted while cancellation signaling and disposal remain correct; verify executable component tests and unambiguous canonical component module reachability with no tracked dead duplicates. Confirm downstream interactive owners can drive the public pump; reject autonomous cross-thread dispatch claims, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R7"
+        "SEM-TUI-V7-FIDELITY-R8"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
