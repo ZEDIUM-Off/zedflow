@@ -472,17 +472,34 @@ impl Tui {
     }
 
     pub fn start(&mut self) -> io::Result<()> {
+        if self.started {
+            return Ok(());
+        }
         if let Some(terminal) = &mut self.terminal {
             terminal.start()?;
-            terminal.hide_cursor()?;
+            if let Err(error) = terminal.hide_cursor() {
+                let _ = terminal.stop();
+                return Err(error);
+            }
         }
         self.started = true;
-        self.request_render(false)
+        if let Err(error) = self.request_render(false) {
+            self.started = false;
+            if let Some(terminal) = &mut self.terminal {
+                let _ = terminal.show_cursor();
+                let _ = terminal.stop();
+            }
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Wait for one terminal event, drain the rest, then dispatch and render on
-    /// the thread that owns this `Tui`.
-    pub fn process_events(&mut self, timeout: Duration) -> io::Result<usize> {
+    /// the thread that owns this `Tui`. Returns immediately while stopped.
+    pub fn pump_events(&mut self, timeout: Duration) -> io::Result<usize> {
+        if !self.started {
+            return Ok(0);
+        }
         let Some(terminal) = &mut self.terminal else {
             return Ok(0);
         };
@@ -506,17 +523,24 @@ impl Tui {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
-        self.started = false;
-        if let Some(terminal) = &mut self.terminal {
-            terminal.show_cursor()?;
-            terminal.stop()?;
+        if !self.started {
+            return Ok(());
         }
-        Ok(())
+        self.started = false;
+        let Some(terminal) = &mut self.terminal else {
+            return Ok(());
+        };
+        let show_cursor = terminal.show_cursor();
+        let stop = terminal.stop();
+        show_cursor.and(stop)
     }
 
     /// Render immediately. Pi coalesces this operation on a 16ms timer; Rust
     /// callers retain deterministic control and can perform their own scheduling.
     pub fn request_render(&mut self, force: bool) -> io::Result<()> {
+        if !self.started {
+            return Ok(());
+        }
         let Some(terminal) = self.terminal.as_ref() else {
             return Ok(());
         };

@@ -186,8 +186,11 @@ pub enum TerminalEvent {
 }
 
 pub trait Terminal {
+    /// Activate native event production without blocking the owner thread.
     fn start(&mut self) -> io::Result<()>;
+    /// Return the next queued event. Inactive terminals return `None`.
     fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<TerminalEvent>>;
+    /// Quiesce native event production before returning and restore terminal state.
     fn stop(&mut self) -> io::Result<()>;
     fn drain_input(&mut self, max_ms: u64, idle_ms: u64);
     fn write(&mut self, data: &str) -> io::Result<()>;
@@ -237,7 +240,7 @@ impl ProcessTerminal {
     }
 
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
-        Self::from_io(None, writer, false)
+        Self::from_io(None, writer, true)
     }
 
     pub fn with_reader_and_writer(
@@ -407,7 +410,9 @@ impl ProcessTerminal {
     }
 
     pub fn notify_resize(&mut self) {
-        self.events.push_back(TerminalEvent::Resize);
+        if self.started {
+            self.events.push_back(TerminalEvent::Resize);
+        }
     }
 
     fn receive_native_input(&mut self, timeout: Duration) {
@@ -444,6 +449,9 @@ impl ProcessTerminal {
     }
 
     pub fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<TerminalEvent>> {
+        if !self.started {
+            return Ok(None);
+        }
         self.flush_expired_input();
         self.detect_resize();
         if let Some(event) = self.events.pop_front() {
