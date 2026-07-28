@@ -227,12 +227,14 @@
       "intent": "Port the frozen Pi Markdown component into Rust with themed token rendering, padding, width-aware wrapping, caching and options; replace the external-dependency-only test with executable tests of the Rust component. Preserve ANSI/OSC-8 behavior and reject raw-source wrapping as implementation."
     },
     {
-      "id": "SEM-TUI-V7-TERMINAL-EVENTS-R1",
+      "id": "SEM-TUI-V7-TERMINAL-EVENT-LOOP-R2",
       "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-MARKDOWN-R1"
       ],
       "ownership": [
+        "crates/zedflow-tui/src/lib.rs",
+        "crates/zedflow-tui/src/index.rs",
         "crates/zedflow-tui/src/terminal.rs",
         "crates/zedflow-tui/src/tui.rs",
         "crates/zedflow-tui/tests/terminal.rs",
@@ -240,16 +242,29 @@
       ],
       "validation": [
         "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test terminal --test tui-render"
+      ],
+      "intent": "Introduce an explicit caller-owned terminal event loop instead of mutating the live Tui from persistent Send callbacks: enqueue native raw stdin and resize events in ProcessTerminal, then drain, dispatch and render them on Tui's owning thread. Propagate the lifecycle API through the crate exports without requiring Component to be Send; preserve Pi raw-byte framing, Kitty negotiation, render scheduling and terminal restoration, with executable native-delivery coverage rather than direct feed_input or dispatch calls."
+    },
+    {
+      "id": "SEM-TUI-V7-TERMINAL-EVENTS-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-TUI-V7-TERMINAL-EVENT-LOOP-R2"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
         "cargo test -p zedflow-tui --test terminal --test tui-render",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Wire ProcessTerminal to native stdin and resize events and route those callbacks into the live Tui instead of no-op closures. Preserve Pi raw-byte framing, Kitty negotiation, render scheduling and terminal restoration; add executable integration coverage that exercises native event delivery rather than calling feed_input or dispatch methods directly."
+      "intent": "Validate on the repair candidate that native stdin and resize events flow through ProcessTerminal into the live Tui via the caller-owned event loop, without direct feed_input or dispatch methods, while preserving raw framing, Kitty negotiation, render scheduling and restoration. No source edits."
     },
     {
       "id": "SEM-TUI-V7-FIDELITY-R2",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-TUI-V7-TERMINAL-EVENTS-R1"
+        "SEM-TUI-V7-TERMINAL-EVENTS-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [],
