@@ -309,13 +309,17 @@
       "intent": "Freshly validate real native start-stop-start input delivery through ProcessTerminal without feed_input dispatch, including that stop returns only after the old reader can no longer consume external-editor input and a later start has a live reader. Preserve raw framing, event-queue delivery, resize behavior, Kitty negotiation and restoration. No source edits."
     },
     {
-      "id": "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-R5",
+      "id": "SEM-TUI-V7-OWNER-EVENT-PUMP-R6",
       "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-TERMINAL-RESTART-VALIDATE-R4"
       ],
       "ownership": [
+        "crates/zedflow-tui/src/lib.rs",
+        "crates/zedflow-tui/src/index.rs",
+        "crates/zedflow-tui/src/terminal.rs",
         "crates/zedflow-tui/src/tui.rs",
+        "crates/zedflow-tui/tests/terminal.rs",
         "crates/zedflow-tui/tests/tui-render.rs"
       ],
       "validation": [
@@ -323,13 +327,13 @@
         "cargo test -p zedflow-tui --test terminal --test tui-render",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Connect ProcessTerminal stdin and resize delivery to Tui's start/stop lifecycle so live input dispatch and resize rendering require no caller-owned process_events pump. Preserve owner-thread component handling, terminal restoration, external-editor stop/resume, and start-stop-start behavior; add executable end-to-end coverage using a real ProcessTerminal rather than TestTerminal injection or direct dispatch."
+      "intent": "Make owner-cooperative event pumping the explicit safe lifecycle contract across Terminal and Tui: ProcessTerminal queues real stdin and resize events, Tui start/stop controls native activation and quiescence, and the Tui owner thread drains, dispatches and renders those events through the public API. Preserve non-Send component ownership, terminal restoration, external-editor stop/resume and start-stop-start behavior. Add executable real-ProcessTerminal coverage through the public owner pump; do not use TestTerminal-only injection, direct dispatch, detached callbacks, Send bounds, a blocking start(), or a new dependency."
     },
     {
-      "id": "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-VALIDATE-R5",
+      "id": "SEM-TUI-V7-OWNER-EVENT-PUMP-VALIDATE-R6",
       "kind": "validator",
       "depends_on": [
-        "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-R5"
+        "SEM-TUI-V7-OWNER-EVENT-PUMP-R6"
       ],
       "ownership": [],
       "validation": [
@@ -337,23 +341,23 @@
         "cargo test -p zedflow-tui --test terminal --test tui-render",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Freshly validate that Tui lifecycle start-stop-start automatically carries real native stdin and resize events through ProcessTerminal into input dispatch and rendering, without process_events calls, TestTerminal-only injection, direct dispatch, detached readers, or external-editor input theft. No source edits."
+      "intent": "Freshly validate real native stdin and resize delivery from ProcessTerminal through the public owner-thread Tui event pump, including start-stop-start, external-editor pause/resume, terminal restoration and rendering. Reject TestTerminal-only injection, direct dispatch, detached readers or callbacks, cross-thread non-Send access, blocking start semantics and external-editor input theft. No source edits."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R5",
+      "id": "SEM-TUI-V7-FIDELITY-R6",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-VALIDATE-R5"
+        "SEM-TUI-V7-OWNER-EVENT-PUMP-VALIDATE-R6"
       ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust after lifecycle-connected ProcessTerminal delivery, including real start-stop-start stdin delivery, external-editor pause/resume semantics, automatic native stdin and resize delivery into Tui, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Reject manual-pump-only coverage, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Confirm downstream interactive owners can drive the public pump; reject autonomous cross-thread dispatch claims, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R5"
+        "SEM-TUI-V7-FIDELITY-R6"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
@@ -448,7 +452,7 @@
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port and wire the full Pi default interactive mode through zedflow-tui: streaming, tool execution, selectors, compaction, themes, startup, session tree, auth and extension UI. The minimal line REPL is not acceptable."
+      "intent": "Port and wire the full Pi default interactive mode through zedflow-tui: streaming, tool execution, selectors, compaction, themes, startup, session tree, auth and extension UI. Its owner thread must cooperatively drive Tui's public event pump so queued native stdin and resize events dispatch and render without cross-thread access to non-Send components. The minimal line REPL is not acceptable."
     },
     {
       "id": "SEM-CA-V5-CLI-MODES",
