@@ -16,13 +16,16 @@ mod text;
 mod truncated_text;
 
 pub use r#box::Box;
-pub use cancellable_loader::CancellableLoader;
+pub use cancellable_loader::{CancellableLoader, CancellationSignal};
 pub use editor::Editor;
 pub use image::{Image, ImageOptions};
 pub use input::Input;
 pub use loader::Loader;
 pub use markdown::Markdown;
-pub use select_list::{SelectItem, SelectList};
+pub use select_list::{
+    SelectItem, SelectList, SelectListLayoutOptions, SelectListPrimaryTruncator, SelectListStyle,
+    SelectListTheme, SelectListTruncatePrimaryContext,
+};
 pub use settings_list::{SettingItem, SettingsList};
 pub use spacer::Spacer;
 pub use text::Text;
