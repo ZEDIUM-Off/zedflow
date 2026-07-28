@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    io::{self, BufRead, Write},
+    io::{self, BufRead, Read, Write},
     process::{Command, Stdio},
     rc::Rc,
     sync::{Arc, Mutex, mpsc},
@@ -131,6 +131,61 @@ fn interactive_mode_owns_native_pump_and_restores_terminal_around_editor() {
     let status = child.wait().unwrap();
     stderr_thread.join().unwrap();
     assert!(status.success());
+}
+
+#[test]
+fn default_cli_runs_the_interactive_owner_pump() {
+    const STARTED: &[u8] = b"\x1b[?2004h";
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_zedflow-coding-agent"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut stdout = child.stdout.take().unwrap();
+    let (sender, receiver) = mpsc::channel();
+    let stdout_thread = thread::spawn(move || {
+        let mut bytes = [0; 256];
+        while let Ok(count) = stdout.read(&mut bytes) {
+            if count == 0 || sender.send(bytes[..count].to_vec()).is_err() {
+                break;
+            }
+        }
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut output = Vec::new();
+    while !output.windows(STARTED.len()).any(|bytes| bytes == STARTED) {
+        match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(bytes) => output.extend(bytes),
+            Err(_) => break,
+        }
+    }
+    let started = output.windows(STARTED.len()).any(|bytes| bytes == STARTED);
+    let accepted_input = started
+        && child
+            .stdin
+            .as_mut()
+            .is_some_and(|stdin| stdin.write_all(b"a").and_then(|()| stdin.flush()).is_ok());
+    thread::sleep(Duration::from_millis(100));
+    let still_running = child.try_wait().unwrap().is_none();
+
+    if still_running {
+        child.kill().unwrap();
+    }
+    child.wait().unwrap();
+    stdout_thread.join().unwrap();
+
+    assert!(
+        started,
+        "default CLI did not start InteractiveMode: {output:?}"
+    );
+    assert!(accepted_input, "interactive CLI did not accept stdin");
+    assert!(
+        still_running,
+        "interactive CLI bypassed the owner event pump"
+    );
 }
 
 fn pump_until_input(mode: &mut InteractiveMode, inputs: &Rc<RefCell<Vec<String>>>, expected: &str) {

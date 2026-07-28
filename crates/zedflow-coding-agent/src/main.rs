@@ -1,8 +1,8 @@
 //! `pi` command entry point.
 
-use std::io;
+use std::{io, time::Duration};
 use zedflow_coding_agent::cli::{Mode, parse_args};
-use zedflow_coding_agent::rpc_entry;
+use zedflow_coding_agent::{modes::InteractiveMode, rpc_entry};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -17,7 +17,8 @@ fn main() {
         );
         return;
     }
-    if let Err(error) = dispatch_runtime_mode(parsed.mode) {
+    let mode = parsed.mode.or(parsed.print.then_some(Mode::Text));
+    if let Err(error) = dispatch_runtime_mode(mode) {
         eprintln!("Runtime error: {error}");
         std::process::exit(1);
     }
@@ -26,6 +27,13 @@ fn main() {
 fn dispatch_runtime_mode(mode: Option<Mode>) -> io::Result<()> {
     match mode {
         Some(Mode::Rpc) => rpc_entry::run(io::stdin().lock(), io::stdout()),
-        Some(Mode::Text) | Some(Mode::Json) | None => Ok(()),
+        Some(Mode::Text) | Some(Mode::Json) => Ok(()),
+        None => {
+            let mut mode = InteractiveMode::new();
+            mode.run()?;
+            loop {
+                mode.pump_events(Duration::from_millis(10))?;
+            }
+        }
     }
 }
