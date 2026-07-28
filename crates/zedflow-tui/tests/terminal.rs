@@ -1,6 +1,8 @@
-use std::io::{self, Cursor, Read, Write};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::io::{self, BufRead, Cursor, Read, Write};
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread;
+use std::time::{Duration, Instant};
 use zedflow_tui::terminal::{
     KeyboardProtocolNegotiationSequence, ProcessTerminal, Terminal, TerminalEvent,
     normalize_apple_terminal_input, parse_keyboard_protocol_negotiation_sequence,
@@ -43,6 +45,18 @@ fn inputs(terminal: &mut ProcessTerminal) -> Vec<String> {
         }
     }
     inputs
+}
+
+fn next_input(terminal: &mut ProcessTerminal) -> Option<String> {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline {
+        if let Some(TerminalEvent::Input(data)) =
+            terminal.poll_event(Duration::from_millis(20)).unwrap()
+        {
+            return Some(data);
+        }
+    }
+    None
 }
 
 fn output(bytes: &Arc<Mutex<Vec<u8>>>) -> String {
@@ -91,6 +105,80 @@ fn lifecycle_negotiates_protocols_and_restores_terminal_modes() {
     terminal.stop().unwrap();
     let output = output(&bytes);
     assert!(output.ends_with("\x1b[?2004l\x1b[<u"));
+}
+
+#[test]
+fn native_stdin_stops_before_returning_and_restarts() {
+    const CHILD_ENV: &str = "ZEDFLOW_TUI_NATIVE_STDIN_LIFECYCLE_CHILD";
+    const READY: &str = "zedflow-terminal-ready";
+    const STOPPED: &str = "zedflow-terminal-stopped";
+
+    if std::env::var_os(CHILD_ENV).is_some() {
+        let mut terminal = ProcessTerminal::new();
+        terminal.start().unwrap();
+        eprintln!("{READY}");
+        assert_eq!(next_input(&mut terminal).as_deref(), Some("a"));
+        terminal.stop().unwrap();
+        eprintln!("{STOPPED}");
+
+        thread::sleep(Duration::from_millis(100));
+        terminal.start().unwrap();
+        assert_eq!(next_input(&mut terminal).as_deref(), Some("b"));
+        terminal.stop().unwrap();
+        return;
+    }
+
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "native_stdin_stops_before_returning_and_restarts",
+            "--nocapture",
+        ])
+        .env(CHILD_ENV, "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stderr = child.stderr.take().unwrap();
+    let (sender, receiver) = mpsc::channel();
+    let stderr_thread = thread::spawn(move || {
+        for line in io::BufReader::new(stderr).lines().map_while(Result::ok) {
+            let _ = sender.send(line);
+        }
+    });
+    let wait_for = |marker: &str| {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while let Ok(line) =
+            receiver.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        {
+            if line.contains(marker) {
+                return true;
+            }
+        }
+        false
+    };
+
+    if !wait_for(READY) {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("child did not report {READY}");
+    }
+    let stdin = child.stdin.as_mut().unwrap();
+    stdin.write_all(b"a").unwrap();
+    stdin.flush().unwrap();
+    if !wait_for(STOPPED) {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("child did not report {STOPPED}");
+    }
+    let stdin = child.stdin.as_mut().unwrap();
+    stdin.write_all(b"b").unwrap();
+    stdin.flush().unwrap();
+
+    let status = child.wait().unwrap();
+    stderr_thread.join().unwrap();
+    assert!(status.success());
 }
 
 #[test]

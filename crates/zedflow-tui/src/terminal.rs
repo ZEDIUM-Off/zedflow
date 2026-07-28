@@ -4,7 +4,11 @@ use crate::stdin_buffer::{StdinBuffer, StdinEvent};
 use std::collections::VecDeque;
 use std::env;
 use std::io::{self, IsTerminal, Read, Write};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -13,6 +17,99 @@ const PROGRESS_CLEAR: &str = "\x1b]9;4;0;\x07";
 const KITTY_QUERY: &str = "\x1b[>7u\x1b[?u\x1b[c";
 const APPLE_SHIFT_ENTER: &str = "\x1b[13;2u";
 const NEGOTIATION_TIMEOUT: Duration = Duration::from_millis(150);
+const NATIVE_STDIN_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+struct NativeReader {
+    stop: Arc<AtomicBool>,
+    handle: JoinHandle<()>,
+}
+
+#[cfg(unix)]
+#[allow(unsafe_code)]
+fn native_stdin_ready(timeout: Duration) -> io::Result<bool> {
+    use std::os::fd::AsRawFd;
+
+    #[repr(C)]
+    struct PollFd {
+        fd: i32,
+        events: i16,
+        revents: i16,
+    }
+
+    unsafe extern "C" {
+        fn poll(fds: *mut PollFd, count: usize, timeout: i32) -> i32;
+    }
+
+    let mut descriptor = PollFd {
+        fd: io::stdin().as_raw_fd(),
+        events: 1,
+        revents: 0,
+    };
+    // SAFETY: `descriptor` is live for the call and the array length is one.
+    let result = unsafe {
+        poll(
+            &mut descriptor,
+            1,
+            timeout.as_millis().min(i32::MAX as u128) as i32,
+        )
+    };
+    if result >= 0 {
+        Ok(result != 0)
+    } else {
+        let error = io::Error::last_os_error();
+        if error.kind() == io::ErrorKind::Interrupted {
+            Ok(false)
+        } else {
+            Err(error)
+        }
+    }
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn native_stdin_ready(timeout: Duration) -> io::Result<bool> {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{GetStdHandle, STD_INPUT_HANDLE};
+
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn WaitForSingleObject(handle: *mut core::ffi::c_void, milliseconds: u32) -> u32;
+    }
+
+    const WAIT_OBJECT_0: u32 = 0;
+    const WAIT_TIMEOUT: u32 = 258;
+    // SAFETY: both calls use the process stdin handle without taking ownership of it.
+    let handle = unsafe { GetStdHandle(STD_INPUT_HANDLE) };
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return Err(io::Error::last_os_error());
+    }
+    match unsafe { WaitForSingleObject(handle, timeout.as_millis().min(u32::MAX as u128) as u32) } {
+        WAIT_OBJECT_0 => Ok(true),
+        WAIT_TIMEOUT => Ok(false),
+        _ => Err(io::Error::last_os_error()),
+    }
+}
+
+fn spawn_native_reader(sender: mpsc::Sender<Vec<u8>>) -> NativeReader {
+    let stop = Arc::new(AtomicBool::new(false));
+    let reader_stop = Arc::clone(&stop);
+    let handle = thread::spawn(move || {
+        let mut stdin = io::stdin();
+        let mut bytes = [0; 8192];
+        while !reader_stop.load(Ordering::Acquire) {
+            match native_stdin_ready(NATIVE_STDIN_POLL_INTERVAL) {
+                Ok(true) if !reader_stop.load(Ordering::Acquire) => match stdin.read(&mut bytes) {
+                    Ok(0) | Err(_) => break,
+                    Ok(count) if sender.send(bytes[..count].to_vec()).is_err() => break,
+                    Ok(_) => {}
+                },
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+    });
+    NativeReader { stop, handle }
+}
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
@@ -110,6 +207,9 @@ pub trait Terminal {
 pub struct ProcessTerminal {
     writer: Writer,
     reader: Option<Box<dyn Read + Send>>,
+    reader_thread: Option<JoinHandle<Box<dyn Read + Send>>>,
+    use_native_stdin: bool,
+    native_reader: Option<NativeReader>,
     native_events: Option<mpsc::Receiver<Vec<u8>>>,
     events: VecDeque<TerminalEvent>,
     stdin_buffer: StdinBuffer,
@@ -133,24 +233,31 @@ impl Default for ProcessTerminal {
 
 impl ProcessTerminal {
     pub fn new() -> Self {
-        Self::with_reader_and_writer(Box::new(io::stdin()), Box::new(io::stdout()))
+        Self::from_io(None, Box::new(io::stdout()), true)
     }
 
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
-        Self::from_io(None, writer)
+        Self::from_io(None, writer, false)
     }
 
     pub fn with_reader_and_writer(
         reader: Box<dyn Read + Send>,
         writer: Box<dyn Write + Send>,
     ) -> Self {
-        Self::from_io(Some(reader), writer)
+        Self::from_io(Some(reader), writer, false)
     }
 
-    fn from_io(reader: Option<Box<dyn Read + Send>>, writer: Box<dyn Write + Send>) -> Self {
+    fn from_io(
+        reader: Option<Box<dyn Read + Send>>,
+        writer: Box<dyn Write + Send>,
+        use_native_stdin: bool,
+    ) -> Self {
         Self {
             writer: Arc::new(Mutex::new(writer)),
             reader,
+            reader_thread: None,
+            use_native_stdin,
+            native_reader: None,
             native_events: None,
             events: VecDeque::new(),
             stdin_buffer: StdinBuffer::default(),
@@ -316,6 +423,19 @@ impl ProcessTerminal {
         }
     }
 
+    fn stop_reader(&mut self) {
+        self.native_events = None;
+        if let Some(reader) = self.native_reader.take() {
+            reader.stop.store(true, Ordering::Release);
+            let _ = reader.handle.join();
+        }
+        if let Some(handle) = self.reader_thread.take() {
+            if let Ok(reader) = handle.join() {
+                self.reader = Some(reader);
+            }
+        }
+    }
+
     fn detect_resize(&mut self) {
         let size = (self.columns(), self.rows());
         if self.last_size.replace(size).is_some_and(|old| old != size) {
@@ -440,15 +560,18 @@ impl Terminal for ProcessTerminal {
         self.clear_negotiation();
         self.emit(KITTY_QUERY)?;
         let (sender, receiver) = mpsc::channel();
-        if let Some(mut reader) = self.reader.take() {
-            thread::spawn(move || {
+        if self.use_native_stdin {
+            self.native_reader = Some(spawn_native_reader(sender));
+        } else if let Some(mut reader) = self.reader.take() {
+            self.reader_thread = Some(thread::spawn(move || {
                 let mut bytes = [0; 4096];
                 while let Ok(count) = reader.read(&mut bytes) {
                     if count == 0 || sender.send(bytes[..count].to_vec()).is_err() {
                         break;
                     }
                 }
-            });
+                reader
+            }));
         }
         self.native_events = Some(receiver);
         self.last_size = Some((self.columns(), self.rows()));
@@ -464,6 +587,7 @@ impl Terminal for ProcessTerminal {
         if !self.started {
             return Ok(());
         }
+        self.stop_reader();
         if self.stop_progress() {
             self.emit(PROGRESS_CLEAR)?;
         }
@@ -471,7 +595,6 @@ impl Terminal for ProcessTerminal {
         self.disable_keyboard_protocols();
         self.stdin_buffer.clear();
         self.events.clear();
-        self.native_events = None;
         self.last_size = None;
         if self.raw_changed {
             crossterm::terminal::disable_raw_mode()?;
