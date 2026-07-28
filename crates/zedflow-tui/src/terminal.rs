@@ -13,6 +13,28 @@ const KITTY_QUERY: &str = "\x1b[>7u\x1b[?u\x1b[c";
 const APPLE_SHIFT_ENTER: &str = "\x1b[13;2u";
 const NEGOTIATION_TIMEOUT: Duration = Duration::from_millis(150);
 
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn enable_windows_virtual_terminal_input() {
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{
+        ENABLE_VIRTUAL_TERMINAL_INPUT, GetConsoleMode, GetStdHandle, STD_INPUT_HANDLE,
+        SetConsoleMode,
+    };
+
+    // SAFETY: the process stdin handle and stack-owned mode pointer satisfy the Win32 contracts.
+    unsafe {
+        let handle = GetStdHandle(STD_INPUT_HANDLE);
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            return;
+        }
+        let mut mode = 0;
+        if GetConsoleMode(handle, &mut mode) != 0 {
+            let _ = SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_INPUT);
+        }
+    }
+}
+
 type Writer = Arc<Mutex<Box<dyn Write + Send>>>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -356,6 +378,8 @@ impl Terminal for ProcessTerminal {
             crossterm::terminal::enable_raw_mode()?;
             self.raw_changed = true;
         }
+        #[cfg(windows)]
+        enable_windows_virtual_terminal_input();
         self.emit("\x1b[?2004h")?;
         self.keyboard_protocol_pushed = true;
         self.clear_negotiation();

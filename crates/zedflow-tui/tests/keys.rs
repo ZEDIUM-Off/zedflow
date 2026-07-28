@@ -1,6 +1,8 @@
 use std::sync::Mutex;
 
-use zedflow_tui::{decode_kitty_printable, decode_printable_key, matches_key, parse_key};
+use zedflow_tui::{
+    decode_kitty_printable, decode_printable_key, is_key_repeat, matches_key, parse_key,
+};
 
 static TERMINAL_ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -61,8 +63,13 @@ fn decodes_kitty_unicode_base_layout_and_shifted_keys() {
 }
 
 #[test]
-fn decodes_raw_ctrl_space() {
+fn validates_windows_native_vt_key_sequences() {
+    assert_eq!(parse_key("\x1b[Z"), Some("shift+tab"));
     assert_eq!(parse_key("\x00"), Some("ctrl+space"));
+    // Windows emits AltGr and other Unicode input as the resulting UTF-8 text.
+    assert_eq!(parse_key("€"), Some("€"));
+    assert_eq!(parse_key("\x1b[57399u"), Some("0"));
+    assert!(is_key_repeat("\x1b[99;5:2u"));
 }
 
 #[test]
