@@ -210,20 +210,37 @@
       "intent": "Freshly validate the mapped TUI component wiring plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-MARKDOWN-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V6-VALIDATE-R3"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/components/markdown.rs",
+        "crates/zedflow-tui/tests/markdown.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test markdown",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Port the frozen Pi Markdown component into Rust with themed token rendering, padding, width-aware wrapping, caching and options; replace the external-dependency-only test with executable tests of the Rust component. Preserve ANSI/OSC-8 behavior and reject raw-source wrapping as implementation."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-MARKDOWN-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently compare frozen Pi TUI behavior against Rust: terminal lifecycle/restoration, raw input and Kitty, differential renderer, overlays, components, Markdown, Unicode 17, images and native-platform behavior. Reject dead modules, marker code or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust: terminal lifecycle/restoration, raw input and Kitty, differential renderer, overlays, components, Markdown, Unicode 17, images and native-platform behavior. Reject dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY"
+        "SEM-TUI-V7-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
