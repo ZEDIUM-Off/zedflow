@@ -309,20 +309,51 @@
       "intent": "Freshly validate real native start-stop-start input delivery through ProcessTerminal without feed_input dispatch, including that stop returns only after the old reader can no longer consume external-editor input and a later start has a live reader. Preserve raw framing, event-queue delivery, resize behavior, Kitty negotiation and restoration. No source edits."
     },
     {
-      "id": "SEM-TUI-V7-FIDELITY-R4",
-      "kind": "reviewer",
+      "id": "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-R5",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-TERMINAL-RESTART-VALIDATE-R4"
       ],
+      "ownership": [
+        "crates/zedflow-tui/src/tui.rs",
+        "crates/zedflow-tui/tests/tui-render.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test terminal --test tui-render",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Connect ProcessTerminal stdin and resize delivery to Tui's start/stop lifecycle so live input dispatch and resize rendering require no caller-owned process_events pump. Preserve owner-thread component handling, terminal restoration, external-editor stop/resume, and start-stop-start behavior; add executable end-to-end coverage using a real ProcessTerminal rather than TestTerminal injection or direct dispatch."
+    },
+    {
+      "id": "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-VALIDATE-R5",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-R5"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test terminal --test tui-render",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Freshly validate that Tui lifecycle start-stop-start automatically carries real native stdin and resize events through ProcessTerminal into input dispatch and rendering, without process_events calls, TestTerminal-only injection, direct dispatch, detached readers, or external-editor input theft. No source edits."
+    },
+    {
+      "id": "SEM-TUI-V7-FIDELITY-R5",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-TUI-V7-TUI-LIFECYCLE-EVENTS-VALIDATE-R5"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust after the native-reader lifecycle repair, including real start-stop-start stdin delivery, external-editor pause/resume semantics, native stdin and resize delivery through ProcessTerminal into Tui, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Reject manual-dispatch-only coverage, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
+      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust after lifecycle-connected ProcessTerminal delivery, including real start-stop-start stdin delivery, external-editor pause/resume semantics, automatic native stdin and resize delivery into Tui, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Reject manual-pump-only coverage, TestTerminal-only delivery, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests."
     },
     {
       "id": "SEM-CA-V1-CORE-TOOLS",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R4"
+        "SEM-TUI-V7-FIDELITY-R5"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/tools",
