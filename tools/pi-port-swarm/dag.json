@@ -427,12 +427,14 @@
       "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify through executable public-runtime coverage that downstream InteractiveMode owns and drives the live Tui pump and stops/resumes it around external-editor suspension; reject an unconnected helper or TestTerminal-only claim. Verify SelectList theme/layout/keybinding behavior; verify that every matching CancellableLoader cancel input invokes on_abort even after its AbortSignal is already aborted while cancellation signaling and disposal remain correct; verify executable component tests and unambiguous canonical component module reachability with no tracked dead duplicates. Reject autonomous cross-thread dispatch, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests. Additionally verify that the default executable route in main.rs constructs and drives InteractiveMode rather than returning without entering the interactive runtime, and that executable public-runtime coverage fails if this production wiring is removed."
     },
     {
-      "id": "SEM-CA-V1-CORE-TOOLS",
+      "id": "SEM-CA-V1-CORE-TOOLS-REPAIR-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-TUI-V7-FIDELITY-R10"
       ],
       "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/rpc-entry.rs",
         "crates/zedflow-coding-agent/src/core/tools",
         "crates/zedflow-coding-agent/src/core/compaction",
         "crates/zedflow-coding-agent/src/core/messages.rs",
@@ -444,13 +446,25 @@
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Replace marker-only Coding-agent core tool, exec, output, message, event and compaction modules with frozen Pi behavior. Preserve tool trust boundaries, truncation, cancellation and error semantics."
+      "intent": "Replace marker-only Coding-agent core tool, exec, output, message, event and compaction modules with frozen Pi behavior. Declare and export the owned exec, bash-executor and bash-tool modules from lib.rs, and register the bash tool in rpc-entry.rs so the implementation is reachable through the RPC runtime. Preserve tool trust boundaries, truncation, cancellation and error semantics."
+    },
+    {
+      "id": "SEM-CA-V1-CORE-TOOLS-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V1-CORE-TOOLS-REPAIR-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Freshly validate the repaired Coding-agent core tools unit, including crate-root module reachability and RPC bash-tool registration, with its original declared gate. No source edits."
     },
     {
       "id": "SEM-CA-V2-SESSION-CONFIG",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V1-CORE-TOOLS"
+        "SEM-CA-V1-CORE-TOOLS-VALIDATE-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/config.rs",
