@@ -141,7 +141,7 @@
       "intent": "Wire and port every Pi TUI component, local Markdown ANSI/OSC-8 renderer, image protocols and terminal-image helpers. Reuse workspace base64 0.22; retain approved exact markdown/ICU/emojis pins and xterm-headless as the frozen visual oracle."
     },
     {
-      "id": "SEM-TUI-V5-NATIVE-BACKENDS",
+      "id": "SEM-TUI-V5-NATIVE-BACKENDS-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-TUI-V4-COMPONENTS"
@@ -149,6 +149,7 @@
       "ownership": [
         "Cargo.lock",
         "crates/zedflow-tui/Cargo.toml",
+        "crates/zedflow-tui/src/lib.rs",
         "crates/zedflow-tui/src/native-modifiers.rs",
         "crates/zedflow-tui/src/terminal.rs",
         "crates/zedflow-tui/tests/terminal.rs",
@@ -157,13 +158,13 @@
       "validation": [
         "cargo fmt --package zedflow-tui --check"
       ],
-      "intent": "Close native parity: validate Windows Shift-Tab/Ctrl-Space/AltGr/keypad/Unicode/repeat semantics and Apple Terminal modifier polling. Use Crossterm first; if exact macOS or Windows behavior requires any additional dependency or unsafe boundary, return ARBITRATION_REQUIRED with exact version/features and evidence."
+      "intent": "Close native parity using the approved target-specific windows-sys =0.61.2 (Win32_Foundation, Win32_System_Console) and objc2-core-graphics =0.3.2 (default-features=false; CGEventSource, CGEventTypes): validate Windows Shift-Tab/Ctrl-Space/AltGr/keypad/Unicode/repeat semantics and Apple Terminal modifier polling. Replace crate-wide forbid(unsafe_code) with deny-by-default and allow one documented unsafe boundary only in the cfg(windows) terminal code that enables ENABLE_VIRTUAL_TERMINAL_INPUT."
     },
     {
-      "id": "SEM-TUI-V6-VALIDATE",
+      "id": "SEM-TUI-V6-VALIDATE-R1",
       "kind": "validator",
       "depends_on": [
-        "SEM-TUI-V5-NATIVE-BACKENDS"
+        "SEM-TUI-V5-NATIVE-BACKENDS-R1"
       ],
       "ownership": [],
       "validation": [
@@ -172,13 +173,13 @@
         "cargo test -p zedflow-tui --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Validate all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
+      "intent": "Freshly validate the repaired native-backends unit plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
     },
     {
       "id": "SEM-TUI-V7-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-TUI-V6-VALIDATE"
+        "SEM-TUI-V6-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [],
