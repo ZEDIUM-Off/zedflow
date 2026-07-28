@@ -1,8 +1,9 @@
-use std::io::{self, Write};
+use std::io::{self, Cursor, Read, Write};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use zedflow_tui::terminal::{
-    KeyboardProtocolNegotiationSequence, ProcessTerminal, Terminal, normalize_apple_terminal_input,
-    parse_keyboard_protocol_negotiation_sequence,
+    KeyboardProtocolNegotiationSequence, ProcessTerminal, Terminal, TerminalEvent,
+    normalize_apple_terminal_input, parse_keyboard_protocol_negotiation_sequence,
 };
 
 #[derive(Clone)]
@@ -18,12 +19,30 @@ impl Write for SharedWriter {
     }
 }
 
-fn harness() -> (ProcessTerminal, Arc<Mutex<Vec<u8>>>) {
+fn harness(input: &[u8]) -> (ProcessTerminal, Arc<Mutex<Vec<u8>>>) {
+    harness_reader(Cursor::new(input.to_vec()))
+}
+
+fn harness_reader(reader: impl Read + Send + 'static) -> (ProcessTerminal, Arc<Mutex<Vec<u8>>>) {
     let bytes = Arc::new(Mutex::new(Vec::new()));
     (
-        ProcessTerminal::with_writer(Box::new(SharedWriter(bytes.clone()))),
+        ProcessTerminal::with_reader_and_writer(
+            Box::new(reader),
+            Box::new(SharedWriter(bytes.clone())),
+        ),
         bytes,
     )
+}
+
+fn inputs(terminal: &mut ProcessTerminal) -> Vec<String> {
+    let mut inputs = Vec::new();
+    for _ in 0..10 {
+        match terminal.poll_event(Duration::from_millis(20)).unwrap() {
+            Some(TerminalEvent::Input(data)) => inputs.push(data),
+            Some(TerminalEvent::Resize) | None => {}
+        }
+    }
+    inputs
 }
 
 fn output(bytes: &Arc<Mutex<Vec<u8>>>) -> String {
@@ -61,22 +80,11 @@ fn parses_keyboard_protocol_negotiation_strictly() {
 
 #[test]
 fn lifecycle_negotiates_protocols_and_restores_terminal_modes() {
-    let (mut terminal, bytes) = harness();
-    let inputs = Arc::new(Mutex::new(Vec::new()));
-    let recorded = inputs.clone();
-    terminal
-        .start(
-            Box::new(move |data| recorded.lock().unwrap().push(data.to_owned())),
-            Box::new(|| {}),
-        )
-        .unwrap();
+    let (mut terminal, bytes) = harness(b"a\x1b[?0u\x1b[?7u");
+    terminal.start().unwrap();
     assert!(output(&bytes).starts_with("\x1b[?2004h\x1b[>7u\x1b[?u\x1b[c"));
 
-    terminal.feed_input("a\x1b[?0u");
-    assert_eq!(&*inputs.lock().unwrap(), &["a"]);
-    assert!(terminal.modify_other_keys_active());
-
-    terminal.feed_input("\x1b[?7u");
+    assert_eq!(inputs(&mut terminal), ["a"]);
     assert!(terminal.kitty_protocol_active());
     assert!(!terminal.modify_other_keys_active());
 
@@ -87,26 +95,19 @@ fn lifecycle_negotiates_protocols_and_restores_terminal_modes() {
 
 #[test]
 fn split_negotiation_and_paste_are_not_forwarded_as_plain_fragments() {
-    let (mut terminal, _) = harness();
-    let inputs = Arc::new(Mutex::new(Vec::new()));
-    let recorded = inputs.clone();
-    terminal
-        .start(
-            Box::new(move |data| recorded.lock().unwrap().push(data.to_owned())),
-            Box::new(|| {}),
-        )
-        .unwrap();
-    terminal.feed_input("\x1b[?7");
-    terminal.feed_input("u\x1b[200~hello");
-    terminal.feed_input(" world\x1b[201~");
+    let reader = Cursor::new(b"\x1b[?7".to_vec())
+        .chain(Cursor::new(b"u\x1b[200~hello".to_vec()))
+        .chain(Cursor::new(b" world\x1b[201~".to_vec()));
+    let (mut terminal, _) = harness_reader(reader);
+    terminal.start().unwrap();
+    assert_eq!(inputs(&mut terminal), ["\x1b[200~hello world\x1b[201~"]);
     assert!(terminal.kitty_protocol_active());
-    assert_eq!(&*inputs.lock().unwrap(), &["\x1b[200~hello world\x1b[201~"]);
     terminal.stop().unwrap();
 }
 
 #[test]
 fn terminal_control_methods_emit_pi_sequences() {
-    let (terminal, bytes) = harness();
+    let (terminal, bytes) = harness(&[]);
     terminal.move_by(-2).unwrap();
     terminal.hide_cursor().unwrap();
     terminal.clear_line().unwrap();

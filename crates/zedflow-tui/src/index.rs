@@ -6,7 +6,7 @@ pub use crate::keybindings::*;
 pub use crate::keys::*;
 pub use crate::kill_ring::KillRing;
 pub use crate::primitives::*;
-pub use crate::terminal::{ProcessTerminal, Terminal};
+pub use crate::terminal::{ProcessTerminal, Terminal, TerminalEvent};
 pub use crate::terminal_colors::*;
 pub use crate::terminal_image::*;
 pub use crate::tui::*;

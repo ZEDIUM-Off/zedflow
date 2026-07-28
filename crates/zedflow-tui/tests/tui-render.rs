@@ -1,26 +1,38 @@
 use std::{
     cell::RefCell,
+    collections::VecDeque,
     io,
     rc::Rc,
     sync::{Arc, Mutex},
+    time::Duration,
 };
-use zedflow_tui::{CURSOR_MARKER, Component, Tui, terminal::Terminal};
+use zedflow_tui::{
+    CURSOR_MARKER, Component, Tui,
+    terminal::{Terminal, TerminalEvent},
+};
 
 struct Lines(Rc<RefCell<Vec<String>>>);
 impl Component for Lines {
     fn render(&self, _: usize) -> Vec<String> {
         self.0.borrow().clone()
     }
+    fn handle_input(&mut self, data: &str) {
+        self.0.borrow_mut().push(data.to_owned());
+    }
 }
 
 struct TestTerminal {
     writes: Arc<Mutex<Vec<String>>>,
+    events: Arc<Mutex<VecDeque<TerminalEvent>>>,
     width: u16,
     height: u16,
 }
 impl Terminal for TestTerminal {
-    fn start(&mut self, _: Box<dyn FnMut(&str)>, _: Box<dyn FnMut()>) -> io::Result<()> {
+    fn start(&mut self) -> io::Result<()> {
         Ok(())
+    }
+    fn poll_event(&mut self, _: Duration) -> io::Result<Option<TerminalEvent>> {
+        Ok(self.events.lock().unwrap().pop_front())
     }
     fn stop(&mut self) -> io::Result<()> {
         Ok(())
@@ -66,10 +78,35 @@ impl Terminal for TestTerminal {
 }
 
 #[test]
+fn terminal_events_are_dispatched_and_rendered_on_the_owning_thread() {
+    let writes = Arc::new(Mutex::new(Vec::new()));
+    let events = Arc::new(Mutex::new(VecDeque::from([
+        TerminalEvent::Input("native".into()),
+        TerminalEvent::Resize,
+    ])));
+    let content = Rc::new(RefCell::new(Vec::new()));
+    let mut tui = Tui::with_terminal(TestTerminal {
+        writes: writes.clone(),
+        events,
+        width: 20,
+        height: 6,
+    });
+    tui.root.add_child(Lines(content.clone()));
+
+    tui.start().unwrap();
+    assert_eq!(tui.process_events(Duration::ZERO).unwrap(), 2);
+
+    assert_eq!(&*content.borrow(), &["native"]);
+    assert!(writes.lock().unwrap().join("").contains("native"));
+    tui.stop().unwrap();
+}
+
+#[test]
 fn lifecycle_performs_first_and_differential_renders() {
     let writes = Arc::new(Mutex::new(Vec::new()));
     let terminal = TestTerminal {
         writes: writes.clone(),
+        events: Arc::new(Mutex::new(VecDeque::new())),
         width: 20,
         height: 6,
     };
@@ -93,6 +130,7 @@ fn appended_lines_scroll_instead_of_overwriting_the_previous_bottom_line() {
     let writes = Arc::new(Mutex::new(Vec::new()));
     let terminal = TestTerminal {
         writes: writes.clone(),
+        events: Arc::new(Mutex::new(VecDeque::new())),
         width: 20,
         height: 2,
     };
@@ -115,6 +153,7 @@ fn logical_cursor_marker_is_removed_and_positioned() {
     let writes = Arc::new(Mutex::new(Vec::new()));
     let terminal = TestTerminal {
         writes: writes.clone(),
+        events: Arc::new(Mutex::new(VecDeque::new())),
         width: 20,
         height: 6,
     };

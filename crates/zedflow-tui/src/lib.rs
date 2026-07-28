@@ -36,6 +36,7 @@ pub use fuzzy::*;
 pub use keybindings::*;
 pub use keys::*;
 pub use kill_ring::KillRing;
+pub use terminal::{ProcessTerminal, Terminal, TerminalEvent};
 pub use terminal_colors::*;
 pub use tui::*;
 pub use undo_stack::UndoStack;

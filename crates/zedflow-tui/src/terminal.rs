@@ -1,8 +1,9 @@
 use crate::keys::set_kitty_protocol_active;
 use crate::native_modifiers::{ModifierKey, is_native_modifier_pressed};
 use crate::stdin_buffer::{StdinBuffer, StdinEvent};
+use std::collections::VecDeque;
 use std::env;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -81,12 +82,15 @@ pub fn normalize_apple_terminal_input(data: &str, apple: bool, shift: bool) -> S
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TerminalEvent {
+    Input(String),
+    Resize,
+}
+
 pub trait Terminal {
-    fn start(
-        &mut self,
-        on_input: Box<dyn FnMut(&str)>,
-        on_resize: Box<dyn FnMut()>,
-    ) -> io::Result<()>;
+    fn start(&mut self) -> io::Result<()>;
+    fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<TerminalEvent>>;
     fn stop(&mut self) -> io::Result<()>;
     fn drain_input(&mut self, max_ms: u64, idle_ms: u64);
     fn write(&mut self, data: &str) -> io::Result<()>;
@@ -105,9 +109,11 @@ pub trait Terminal {
 
 pub struct ProcessTerminal {
     writer: Writer,
-    input_handler: Option<Box<dyn FnMut(&str)>>,
-    resize_handler: Option<Box<dyn FnMut()>>,
+    reader: Option<Box<dyn Read + Send>>,
+    native_events: Option<mpsc::Receiver<Vec<u8>>>,
+    events: VecDeque<TerminalEvent>,
     stdin_buffer: StdinBuffer,
+    last_size: Option<(u16, u16)>,
     was_raw: bool,
     raw_changed: bool,
     started: bool,
@@ -127,15 +133,28 @@ impl Default for ProcessTerminal {
 
 impl ProcessTerminal {
     pub fn new() -> Self {
-        Self::with_writer(Box::new(io::stdout()))
+        Self::with_reader_and_writer(Box::new(io::stdin()), Box::new(io::stdout()))
     }
 
     pub fn with_writer(writer: Box<dyn Write + Send>) -> Self {
+        Self::from_io(None, writer)
+    }
+
+    pub fn with_reader_and_writer(
+        reader: Box<dyn Read + Send>,
+        writer: Box<dyn Write + Send>,
+    ) -> Self {
+        Self::from_io(Some(reader), writer)
+    }
+
+    fn from_io(reader: Option<Box<dyn Read + Send>>, writer: Box<dyn Write + Send>) -> Self {
         Self {
             writer: Arc::new(Mutex::new(writer)),
-            input_handler: None,
-            resize_handler: None,
+            reader,
+            native_events: None,
+            events: VecDeque::new(),
             stdin_buffer: StdinBuffer::default(),
+            last_size: None,
             was_raw: false,
             raw_changed: false,
             started: false,
@@ -236,14 +255,12 @@ impl ProcessTerminal {
 
     fn forward_input(&mut self, sequence: &str) {
         let apple = sequence == "\r" && is_apple_terminal_session();
-        let sequence = normalize_apple_terminal_input(
-            sequence,
-            apple,
-            apple && is_native_modifier_pressed(ModifierKey::Shift),
-        );
-        if let Some(handler) = &mut self.input_handler {
-            handler(&sequence);
-        }
+        self.events
+            .push_back(TerminalEvent::Input(normalize_apple_terminal_input(
+                sequence,
+                apple,
+                apple && is_native_modifier_pressed(ModifierKey::Shift),
+            )));
     }
 
     fn clear_negotiation(&mut self) {
@@ -283,16 +300,57 @@ impl ProcessTerminal {
     }
 
     pub fn notify_resize(&mut self) {
-        if let Some(handler) = &mut self.resize_handler {
-            handler();
+        self.events.push_back(TerminalEvent::Resize);
+    }
+
+    fn receive_native_input(&mut self, timeout: Duration) {
+        let Some(receiver) = &self.native_events else {
+            if !timeout.is_zero() {
+                thread::sleep(timeout);
+            }
+            return;
+        };
+        match receiver.recv_timeout(timeout) {
+            Ok(bytes) => self.feed_input_bytes(&bytes),
+            Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {}
         }
+    }
+
+    fn detect_resize(&mut self) {
+        let size = (self.columns(), self.rows());
+        if self.last_size.replace(size).is_some_and(|old| old != size) {
+            self.notify_resize();
+        }
+    }
+
+    pub fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<TerminalEvent>> {
+        self.flush_expired_input();
+        self.detect_resize();
+        if let Some(event) = self.events.pop_front() {
+            return Ok(Some(event));
+        }
+        self.receive_native_input(timeout.min(Duration::from_millis(10)));
+        self.flush_expired_input();
+        self.detect_resize();
+        Ok(self.events.pop_front())
     }
 
     pub fn drain_input(&mut self, max_ms: u64, idle_ms: u64) {
         self.disable_keyboard_protocols();
-        let handler = self.input_handler.take();
-        thread::sleep(Duration::from_millis(idle_ms.min(max_ms)));
-        self.input_handler = handler;
+        let deadline = Instant::now() + Duration::from_millis(max_ms);
+        while Instant::now() < deadline {
+            let wait = Duration::from_millis(idle_ms)
+                .min(deadline.saturating_duration_since(Instant::now()));
+            let Some(receiver) = &self.native_events else {
+                break;
+            };
+            match receiver.recv_timeout(wait) {
+                Ok(_) => continue,
+                Err(mpsc::RecvTimeoutError::Timeout | mpsc::RecvTimeoutError::Disconnected) => {
+                    break;
+                }
+            }
+        }
     }
 
     pub fn move_by(&self, lines: i32) -> io::Result<()> {
@@ -366,13 +424,10 @@ impl ProcessTerminal {
 }
 
 impl Terminal for ProcessTerminal {
-    fn start(
-        &mut self,
-        on_input: Box<dyn FnMut(&str)>,
-        on_resize: Box<dyn FnMut()>,
-    ) -> io::Result<()> {
-        self.input_handler = Some(on_input);
-        self.resize_handler = Some(on_resize);
+    fn start(&mut self) -> io::Result<()> {
+        if self.started {
+            return Ok(());
+        }
         self.was_raw = crossterm::terminal::is_raw_mode_enabled().unwrap_or(false);
         if io::stdin().is_terminal() && !self.was_raw {
             crossterm::terminal::enable_raw_mode()?;
@@ -384,8 +439,25 @@ impl Terminal for ProcessTerminal {
         self.keyboard_protocol_pushed = true;
         self.clear_negotiation();
         self.emit(KITTY_QUERY)?;
+        let (sender, receiver) = mpsc::channel();
+        if let Some(mut reader) = self.reader.take() {
+            thread::spawn(move || {
+                let mut bytes = [0; 4096];
+                while let Ok(count) = reader.read(&mut bytes) {
+                    if count == 0 || sender.send(bytes[..count].to_vec()).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        self.native_events = Some(receiver);
+        self.last_size = Some((self.columns(), self.rows()));
         self.started = true;
         Ok(())
+    }
+
+    fn poll_event(&mut self, timeout: Duration) -> io::Result<Option<TerminalEvent>> {
+        ProcessTerminal::poll_event(self, timeout)
     }
 
     fn stop(&mut self) -> io::Result<()> {
@@ -398,8 +470,9 @@ impl Terminal for ProcessTerminal {
         self.emit("\x1b[?2004l")?;
         self.disable_keyboard_protocols();
         self.stdin_buffer.clear();
-        self.input_handler = None;
-        self.resize_handler = None;
+        self.events.clear();
+        self.native_events = None;
+        self.last_size = None;
         if self.raw_changed {
             crossterm::terminal::disable_raw_mode()?;
             self.raw_changed = false;

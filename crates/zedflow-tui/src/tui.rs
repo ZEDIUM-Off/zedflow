@@ -1,7 +1,7 @@
 use crate::keys::is_key_release;
-use crate::terminal::Terminal;
+use crate::terminal::{Terminal, TerminalEvent};
 use crate::utils::{normalize_terminal_output, slice_by_column, slice_with_width, visible_width};
-use std::io;
+use std::{io, time::Duration};
 
 /// Zero-width marker emitted by focused components at the logical cursor.
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
@@ -470,11 +470,36 @@ impl Tui {
 
     pub fn start(&mut self) -> io::Result<()> {
         if let Some(terminal) = &mut self.terminal {
-            terminal.start(Box::new(|_| {}), Box::new(|| {}))?;
+            terminal.start()?;
             terminal.hide_cursor()?;
         }
         self.started = true;
         self.request_render(false)
+    }
+
+    /// Wait for one terminal event, drain the rest, then dispatch and render on
+    /// the thread that owns this `Tui`.
+    pub fn process_events(&mut self, timeout: Duration) -> io::Result<usize> {
+        let Some(terminal) = &mut self.terminal else {
+            return Ok(0);
+        };
+        let mut events = Vec::new();
+        if let Some(event) = terminal.poll_event(timeout)? {
+            events.push(event);
+        }
+        while let Some(event) = terminal.poll_event(Duration::ZERO)? {
+            events.push(event);
+        }
+        let count = events.len();
+        for event in events {
+            if let TerminalEvent::Input(data) = event {
+                self.dispatch_input(&data);
+            }
+        }
+        if count != 0 {
+            self.request_render(false)?;
+        }
+        Ok(count)
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
