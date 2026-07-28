@@ -176,10 +176,29 @@
       "intent": "Repair the semantic module-reachability guard to recognize Rust raw-identifier declarations such as mod r#box; and add a focused regression test. Do not disposition mapped modules or weaken any other closure check."
     },
     {
-      "id": "SEM-TUI-V6-VALIDATE-R2",
-      "kind": "validator",
+      "id": "SEM-TUI-V6-MAPPED-COMPONENTS-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-TUI-V6-MANIFEST-RAW-MOD-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/components/mod.rs",
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/components/select-list.rs",
+        "crates/zedflow-tui/src/components/settings-list.rs",
+        "crates/zedflow-tui/src/components/truncated-text.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+      ],
+      "intent": "Repair the four dead mapped TUI component modules by synchronizing each mapped hyphenated source with its currently reachable underscore-named implementation and wiring the mapped file explicitly from components/mod.rs with #[path]. Preserve the reachable behavior; do not delete either filename, add dispositions, or weaken the manifest guard."
+    },
+    {
+      "id": "SEM-TUI-V6-VALIDATE-R3",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-TUI-V6-MAPPED-COMPONENTS-R1"
       ],
       "ownership": [],
       "validation": [
@@ -188,13 +207,13 @@
         "cargo test -p zedflow-tui --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
       ],
-      "intent": "Freshly validate the manifest raw-module repair plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
+      "intent": "Freshly validate the mapped TUI component wiring plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
     },
     {
       "id": "SEM-TUI-V7-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-TUI-V6-VALIDATE-R2"
+        "SEM-TUI-V6-VALIDATE-R3"
       ],
       "ownership": [],
       "validation": [],
