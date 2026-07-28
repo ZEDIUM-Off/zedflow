@@ -1,7 +1,8 @@
 use crate::keys::is_key_release;
 use crate::terminal::{Terminal, TerminalEvent};
+use crate::terminal_image::{delete_kitty_image, is_image_line};
 use crate::utils::{normalize_terminal_output, slice_by_column, slice_with_width, visible_width};
-use std::{io, time::Duration};
+use std::{collections::BTreeSet, io, time::Duration};
 
 /// Zero-width marker emitted by focused components at the logical cursor.
 pub const CURSOR_MARKER: &str = "\x1b_pi:c\x07";
@@ -170,6 +171,7 @@ pub struct Tui {
     next_overlay_id: usize,
     focus_order: usize,
     previous_lines: Vec<String>,
+    previous_kitty_image_ids: BTreeSet<u32>,
     previous_width: usize,
     previous_height: usize,
     hardware_cursor_row: usize,
@@ -197,6 +199,7 @@ impl Tui {
             next_overlay_id: 0,
             focus_order: 0,
             previous_lines: Vec::new(),
+            previous_kitty_image_ids: BTreeSet::new(),
             previous_width: 0,
             previous_height: 0,
             hardware_cursor_row: 0,
@@ -523,20 +526,27 @@ impl Tui {
         let terminal = self.terminal.as_mut().expect("terminal checked above");
         let cursor = extract_cursor_position(&mut lines, height);
         for line in &mut lines {
-            *line = normalize_terminal_output(line) + SEGMENT_RESET;
+            if !is_image_line(line) {
+                *line = normalize_terminal_output(line) + SEGMENT_RESET;
+            }
         }
         let size_changed = self.previous_width != 0
             && (self.previous_width != width || self.previous_height != height);
         let shrinking = self.clear_on_shrink && lines.len() < self.previous_lines.len();
         if force || size_changed || shrinking {
             self.full_redraws += 1;
-            let mut output = String::from("\x1b[?2026h\x1b[2J\x1b[H\x1b[3J");
-            output.push_str(&lines.join("\r\n"));
+            let mut output = String::from("\x1b[?2026h");
+            output.push_str(&delete_kitty_images(&self.previous_kitty_image_ids));
+            output.push_str("\x1b[2J\x1b[H\x1b[3J");
+            output.push_str(&render_full_lines(&lines, height));
             output.push_str("\x1b[?2026l");
             terminal.write(&output)?;
             self.hardware_cursor_row = lines.len().saturating_sub(1);
         } else if self.previous_lines.is_empty() {
-            terminal.write(&format!("\x1b[?2026h{}\x1b[?2026l", lines.join("\r\n")))?;
+            terminal.write(&format!(
+                "\x1b[?2026h{}\x1b[?2026l",
+                render_full_lines(&lines, height)
+            ))?;
             self.hardware_cursor_row = lines.len().saturating_sub(1);
         } else {
             let max = lines.len().max(self.previous_lines.len());
@@ -546,23 +556,54 @@ impl Tui {
                     .rev()
                     .find(|&index| lines.get(index) != self.previous_lines.get(index))
                     .unwrap_or(first);
+                let (first, last) = expand_changed_range_for_kitty_images(
+                    first,
+                    last,
+                    &self.previous_lines,
+                    &lines,
+                );
                 let append_start = first == self.previous_lines.len() && first > 0;
                 let move_target = if append_start { first - 1 } else { first };
                 let delta = move_target as isize - self.hardware_cursor_row as isize;
                 let mut output = String::from("\x1b[?2026h");
+                output.push_str(&delete_changed_kitty_images(
+                    &self.previous_lines,
+                    first,
+                    last,
+                ));
                 if delta > 0 {
                     output.push_str(&format!("\x1b[{delta}B"));
                 } else if delta < 0 {
                     output.push_str(&format!("\x1b[{}A", -delta));
                 }
                 output.push_str(if append_start { "\r\n" } else { "\r" });
-                for index in first..=last {
+                let render_end = last.min(lines.len().saturating_sub(1));
+                let mut index = first;
+                while index <= last {
                     if index > first {
                         output.push_str("\r\n");
                     }
                     output.push_str("\x1b[2K");
-                    if let Some(line) = lines.get(index) {
+                    let Some(line) = lines.get(index) else {
+                        index += 1;
+                        continue;
+                    };
+                    let reserved = if is_image_line(line) {
+                        kitty_image_reserved_rows(&lines, index, render_end)
+                    } else {
+                        1
+                    };
+                    if reserved > 1 {
+                        for _ in 1..reserved {
+                            output.push_str("\r\n\x1b[2K");
+                        }
+                        output.push_str(&format!("\x1b[{}A", reserved - 1));
                         output.push_str(line);
+                        output.push_str(&format!("\x1b[{}B", reserved - 1));
+                        index += reserved;
+                    } else {
+                        output.push_str(line);
+                        index += 1;
                     }
                 }
                 output.push_str("\x1b[?2026l");
@@ -576,6 +617,7 @@ impl Tui {
             &mut self.hardware_cursor_row,
             self.show_hardware_cursor,
         )?;
+        self.previous_kitty_image_ids = collect_kitty_image_ids(&lines);
         self.previous_lines = lines;
         self.previous_width = width;
         self.previous_height = height;
@@ -589,6 +631,123 @@ impl Default for Tui {
     }
 }
 
+fn parse_kitty_image_header(line: &str) -> (Vec<u32>, usize) {
+    let Some((_, sequence)) = line.split_once("\x1b_G") else {
+        return (Vec::new(), 1);
+    };
+    let Some((parameters, _)) = sequence.split_once(';') else {
+        return (Vec::new(), 1);
+    };
+    let mut ids = Vec::new();
+    let mut rows = 1;
+    for parameter in parameters.split(',') {
+        let Some((key, value)) = parameter.split_once('=') else {
+            continue;
+        };
+        let Ok(value) = value.parse::<u32>() else {
+            continue;
+        };
+        if value == 0 {
+            continue;
+        }
+        match key {
+            "i" => ids.push(value),
+            "r" => rows = value as usize,
+            _ => {}
+        }
+    }
+    (ids, rows)
+}
+
+fn collect_kitty_image_ids(lines: &[String]) -> BTreeSet<u32> {
+    lines
+        .iter()
+        .flat_map(|line| parse_kitty_image_header(line).0)
+        .collect()
+}
+
+fn delete_kitty_images(ids: &BTreeSet<u32>) -> String {
+    ids.iter().map(|id| delete_kitty_image(*id)).collect()
+}
+
+fn delete_changed_kitty_images(lines: &[String], first: usize, last: usize) -> String {
+    let ids = lines
+        .get(first..=last.min(lines.len().saturating_sub(1)))
+        .unwrap_or_default()
+        .iter()
+        .flat_map(|line| parse_kitty_image_header(line).0)
+        .collect();
+    delete_kitty_images(&ids)
+}
+
+fn kitty_image_reserved_rows(lines: &[String], index: usize, max_index: usize) -> usize {
+    let rows = parse_kitty_image_header(lines.get(index).map_or("", String::as_str)).1;
+    if rows <= 1 {
+        return 1;
+    }
+    let max_rows = rows
+        .min(max_index.saturating_sub(index) + 1)
+        .min(lines.len().saturating_sub(index));
+    let mut reserved = 1;
+    while reserved < max_rows {
+        let line = &lines[index + reserved];
+        if is_image_line(line) || visible_width(line) > 0 {
+            break;
+        }
+        reserved += 1;
+    }
+    reserved
+}
+
+fn expand_changed_range_for_kitty_images(
+    first: usize,
+    last: usize,
+    previous_lines: &[String],
+    new_lines: &[String],
+) -> (usize, usize) {
+    let mut expanded = (first, last);
+    for lines in [previous_lines, new_lines] {
+        for (index, line) in lines.iter().enumerate() {
+            if parse_kitty_image_header(line).0.is_empty() {
+                continue;
+            }
+            let block_end = index + kitty_image_reserved_rows(lines, index, lines.len() - 1) - 1;
+            if index >= first || (index <= last && block_end >= first) {
+                expanded.0 = expanded.0.min(index);
+                expanded.1 = expanded.1.max(block_end);
+            }
+        }
+    }
+    expanded
+}
+
+fn render_full_lines(lines: &[String], height: usize) -> String {
+    let mut output = String::new();
+    let mut index = 0;
+    while index < lines.len() {
+        if index > 0 {
+            output.push_str("\r\n");
+        }
+        let line = &lines[index];
+        let reserved = if is_image_line(line) {
+            kitty_image_reserved_rows(lines, index, lines.len() - 1)
+        } else {
+            1
+        };
+        if reserved > 1 && reserved <= height {
+            output.push_str(&"\r\n".repeat(reserved - 1));
+            output.push_str(&format!("\x1b[{}A", reserved - 1));
+            output.push_str(line);
+            output.push_str(&format!("\x1b[{}B", reserved - 1));
+            index += reserved;
+        } else {
+            output.push_str(line);
+            index += 1;
+        }
+    }
+    output
+}
+
 pub fn composite_line_at(
     base_line: &str,
     overlay_line: &str,
@@ -596,6 +755,9 @@ pub fn composite_line_at(
     overlay_width: usize,
     total_width: usize,
 ) -> String {
+    if is_image_line(base_line) {
+        return base_line.to_owned();
+    }
     let before = slice_with_width(base_line, 0, start_col, true);
     let after_start = start_col.saturating_add(overlay_width);
     let after = slice_with_width(
