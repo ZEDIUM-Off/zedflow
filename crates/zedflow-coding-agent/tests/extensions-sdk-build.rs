@@ -9,8 +9,8 @@ use sha2::{Digest, Sha256};
 use zedflow_coding_agent::{
     export_extension,
     extensions::{
-        ABI_OK, ABI_V1, AbiBytes, AbiHandle, AbiOwnedBytes, JsonEnvelope, NativeExtension,
-        NativeExtensionArtifact,
+        ABI_OK, ABI_V1, AbiBytes, AbiHandle, AbiOwnedBytes, ExtensionRunner, JsonEnvelope,
+        NativeExtension, NativeExtensionArtifact, create_extension_runtime,
     },
     sdk::{self, Extension, ExtensionApi, JsonValue},
 };
@@ -48,7 +48,7 @@ fn sdk_fixture_builds_and_exercises_abi_v1() {
         version: ABI_V1,
         payload: serde_json::json!({"start":true}),
     };
-    let mut extension = NativeExtension::load(&artifact, &request).expect("load fixture");
+    let extension = NativeExtension::load(&artifact, &request).expect("load fixture");
     let reply = extension
         .call(&JsonEnvelope {
             version: ABI_V1,
@@ -100,8 +100,37 @@ fn sdk_fixture_builds_and_exercises_abi_v1() {
             .len(),
         11
     );
-    extension.shutdown().expect("shutdown fixture");
-    assert!(extension.call(&request).is_err());
+    let mut runtime = create_extension_runtime();
+    extension.activate(&mut runtime).expect("activate fixture");
+    assert_eq!(runtime.tools[0].name, "fixture-tool");
+    assert_eq!(runtime.commands[0].name, "fixture-command");
+    assert_eq!(runtime.providers[0].name, "fixture-provider");
+
+    let mut runner = ExtensionRunner::with_runtime(vec![], runtime);
+    runner.set_context(
+        zedflow_coding_agent::extensions::ExtensionMode::Tui,
+        "/work",
+        true,
+    );
+    assert_eq!(
+        runner
+            .invoke_tool("fixture-tool", serde_json::json!({"answer": 42}))
+            .expect("invoke activated fixture tool"),
+        serde_json::json!({
+            "echo": {
+                "arguments": {"answer": 42},
+                "context": {"cwd": "/work", "generation": 0, "hasUi": true},
+                "kind": "tool",
+                "name": "fixture-tool"
+            }
+        })
+    );
+    assert!(
+        !runner
+            .invoke_command("fixture-command", &["run".into()])
+            .expect("invoke activated fixture command")
+            .cancelled
+    );
 }
 
 #[derive(Default)]

@@ -41,9 +41,14 @@ pub struct ExtensionRunner {
 impl ExtensionRunner {
     #[must_use]
     pub fn new(extensions: Vec<Extension>) -> Self {
+        Self::with_runtime(extensions, ExtensionRuntime::default())
+    }
+
+    #[must_use]
+    pub fn with_runtime(extensions: Vec<Extension>, runtime: ExtensionRuntime) -> Self {
         Self {
             extensions,
-            runtime: ExtensionRuntime::default(),
+            runtime,
             handlers: HashMap::new(),
             error_listeners: Vec::new(),
             context: ExtensionContext {

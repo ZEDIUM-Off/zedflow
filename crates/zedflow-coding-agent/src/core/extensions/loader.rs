@@ -7,12 +7,13 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     sync::{
-        Mutex, OnceLock,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicU64, Ordering},
     },
 };
 
 use libloading::Library;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::super::source_info::{SourceOrigin, SourceScope, create_synthetic_source_info};
@@ -20,7 +21,10 @@ use super::abi::{
     AbiBytes, AbiEntryV1, AbiHandle, AbiOwnedBytes, AbiTableHeader, AbiV1, JsonEnvelope,
     validate_handle, validate_table, validate_table_header,
 };
-use super::types::{Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult};
+use super::types::{
+    Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult, RegisteredCommand,
+    define_tool,
+};
 
 static CACHE: OnceLock<Mutex<HashMap<String, Extension>>> = OnceLock::new();
 static LIBRARIES: OnceLock<Mutex<Vec<Library>>> = OnceLock::new();
@@ -138,6 +142,88 @@ impl NativeExtension {
         result
     }
 
+    /// Registers ABI-declared tools, commands, and providers with the host runtime.
+    /// The activation request is an ordinary ABI call so v1 needs no additional entry point.
+    pub fn activate(self, runtime: &mut ExtensionRuntime) -> Result<(), String> {
+        let reply = self.call(&JsonEnvelope {
+            version: super::abi::ABI_V1,
+            payload: json!({"kind": "activate"}),
+        })?;
+        let api = reply
+            .payload
+            .get("api")
+            .and_then(Value::as_object)
+            .ok_or("native extension activation did not return an API snapshot")?;
+        // Validate every registration before changing the runtime.
+        let tools = api_names(api, "tools", "tool")?;
+        let commands = api_names(api, "commands", "command")?;
+        let providers = api
+            .get("providers")
+            .and_then(Value::as_object)
+            .ok_or("native extension activation did not return providers")?
+            .iter()
+            .map(|(name, config)| (name.clone(), config.clone()))
+            .collect::<Vec<_>>();
+        let extension = Arc::new(self);
+
+        for name in tools {
+            let native = Arc::clone(&extension);
+            let tool_name = name.clone();
+            runtime.register_tool(
+                define_tool(name, "native extension tool"),
+                Arc::new(move |arguments, context| {
+                    native
+                        .call(&JsonEnvelope {
+                            version: super::abi::ABI_V1,
+                            payload: json!({
+                                "kind": "tool",
+                                "name": tool_name,
+                                "arguments": arguments,
+                                "context": native_context(context),
+                            }),
+                        })
+                        .map_err(native_error)
+                        .map(|reply| reply.payload.get("result").cloned().unwrap_or(Value::Null))
+                }),
+            );
+        }
+        for name in commands {
+            let native = Arc::clone(&extension);
+            let command_name = name.clone();
+            runtime.register_command(
+                RegisteredCommand {
+                    name,
+                    description: "native extension command".into(),
+                },
+                Arc::new(move |args, context| {
+                    native
+                        .call(&JsonEnvelope {
+                            version: super::abi::ABI_V1,
+                            payload: json!({
+                                "kind": "command",
+                                "name": command_name,
+                                "args": args,
+                                "context": native_context(context),
+                            }),
+                        })
+                        .map_err(native_error)
+                        .map(|reply| super::types::SessionActionResult {
+                            cancelled: reply
+                                .payload
+                                .get("result")
+                                .and_then(|value| value.get("cancelled"))
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                        })
+                }),
+            );
+        }
+        for (name, config) in providers {
+            runtime.register_provider(super::types::ProviderConfig { name, config });
+        }
+        Ok(())
+    }
+
     /// Idempotently disables this instance. Its library remains loaded.
     pub fn shutdown(&mut self) -> Result<(), String> {
         let _call_lock = self
@@ -227,6 +313,39 @@ fn verified_artifact_snapshot(
         return Err(error);
     }
     Ok(VerifiedArtifactSnapshot { path, directory })
+}
+
+fn api_names(
+    api: &serde_json::Map<String, Value>,
+    field: &str,
+    kind: &str,
+) -> Result<Vec<String>, String> {
+    api.get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("native extension activation did not return {field}"))?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| format!("native extension {kind} name is not a string"))
+        })
+        .collect()
+}
+
+fn native_context(context: &super::types::ExtensionContext) -> Value {
+    json!({
+        "cwd": context.cwd,
+        "hasUi": context.has_ui,
+        "generation": context.generation,
+    })
+}
+
+fn native_error(message: String) -> super::types::ExtensionError {
+    super::types::ExtensionError {
+        message,
+        source: None,
+    }
 }
 
 fn ffi_status(operation: impl FnOnce() -> i32) -> Result<i32, String> {
