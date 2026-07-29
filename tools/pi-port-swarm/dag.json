@@ -1340,10 +1340,39 @@
       "intent": "Port frozen Pi restoreSandboxEnv behavior from bun/restore-sandbox-env.ts into the owned Rust module: preserve no-op guards, best-effort /proc/self/environ parsing, and malformed-entry handling through a public, testable runtime API. Do not change callers or tests."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-R1",
+      "id": "SEM-CA-V8-PROVIDER-ATTRIBUTION-PORT-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-RESTORE-SANDBOX-ENV-PORT-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/provider-attribution.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port frozen Pi provider-attribution behavior into the owned Rust module: exact provider/host detection, telemetry-gated default attribution, OpenCode session headers, and caller-header precedence through a public runtime API. Do not change callers or tests."
+    },
+    {
+      "id": "SEM-CA-V8-STATUS-INDICATOR-PORT-R1",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V8-RESTORE-SANDBOX-ENV-PORT-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port frozen Pi status-indicator behavior into the owned Rust module: idle two-line rendering, working/retry/compaction/branch-summary indicators, retry countdown disposal, and public runtime types. Do not change callers or tests."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-R2",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V8-PROVIDER-ATTRIBUTION-PORT-R1",
+        "SEM-CA-V8-STATUS-INDICATOR-PORT-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/resource-loader.rs",
@@ -1389,10 +1418,10 @@
       "intent": "Freshly convert frozen Pi Coding-agent test batch 3 into real executable Rust tests after the restoreSandboxEnv source port. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise actual public/runtime behavior."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R1",
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R2",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-R1"
+        "SEM-CA-V8-TEST-BATCH-3-R2"
       ],
       "ownership": [],
       "validation": [
@@ -1407,7 +1436,7 @@
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R1"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
