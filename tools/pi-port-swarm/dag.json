@@ -856,10 +856,27 @@
       "intent": "Repair the source-install provenance handoff before default startup: atomically persist/register each source directory, content-addressed native artifact, and digest-bound provenance receipt in the existing install/provenance location and schema so the default resource loader has a trusted receipt to consume. Add an executable installation regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
     },
     {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R1",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-PERSIST-REPAIR-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-INSTALL-PROVENANCE-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
+        "crates/zedflow-coding-agent/tests/extension-package-manager.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extension-package-manager"
+      ],
+      "intent": "Repair the missing persisted source-install registration at its ownership boundary: atomically record the source directory, content-addressed native artifact, and digest-bound provenance receipt in the existing install/provenance schema so a later ResourceLoader can discover it after restart. Add an executable installation persistence regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
+    },
+    {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R2",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-PERSIST-REPAIR-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/core/resource-loader.rs",
@@ -872,10 +889,23 @@
       "intent": "Repair the persisted source-install registration consumption before default startup: make ResourceLoader discover the atomically recorded source directory, content-addressed native artifact, and digest-bound provenance receipt and expose only trusted registrations to its callers. Add an executable receipt-loading regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
     },
     {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R2"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test resource-loader"
+      ],
+      "intent": "Independently validate persisted source-install registration discovery after restart: ResourceLoader must expose only the atomically recorded source directory, content-addressed native artifact, and digest-bound trusted provenance receipt. No source edits."
+    },
+    {
       "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R3",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R1"
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-VALIDATE-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
