@@ -727,20 +727,36 @@
       "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the ABI v1 repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-LOADER-TOCTOU-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R3"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
+        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib"
+      ],
+      "intent": "Repair the native artifact digest/activation TOCTOU gap: activate only a verified artifact whose loaded bytes cannot be replaced between trust/digest verification and dynamic-library loading, and add an executable regression that rejects a swapped artifact. Preserve approved ABI v1, source-only install/provenance, process-lifetime no-unload, and dependencies; do not weaken trust checks."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V3G-RUST-EXTENSIONS-LOADER-TOCTOU-REPAIR-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently verify maximum Pi ExtensionAPI capability alignment through Rust extensions while accepting the approved language/loading substitution. Review trust/digest/TOCTOU handling, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility is deferred, not silently claimed."
+      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the native artifact TOCTOU repair. Verify trust/digest/activation atomicity, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility remains deferred and must not be silently claimed."
     },
     {
       "id": "SEM-CA-V4-INTERACTIVE",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/modes/interactive"
