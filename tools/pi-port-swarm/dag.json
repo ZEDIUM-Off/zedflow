@@ -1046,12 +1046,13 @@
       "intent": "Independently validate managed persisted extension receipt trust: only an application-managed trust-root binding created by source installation may resolve into the default interactive NativeExtension pipeline; forged matching receipt/registration pairs, substituted receipts, and artifact-path substitutions must be rejected. No source edits."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-SHUTDOWN-REPAIR-R1",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-SHUTDOWN-LOADER-REPAIR-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-VALIDATE-R1"
       ],
       "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
         "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
         "crates/zedflow-coding-agent/tests/extensions-runner.rs"
       ],
@@ -1059,13 +1060,13 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test extensions-runner"
       ],
-      "intent": "Repair native extension lifecycle shutdown: retain loaded NativeExtension instances in ExtensionRunner and explicitly destroy each after SessionShutdown while preserving idempotence, stale-context invalidation, process-lifetime no-unload, ABI v1 safety, trust/digest activation, and TypeScript deferral. Add an executable lifecycle regression."
+      "intent": "Repair native extension lifecycle shutdown by adding a non-consuming NativeExtension activation path so ExtensionRunner retains each loaded NativeExtension and explicitly destroys it after SessionShutdown. Preserve idempotence, stale-context invalidation, process-lifetime no-unload, ABI v1 safety, trust/digest activation, and TypeScript deferral. Add an executable lifecycle regression."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R16",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R17",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-SHUTDOWN-REPAIR-R1"
+        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-SHUTDOWN-LOADER-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1078,7 +1079,7 @@
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R16"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R17"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
