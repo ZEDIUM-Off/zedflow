@@ -949,23 +949,40 @@
       "intent": "Independently validate the repaired default interactive startup provenance handoff: the real ResourceLoader/main path must resolve only persisted trusted digest-bound source-install registrations into the interactive ExtensionRunner, with the executable default-startup regression and cdylib loader regression passing. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R11",
-      "kind": "reviewer",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
+      ],
+      "intent": "Repair the default interactive native-extension runtime dispatch: make the real main/InteractiveMode event and user-input path retain the trusted startup ExtensionRunner and route lifecycle, input, session, tool, command, and provider registrations through it, rather than leaving runner dispatch test-only. Add an executable default-harness native artifact regression. Preserve trusted provenance/digest activation, ABI v1 process-safety, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation, dependencies, and TypeScript deferral."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R12",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
       ],
-      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the default interactive-host repair. Verify only trusted provenance-bound NativeExtension artifacts load into the real default interactive harness and its lifecycle, input, session, tool, command, and provider registrations execute through ExtensionRuntime/ExtensionRunner. Recheck trust/digest activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, and source-only installation receipts. TypeScript compatibility remains deferred and must not be silently claimed."
+      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the default interactive runtime-dispatch repair. Verify only trusted provenance-bound NativeExtension artifacts load into the real default interactive harness and its lifecycle, input, session, tool, command, and provider registrations execute through ExtensionRuntime/ExtensionRunner. Recheck trust/digest activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, and source-only installation receipts. TypeScript compatibility remains deferred and must not be silently claimed."
     },
     {
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R11"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R12"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
