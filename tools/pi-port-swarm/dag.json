@@ -817,35 +817,44 @@
       "intent": "Repair native ExtensionAPI lifecycle-event activation: retain each trusted NativeExtension event registration from its ABI API snapshot during loader activation and dispatch it through ExtensionRuntime/ExtensionRunner emit. Add executable regressions proving a compiled native extension event handler participates in runner lifecycle dispatch. Preserve approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REPAIR-R1",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R2",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-EVENTS-REPAIR-R1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive"
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive",
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs",
+        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --lib"
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
       ],
-      "intent": "Supersede the open interactive-mode unit and repair the missing production native-extension pipeline: in the actual default interactive session, load trusted native extensions and route lifecycle, input, session, tool, command, and provider flows through the existing ExtensionRuntime/ExtensionRunner handlers. Add executable in-module production-path coverage. Preserve the approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral; do not duplicate extension dispatch in the mode."
+      "intent": "Repair the default interactive native-extension host pipeline. Resolve only trusted native artifacts bound to source-install provenance/digest receipts through the resource configuration path, then make the real default entrypoint construct and retain the resulting ExtensionRunner and route its lifecycle, input, session, tool, command, and provider operations through that runner without duplicate mode dispatch. Add an executable default-harness regression. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R7",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R8",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REPAIR-R1"
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R2"
       ],
       "ownership": [],
-      "validation": [],
-      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the production interactive-session pipeline repair. Verify trusted NativeExtension tools, commands, providers, and lifecycle/input/session event registrations are executable from the actual default interactive harness through ExtensionRuntime/ExtensionRunner, alongside trust/digest/activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility remains deferred and must not be silently claimed."
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
+      ],
+      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the default interactive-host repair. Verify only trusted provenance-bound NativeExtension artifacts load into the real default interactive harness and its lifecycle, input, session, tool, command, and provider registrations execute through ExtensionRuntime/ExtensionRunner. Recheck trust/digest activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, and source-only installation receipts. TypeScript compatibility remains deferred and must not be silently claimed."
     },
     {
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R7"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R8"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
