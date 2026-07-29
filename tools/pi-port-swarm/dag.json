@@ -743,20 +743,38 @@
       "intent": "Repair the native artifact digest/activation TOCTOU gap: activate only a verified artifact whose loaded bytes cannot be replaced between trust/digest verification and dynamic-library loading, and add an executable regression that rejects a swapped artifact. Preserve approved ABI v1, source-only install/provenance, process-lifetime no-unload, and dependencies; do not weaken trust checks."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R2",
-      "kind": "reviewer",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-ABI-SAFETY-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V3G-RUST-EXTENSIONS-LOADER-TOCTOU-REPAIR-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
+        "crates/zedflow-coding-agent/src/core/sdk.rs",
+        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs",
+        "crates/zedflow-coding-agent/tests/extensions-sdk-build.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib --test extensions-sdk-build"
+      ],
+      "intent": "Repair the diagnosed native ABI process-safety failures: serialize access to the shared extension instance across concurrent calls, contain all extension and extern-C trampoline panics with defined failure results, and preserve reentrancy/cancellation/stale-context behavior. Add executable regressions. Do not change ABI v1 scope, trust/digest activation, process-lifetime no-unload, source-only install/provenance, dependencies, or TypeScript deferral."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-ABI-SAFETY-REPAIR-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the native artifact TOCTOU repair. Verify trust/digest/activation atomicity, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility remains deferred and must not be silently claimed."
+      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the native ABI process-safety repair. Verify trust/digest/activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility remains deferred and must not be silently claimed."
     },
     {
       "id": "SEM-CA-V4-INTERACTIVE",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R2"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R3"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/modes/interactive"
