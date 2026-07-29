@@ -1229,10 +1229,28 @@
       "intent": "Implement only the diagnosed Coding-agent runtime foundations required by the blocked V7 test batch: first-time setup/footer/OAuth and interactive flows, initial/print input, file mutation, frontmatter/git/image/path/user-agent utilities. Port frozen Pi observable behavior at these existing source paths; do not edit V7 tests, extension runtime, package manager, CLI routing, dependencies, or unrelated modules."
     },
     {
-      "id": "SEM-CA-V7-TEST-BATCH-2-R1",
+      "id": "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/keybindings.rs",
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --lib"
+      ],
+      "intent": "Implement only the remaining Coding-agent runtime APIs diagnosed by blocked V7 batch 2: Pi-compatible keybinding definitions/config migration, package-manager and package-command operations, and the interactive command paths they require. Port observable behavior at these existing source paths; do not edit V7 tests, extension runtime, dependencies, or unrelated modules."
+    },
+    {
+      "id": "SEM-CA-V7-TEST-BATCH-2-R2",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/extensions-input-event.rs",
@@ -1275,13 +1293,13 @@
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Re-run the blocked Coding-agent test batch 2 after SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R1. Convert its frozen Pi tests into real executable Rust behavior tests; TEST_PATH constants, empty test targets, blanket ignores, and source-path-only assertions do not count. Exercise actual public/runtime behavior without editing production sources."
+      "intent": "Convert the blocked frozen Pi Coding-agent test batch 2 into real executable Rust behavior tests after SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2. TEST_PATH constants, empty test targets, blanket ignores, and source-path-only assertions do not count. Exercise actual public/runtime behavior without editing production sources."
     },
     {
-      "id": "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R1",
+      "id": "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R2",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V7-TEST-BATCH-2-R1"
+        "SEM-CA-V7-TEST-BATCH-2-R2"
       ],
       "ownership": [],
       "validation": [
@@ -1289,13 +1307,13 @@
         "cargo check -p zedflow-coding-agent --all-targets",
         "cargo test -p zedflow-coding-agent --test extensions-input-event --test extensions-runner --test file-mutation-queue --test first-time-setup-fork --test first-time-setup --test footer-data-provider --test footer-width --test format-resume-command --test frontmatter --test git-merge-and-resolve-extension --test git-ssh-url --test git-update --test image-processing --test image-resize-callers --test initial-message --test input-transform-streaming-example --test interactive-mode-anthropic-warning --test interactive-mode-clone-command --test interactive-mode-compaction --test interactive-mode-import-command --test interactive-mode-startup-input --test interactive-mode-status --test interactive-mode-suspend --test keybindings-migration --test oauth-selector --test package-command-paths --test package-manager-ssh --test package-manager --test path-utils --test paths --test pi-user-agent --test plan-mode-extension --test plan-mode-utils --test print-mode --test prompt-templates"
       ],
-      "intent": "Independently validate the repaired Coding-agent V7 runtime foundations and fresh executable test batch 2. All declared V7 test targets must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently validate SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2 and fresh V7 batch 2 tests. All declared V7 test targets must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V8-TEST-BATCH-3",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R1"
+        "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/resource-loader.rs",
