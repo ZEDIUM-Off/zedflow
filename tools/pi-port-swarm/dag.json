@@ -919,10 +919,27 @@
       "intent": "Repair the default interactive startup provenance handoff using the persisted source-install registration: make the default ResourceLoader/main path resolve only trusted digest-bound artifacts into the real interactive ExtensionRunner, with an executable default-startup regression rather than direct runner injection. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R1",
-      "kind": "validator",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R4",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
+      ],
+      "intent": "Diagnose and repair the deterministic native-extension startup gate failure without weakening tests: make the default ResourceLoader/main path load only persisted trusted digest-bound source-install registrations into the real interactive ExtensionRunner, and make its executable regression deterministic. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
+    },
+    {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R4"
       ],
       "ownership": [],
       "validation": [
@@ -935,7 +952,7 @@
       "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R11",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R1"
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [
