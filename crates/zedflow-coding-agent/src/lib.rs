@@ -235,3 +235,28 @@ pub mod core {
 
 /// Crate identity, useful while the clean workspace skeleton is being filled.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
+
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-bash-persistence.rs"]
+mod ported_agent_session_bash_persistence;
+#[cfg(test)]
+#[path = "../tests/session-manager/build-context.rs"]
+mod ported_build_context;
+#[cfg(test)]
+#[path = "../tests/session-manager/custom-session-id.rs"]
+mod ported_custom_session_id;
+#[cfg(test)]
+#[path = "../tests/session-manager/file-operations.rs"]
+mod ported_file_operations;
+#[cfg(test)]
+#[path = "../tests/session-manager/labels.rs"]
+mod ported_labels;
+#[cfg(test)]
+#[path = "../tests/session-manager/migration.rs"]
+mod ported_migration;
+#[cfg(test)]
+#[path = "../tests/session-manager/save-entry.rs"]
+mod ported_save_entry;
+#[cfg(test)]
+#[path = "../tests/session-manager/tree-traversal.rs"]
+mod ported_tree_traversal;

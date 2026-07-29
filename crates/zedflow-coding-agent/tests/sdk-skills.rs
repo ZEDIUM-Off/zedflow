@@ -1,7 +1,12 @@
-//! Pi coding-agent test manifest entry: `tests/sdk-skills.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/sdk-skills.rs";
+use zedflow_coding_agent::sdk::ExtensionApi;
+#[test]
+fn extension_api_records_host_registrations() {
+    let mut api = ExtensionApi::default();
+    api.register_tool("read");
+    api.register_command("go");
+    api.on_event("message");
+    let snapshot = api.snapshot();
+    assert_eq!(snapshot["tools"][0], "read");
+    assert_eq!(snapshot["commands"][0], "go");
+    assert_eq!(snapshot["events"][0], "message");
+}

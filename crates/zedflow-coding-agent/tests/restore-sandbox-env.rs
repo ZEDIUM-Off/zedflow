@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/restore-sandbox-env.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/restore-sandbox-env.rs";
+use zedflow_coding_agent::bun_restore_sandbox_env::parse_sandbox_environ;
+#[test]
+fn parses_nul_delimited_environment_without_accepting_invalid_keys() {
+    assert_eq!(
+        parse_sandbox_environ("A=1\0=bad\0missing\0B=x=y\0"),
+        [("A", "1"), ("B", "x=y")]
+    );
+}

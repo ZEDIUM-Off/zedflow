@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/session-manager/migration.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/session-manager/migration.rs";
+use crate::session_manager::SessionInfo;
+#[test]
+fn persisted_session_records_file_while_memory_session_does_not() {
+    let memory = SessionInfo::in_memory("/work", "id");
+    let saved = SessionInfo::persisted("/work", "session.jsonl", "id");
+    assert!(!memory.is_persisted());
+    assert!(saved.is_persisted());
+    assert_eq!(saved.session_file.as_deref(), Some("session.jsonl"));
+}
