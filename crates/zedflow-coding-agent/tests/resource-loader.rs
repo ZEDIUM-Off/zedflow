@@ -28,13 +28,13 @@ fn failed_extension_reload_keeps_active_extensions() {
 }
 
 #[test]
-fn reload_rejects_unregistered_or_substituted_persisted_native_receipts() {
+fn reload_rejects_forged_or_substituted_persisted_native_receipts() {
     use zedflow_coding_agent::{
         extensions::{ExtensionSource, NativeExtensionInstall, receipt},
         resource_loader::DefaultResourceLoader,
     };
 
-    for case in ["unregistered", "receipt", "artifact"] {
+    for case in ["forged", "receipt", "artifact"] {
         let root = std::env::temp_dir().join(format!(
             "zedflow-resource-loader-registration-{case}-{}",
             std::process::id()
@@ -57,16 +57,30 @@ fn reload_rejects_unregistered_or_substituted_persisted_native_receipts() {
             )
             .unwrap(),
         };
-        install.persist(&extensions).unwrap();
         let receipt_path = extensions
             .join("native-extension-installs")
             .join(format!("{}.json", install.receipt.source_sha256));
-        match case {
-            "unregistered" => std::fs::write(
-                receipt_path.with_file_name("unregistered.json"),
-                serde_json::to_vec(&install).unwrap(),
+        if case == "forged" {
+            // Matching receipt-adjacent metadata is not an authorization.
+            std::fs::create_dir_all(receipt_path.parent().unwrap()).unwrap();
+            std::fs::write(&receipt_path, serde_json::to_vec(&install).unwrap()).unwrap();
+            std::fs::write(
+                receipt_path.with_extension("json.registered"),
+                serde_json::to_vec(&serde_json::json!({
+                    "source": install.receipt.source,
+                    "source_dir": install.source_dir,
+                    "artifact": install.artifact,
+                    "source_sha256": install.receipt.source_sha256,
+                    "artifact_sha256": install.receipt.artifact_sha256,
+                }))
+                .unwrap(),
             )
-            .unwrap(),
+            .unwrap();
+        } else {
+            install.persist(&extensions).unwrap();
+        }
+        match case {
+            "forged" => {}
             "receipt" => {
                 let mut receipt: serde_json::Value =
                     serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();

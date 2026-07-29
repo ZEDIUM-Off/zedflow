@@ -8,7 +8,7 @@ Extensions are separately compiled Rust cdylibs loaded through custom ABI v1 for
 
 ## Trust authority
 
-A receipt and any receipt-adjacent registration are untrusted artifact metadata; equality between them never authorizes loading. Source installation must transactionally create the only load authority in an application-managed trust root outside the artifact/receipt directory. That authority binds the installed source identity and verified artifact digest, and `ResourceLoader`/default interactive startup must require its matching binding before dynamic loading. A forged matching receipt/registration pair, substituted receipt, or artifact-path substitution is rejected.
+A receipt and any receipt-adjacent registration are untrusted artifact metadata; equality between them never authorizes loading. Source installation must transactionally create the only load authority in the application-managed `native-extension-trust` root, a sibling of (not a sidecar in) the receipt directory. That authority binds the installed source identity and verified artifact digest, and `ResourceLoader`/default interactive startup must require its matching binding before dynamic loading. A forged matching receipt/registration pair, substituted receipt, or artifact-path substitution is rejected.
 
 The trust root is the exclusive persisted authorization boundary for this local installation model. It must not be reconstructed from artifact-controlled files during load, and failed installation or reload must not publish a partial authorization.
 

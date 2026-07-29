@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const NATIVE_EXTENSION_INSTALLS_DIR: &str = "native-extension-installs";
-const REGISTRATION_SUFFIX: &str = ".registered";
+pub const NATIVE_EXTENSION_TRUST_DIR: &str = "native-extension-trust";
 
-/// The managed installer records this independently from its human-readable receipt.
-/// A receipt alone is never permission to load native code.
+/// The application-managed trust root records this independently from the
+/// human-readable receipt. A receipt alone is never permission to load native code.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct ManagedInstallRegistration {
+struct ManagedInstallTrust {
     source: String,
     source_dir: PathBuf,
     artifact: PathBuf,
@@ -117,36 +117,38 @@ pub struct NativeExtensionInstall {
 }
 
 impl NativeExtensionInstall {
-    /// Atomically records this install under the source-install root.
+    /// Atomically records this install and its application-managed authorization.
     pub fn persist(&self, source_work_dir: &Path) -> Result<PathBuf, String> {
         let directory = source_work_dir.join(NATIVE_EXTENSION_INSTALLS_DIR);
+        let trust_root = managed_trust_root(source_work_dir);
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        fs::create_dir_all(&trust_root).map_err(|error| error.to_string())?;
         let path = directory.join(format!("{}.json", self.receipt.source_sha256));
-        let registration = path.with_extension(format!("json{REGISTRATION_SUFFIX}"));
-        let result = (|| {
-            atomic_write(
-                &path,
-                &serde_json::to_vec(self).map_err(|error| error.to_string())?,
-            )?;
-            atomic_write(
-                &registration,
-                &serde_json::to_vec(&ManagedInstallRegistration {
-                    source: self.receipt.source.clone(),
-                    source_dir: self.source_dir.clone(),
-                    artifact: self.artifact.clone(),
-                    source_sha256: self.receipt.source_sha256.clone(),
-                    artifact_sha256: self.receipt.artifact_sha256.clone(),
-                })
-                .map_err(|error| error.to_string())?,
-            )?;
-            Ok(path)
-        })();
-        result
+        let trust = trust_root.join(format!("{}.json", self.receipt.source_sha256));
+        atomic_write(
+            &path,
+            &serde_json::to_vec(self).map_err(|error| error.to_string())?,
+        )?;
+        // Publish authorization last: a failed install can leave an untrusted receipt,
+        // but can never authorize an incomplete binding.
+        atomic_write(
+            &trust,
+            &serde_json::to_vec(&ManagedInstallTrust {
+                source: self.receipt.source.clone(),
+                source_dir: self.source_dir.clone(),
+                artifact: self.artifact.clone(),
+                source_sha256: self.receipt.source_sha256.clone(),
+                artifact_sha256: self.receipt.artifact_sha256.clone(),
+            })
+            .map_err(|error| error.to_string())?,
+        )?;
+        Ok(path)
     }
 
-    /// Reads every atomically recorded source install from a prior process.
+    /// Reads every source install authorized by the application-managed trust root.
     pub fn load_persisted(source_work_dir: &Path) -> Result<Vec<Self>, String> {
         let directory = source_work_dir.join(NATIVE_EXTENSION_INSTALLS_DIR);
+        let trust_root = managed_trust_root(source_work_dir);
         let entries = match fs::read_dir(directory) {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -168,20 +170,21 @@ impl NativeExtensionInstall {
                 let install: Self =
                     serde_json::from_slice(&fs::read(&path).map_err(|error| error.to_string())?)
                         .map_err(|error| error.to_string())?;
-                let registration: ManagedInstallRegistration = serde_json::from_slice(
-                    &fs::read(path.with_extension(format!("json{REGISTRATION_SUFFIX}"))).map_err(
-                        |_| "native extension receipt is not managed-installed".to_owned(),
-                    )?,
+                let trust: ManagedInstallTrust = serde_json::from_slice(
+                    &fs::read(trust_root.join(format!("{}.json", install.receipt.source_sha256)))
+                        .map_err(|_| {
+                        "native extension receipt is not application-authorized".to_owned()
+                    })?,
                 )
-                .map_err(|_| "native extension receipt registration is invalid".to_owned())?;
-                if registration.source != install.receipt.source
-                    || registration.source_dir != install.source_dir
-                    || registration.artifact != install.artifact
-                    || registration.source_sha256 != install.receipt.source_sha256
-                    || registration.artifact_sha256 != install.receipt.artifact_sha256
+                .map_err(|_| "native extension trust record is invalid".to_owned())?;
+                if trust.source != install.receipt.source
+                    || trust.source_dir != install.source_dir
+                    || trust.artifact != install.artifact
+                    || trust.source_sha256 != install.receipt.source_sha256
+                    || trust.artifact_sha256 != install.receipt.artifact_sha256
                 {
                     return Err(
-                        "native extension receipt does not match managed registration".into(),
+                        "native extension receipt does not match application trust record".into(),
                     );
                 }
                 Ok(install)
@@ -202,6 +205,13 @@ impl NativeExtensionInstall {
         }
         Ok((self.artifact.clone(), artifact_sha256))
     }
+}
+
+fn managed_trust_root(source_work_dir: &Path) -> PathBuf {
+    source_work_dir
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(NATIVE_EXTENSION_TRUST_DIR)
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
