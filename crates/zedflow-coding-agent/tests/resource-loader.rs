@@ -28,6 +28,69 @@ fn failed_extension_reload_keeps_active_extensions() {
 }
 
 #[test]
+fn reload_rejects_unregistered_or_substituted_persisted_native_receipts() {
+    use zedflow_coding_agent::{
+        extensions::{ExtensionSource, NativeExtensionInstall, receipt},
+        resource_loader::DefaultResourceLoader,
+    };
+
+    for case in ["unregistered", "receipt", "artifact"] {
+        let root = std::env::temp_dir().join(format!(
+            "zedflow-resource-loader-registration-{case}-{}",
+            std::process::id()
+        ));
+        let extensions = root.join(".pi/extensions");
+        let source = extensions.join("source");
+        let artifact = root.join("store/extension");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        std::fs::write(source.join("lib.rs"), "source").unwrap();
+        std::fs::write(&artifact, "local artifact").unwrap();
+        let install = NativeExtensionInstall {
+            source_dir: source.clone(),
+            artifact: artifact.clone(),
+            receipt: receipt(
+                &ExtensionSource::Path(source.clone()),
+                &source,
+                &artifact,
+                None,
+            )
+            .unwrap(),
+        };
+        install.persist(&extensions).unwrap();
+        let receipt_path = extensions
+            .join("native-extension-installs")
+            .join(format!("{}.json", install.receipt.source_sha256));
+        match case {
+            "unregistered" => std::fs::write(
+                receipt_path.with_file_name("unregistered.json"),
+                serde_json::to_vec(&install).unwrap(),
+            )
+            .unwrap(),
+            "receipt" => {
+                let mut receipt: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+                receipt["receipt"]["source"] = serde_json::json!("crate:substituted@1.0.0");
+                std::fs::write(&receipt_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+            }
+            "artifact" => {
+                let mut receipt: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&receipt_path).unwrap()).unwrap();
+                receipt["artifact"] = serde_json::json!(root.join("substituted-artifact"));
+                std::fs::write(&receipt_path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+            }
+            _ => unreachable!(),
+        }
+
+        let mut loader = DefaultResourceLoader::new(&root, root.join("agent"));
+        loader.reload();
+        assert!(loader.native_extension_artifacts().is_empty(), "{case}");
+        assert!(!loader.get_extensions().errors.is_empty(), "{case}");
+        let _ = std::fs::remove_dir_all(root);
+    }
+}
+
+#[test]
 fn reload_discovers_and_verifies_persisted_native_extension_receipts() {
     use zedflow_coding_agent::{
         extensions::{ExtensionSource, NativeExtensionInstall, receipt},

@@ -7,6 +7,18 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const NATIVE_EXTENSION_INSTALLS_DIR: &str = "native-extension-installs";
+const REGISTRATION_SUFFIX: &str = ".registered";
+
+/// The managed installer records this independently from its human-readable receipt.
+/// A receipt alone is never permission to load native code.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ManagedInstallRegistration {
+    source: String,
+    source_dir: PathBuf,
+    artifact: PathBuf,
+    source_sha256: String,
+    artifact_sha256: String,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ExtensionSource {
@@ -110,23 +122,25 @@ impl NativeExtensionInstall {
         let directory = source_work_dir.join(NATIVE_EXTENSION_INSTALLS_DIR);
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
         let path = directory.join(format!("{}.json", self.receipt.source_sha256));
-        let pending = path.with_extension(format!(
-            "json.pending-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system clock after Unix epoch")
-                .as_nanos()
-        ));
+        let registration = path.with_extension(format!("json{REGISTRATION_SUFFIX}"));
         let result = (|| {
-            let bytes = serde_json::to_vec(self).map_err(|error| error.to_string())?;
-            fs::write(&pending, bytes).map_err(|error| error.to_string())?;
-            fs::rename(&pending, &path).map_err(|error| error.to_string())?;
+            atomic_write(
+                &path,
+                &serde_json::to_vec(self).map_err(|error| error.to_string())?,
+            )?;
+            atomic_write(
+                &registration,
+                &serde_json::to_vec(&ManagedInstallRegistration {
+                    source: self.receipt.source.clone(),
+                    source_dir: self.source_dir.clone(),
+                    artifact: self.artifact.clone(),
+                    source_sha256: self.receipt.source_sha256.clone(),
+                    artifact_sha256: self.receipt.artifact_sha256.clone(),
+                })
+                .map_err(|error| error.to_string())?,
+            )?;
             Ok(path)
         })();
-        if pending.exists() {
-            let _ = fs::remove_file(pending);
-        }
         result
     }
 
@@ -139,10 +153,38 @@ impl NativeExtensionInstall {
             Err(error) => return Err(error.to_string()),
         };
         entries
-            .map(|entry| {
-                let path = entry.map_err(|error| error.to_string())?.path();
-                serde_json::from_slice(&fs::read(path).map_err(|error| error.to_string())?)
-                    .map_err(|error| error.to_string())
+            .filter_map(|entry| match entry {
+                Ok(entry) => {
+                    let path = entry.path();
+                    (path
+                        .extension()
+                        .is_some_and(|extension| extension == "json"))
+                    .then_some(Ok(path))
+                }
+                Err(error) => Some(Err(error.to_string())),
+            })
+            .map(|path| {
+                let path = path?;
+                let install: Self =
+                    serde_json::from_slice(&fs::read(&path).map_err(|error| error.to_string())?)
+                        .map_err(|error| error.to_string())?;
+                let registration: ManagedInstallRegistration = serde_json::from_slice(
+                    &fs::read(path.with_extension(format!("json{REGISTRATION_SUFFIX}"))).map_err(
+                        |_| "native extension receipt is not managed-installed".to_owned(),
+                    )?,
+                )
+                .map_err(|_| "native extension receipt registration is invalid".to_owned())?;
+                if registration.source != install.receipt.source
+                    || registration.source_dir != install.source_dir
+                    || registration.artifact != install.artifact
+                    || registration.source_sha256 != install.receipt.source_sha256
+                    || registration.artifact_sha256 != install.receipt.artifact_sha256
+                {
+                    return Err(
+                        "native extension receipt does not match managed registration".into(),
+                    );
+                }
+                Ok(install)
             })
             .collect()
     }
@@ -160,6 +202,25 @@ impl NativeExtensionInstall {
         }
         Ok((self.artifact.clone(), artifact_sha256))
     }
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let pending = path.with_extension(format!(
+        "pending-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock after Unix epoch")
+            .as_nanos()
+    ));
+    let result = (|| {
+        fs::write(&pending, bytes).map_err(|error| error.to_string())?;
+        fs::rename(&pending, path).map_err(|error| error.to_string())
+    })();
+    if pending.exists() {
+        let _ = fs::remove_file(pending);
+    }
+    result
 }
 
 pub fn receipt(
