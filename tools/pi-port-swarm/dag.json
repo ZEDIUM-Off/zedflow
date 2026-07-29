@@ -619,10 +619,26 @@
       "intent": "Port the remaining frozen Pi resources surface\u2014atomic extension/resource reload, skills, prompt templates, keybindings, exports, footer/provider metadata, telemetry, timing and platform utilities\u2014against the validated Rust extension runtime. Failed extension reload must preserve prior active state and surface diagnostics."
     },
     {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1",
-      "kind": "validator",
+      "id": "SEM-CA-V3F-RUST-EXTENSIONS-ABI-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V3E-REMAINING-RESOURCES-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/abi.rs",
+        "crates/zedflow-coding-agent/tests/extensions-abi-v1.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extensions-abi-v1"
+      ],
+      "intent": "Repair the deterministic ABI v1 table-validation failure at crates/zedflow-coding-agent/tests/extensions-abi-v1.rs:17. Make a valid ABI_V1 table with the declared struct size and required callbacks pass validation while preserving rejection of malformed tables and invalid/oversized envelopes. Do not change ABI scope, loader behavior, dependencies, or unrelated extension surfaces."
+    },
+    {
+      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V3F-RUST-EXTENSIONS-ABI-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -636,13 +652,13 @@
         "cargo test -p zedflow-coding-agent --test extension-package-manager",
         "cargo test -p zedflow-coding-agent --test resource-extension-runtime"
       ],
-      "intent": "Validate the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts or marker tests."
+      "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the ABI v1 repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
     },
     {
       "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1"
+        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [],
