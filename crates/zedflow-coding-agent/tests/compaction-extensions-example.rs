@@ -1,7 +1,14 @@
-//! Pi coding-agent test manifest entry: `tests/compaction-extensions-example.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use std::sync::Arc;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/compaction-extensions-example.rs";
+use zedflow_coding_agent::extensions::{create_extension_runtime, define_tool};
+
+#[test]
+fn extension_runtime_registers_a_callable_tool() {
+    let mut runtime = create_extension_runtime();
+    runtime.register_tool(
+        define_tool("summary", "summarize a session"),
+        Arc::new(|_, _| Ok(serde_json::Value::Null)),
+    );
+    assert_eq!(runtime.tools.len(), 1);
+    assert_eq!(runtime.registered_tools.len(), 1);
+}

@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/clipboard-native.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::utils::clipboard_native::load_clipboard_native;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/clipboard-native.rs";
+#[test]
+fn native_clipboard_loading_is_fallible_not_panicking() {
+    let _ = load_clipboard_native();
+}

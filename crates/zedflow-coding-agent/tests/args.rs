@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/args.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::parse_args;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/args.rs";
+#[test]
+fn parses_print_message_without_treating_flags_as_values() {
+    let args = parse_args(["--print", "hello", "--no-tools"]);
+    assert!(args.print);
+    assert_eq!(args.messages, ["hello"]);
+    assert!(args.no_tools);
+}

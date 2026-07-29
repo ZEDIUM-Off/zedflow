@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/ansi-utils.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::utils::ansi::strip_ansi;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/ansi-utils.rs";
+#[test]
+fn strips_csi_and_osc_sequences() {
+    assert_eq!(
+        strip_ansi("\x1b[31mred\x1b[0m \x1b]8;;url\x07link\x1b]8;;\x07"),
+        "red link"
+    );
+}

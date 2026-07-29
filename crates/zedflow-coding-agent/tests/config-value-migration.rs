@@ -1,7 +1,15 @@
-//! Pi coding-agent test manifest entry: `tests/config-value-migration.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use std::path::Path;
+use zedflow_coding_agent::config::{InstallMethod, detect_install_method_from_paths};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/config-value-migration.rs";
+#[test]
+fn install_method_detection_handles_pnpm_paths() {
+    assert_eq!(
+        detect_install_method_from_paths(
+            Path::new("/home/me/.pnpm/pi"),
+            Path::new("/bin/pi"),
+            false,
+            false
+        ),
+        InstallMethod::Pnpm
+    );
+}

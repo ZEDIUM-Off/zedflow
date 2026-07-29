@@ -1,7 +1,11 @@
-//! Pi coding-agent test manifest entry: `tests/extensions-discovery.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::extensions::discover_and_load_extensions;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/extensions-discovery.rs";
+#[test]
+fn empty_directory_has_no_extensions() {
+    let directory =
+        std::env::temp_dir().join(format!("zedflow-empty-extensions-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let loaded = discover_and_load_extensions(&directory);
+    assert!(loaded.extensions.is_empty());
+    let _ = std::fs::remove_dir(&directory);
+}
