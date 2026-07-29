@@ -55,6 +55,10 @@ pub struct AbiV1 {
     pub destroy: Option<extern "C" fn(AbiHandle) -> AbiStatus>,
 }
 
+impl AbiV1 {
+    pub const STRUCT_SIZE: u64 = std::mem::size_of::<Self>() as u64;
+}
+
 pub type AbiEntryV1 = unsafe extern "C" fn() -> *const AbiV1;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -132,7 +136,7 @@ pub fn validate_table_header(header: AbiTableHeader) -> Result<(), String> {
             header.abi_version
         ));
     }
-    if header.struct_size != std::mem::size_of::<AbiV1>() as u64 {
+    if header.struct_size != AbiV1::STRUCT_SIZE {
         return Err(format!(
             "invalid extension ABI table size: {}",
             header.struct_size

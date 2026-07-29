@@ -17,7 +17,7 @@ extern "C" fn destroy(_: AbiHandle) -> i32 {
 #[test]
 fn abi_v1_rejects_wrong_table_and_envelope_versions() {
     let mut table = AbiV1 {
-        struct_size: std::mem::size_of::<AbiV1>() as u64,
+        struct_size: AbiV1::STRUCT_SIZE,
         abi_version: ABI_V1,
         create: Some(create),
         call: Some(call),
@@ -26,6 +26,9 @@ fn abi_v1_rejects_wrong_table_and_envelope_versions() {
     };
     assert!(validate_table(&table).is_ok());
     table.struct_size -= 1;
+    assert!(validate_table(&table).is_err());
+    table.struct_size = AbiV1::STRUCT_SIZE;
+    table.create = None;
     assert!(validate_table(&table).is_err());
     assert!(JsonEnvelope::parse(br#"{"version":2,"payload":null}"#).is_err());
     assert!(JsonEnvelope::parse(&vec![b'x'; MAX_JSON_BYTES + 1]).is_err());
