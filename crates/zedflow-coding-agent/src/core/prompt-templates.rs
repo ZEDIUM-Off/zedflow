@@ -61,14 +61,15 @@ pub fn substitute_args(content: &str, args: &[String]) -> String {
     while let Some(start) = rest.find('$') {
         out.push_str(&rest[..start]);
         let tail = &rest[start + 1..];
-        if let Some(after) = tail.strip_prefix('@') {
-            if let Some(slice) = after.strip_prefix(':') {
-                if let Some((consumed, replacement)) = parse_slice(slice, args) {
-                    out.push_str(&replacement);
-                    rest = &slice[consumed..];
-                    continue;
-                }
+        if let Some(slice) = tail.strip_prefix("{@:") {
+            if let Some((consumed, replacement)) = parse_slice(slice, args) {
+                out.push_str(&replacement);
+                rest = &slice[consumed..];
+                continue;
             }
+            out.push('$');
+            rest = tail;
+        } else if let Some(after) = tail.strip_prefix('@') {
             out.push_str(&args.join(" "));
             rest = after;
         } else if let Some(after) = tail.strip_prefix("ARGUMENTS") {
@@ -128,24 +129,30 @@ fn parse_slice(input: &str, args: &[String]) -> Option<(usize, String)> {
             return None;
         }
         let size = length[..length_count].parse::<usize>().ok()?;
-        return Some((
-            count + 1 + length_count,
-            args.iter()
-                .skip(start)
-                .take(size)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(" "),
-        ));
+        let end = count + 1 + length_count;
+        (input.as_bytes().get(end) == Some(&b'}')).then(|| {
+            (
+                end + 1,
+                args.iter()
+                    .skip(start)
+                    .take(size)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+        })
+    } else {
+        (input.as_bytes().get(count) == Some(&b'}')).then(|| {
+            (
+                count + 1,
+                args.iter()
+                    .skip(start)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            )
+        })
     }
-    Some((
-        count,
-        args.iter()
-            .skip(start)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(" "),
-    ))
 }
 
 pub fn expand_prompt_template(text: &str, templates: &[PromptTemplate]) -> String {
