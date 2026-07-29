@@ -1,7 +1,62 @@
-//! Pi coding-agent test manifest entry: `tests/package-manager.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/package-manager.rs";
+use zedflow_coding_agent::package_manager::{
+    DefaultPackageManager, NativePackageSpec, PackageScope,
+};
+
+fn temp_dir() -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "zedflow-package-manager-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ))
+}
+
+#[test]
+fn installs_lists_and_removes_only_locally_built_source_extensions() {
+    let root = temp_dir();
+    let source = root.join("input");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-extension");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::copy(fixture.join("Cargo.lock"), source.join("Cargo.lock")).unwrap();
+    fs::copy(fixture.join("src/lib.rs"), source.join("src/lib.rs")).unwrap();
+    fs::write(
+        source.join("Cargo.toml"),
+        fs::read_to_string(fixture.join("Cargo.toml"))
+            .unwrap()
+            .replace(
+                "path = \"../../..\"",
+                &format!("path = {:?}", PathBuf::from(env!("CARGO_MANIFEST_DIR"))),
+            ),
+    )
+    .unwrap();
+
+    let manager = DefaultPackageManager::new(root.join("cwd"), root.join("agent"));
+    let source_spec = format!("path:{}", source.display());
+    let artifact = PathBuf::from(format!(
+        "{}zedflow_rust_extension_fixture{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    let install = manager
+        .install_and_persist(
+            &NativePackageSpec {
+                source: source_spec.clone(),
+                artifact,
+            },
+            PackageScope::User,
+        )
+        .unwrap();
+    assert!(install.artifact.is_file());
+    assert_eq!(manager.list_configured_packages().len(), 1);
+    assert!(manager.remove(&source_spec, PackageScope::User).unwrap());
+    assert!(manager.list_configured_packages().is_empty());
+    let _ = fs::remove_dir_all(root);
+}
