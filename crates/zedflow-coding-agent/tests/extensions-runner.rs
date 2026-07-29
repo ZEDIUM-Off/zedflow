@@ -1,8 +1,16 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    fs,
+    path::PathBuf,
+    process::Command,
+    sync::{Arc, Mutex},
+};
 
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use zedflow_coding_agent::extensions::loader::load_native_extensions;
 use zedflow_coding_agent::extensions::{
-    Extension, ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionRunner, define_tool,
+    ABI_V1, Extension, ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionRunner,
+    JsonEnvelope, NativeExtensionArtifact, define_tool,
 };
 
 fn runner() -> ExtensionRunner {
@@ -69,5 +77,57 @@ fn tools_use_current_context_and_reject_stale_contexts() {
     assert_eq!(
         runner.invoke_tool("cwd", json!({})).unwrap_err().message,
         "extension context is stale"
+    );
+}
+
+#[test]
+fn native_artifacts_activate_into_the_production_runner() {
+    let manifest =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-extension/Cargo.toml");
+    let target = std::env::temp_dir().join("zedflow-native-runner-fixture-target");
+    assert!(
+        Command::new("cargo")
+            .args(["build", "--manifest-path"])
+            .arg(manifest)
+            .args(["--target-dir"])
+            .arg(&target)
+            .status()
+            .expect("build native fixture")
+            .success()
+    );
+
+    let path = target.join("debug").join(format!(
+        "{}zedflow_rust_extension_fixture{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    let artifact = NativeExtensionArtifact {
+        sha256: format!(
+            "{:x}",
+            Sha256::digest(fs::read(&path).expect("read native fixture"))
+        ),
+        path,
+        trusted: true,
+    };
+    let mut runner = load_native_extensions(
+        &[artifact],
+        &JsonEnvelope {
+            version: ABI_V1,
+            payload: json!({"start": true}),
+        },
+    )
+    .expect("load and activate native fixture");
+    runner.set_context(
+        zedflow_coding_agent::extensions::ExtensionMode::Tui,
+        "/work",
+        true,
+    );
+
+    assert_eq!(runner.extensions.len(), 1);
+    assert_eq!(
+        runner
+            .invoke_tool("fixture-tool", json!({"answer": 42}))
+            .unwrap(),
+        json!({"echo": {"arguments": {"answer": 42}, "context": {"cwd": "/work", "generation": 0, "hasUi": true}, "kind": "tool", "name": "fixture-tool"}})
     );
 }

@@ -2,11 +2,14 @@ use std::{collections::HashMap, sync::Arc};
 
 use serde_json::Value;
 
-use super::types::{
-    CommandHandler, Extension, ExtensionContext, ExtensionError, ExtensionErrorListener,
-    ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRuntime, InputEvent,
-    InputEventResult, ProjectTrustEvent, ProjectTrustEventDecision, ProjectTrustEventResult,
-    SessionActionResult, ToolHandler,
+use super::{
+    loader::NativeExtension,
+    types::{
+        CommandHandler, Extension, ExtensionContext, ExtensionError, ExtensionErrorListener,
+        ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRuntime, InputEvent,
+        InputEventResult, ProjectTrustEvent, ProjectTrustEventDecision, ProjectTrustEventResult,
+        SessionActionResult, ToolHandler,
+    },
 };
 
 pub type NewSessionHandler = Box<dyn Fn() + Send + Sync>;
@@ -62,6 +65,18 @@ impl ExtensionRunner {
             },
             shutdown: false,
         }
+    }
+
+    /// Activates loaded native extensions before exposing their runtime to callers.
+    pub fn from_native_extensions(
+        extensions: Vec<Extension>,
+        native_extensions: Vec<NativeExtension>,
+    ) -> Result<Self, String> {
+        let mut runtime = ExtensionRuntime::default();
+        for extension in native_extensions {
+            extension.activate(&mut runtime)?;
+        }
+        Ok(Self::with_runtime(extensions, runtime))
     }
 
     pub fn set_context(&mut self, mode: ExtensionMode, cwd: impl Into<String>, has_ui: bool) {

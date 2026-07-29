@@ -21,9 +21,12 @@ use super::abi::{
     AbiBytes, AbiEntryV1, AbiHandle, AbiOwnedBytes, AbiTableHeader, AbiV1, JsonEnvelope,
     validate_handle, validate_table, validate_table_header,
 };
-use super::types::{
-    Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult, RegisteredCommand,
-    define_tool,
+use super::{
+    runner::ExtensionRunner,
+    types::{
+        Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult, RegisteredCommand,
+        define_tool,
+    },
 };
 
 static CACHE: OnceLock<Mutex<HashMap<String, Extension>>> = OnceLock::new();
@@ -386,6 +389,38 @@ pub fn clear_extension_cache() {
 #[must_use]
 pub fn create_extension_runtime() -> ExtensionRuntime {
     ExtensionRuntime::default()
+}
+
+/// Loads trusted native artifacts and activates them into a runner-owned runtime.
+pub fn load_native_extensions(
+    artifacts: &[NativeExtensionArtifact],
+    request: &JsonEnvelope,
+) -> Result<ExtensionRunner, String> {
+    let mut extensions = Vec::with_capacity(artifacts.len());
+    let mut native_extensions = Vec::with_capacity(artifacts.len());
+    for artifact in artifacts {
+        native_extensions.push(NativeExtension::load(artifact, request)?);
+        let name = artifact
+            .path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or("native-extension")
+            .to_owned();
+        extensions.push(Extension {
+            name,
+            source: create_synthetic_source_info(
+                artifact.path.display().to_string(),
+                "native",
+                Some(SourceScope::Project),
+                Some(SourceOrigin::TopLevel),
+                artifact
+                    .path
+                    .parent()
+                    .map(|path| path.display().to_string()),
+            ),
+        });
+    }
+    ExtensionRunner::from_native_extensions(extensions, native_extensions)
 }
 
 pub fn load_extension_from_factory(
