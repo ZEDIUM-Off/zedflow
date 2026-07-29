@@ -1368,11 +1368,25 @@
       "intent": "Port frozen Pi status-indicator behavior into the owned Rust module: idle two-line rendering, working/retry/compaction/branch-summary indicators, retry countdown disposal, and public runtime types. Do not change callers or tests."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-R2",
+      "id": "SEM-CA-V8-SESSION-SELECTOR-SEARCH-PORT-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-PROVIDER-ATTRIBUTION-PORT-R1",
         "SEM-CA-V8-STATUS-INDICATOR-PORT-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port frozen Pi session-selector-search behavior into the owned Rust module: quoted and fuzzy token parsing, re: regex parsing/error handling, named-session filtering, relevance scoring, and recent/relevance ordering through public runtime types. Do not change callers or tests."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-R3",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V8-SESSION-SELECTOR-SEARCH-PORT-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/resource-loader.rs",
@@ -1418,10 +1432,10 @@
       "intent": "Freshly convert frozen Pi Coding-agent test batch 3 into real executable Rust tests after the restoreSandboxEnv source port. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise actual public/runtime behavior."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R2",
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R3",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-R2"
+        "SEM-CA-V8-TEST-BATCH-3-R3"
       ],
       "ownership": [],
       "validation": [
@@ -1436,7 +1450,7 @@
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R2"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R3"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
