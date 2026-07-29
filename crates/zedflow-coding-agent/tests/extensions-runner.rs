@@ -125,6 +125,18 @@ fn native_artifacts_activate_into_the_production_runner() {
 
     assert_eq!(runner.extensions.len(), 1);
     assert_eq!(
+        runner.emit(ExtensionEvent {
+            kind: ExtensionEventKind::SessionStart,
+            data: json!({"session":"one"}),
+        })[0]["echo"],
+        json!({
+            "kind": "event",
+            "event": "session_start",
+            "data": {"session":"one"},
+            "context": {"cwd": "/work", "generation": 0, "hasUi": true},
+        })
+    );
+    assert_eq!(
         runner
             .invoke_tool("fixture-tool", json!({"answer": 42}))
             .unwrap(),

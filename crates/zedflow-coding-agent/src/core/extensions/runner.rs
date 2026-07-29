@@ -73,10 +73,17 @@ impl ExtensionRunner {
         native_extensions: Vec<NativeExtension>,
     ) -> Result<Self, String> {
         let mut runtime = ExtensionRuntime::default();
-        for extension in native_extensions {
-            extension.activate(&mut runtime)?;
+        let mut handlers = Vec::new();
+        for (index, extension) in native_extensions.into_iter().enumerate() {
+            for (kind, handler) in extension.activate(&mut runtime)? {
+                handlers.push((extensions[index].name.clone(), kind, handler));
+            }
         }
-        Ok(Self::with_runtime(extensions, runtime))
+        let mut runner = Self::with_runtime(extensions, runtime);
+        for (extension, kind, handler) in handlers {
+            runner.on(extension, kind, handler);
+        }
+        Ok(runner)
     }
 
     pub fn set_context(&mut self, mode: ExtensionMode, cwd: impl Into<String>, has_ui: bool) {

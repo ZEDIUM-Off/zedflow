@@ -24,8 +24,8 @@ use super::abi::{
 use super::{
     runner::ExtensionRunner,
     types::{
-        Extension, ExtensionFactory, ExtensionRuntime, LoadExtensionsResult, RegisteredCommand,
-        define_tool,
+        Extension, ExtensionEventKind, ExtensionFactory, ExtensionHandler, ExtensionRuntime,
+        LoadExtensionsResult, RegisteredCommand, define_tool,
     },
 };
 
@@ -145,9 +145,12 @@ impl NativeExtension {
         result
     }
 
-    /// Registers ABI-declared tools, commands, and providers with the host runtime.
+    /// Registers ABI-declared runtime entries and returns lifecycle handlers.
     /// The activation request is an ordinary ABI call so v1 needs no additional entry point.
-    pub fn activate(self, runtime: &mut ExtensionRuntime) -> Result<(), String> {
+    pub fn activate(
+        self,
+        runtime: &mut ExtensionRuntime,
+    ) -> Result<Vec<(ExtensionEventKind, ExtensionHandler)>, String> {
         let reply = self.call(&JsonEnvelope {
             version: super::abi::ABI_V1,
             payload: json!({"kind": "activate"}),
@@ -160,6 +163,10 @@ impl NativeExtension {
         // Validate every registration before changing the runtime.
         let tools = api_names(api, "tools", "tool")?;
         let commands = api_names(api, "commands", "command")?;
+        let events = api_names(api, "events", "event")?
+            .into_iter()
+            .map(|name| native_event_kind(&name).map(|kind| (name, kind)))
+            .collect::<Result<Vec<_>, _>>()?;
         let providers = api
             .get("providers")
             .and_then(Value::as_object)
@@ -224,7 +231,32 @@ impl NativeExtension {
         for (name, config) in providers {
             runtime.register_provider(super::types::ProviderConfig { name, config });
         }
-        Ok(())
+        Ok(events
+            .into_iter()
+            .map(|(event_name, kind)| {
+                let native = Arc::clone(&extension);
+                (
+                    kind,
+                    Arc::new(
+                        move |event: &super::types::ExtensionEvent,
+                              context: &mut super::types::ExtensionContext| {
+                        native
+                            .call(&JsonEnvelope {
+                                version: super::abi::ABI_V1,
+                                payload: json!({
+                                    "kind": "event",
+                                    "event": event_name,
+                                    "data": event.data,
+                                    "context": native_context(context),
+                                }),
+                            })
+                            .map_err(native_error)
+                            .map(|reply| reply.payload.get("result").cloned())
+                        },
+                    ) as ExtensionHandler,
+                )
+            })
+            .collect())
     }
 
     /// Idempotently disables this instance. Its library remains loaded.
@@ -330,10 +362,55 @@ fn api_names(
         .map(|value| {
             value
                 .as_str()
+                .filter(|name| !name.is_empty())
                 .map(str::to_owned)
-                .ok_or_else(|| format!("native extension {kind} name is not a string"))
+                .ok_or_else(|| format!("native extension returned invalid {kind} registration"))
         })
         .collect()
+}
+
+fn native_event_kind(name: &str) -> Result<ExtensionEventKind, String> {
+    use ExtensionEventKind::*;
+    let kind = match name {
+        "project_trust" => ProjectTrust,
+        "resources_discover" => ResourcesDiscover,
+        "session_start" => SessionStart,
+        "session_info_changed" => SessionInfoChanged,
+        "session_before_switch" => SessionBeforeSwitch,
+        "session_before_fork" => SessionBeforeFork,
+        "session_before_compact" => SessionBeforeCompact,
+        "session_compact" => SessionCompact,
+        "session_shutdown" => SessionShutdown,
+        "session_before_tree" => SessionBeforeTree,
+        "session_tree" => SessionTree,
+        "context" => Context,
+        "before_provider_request" => BeforeProviderRequest,
+        "before_provider_headers" => BeforeProviderHeaders,
+        "after_provider_response" => AfterProviderResponse,
+        "before_agent_start" => BeforeAgentStart,
+        "agent_start" => AgentStart,
+        "agent_end" => AgentEnd,
+        "turn_start" => TurnStart,
+        "turn_end" => TurnEnd,
+        "message_start" => MessageStart,
+        "message_update" => MessageUpdate,
+        "message_end" => MessageEnd,
+        "tool_execution_start" => ToolExecutionStart,
+        "tool_execution_update" => ToolExecutionUpdate,
+        "tool_execution_end" => ToolExecutionEnd,
+        "model_select" => ModelSelect,
+        "thinking_level_select" => ThinkingLevelSelect,
+        "user_bash" => UserBash,
+        "input" => Input,
+        "tool_call" => ToolCall,
+        "tool_result" => ToolResult,
+        _ => {
+            return Err(format!(
+                "native extension returned unknown event registration: {name}"
+            ));
+        }
+    };
+    Ok(kind)
 }
 
 fn native_context(context: &super::types::ExtensionContext) -> Value {
