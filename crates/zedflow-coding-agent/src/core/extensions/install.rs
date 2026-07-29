@@ -6,6 +6,173 @@ use std::{
 
 use super::provenance::{ExtensionSource, ProvenanceReceipt, digest_file, digest_tree};
 
+/// Obtains a source tree only after the caller has approved the project.
+/// Registry and Git sources are copied or checked out as source; no downloaded
+/// executable is ever accepted.
+pub fn acquire_source(
+    source: &ExtensionSource,
+    cache: &Path,
+    trusted: bool,
+) -> Result<PathBuf, String> {
+    if !trusted {
+        return Err("extension source installation requires a trusted project".into());
+    }
+    match source {
+        ExtensionSource::Path(path) => fs::canonicalize(path)
+            .map_err(|error| format!("failed to resolve extension path: {error}"))
+            .and_then(|path| {
+                if path.is_dir() {
+                    Ok(path)
+                } else {
+                    Err("extension path source must be a directory".into())
+                }
+            }),
+        ExtensionSource::Github {
+            owner,
+            repo,
+            commit,
+            package,
+        } => acquire_github(owner, repo, commit, package.as_deref(), cache),
+        ExtensionSource::Crate { name, version } => acquire_crate(name, version, cache),
+    }
+}
+
+fn acquire_github(
+    owner: &str,
+    repo: &str,
+    commit: &str,
+    package: Option<&str>,
+    cache: &Path,
+) -> Result<PathBuf, String> {
+    let destination = cache.join("github").join(owner).join(repo).join(commit);
+    if !destination.exists() {
+        fs::create_dir_all(destination.parent().expect("github cache parent"))
+            .map_err(|error| error.to_string())?;
+        let status = Command::new("git")
+            .args([
+                "clone",
+                "--no-checkout",
+                &format!("https://github.com/{owner}/{repo}.git"),
+            ])
+            .arg(&destination)
+            .status()
+            .map_err(|error| format!("failed to start git: {error}"))?;
+        if !status.success() {
+            return Err("Git source retrieval failed".into());
+        }
+        run_git_in(&destination, &["fetch", "--depth", "1", "origin", commit])?;
+        run_git_in(&destination, &["checkout", "--detach", commit])?;
+    }
+    let actual = git_output(&destination, &["rev-parse", "HEAD"])?;
+    if actual.trim() != commit {
+        return Err("GitHub extension checkout does not match its pinned commit".into());
+    }
+    let root = package.map_or_else(|| destination.clone(), |package| destination.join(package));
+    if root.is_dir() {
+        Ok(root)
+    } else {
+        Err("GitHub extension package directory does not exist".into())
+    }
+}
+
+fn acquire_crate(name: &str, version: &str, cache: &Path) -> Result<PathBuf, String> {
+    let work = cache.join("crates").join(name).join(version);
+    let manifest = work.join("Cargo.toml");
+    if !manifest.exists() {
+        fs::create_dir_all(work.join("src")).map_err(|error| error.to_string())?;
+        fs::write(
+            &manifest,
+            format!(
+                "[package]\nname = \"zedflow-extension-fetch\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[dependencies]\nextension = {{ package = \"{name}\", version = \"={version}\" }}\n"
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(work.join("src/lib.rs"), "").map_err(|error| error.to_string())?;
+        run_cargo(&["generate-lockfile", "--manifest-path"], &manifest)?;
+        run_cargo(&["fetch", "--locked", "--manifest-path"], &manifest)?;
+    }
+    let output = cargo_output(
+        &[
+            "metadata",
+            "--offline",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ],
+        &manifest,
+    )?;
+    let metadata: serde_json::Value = serde_json::from_str(&output)
+        .map_err(|error| format!("invalid Cargo metadata: {error}"))?;
+    metadata["packages"]
+        .as_array()
+        .and_then(|packages| {
+            packages.iter().find_map(|package| {
+                (package["name"].as_str() == Some(name)
+                    && package["version"].as_str() == Some(version)
+                    && package["source"]
+                        .as_str()
+                        .is_some_and(|source| source.starts_with("registry+")))
+                .then(|| package["manifest_path"].as_str())
+                .flatten()
+            })
+        })
+        .map(PathBuf::from)
+        .and_then(|manifest| manifest.parent().map(Path::to_path_buf))
+        .ok_or_else(|| "Cargo did not resolve the requested registry crate source".into())
+}
+
+fn run_cargo(args: &[&str], manifest: &Path) -> Result<(), String> {
+    let mut command = Command::new("cargo");
+    let status = command
+        .args(args)
+        .arg(manifest)
+        .status()
+        .map_err(|error| format!("failed to start cargo: {error}"))?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "Cargo source retrieval failed".into())
+}
+
+fn cargo_output(args: &[&str], manifest: &Path) -> Result<String, String> {
+    let output = Command::new("cargo")
+        .args(args)
+        .arg(manifest)
+        .output()
+        .map_err(|error| format!("failed to start cargo: {error}"))?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+        .ok_or_else(|| "Cargo metadata failed".into())
+}
+
+fn run_git_in(cwd: &Path, args: &[&str]) -> Result<(), String> {
+    run_git_command(Command::new("git").args(args).current_dir(cwd))
+}
+
+fn run_git_command(command: &mut Command) -> Result<(), String> {
+    command
+        .status()
+        .map_err(|error| format!("failed to start git: {error}"))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| "Git source retrieval failed".into())
+}
+
+fn git_output(cwd: &Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("failed to start git: {error}"))?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+        .ok_or_else(|| "Git verification failed".into())
+}
+
 /// Copies a development source into an empty staging directory. Symlinks and
 /// build/VCS output are refused, so Cargo never builds unreviewed artifacts.
 pub fn stage_source(source: &Path, staging: &Path) -> io::Result<()> {
@@ -129,14 +296,18 @@ fn copy_tree(source: &Path, destination: &Path) -> io::Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn artifact_store_is_content_addressed() {
+    fn path_sources_require_trust_and_are_not_copied_as_artifacts() {
         let root = std::env::temp_dir().join(format!("zedflow-install-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        let artifact = root.join("plugin.so");
-        fs::write(&artifact, b"plugin").unwrap();
-        let stored = store_artifact(&root.join("store"), &artifact).unwrap();
-        assert_eq!(fs::read(stored).unwrap(), b"plugin");
+        let source = root.join("source");
+        fs::create_dir(&source).unwrap();
+        let input = ExtensionSource::Path(source.clone());
+        assert!(acquire_source(&input, &root.join("cache"), false).is_err());
+        assert_eq!(
+            acquire_source(&input, &root.join("cache"), true).unwrap(),
+            fs::canonicalize(source).unwrap()
+        );
         let _ = fs::remove_dir_all(root);
     }
 }
