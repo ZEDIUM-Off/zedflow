@@ -28,6 +28,9 @@ fn abi_v1_rejects_wrong_table_and_envelope_versions() {
     table.struct_size -= 1;
     assert!(validate_table(&table).is_err());
     table.struct_size = AbiV1::STRUCT_SIZE;
+    table.abi_version += 1;
+    assert!(validate_table(&table).is_err());
+    table.abi_version = ABI_V1;
     table.create = None;
     assert!(validate_table(&table).is_err());
     assert!(JsonEnvelope::parse(br#"{"version":2,"payload":null}"#).is_err());
