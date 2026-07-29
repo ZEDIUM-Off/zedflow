@@ -6,6 +6,12 @@ This Stage-1 port exposes Pi's ExtensionAPI through native Rust contracts in `ze
 
 Extensions are separately compiled Rust cdylibs loaded through custom ABI v1 for the process lifetime. Installation accepts only source inputs: `crate:<name>@<exact-version>`, `github:<owner>/<repo>@<resolved-commit>[#package]`, and development `path:` sources. Installation stages sanitized sources, builds locally, rejects prebuilt artifacts, records sha2 provenance/trust receipts, and binds the resolved source/artifact digest before load. TypeScript/jiti compatibility is deferred.
 
+## Trust authority
+
+A receipt and any receipt-adjacent registration are untrusted artifact metadata; equality between them never authorizes loading. Source installation must transactionally create the only load authority in an application-managed trust root outside the artifact/receipt directory. That authority binds the installed source identity and verified artifact digest, and `ResourceLoader`/default interactive startup must require its matching binding before dynamic loading. A forged matching receipt/registration pair, substituted receipt, or artifact-path substitution is rejected.
+
+The trust root is the exclusive persisted authorization boundary for this local installation model. It must not be reconstructed from artifact-controlled files during load, and failed installation or reload must not publish a partial authorization.
+
 ## Contract
 
 `ExtensionRuntime` is the registration surface. Tools and commands have executable native handlers. `ExtensionRunner` owns handlers and dispatches events in registration order. A failing handler reports an `ExtensionError` and does not prevent a later handler from running.

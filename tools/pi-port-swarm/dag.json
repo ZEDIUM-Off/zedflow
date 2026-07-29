@@ -1014,23 +1014,55 @@
       "intent": "Independently validate persisted extension receipt trust: only managed source-install registrations may resolve into the default interactive NativeExtension pipeline; arbitrary, substituted-receipt, and artifact-path-substituted entries must be rejected. No source edits."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R14",
-      "kind": "reviewer",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RECEIPT-TRUST-VALIDATE-R1"
+      ],
+      "ownership": [
+        "docs/porting/RUST_EXTENSION_ARCHITECTURE.md",
+        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test resource-loader --test interactive-native-extensions"
+      ],
+      "intent": "Repair the missing managed trust authority for persisted native extension receipts: make an application-managed trust root, not receipt-adjacent writable sidecars, the exclusive authority binding a source-install identity and artifact digest before ResourceLoader/default interactive startup loads NativeExtension. Reject forged matching receipt/registration pairs and preserve source-only installation, provenance/digest atomicity, ABI v1 process-safety, process-lifetime no-unload, approved dependencies, and TypeScript deferral; do not accept prebuilt artifacts or weaken tests."
+    },
+    {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-REPAIR-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test resource-loader --test interactive-native-extensions --test extensions-loader-cdylib"
+      ],
+      "intent": "Independently validate managed persisted extension receipt trust: only an application-managed trust-root binding created by source installation may resolve into the default interactive NativeExtension pipeline; forged matching receipt/registration pairs, substituted receipts, and artifact-path substitutions must be rejected. No source edits."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R15",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
       ],
-      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the default interactive runtime-dispatch repair. Verify only trusted provenance-bound NativeExtension artifacts load into the real default interactive harness and its lifecycle, input, session, tool, command, and provider registrations execute through ExtensionRuntime/ExtensionRunner. Recheck trust/digest activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, and source-only installation receipts. TypeScript compatibility remains deferred and must not be silently claimed."
+      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the managed trust-root repair. Verify only provenance-bound NativeExtension artifacts authorized by an application-managed trust root load into the real default interactive harness and its lifecycle, input, session, tool, command, and provider registrations execute through ExtensionRuntime/ExtensionRunner. Recheck trust/digest activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, and source-only installation receipts. TypeScript compatibility remains deferred and must not be silently claimed."
     },
     {
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R14"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R15"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
