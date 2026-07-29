@@ -4,7 +4,7 @@ use std::{
     process::{Command, Stdio},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::json;
@@ -34,12 +34,8 @@ impl io::Write for Writer {
 fn default_startup_loads_persisted_digest_bound_native_extension() {
     let manifest =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-extension/Cargo.toml");
-    let target = std::env::current_exe()
-        .unwrap()
-        .ancestors()
-        .nth(3)
-        .unwrap()
-        .to_path_buf();
+    let binary = PathBuf::from(env!("CARGO_BIN_EXE_zedflow-coding-agent"));
+    let target = std::env::temp_dir().join("zedflow-interactive-native-extension-target");
     assert!(
         Command::new("cargo")
             .args(["build", "--manifest-path"])
@@ -80,19 +76,23 @@ fn default_startup_loads_persisted_digest_bound_native_extension() {
     };
     install.persist(&extensions).unwrap();
 
-    let mut child = Command::new(target.join("debug").join(format!(
-        "zedflow-coding-agent{}",
-        std::env::consts::EXE_SUFFIX
-    )))
-    .current_dir(&root)
-    .env("PI_CODING_AGENT_DIR", root.join("agent"))
-    .stdin(Stdio::null())
-    .stdout(Stdio::null())
-    .stderr(Stdio::null())
-    .spawn()
-    .unwrap();
-    thread::sleep(Duration::from_millis(100));
-    let running = child.try_wait().unwrap().is_none();
+    let mut child = Command::new(binary)
+        .current_dir(&root)
+        .env("PI_CODING_AGENT_DIR", root.join("agent"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let mut running = true;
+    while Instant::now() < deadline {
+        if child.try_wait().unwrap().is_some() {
+            running = false;
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
     if running {
         child.kill().unwrap();
     }
