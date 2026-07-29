@@ -856,10 +856,26 @@
       "intent": "Repair the source-install provenance handoff before default startup: atomically persist/register each source directory, content-addressed native artifact, and digest-bound provenance receipt in the existing install/provenance location and schema so the default resource loader has a trusted receipt to consume. Add an executable installation regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
     },
     {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R2",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-INSTALL-PROVENANCE-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/resource-loader.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test resource-loader"
+      ],
+      "intent": "Repair the persisted source-install registration consumption before default startup: make ResourceLoader discover the atomically recorded source directory, content-addressed native artifact, and digest-bound provenance receipt and expose only trusted registrations to its callers. Add an executable receipt-loading regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
+    },
+    {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R3",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
@@ -873,10 +889,23 @@
       "intent": "Repair the default interactive startup provenance handoff using the persisted source-install registration: make the default ResourceLoader/main path resolve only trusted digest-bound artifacts into the real interactive ExtensionRunner, with an executable default-startup regression rather than direct runner injection. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
     },
     {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R3"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
+      ],
+      "intent": "Independently validate the repaired default interactive startup provenance handoff: the real ResourceLoader/main path must resolve only persisted trusted digest-bound source-install registrations into the interactive ExtensionRunner, with the executable default-startup regression and cdylib loader regression passing. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
+    },
+    {
       "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R11",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R2"
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
