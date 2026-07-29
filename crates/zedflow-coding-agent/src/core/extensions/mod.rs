@@ -1,11 +1,17 @@
+pub mod abi;
 pub mod loader;
 pub mod runner;
 pub mod types;
 pub mod wrapper;
 
+pub use abi::{
+    ABI_OK, ABI_V1, AbiBytes, AbiHandle, AbiOwnedBytes, AbiStatus, AbiV1, JsonEnvelope,
+    MAX_JSON_BYTES,
+};
 pub use loader::{
-    clear_extension_cache, create_extension_runtime, discover_and_load_extensions,
-    load_extension_from_factory, load_extensions, load_extensions_cached,
+    NativeExtension, NativeExtensionArtifact, clear_extension_cache, create_extension_runtime,
+    discover_and_load_extensions, load_extension_from_factory, load_extensions,
+    load_extensions_cached,
 };
 pub use runner::{ExtensionRunner, emit_project_trust_event};
 pub use types::*;
