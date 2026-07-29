@@ -817,34 +817,35 @@
       "intent": "Repair native ExtensionAPI lifecycle-event activation: retain each trusted NativeExtension event registration from its ABI API snapshot during loader activation and dispatch it through ExtensionRuntime/ExtensionRunner emit. Add executable regressions proving a compiled native extension event handler participates in runner lifecycle dispatch. Preserve approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R6",
-      "kind": "reviewer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-EVENTS-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after native lifecycle-event activation repair. Verify trusted NativeExtension tools, commands, providers, and lifecycle/input/session event registrations are activated into ExtensionRuntime/ExtensionRunner as executable handlers, alongside trust/digest/activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility remains deferred and must not be silently claimed."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REPAIR-R1",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R6"
+        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-EVENTS-REPAIR-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/modes/interactive"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Port and wire the full Pi default interactive mode through zedflow-tui: streaming, tool execution, selectors, compaction, themes, startup, session tree, auth and extension UI. Its owner thread must cooperatively drive Tui's public event pump so queued native stdin and resize events dispatch and render without cross-thread access to non-Send components. The minimal line REPL is not acceptable."
+      "intent": "Supersede the open interactive-mode unit and repair the missing production native-extension pipeline: in the actual default interactive session, load trusted native extensions and route lifecycle, input, session, tool, command, and provider flows through the existing ExtensionRuntime/ExtensionRunner handlers. Add executable in-module production-path coverage. Preserve the approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral; do not duplicate extension dispatch in the mode."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R7",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REPAIR-R1"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the production interactive-session pipeline repair. Verify trusted NativeExtension tools, commands, providers, and lifecycle/input/session event registrations are executable from the actual default interactive harness through ExtensionRuntime/ExtensionRunner, alongside trust/digest/activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility remains deferred and must not be silently claimed."
     },
     {
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R7"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
