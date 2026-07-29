@@ -52,9 +52,17 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
     reader: R,
     writer: W,
 ) -> io::Result<()> {
+    let runtime = create_runtime_for_args(args)?;
+    let cwd = std::env::current_dir()?;
+    let session_file = rpc_session_file(&rpc_args(args), &cwd);
+    run_rpc_loop_with_runtime_and_session_file(reader, writer, &runtime, session_file)
+}
+
+/// Build the session runtime shared by RPC and single-shot print modes.
+pub fn create_runtime_for_args(args: &[String]) -> io::Result<AgentSessionRuntime> {
     let cwd = std::env::current_dir()?;
     let cwd_string = cwd.to_string_lossy().into_owned();
-    let parsed = rpc_args(args);
+    let parsed = parse_args(args.iter().cloned());
     let settings = SettingsManager::create(&cwd, config::get_agent_dir());
     let models = builtin_models();
     let model = configured_model(&parsed, &settings, &models);
@@ -68,7 +76,6 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
     let tools = configured_tools(&parsed, &cwd);
     let active_tool_names = tools.iter().map(|tool| tool.tool.name.clone()).collect();
     let resources = configured_resources(&parsed, &cwd);
-    let session_file = rpc_session_file(&parsed, &cwd);
     let session = AgentSession::new(AgentHarnessOptions {
         env,
         session,
@@ -86,8 +93,7 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
         follow_up_mode: Some(queue_mode(&settings.get_follow_up_mode())),
     })
     .map_err(|error| io::Error::other(error.to_string()))?;
-    let runtime = AgentSessionRuntime::new(session, cwd_string);
-    run_rpc_loop_with_runtime_and_session_file(reader, writer, &runtime, session_file)
+    Ok(AgentSessionRuntime::new(session, cwd_string))
 }
 
 fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentTool> {
