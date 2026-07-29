@@ -26,7 +26,7 @@ impl ExtensionSource {
             let (name, version) = value
                 .rsplit_once('@')
                 .ok_or("crate source must pin an exact version")?;
-            if name.is_empty() || !is_exact_version(version) {
+            if !is_crate_name(name) || !is_exact_version(version) {
                 return Err("crate source must pin an exact version".into());
             }
             return Ok(Self::Crate {
@@ -44,10 +44,10 @@ impl ExtensionSource {
             let (owner, repo) = repo
                 .split_once('/')
                 .ok_or("github source must be owner/repo")?;
-            if owner.is_empty()
-                || repo.is_empty()
+            if !is_repository_part(owner)
+                || !is_repository_part(repo)
                 || !is_commit(commit)
-                || package.is_some_and(str::is_empty)
+                || package.is_some_and(|path| !is_safe_relative_path(path))
             {
                 return Err("github source must be owner/repo@<40-hex-commit>[#package]".into());
             }
@@ -150,6 +150,28 @@ fn collect(root: &Path, path: &Path, files: &mut Vec<PathBuf>) -> io::Result<()>
     Ok(())
 }
 
+fn is_crate_name(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn is_repository_part(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn is_safe_relative_path(value: &str) -> bool {
+    !value.is_empty()
+        && Path::new(value).is_relative()
+        && Path::new(value)
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+}
+
 fn is_commit(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
@@ -176,5 +198,11 @@ mod tests {
         );
         assert!(ExtensionSource::parse("crate:demo@^1").is_err());
         assert!(ExtensionSource::parse("github:acme/demo@main").is_err());
+        assert!(
+            ExtensionSource::parse(
+                "github:acme/demo@0123456789abcdef0123456789abcdef01234567#../plugin"
+            )
+            .is_err()
+        );
     }
 }

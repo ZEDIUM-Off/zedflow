@@ -19,5 +19,7 @@ pub use runner::{ExtensionRunner, emit_project_trust_event};
 pub use types::*;
 pub use wrapper::{execute_registered_tool, wrap_registered_tool, wrap_registered_tools};
 
-pub use install::{build_and_store, build_source, stage_source, store_artifact};
+pub use install::{
+    build_and_store, build_source, install_source, materialize_source, stage_source, store_artifact,
+};
 pub use provenance::{ExtensionSource, ProvenanceReceipt, digest_file, digest_tree, receipt};
