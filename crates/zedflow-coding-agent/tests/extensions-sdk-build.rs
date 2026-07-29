@@ -1,8 +1,18 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{
+    fs,
+    path::PathBuf,
+    process::Command,
+    sync::{Arc, Barrier},
+};
 
 use sha2::{Digest, Sha256};
-use zedflow_coding_agent::extensions::{
-    ABI_V1, JsonEnvelope, NativeExtension, NativeExtensionArtifact,
+use zedflow_coding_agent::{
+    export_extension,
+    extensions::{
+        ABI_OK, ABI_V1, AbiBytes, AbiHandle, AbiOwnedBytes, JsonEnvelope, NativeExtension,
+        NativeExtensionArtifact,
+    },
+    sdk::{self, Extension, ExtensionApi, JsonValue},
 };
 
 #[test]
@@ -59,6 +69,103 @@ fn sdk_fixture_builds_and_exercises_abi_v1() {
         reply.payload["api"]["events"],
         serde_json::json!(["session_start", "tool_call"])
     );
+
+    std::thread::scope(|scope| {
+        let extension = &extension;
+        let barrier = Arc::new(Barrier::new(9));
+        for _ in 0..8 {
+            let barrier = Arc::clone(&barrier);
+            scope.spawn(move || {
+                barrier.wait();
+                extension
+                    .call(&JsonEnvelope {
+                        version: ABI_V1,
+                        payload: serde_json::json!({"parallel": true}),
+                    })
+                    .expect("serialized concurrent call");
+            });
+        }
+        barrier.wait();
+    });
+    let final_reply = extension
+        .call(&JsonEnvelope {
+            version: ABI_V1,
+            payload: serde_json::Value::Null,
+        })
+        .expect("final call");
+    assert_eq!(
+        final_reply.payload["api"]["events"]
+            .as_array()
+            .unwrap()
+            .len(),
+        11
+    );
     extension.shutdown().expect("shutdown fixture");
     assert!(extension.call(&request).is_err());
+}
+
+#[derive(Default)]
+struct CreatePanics;
+
+impl Extension for CreatePanics {
+    fn initialize(&mut self, _: &mut ExtensionApi, _: JsonValue) -> Result<(), String> {
+        panic!("extension panic")
+    }
+}
+
+#[derive(Default)]
+struct PanickingExtension;
+
+impl Extension for PanickingExtension {
+    fn invoke(&mut self, _: &mut ExtensionApi, _: JsonValue) -> Result<JsonValue, String> {
+        panic!("extension panic")
+    }
+
+    fn shutdown(&mut self, _: &mut ExtensionApi) -> Result<(), String> {
+        panic!("extension panic")
+    }
+}
+
+export_extension!(PanickingExtension);
+
+#[test]
+fn sdk_abi_trampolines_contain_extension_panics() {
+    let request = JsonEnvelope {
+        version: ABI_V1,
+        payload: serde_json::Value::Null,
+    }
+    .encode()
+    .unwrap();
+    let input = AbiBytes {
+        ptr: request.as_ptr(),
+        len: request.len() as u64,
+    };
+    let mut failed_handle = AbiHandle {
+        kind: 0,
+        reserved: 0,
+        raw: 0,
+        generation: 0,
+    };
+    assert_ne!(
+        unsafe { sdk::create::<CreatePanics>(&input, &mut failed_handle) },
+        ABI_OK
+    );
+    assert_eq!(failed_handle.raw, 0);
+
+    let table = unsafe { &*zedflow_extension_abi_v1() };
+    let mut handle = AbiHandle {
+        kind: 0,
+        reserved: 0,
+        raw: 0,
+        generation: 0,
+    };
+    assert_eq!(table.create.unwrap()(&input, &mut handle), ABI_OK);
+
+    let mut output = AbiOwnedBytes {
+        ptr: std::ptr::null_mut(),
+        len: 0,
+    };
+    assert_ne!(table.call.unwrap()(handle, &input, &mut output), ABI_OK);
+    assert!(output.ptr.is_null());
+    assert_ne!(table.destroy.unwrap()(handle), ABI_OK);
 }

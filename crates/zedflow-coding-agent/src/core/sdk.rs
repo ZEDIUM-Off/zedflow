@@ -2,7 +2,10 @@
 
 #![allow(unsafe_code)]
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    panic::{AssertUnwindSafe, catch_unwind},
+};
 
 use serde_json::{Value, json};
 
@@ -73,7 +76,10 @@ struct Instance<E> {
 /// # Safety
 /// The ABI caller supplies valid pointers for the duration of this call.
 pub unsafe fn create<E: Extension>(input: *const AbiBytes, output: *mut AbiHandle) -> AbiStatus {
-    let result = (|| {
+    guarded(|| {
+        if output.is_null() {
+            return Err("null extension output".into());
+        }
         let request = unsafe { input_json(input)? };
         let mut extension = E::default();
         let mut api = ExtensionApi::default();
@@ -87,8 +93,7 @@ pub unsafe fn create<E: Extension>(input: *const AbiBytes, output: *mut AbiHandl
             });
         }
         Ok(())
-    })();
-    status(result)
+    })
 }
 
 /// # Safety
@@ -98,9 +103,12 @@ pub unsafe fn call<E: Extension>(
     input: *const AbiBytes,
     output: *mut AbiOwnedBytes,
 ) -> AbiStatus {
-    let result = (|| {
+    guarded(|| {
         if handle.kind != ABI_HANDLE_EXTENSION || handle.raw == 0 {
             return Err("invalid extension handle".into());
+        }
+        if output.is_null() {
+            return Err("null extension output".into());
         }
         let request = unsafe { input_json(input)? };
         let instance = unsafe { &mut *(handle.raw as *mut Instance<E>) };
@@ -122,8 +130,7 @@ pub unsafe fn call<E: Extension>(
             output.write(owned);
         }
         Ok(())
-    })();
-    status(result)
+    })
 }
 
 /// # Safety
@@ -143,14 +150,13 @@ pub unsafe fn free_bytes(bytes: AbiOwnedBytes) {
 /// # Safety
 /// `handle` must have been returned by [`create`] exactly once.
 pub unsafe fn destroy<E: Extension>(handle: AbiHandle) -> AbiStatus {
-    let result = (|| {
+    guarded(|| {
         if handle.kind != ABI_HANDLE_EXTENSION || handle.raw == 0 {
             return Err("invalid extension handle".into());
         }
         let mut instance = unsafe { Box::from_raw(handle.raw as *mut Instance<E>) };
         instance.extension.shutdown(&mut instance.api)
-    })();
-    status(result)
+    })
 }
 
 unsafe fn input_json(input: *const AbiBytes) -> Result<JsonEnvelope, String> {
@@ -167,8 +173,11 @@ unsafe fn input_json(input: *const AbiBytes) -> Result<JsonEnvelope, String> {
     JsonEnvelope::parse(bytes)
 }
 
-fn status(result: Result<(), String>) -> AbiStatus {
-    if result.is_ok() { ABI_OK } else { 1 }
+fn guarded(operation: impl FnOnce() -> Result<(), String>) -> AbiStatus {
+    match catch_unwind(AssertUnwindSafe(operation)) {
+        Ok(Ok(())) => ABI_OK,
+        Ok(Err(_)) | Err(_) => 1,
+    }
 }
 
 /// Exports ABI v1 entry points for an [`Extension`] implementation.
@@ -179,22 +188,33 @@ macro_rules! export_extension {
             input: *const $crate::extensions::AbiBytes,
             output: *mut $crate::extensions::AbiHandle,
         ) -> $crate::extensions::AbiStatus {
-            unsafe { $crate::sdk::create::<$extension>(input, output) }
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                $crate::sdk::create::<$extension>(input, output)
+            }))
+            .unwrap_or(1)
         }
         extern "C" fn zedflow_call(
             handle: $crate::extensions::AbiHandle,
             input: *const $crate::extensions::AbiBytes,
             output: *mut $crate::extensions::AbiOwnedBytes,
         ) -> $crate::extensions::AbiStatus {
-            unsafe { $crate::sdk::call::<$extension>(handle, input, output) }
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                $crate::sdk::call::<$extension>(handle, input, output)
+            }))
+            .unwrap_or(1)
         }
         extern "C" fn zedflow_free_bytes(bytes: $crate::extensions::AbiOwnedBytes) {
-            unsafe { $crate::sdk::free_bytes(bytes) }
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                $crate::sdk::free_bytes(bytes)
+            }));
         }
         extern "C" fn zedflow_destroy(
             handle: $crate::extensions::AbiHandle,
         ) -> $crate::extensions::AbiStatus {
-            unsafe { $crate::sdk::destroy::<$extension>(handle) }
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+                $crate::sdk::destroy::<$extension>(handle)
+            }))
+            .unwrap_or(1)
         }
         #[unsafe(no_mangle)]
         pub extern "C" fn zedflow_extension_abi_v1() -> *const $crate::extensions::AbiV1 {

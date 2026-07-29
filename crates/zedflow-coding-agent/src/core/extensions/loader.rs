@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     fs,
     io::{Read, Write},
+    panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
     sync::{
         Mutex, OnceLock,
@@ -43,6 +44,7 @@ pub struct NativeExtensionArtifact {
 pub struct NativeExtension {
     table: AbiV1,
     handle: Option<AbiHandle>,
+    call_lock: Mutex<()>,
 }
 
 impl NativeExtension {
@@ -65,7 +67,8 @@ impl NativeExtension {
         let entry: libloading::Symbol<AbiEntryV1> =
             unsafe { library.get(b"zedflow_extension_abi_v1\0") }
                 .map_err(|error| format!("missing zedflow_extension_abi_v1: {error}"))?;
-        let table_pointer = unsafe { entry() };
+        let table_pointer = catch_unwind(AssertUnwindSafe(|| unsafe { entry() }))
+            .map_err(|_| "native extension ABI entry panicked")?;
         if table_pointer.is_null()
             || !(table_pointer as usize).is_multiple_of(std::mem::align_of::<AbiV1>())
         {
@@ -86,7 +89,8 @@ impl NativeExtension {
             raw: 0,
             generation: 0,
         };
-        let status = (table.create.expect("validated ABI table"))(&input, &mut handle);
+        let status =
+            ffi_status(|| (table.create.expect("validated ABI table"))(&input, &mut handle))?;
         if status != 0 || validate_handle(handle, handle.generation).is_err() {
             return Err(format!(
                 "native extension initialization failed with status {status}"
@@ -99,10 +103,16 @@ impl NativeExtension {
         Ok(Self {
             table,
             handle: Some(handle),
+            call_lock: Mutex::new(()),
         })
     }
 
     pub fn call(&self, request: &JsonEnvelope) -> Result<JsonEnvelope, String> {
+        // ABI v1 instances are mutable and may not be called concurrently.
+        let _call_lock = self
+            .call_lock
+            .lock()
+            .map_err(|_| "native extension call lock poisoned")?;
         let handle = self.handle.ok_or("native extension is shut down")?;
         validate_handle(handle, handle.generation)?;
         let request = request.encode()?;
@@ -114,7 +124,9 @@ impl NativeExtension {
             ptr: std::ptr::null_mut(),
             len: 0,
         };
-        let status = (self.table.call.expect("validated ABI table"))(handle, &input, &mut output);
+        let status = ffi_status(|| {
+            (self.table.call.expect("validated ABI table"))(handle, &input, &mut output)
+        })?;
         if status != 0 {
             return Err(format!("native extension call failed with status {status}"));
         }
@@ -122,16 +134,20 @@ impl NativeExtension {
             let bytes = unsafe { checked_owned_bytes(output)? };
             JsonEnvelope::parse(&bytes)
         })();
-        (self.table.free_bytes.expect("validated ABI table"))(output);
+        ffi_void(|| (self.table.free_bytes.expect("validated ABI table"))(output))?;
         result
     }
 
     /// Idempotently disables this instance. Its library remains loaded.
     pub fn shutdown(&mut self) -> Result<(), String> {
+        let _call_lock = self
+            .call_lock
+            .lock()
+            .map_err(|_| "native extension call lock poisoned")?;
         let Some(handle) = self.handle.take() else {
             return Ok(());
         };
-        let status = (self.table.destroy.expect("validated ABI table"))(handle);
+        let status = ffi_status(|| (self.table.destroy.expect("validated ABI table"))(handle))?;
         if status == 0 {
             Ok(())
         } else {
@@ -211,6 +227,16 @@ fn verified_artifact_snapshot(
         return Err(error);
     }
     Ok(VerifiedArtifactSnapshot { path, directory })
+}
+
+fn ffi_status(operation: impl FnOnce() -> i32) -> Result<i32, String> {
+    catch_unwind(AssertUnwindSafe(operation))
+        .map_err(|_| "native extension ABI call panicked".into())
+}
+
+fn ffi_void(operation: impl FnOnce()) -> Result<(), String> {
+    catch_unwind(AssertUnwindSafe(operation))
+        .map_err(|_| "native extension ABI free_bytes panicked".into())
 }
 
 /// # Safety
