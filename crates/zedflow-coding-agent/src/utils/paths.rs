@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub fn canonicalize_path(path: impl AsRef<Path>) -> PathBuf {
     fs::canonicalize(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_path_buf())
@@ -57,11 +57,28 @@ pub fn resolve_path(
     options: &PathInputOptions,
 ) -> PathBuf {
     let path = normalize_path(input, options);
-    if path.is_absolute() {
+    lexical_normalize(if path.is_absolute() {
         path
     } else {
         base_dir.as_ref().join(path)
-    }
+    })
+}
+
+// Node's `resolve()` normalizes `.` and `..` even when the target does not exist.
+fn lexical_normalize(path: PathBuf) -> PathBuf {
+    path.components()
+        .fold(PathBuf::new(), |mut normalized, component| {
+            match component {
+                Component::ParentDir => {
+                    if !normalized.pop() && !path.is_absolute() {
+                        normalized.push("..");
+                    }
+                }
+                Component::CurDir => {}
+                _ => normalized.push(component.as_os_str()),
+            }
+            normalized
+        })
 }
 
 pub fn get_cwd_relative_path(file_path: &Path, cwd: &Path) -> Option<PathBuf> {
@@ -112,4 +129,21 @@ pub fn mark_path_ignored_by_cloud_sync(path: &Path) -> std::io::Result<()> {
             .status();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_missing_paths_lexically_like_node() {
+        assert_eq!(
+            resolve_path("nested/../file", "/tmp/base", &PathInputOptions::default()),
+            PathBuf::from("/tmp/base/file")
+        );
+        assert_eq!(
+            get_cwd_relative_path(Path::new("/tmp/base/../outside"), Path::new("/tmp/base")),
+            None
+        );
+    }
 }
