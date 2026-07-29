@@ -1095,23 +1095,42 @@
       "intent": "Replace the manifest stubs in the package-manager and package-manager-cli counterparts with faithful executable Pi package operations and behavior tests. Preserve the approved source-only Rust extension install/provenance policy; do not add dependencies, accept prebuilt artifacts, use TypeScript execution, or weaken tests."
     },
     {
-      "id": "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-VALIDATE-R1",
-      "kind": "validator",
+      "id": "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R2",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
+        "crates/zedflow-coding-agent/tests/package-manager.rs",
+        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
+        "crates/zedflow-coding-agent/tests/package-command-paths.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
+      ],
+      "intent": "Diagnose and repair the two deterministic package-manager CLI fidelity test failures at crates/zedflow-coding-agent/tests/package-manager.rs:48. Change only the diagnosed package-manager implementation and focused behavior tests; preserve executable source-only Rust extension package operations and do not add dependencies, accept prebuilt artifacts, use TypeScript execution, or weaken tests."
+    },
+    {
+      "id": "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R2"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
       ],
-      "intent": "Re-run the package-manager CLI fidelity gates after the focused implementation repair. Verify executable source-only package operation behavior and reject manifest stubs, marker tests, prebuilt artifacts, TypeScript execution shortcuts, or weakened tests."
+      "intent": "Re-run the package-manager CLI fidelity gates after the deterministic two-failure repair. Verify executable source-only package operation behavior and reject manifest stubs, marker tests, prebuilt artifacts, TypeScript execution shortcuts, or weakened tests."
     },
     {
       "id": "SEM-CA-V5-CLI-MODES-R1",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-VALIDATE-R1"
+        "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-VALIDATE-R2"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
