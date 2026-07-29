@@ -5,18 +5,12 @@ use std::{
 
 use super::{
     diagnostics::ResourceDiagnostic,
-    extensions::{LoadExtensionsResult, discover_and_load_extensions},
+    extensions::{ExtensionError, LoadExtensionsResult, discover_and_load_extensions},
+    prompt_templates::{LoadPromptTemplatesOptions, PromptTemplate, load_prompt_templates},
     skills::{LoadSkillsOptions, LoadSkillsResult, load_skills},
     system_prompt::build_system_prompt,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PromptTemplate {
-    pub name: String,
-    pub description: Option<String>,
-    pub content: String,
-    pub file_path: String,
-}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Theme {
     pub name: String,
@@ -40,6 +34,7 @@ pub trait ResourceLoader {
     fn get_system_prompt(&self) -> Option<&str>;
     fn get_append_system_prompt(&self) -> &[String];
     fn extend_resources(&mut self, paths: ResourceExtensionPaths);
+    fn reload(&mut self);
 }
 
 pub fn load_project_context_files(
@@ -109,8 +104,28 @@ impl DefaultResourceLoader {
         }
     }
     pub fn reload(&mut self) {
-        self.extensions = discover_and_load_extensions(&self.cwd);
-        self.skills = load_skills(LoadSkillsOptions {
+        // Build a complete candidate first. A bad extension must not leave a
+        // partially replaced resource set active.
+        let extension_dir = self.cwd.join(".pi/extensions");
+        let extensions = if extension_dir.exists() && !extension_dir.is_dir() {
+            LoadExtensionsResult {
+                extensions: Vec::new(),
+                errors: vec![ExtensionError {
+                    message: format!(
+                        "extension directory is not a directory: {}",
+                        extension_dir.display()
+                    ),
+                    source: None,
+                }],
+            }
+        } else {
+            discover_and_load_extensions(&self.cwd)
+        };
+        if !extensions.errors.is_empty() {
+            self.extensions.errors.extend(extensions.errors);
+            return;
+        }
+        let skills = load_skills(LoadSkillsOptions {
             cwd: self.cwd.display().to_string(),
             agent_dir: self.agent_dir.display().to_string(),
             skill_paths: self
@@ -121,7 +136,23 @@ impl DefaultResourceLoader {
                 .collect(),
             include_defaults: true,
         });
-        self.agents_files = load_project_context_files(&self.cwd, &self.agent_dir);
+        let prompts = load_prompt_templates(LoadPromptTemplatesOptions {
+            cwd: self.cwd.display().to_string(),
+            agent_dir: self.agent_dir.display().to_string(),
+            prompt_paths: self
+                .extra
+                .prompt_paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
+            include_defaults: true,
+        });
+        let agents_files = load_project_context_files(&self.cwd, &self.agent_dir);
+        self.extensions = extensions;
+        self.skills = skills;
+        self.prompts = prompts;
+        self.prompt_diagnostics.clear();
+        self.agents_files = agents_files;
     }
     #[must_use]
     pub fn get_extensions(&self) -> &LoadExtensionsResult {
@@ -182,6 +213,9 @@ impl ResourceLoader for DefaultResourceLoader {
     fn extend_resources(&mut self, paths: ResourceExtensionPaths) {
         self.extend_resources(paths);
     }
+    fn reload(&mut self) {
+        self.reload();
+    }
 }
 
 #[allow(dead_code)]
@@ -191,4 +225,28 @@ fn _prompt_for(loader: &DefaultResourceLoader) -> String {
         skills: loader.skills.skills.clone(),
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_extension_reload_keeps_the_active_set_and_reports_the_error() {
+        let root =
+            std::env::temp_dir().join(format!("zedflow-resource-loader-{}", std::process::id()));
+        let extensions = root.join(".pi/extensions");
+        fs::create_dir_all(&extensions).unwrap();
+        fs::write(extensions.join("active.rs"), "active").unwrap();
+        let mut loader = DefaultResourceLoader::new(&root, root.join("agent"));
+        loader.reload();
+        assert_eq!(loader.get_extensions().extensions[0].name, "active");
+
+        fs::remove_dir_all(&extensions).unwrap();
+        fs::write(&extensions, "not a directory").unwrap();
+        loader.reload();
+        assert_eq!(loader.get_extensions().extensions[0].name, "active");
+        assert!(!loader.get_extensions().errors.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
 }
