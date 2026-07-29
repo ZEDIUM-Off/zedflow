@@ -1,13 +1,18 @@
 use std::{
-    io,
+    fs, io,
+    path::PathBuf,
+    process::{Command, Stdio},
     sync::{Arc, Mutex},
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde_json::json;
 use zedflow_coding_agent::{
     extensions::{
-        ExtensionEventKind, ExtensionRunner, ExtensionRuntime, ProviderConfig, RegisteredCommand,
-        SessionActionResult, define_tool,
+        ExtensionEventKind, ExtensionRunner, ExtensionRuntime, ExtensionSource,
+        NativeExtensionInstall, ProviderConfig, RegisteredCommand, SessionActionResult,
+        define_tool, receipt,
     },
     modes::interactive::InteractiveMode,
 };
@@ -23,6 +28,81 @@ impl io::Write for Writer {
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
+}
+
+#[test]
+fn default_startup_loads_persisted_digest_bound_native_extension() {
+    let manifest =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-extension/Cargo.toml");
+    let target = std::env::current_exe()
+        .unwrap()
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf();
+    assert!(
+        Command::new("cargo")
+            .args(["build", "--manifest-path"])
+            .arg(manifest)
+            .args(["--target-dir"])
+            .arg(&target)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let artifact = target.join("debug").join(format!(
+        "{}zedflow_rust_extension_fixture{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
+    let root = std::env::temp_dir().join(format!(
+        "zedflow-interactive-native-extension-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let extensions = root.join(".pi/extensions");
+    let source = extensions.join("source");
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("Cargo.toml"), "[package]\nname='native'\n").unwrap();
+    let install = NativeExtensionInstall {
+        source_dir: source.clone(),
+        artifact: artifact.clone(),
+        receipt: receipt(
+            &ExtensionSource::Path(source.clone()),
+            &source,
+            &artifact,
+            None,
+        )
+        .unwrap(),
+    };
+    install.persist(&extensions).unwrap();
+
+    let mut child = Command::new(target.join("debug").join(format!(
+        "zedflow-coding-agent{}",
+        std::env::consts::EXE_SUFFIX
+    )))
+    .current_dir(&root)
+    .env("PI_CODING_AGENT_DIR", root.join("agent"))
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .unwrap();
+    thread::sleep(Duration::from_millis(100));
+    let running = child.try_wait().unwrap().is_none();
+    if running {
+        child.kill().unwrap();
+    }
+    child.wait().unwrap();
+    let _ = fs::remove_dir_all(root);
+
+    assert!(
+        running,
+        "default startup rejected a persisted digest-bound native extension"
+    );
 }
 
 #[test]
