@@ -75,9 +75,15 @@ fn installs_a_source_built_extension_with_provenance_and_explicit_trust() {
     );
     assert_ne!(receipt.source_sha256, receipt.artifact_sha256);
 
+    let persisted = zedflow_coding_agent::extensions::NativeExtensionInstall::load_persisted(
+        &root.join("source"),
+    )
+    .expect("persisted source install after restart");
+    assert_eq!(persisted, vec![install.clone()]);
+
     let mut resources = DefaultResourceLoader::new(&root, root.join("agent"));
     resources.extend_resources(ResourceExtensionPaths {
-        native_extensions: vec![install.clone()],
+        native_extensions: persisted,
         ..Default::default()
     });
     resources.reload();

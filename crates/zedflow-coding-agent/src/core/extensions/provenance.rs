@@ -3,9 +3,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+pub const NATIVE_EXTENSION_INSTALLS_DIR: &str = "native-extension-installs";
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ExtensionSource {
     Crate {
         name: String,
@@ -85,7 +88,7 @@ impl ExtensionSource {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProvenanceReceipt {
     pub source: String,
     pub source_sha256: String,
@@ -94,7 +97,7 @@ pub struct ProvenanceReceipt {
 }
 
 /// Source-install receipt supplied to the resource loader before native code is enabled.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct NativeExtensionInstall {
     pub source_dir: PathBuf,
     pub artifact: PathBuf,
@@ -102,6 +105,48 @@ pub struct NativeExtensionInstall {
 }
 
 impl NativeExtensionInstall {
+    /// Atomically records this install under the source-install root.
+    pub fn persist(&self, source_work_dir: &Path) -> Result<PathBuf, String> {
+        let directory = source_work_dir.join(NATIVE_EXTENSION_INSTALLS_DIR);
+        fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        let path = directory.join(format!("{}.json", self.receipt.source_sha256));
+        let pending = path.with_extension(format!(
+            "json.pending-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock after Unix epoch")
+                .as_nanos()
+        ));
+        let result = (|| {
+            let bytes = serde_json::to_vec(self).map_err(|error| error.to_string())?;
+            fs::write(&pending, bytes).map_err(|error| error.to_string())?;
+            fs::rename(&pending, &path).map_err(|error| error.to_string())?;
+            Ok(path)
+        })();
+        if pending.exists() {
+            let _ = fs::remove_file(pending);
+        }
+        result
+    }
+
+    /// Reads every atomically recorded source install from a prior process.
+    pub fn load_persisted(source_work_dir: &Path) -> Result<Vec<Self>, String> {
+        let directory = source_work_dir.join(NATIVE_EXTENSION_INSTALLS_DIR);
+        let entries = match fs::read_dir(directory) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.to_string()),
+        };
+        entries
+            .map(|entry| {
+                let path = entry.map_err(|error| error.to_string())?.path();
+                serde_json::from_slice(&fs::read(path).map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())
+            })
+            .collect()
+    }
+
     /// Resolves an artifact only when the recorded source and artifact still match.
     pub fn resolve(&self) -> Result<(PathBuf, String), String> {
         ExtensionSource::parse(&self.receipt.source)?;

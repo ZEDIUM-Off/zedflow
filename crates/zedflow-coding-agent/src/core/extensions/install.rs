@@ -127,11 +127,13 @@ pub fn install_source(
             fs::create_dir_all(source_work_dir).map_err(|error| error.to_string())?;
             fs::rename(&pending, &destination).map_err(|error| error.to_string())?;
         }
-        Ok(NativeExtensionInstall {
+        let install = NativeExtensionInstall {
             source_dir: destination,
             artifact,
             receipt,
-        })
+        };
+        install.persist(source_work_dir)?;
+        Ok(install)
     })();
     if pending.exists() {
         let _ = fs::remove_dir_all(&pending);
