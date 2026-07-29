@@ -26,3 +26,44 @@ fn failed_extension_reload_keeps_active_extensions() {
     assert!(!loader.get_extensions().errors.is_empty());
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn reload_discovers_and_verifies_persisted_native_extension_receipts() {
+    use zedflow_coding_agent::{
+        extensions::{ExtensionSource, NativeExtensionInstall, receipt},
+        resource_loader::DefaultResourceLoader,
+    };
+
+    let root = std::env::temp_dir().join(format!(
+        "zedflow-resource-loader-receipt-{}",
+        std::process::id()
+    ));
+    let extension_dir = root.join(".pi/extensions");
+    let source = extension_dir.join("source");
+    let artifact = root.join("store/extension");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+    std::fs::write(source.join("lib.rs"), "source").unwrap();
+    std::fs::write(&artifact, "local artifact").unwrap();
+    let install = NativeExtensionInstall {
+        source_dir: source.clone(),
+        artifact: artifact.clone(),
+        receipt: receipt(
+            &ExtensionSource::Path(source.clone()),
+            &source,
+            &artifact,
+            None,
+        )
+        .unwrap(),
+    };
+    install.persist(&extension_dir).unwrap();
+
+    let mut loader = DefaultResourceLoader::new(&root, root.join("agent"));
+    loader.reload();
+
+    assert!(loader.get_extensions().errors.is_empty());
+    assert_eq!(loader.native_extension_artifacts().len(), 1);
+    assert_eq!(loader.native_extension_artifacts()[0].path, artifact);
+    assert!(loader.native_extension_artifacts()[0].trusted);
+    let _ = std::fs::remove_dir_all(root);
+}

@@ -132,10 +132,20 @@ impl DefaultResourceLoader {
             self.extensions.errors.extend(extensions.errors);
             return;
         }
-        let native_extension_artifacts = self
-            .extra
-            .native_extensions
+        let persisted_native_extensions =
+            match NativeExtensionInstall::load_persisted(&extension_dir) {
+                Ok(installs) => installs,
+                Err(message) => {
+                    self.extensions.errors.push(ExtensionError {
+                        message,
+                        source: None,
+                    });
+                    return;
+                }
+            };
+        let native_extension_artifacts = persisted_native_extensions
             .iter()
+            .chain(&self.extra.native_extensions)
             .map(|install| {
                 install
                     .resolve()
