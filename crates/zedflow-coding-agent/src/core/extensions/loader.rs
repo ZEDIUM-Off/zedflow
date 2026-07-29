@@ -49,8 +49,12 @@ pub struct NativeExtensionArtifact {
 }
 
 pub struct NativeExtension {
+    inner: Arc<NativeExtensionInner>,
+}
+
+struct NativeExtensionInner {
     table: AbiV1,
-    handle: Option<AbiHandle>,
+    handle: Mutex<Option<AbiHandle>>,
     call_lock: Mutex<()>,
 }
 
@@ -108,47 +112,22 @@ impl NativeExtension {
             .map_err(|_| "native library registry poisoned")?
             .push(library);
         Ok(Self {
-            table,
-            handle: Some(handle),
-            call_lock: Mutex::new(()),
+            inner: Arc::new(NativeExtensionInner {
+                table,
+                handle: Mutex::new(Some(handle)),
+                call_lock: Mutex::new(()),
+            }),
         })
     }
 
     pub fn call(&self, request: &JsonEnvelope) -> Result<JsonEnvelope, String> {
-        // ABI v1 instances are mutable and may not be called concurrently.
-        let _call_lock = self
-            .call_lock
-            .lock()
-            .map_err(|_| "native extension call lock poisoned")?;
-        let handle = self.handle.ok_or("native extension is shut down")?;
-        validate_handle(handle, handle.generation)?;
-        let request = request.encode()?;
-        let input = AbiBytes {
-            ptr: request.as_ptr(),
-            len: request.len() as u64,
-        };
-        let mut output = AbiOwnedBytes {
-            ptr: std::ptr::null_mut(),
-            len: 0,
-        };
-        let status = ffi_status(|| {
-            (self.table.call.expect("validated ABI table"))(handle, &input, &mut output)
-        })?;
-        if status != 0 {
-            return Err(format!("native extension call failed with status {status}"));
-        }
-        let result = (|| {
-            let bytes = unsafe { checked_owned_bytes(output)? };
-            JsonEnvelope::parse(&bytes)
-        })();
-        ffi_void(|| (self.table.free_bytes.expect("validated ABI table"))(output))?;
-        result
+        self.inner.call(request)
     }
 
     /// Registers ABI-declared runtime entries and returns lifecycle handlers.
     /// The activation request is an ordinary ABI call so v1 needs no additional entry point.
     pub fn activate(
-        self,
+        &self,
         runtime: &mut ExtensionRuntime,
     ) -> Result<Vec<(ExtensionEventKind, ExtensionHandler)>, String> {
         let reply = self.call(&JsonEnvelope {
@@ -174,7 +153,7 @@ impl NativeExtension {
             .iter()
             .map(|(name, config)| (name.clone(), config.clone()))
             .collect::<Vec<_>>();
-        let extension = Arc::new(self);
+        let extension = Arc::clone(&self.inner);
 
         for name in tools {
             let native = Arc::clone(&extension);
@@ -260,12 +239,65 @@ impl NativeExtension {
     }
 
     /// Idempotently disables this instance. Its library remains loaded.
-    pub fn shutdown(&mut self) -> Result<(), String> {
+    pub fn shutdown(&self) -> Result<(), String> {
+        self.inner.shutdown()
+    }
+}
+
+impl Drop for NativeExtension {
+    fn drop(&mut self) {
+        let _ = self.shutdown();
+    }
+}
+
+impl NativeExtensionInner {
+    fn call(&self, request: &JsonEnvelope) -> Result<JsonEnvelope, String> {
+        // ABI v1 instances are mutable and may not be called concurrently.
         let _call_lock = self
             .call_lock
             .lock()
             .map_err(|_| "native extension call lock poisoned")?;
-        let Some(handle) = self.handle.take() else {
+        let handle = *self
+            .handle
+            .lock()
+            .map_err(|_| "native extension handle lock poisoned")?
+            .as_ref()
+            .ok_or("native extension is shut down")?;
+        validate_handle(handle, handle.generation)?;
+        let request = request.encode()?;
+        let input = AbiBytes {
+            ptr: request.as_ptr(),
+            len: request.len() as u64,
+        };
+        let mut output = AbiOwnedBytes {
+            ptr: std::ptr::null_mut(),
+            len: 0,
+        };
+        let status = ffi_status(|| {
+            (self.table.call.expect("validated ABI table"))(handle, &input, &mut output)
+        })?;
+        if status != 0 {
+            return Err(format!("native extension call failed with status {status}"));
+        }
+        let result = (|| {
+            let bytes = unsafe { checked_owned_bytes(output)? };
+            JsonEnvelope::parse(&bytes)
+        })();
+        ffi_void(|| (self.table.free_bytes.expect("validated ABI table"))(output))?;
+        result
+    }
+
+    fn shutdown(&self) -> Result<(), String> {
+        let _call_lock = self
+            .call_lock
+            .lock()
+            .map_err(|_| "native extension call lock poisoned")?;
+        let Some(handle) = self
+            .handle
+            .lock()
+            .map_err(|_| "native extension handle lock poisoned")?
+            .take()
+        else {
             return Ok(());
         };
         let status = ffi_status(|| (self.table.destroy.expect("validated ABI table"))(handle))?;
@@ -276,12 +308,6 @@ impl NativeExtension {
                 "native extension shutdown failed with status {status}"
             ))
         }
-    }
-}
-
-impl Drop for NativeExtension {
-    fn drop(&mut self) {
-        let _ = self.shutdown();
     }
 }
 

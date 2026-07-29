@@ -142,4 +142,17 @@ fn native_artifacts_activate_into_the_production_runner() {
             .unwrap(),
         json!({"echo": {"arguments": {"answer": 42}, "context": {"cwd": "/work", "generation": 0, "hasUi": true}, "kind": "tool", "name": "fixture-tool"}})
     );
+
+    let errors = Arc::new(Mutex::new(Vec::new()));
+    let errors_out = Arc::clone(&errors);
+    runner.set_error_listener(Arc::new(move |error| {
+        errors_out.lock().unwrap().push(error.message);
+    }));
+    runner.shutdown("done");
+    runner.shutdown("again");
+    runner.emit(ExtensionEvent {
+        kind: ExtensionEventKind::SessionStart,
+        data: json!({}),
+    });
+    assert!(errors.lock().unwrap()[0].ends_with("native extension is shut down"));
 }

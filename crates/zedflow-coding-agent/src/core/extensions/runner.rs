@@ -37,6 +37,7 @@ pub struct ExtensionRunner {
     pub runtime: ExtensionRuntime,
     handlers: HashMap<ExtensionEventKind, Vec<(String, super::types::ExtensionHandler)>>,
     error_listeners: Vec<ExtensionErrorListener>,
+    native_extensions: Vec<NativeExtension>,
     context: ExtensionContext,
     shutdown: bool,
 }
@@ -54,6 +55,7 @@ impl ExtensionRunner {
             runtime,
             handlers: HashMap::new(),
             error_listeners: Vec::new(),
+            native_extensions: Vec::new(),
             context: ExtensionContext {
                 mode: ExtensionMode::Print,
                 cwd: String::new(),
@@ -74,12 +76,13 @@ impl ExtensionRunner {
     ) -> Result<Self, String> {
         let mut runtime = ExtensionRuntime::default();
         let mut handlers = Vec::new();
-        for (index, extension) in native_extensions.into_iter().enumerate() {
+        for (index, extension) in native_extensions.iter().enumerate() {
             for (kind, handler) in extension.activate(&mut runtime)? {
                 handlers.push((extensions[index].name.clone(), kind, handler));
             }
         }
         let mut runner = Self::with_runtime(extensions, runtime);
+        runner.native_extensions = native_extensions;
         for (extension, kind, handler) in handlers {
             runner.on(extension, kind, handler);
         }
@@ -225,6 +228,14 @@ impl ExtensionRunner {
         });
         self.context.stale = true;
         self.context.generation += 1;
+        for extension in &self.native_extensions {
+            if let Err(message) = extension.shutdown() {
+                self.report_error(ExtensionError {
+                    message,
+                    source: None,
+                });
+            }
+        }
     }
     pub fn invalidate_context(&mut self) {
         self.context.stale = true;
