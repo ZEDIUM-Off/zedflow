@@ -31,26 +31,7 @@ impl io::Write for Writer {
 }
 
 #[test]
-fn default_startup_loads_persisted_digest_bound_native_extension() {
-    let manifest =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-extension/Cargo.toml");
-    let binary = PathBuf::from(env!("CARGO_BIN_EXE_zedflow-coding-agent"));
-    let target = std::env::temp_dir().join("zedflow-interactive-native-extension-target");
-    assert!(
-        Command::new("cargo")
-            .args(["build", "--manifest-path"])
-            .arg(manifest)
-            .args(["--target-dir"])
-            .arg(&target)
-            .status()
-            .unwrap()
-            .success()
-    );
-    let artifact = target.join("debug").join(format!(
-        "{}zedflow_rust_extension_fixture{}",
-        std::env::consts::DLL_PREFIX,
-        std::env::consts::DLL_SUFFIX
-    ));
+fn default_startup_dispatches_session_lifecycle_to_persisted_native_extension() {
     let root = std::env::temp_dir().join(format!(
         "zedflow-interactive-native-extension-{}-{}",
         std::process::id(),
@@ -61,8 +42,58 @@ fn default_startup_loads_persisted_digest_bound_native_extension() {
     ));
     let extensions = root.join(".pi/extensions");
     let source = extensions.join("source");
-    fs::create_dir_all(&source).unwrap();
-    fs::write(source.join("Cargo.toml"), "[package]\nname='native'\n").unwrap();
+    let target = std::env::temp_dir().join("zedflow-interactive-native-extension-target");
+    let marker = root.join("session-start.json");
+    fs::create_dir_all(source.join("src")).unwrap();
+    fs::write(
+        source.join("Cargo.toml"),
+        format!(
+            "[package]\nname = \"startup-marker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n\n[lib]\ncrate-type = [\"cdylib\"]\n\n[dependencies]\nserde_json = \"1\"\nzedflow-coding-agent = {{ path = \"{}\" }}\n",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).display()
+        ),
+    )
+    .unwrap();
+    fs::write(
+        source.join("src/lib.rs"),
+        r#"
+use zedflow_coding_agent::{export_extension, sdk::{Extension, ExtensionApi, JsonValue}};
+
+#[derive(Default)]
+struct StartupMarker;
+
+impl Extension for StartupMarker {
+    fn initialize(&mut self, api: &mut ExtensionApi, _: JsonValue) -> Result<(), String> {
+        api.on_event("session_start");
+        Ok(())
+    }
+
+    fn invoke(&mut self, _: &mut ExtensionApi, request: JsonValue) -> Result<JsonValue, String> {
+        if request["kind"] == "event" && request["event"] == "session_start" {
+            std::fs::write(std::env::var("ZEDFLOW_STARTUP_MARKER").map_err(|error| error.to_string())?, request.to_string()).map_err(|error| error.to_string())?;
+        }
+        Ok(serde_json::json!({"result": null}))
+    }
+}
+
+export_extension!(StartupMarker);
+"#,
+    )
+    .unwrap();
+    assert!(
+        Command::new("cargo")
+            .args(["build", "--manifest-path"])
+            .arg(source.join("Cargo.toml"))
+            .args(["--target-dir"])
+            .arg(&target)
+            .status()
+            .unwrap()
+            .success()
+    );
+    let artifact = target.join("debug").join(format!(
+        "{}startup_marker{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX
+    ));
     let install = NativeExtensionInstall {
         source_dir: source.clone(),
         artifact: artifact.clone(),
@@ -76,33 +107,31 @@ fn default_startup_loads_persisted_digest_bound_native_extension() {
     };
     install.persist(&extensions).unwrap();
 
-    let mut child = Command::new(binary)
+    let mut child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_zedflow-coding-agent")))
         .current_dir(&root)
         .env("PI_CODING_AGENT_DIR", root.join("agent"))
+        .env("ZEDFLOW_STARTUP_MARKER", &marker)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(1);
-    let mut running = true;
-    while Instant::now() < deadline {
-        if child.try_wait().unwrap().is_some() {
-            running = false;
-            break;
-        }
+    let deadline = Instant::now() + Duration::from_secs(40);
+    while !marker.exists() && Instant::now() < deadline {
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "default startup exited early"
+        );
         thread::sleep(Duration::from_millis(10));
     }
-    if running {
-        child.kill().unwrap();
-    }
+    let _ = child.kill();
     child.wait().unwrap();
+    let event: serde_json::Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
     let _ = fs::remove_dir_all(root);
 
-    assert!(
-        running,
-        "default startup rejected a persisted digest-bound native extension"
-    );
+    assert_eq!(event["kind"], "event");
+    assert_eq!(event["event"], "session_start");
+    assert_eq!(event["context"]["hasUi"], true);
 }
 
 #[test]
