@@ -2,9 +2,9 @@
 
 ## Scope
 
-This Stage-1 port exposes Pi's ExtensionAPI as native Rust, in-process contracts in `zedflow-coding-agent`. It supports registration of tools, commands, shortcuts, flags and providers; lifecycle, input, session, compaction, provider and UI events; session actions; errors; stale-context invalidation; and idempotent shutdown.
+This Stage-1 port exposes Pi's ExtensionAPI through native Rust contracts in `zedflow-coding-agent`. It supports registration of tools, commands, shortcuts, flags and providers; lifecycle, input, session, compaction, provider and UI events; session actions; errors; stale-context invalidation; and idempotent shutdown.
 
-Extensions are not dynamically loaded or source-installed in this revision. All extension types remain in the coding-agent compilation boundary. Dynamic libraries, ABI design, artifact trust and TypeScript/jiti installation are later work, not behavior implied by this port.
+Extensions are separately compiled Rust cdylibs loaded through custom ABI v1 for the process lifetime. Installation accepts only source inputs: `crate:<name>@<exact-version>`, `github:<owner>/<repo>@<resolved-commit>[#package]`, and development `path:` sources. Installation stages sanitized sources, builds locally, rejects prebuilt artifacts, records sha2 provenance/trust receipts, and binds the resolved source/artifact digest before load. TypeScript/jiti compatibility is deferred.
 
 ## Contract
 
@@ -16,4 +16,4 @@ UI and component requests are represented as events in this in-process contract.
 
 ## Deferred
 
-Add a dynamic loading boundary only when a separately compiled extension SDK is required. That work needs an explicit ABI, artifact provenance/trust policy, loader isolation and fixture gates; it must not leak foreign pointers or dynamic-loading concerns into this native contract.
+TypeScript/jiti source compatibility, hot unload, and unapproved installation dependencies are deferred. ABI v1 must not leak Rust trait objects, `String`, `Vec`, futures, or foreign pointers across the dynamic boundary; loaders do not unload libraries during process lifetime.
