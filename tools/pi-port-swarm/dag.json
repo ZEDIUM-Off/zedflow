@@ -1296,10 +1296,26 @@
       "intent": "Convert the blocked frozen Pi Coding-agent test batch 2 into real executable Rust behavior tests after SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2. TEST_PATH constants, empty test targets, blanket ignores, and source-path-only assertions do not count. Exercise actual public/runtime behavior without editing production sources."
     },
     {
-      "id": "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R2",
-      "kind": "validator",
+      "id": "SEM-CA-V7-INTERACTIVE-MODE-SUSPEND-REPAIR-R3",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V7-TEST-BATCH-2-R2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend"
+      ],
+      "intent": "Repair the deterministic interactive-mode suspend lifecycle failure in interactive_mode_owns_native_pump_and_restores_terminal_around_editor. Preserve native owner-pump and terminal restoration behavior; do not weaken the regression test or edit unrelated sources."
+    },
+    {
+      "id": "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R3",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V7-INTERACTIVE-MODE-SUSPEND-REPAIR-R3"
       ],
       "ownership": [],
       "validation": [
@@ -1313,7 +1329,7 @@
       "id": "SEM-CA-V8-TEST-BATCH-3",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R2"
+        "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R3"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/resource-loader.rs",
