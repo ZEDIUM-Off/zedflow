@@ -4,9 +4,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use zedflow_coding_agent::extensions::{
-    ABI_V1, ExtensionSource, JsonEnvelope, NativeExtension, NativeExtensionArtifact, digest_file,
-    digest_tree, install_source,
+use zedflow_coding_agent::{
+    extensions::{
+        ABI_V1, ExtensionSource, JsonEnvelope, NativeExtension, NativeExtensionArtifact,
+        digest_file, digest_tree, install_source,
+    },
+    resource_loader::{DefaultResourceLoader, ResourceExtensionPaths},
 };
 
 fn temp_dir() -> PathBuf {
@@ -44,7 +47,7 @@ fn installs_a_source_built_extension_with_provenance_and_explicit_trust() {
     let prebuilt = source_dir.join(&artifact);
     fs::create_dir_all(prebuilt.parent().unwrap()).unwrap();
     fs::write(&prebuilt, "not a built extension").unwrap();
-    let (installed, receipt) = install_source(
+    let install = install_source(
         &source,
         &root.join("source"),
         &root.join("staging"),
@@ -53,21 +56,33 @@ fn installs_a_source_built_extension_with_provenance_and_explicit_trust() {
         Some("previous-artifact".into()),
     )
     .expect("source-only extension installation");
+    let installed = &install.artifact;
+    let receipt = &install.receipt;
 
     assert!(installed.starts_with(root.join("store")));
     assert!(installed.is_file());
+    assert!(install.source_dir.starts_with(root.join("source")));
     assert_eq!(receipt.source, source.canonical());
     assert_eq!(
         receipt.source_sha256,
-        digest_tree(&root.join("source")).unwrap()
+        digest_tree(&install.source_dir).unwrap()
     );
-    assert_eq!(receipt.artifact_sha256, digest_file(&installed).unwrap());
+    assert_eq!(receipt.artifact_sha256, digest_file(installed).unwrap());
     assert_ne!(receipt.artifact_sha256, digest_file(&prebuilt).unwrap());
     assert_eq!(
         receipt.previous_artifact_sha256.as_deref(),
         Some("previous-artifact")
     );
     assert_ne!(receipt.source_sha256, receipt.artifact_sha256);
+
+    let mut resources = DefaultResourceLoader::new(&root, root.join("agent"));
+    resources.extend_resources(ResourceExtensionPaths {
+        native_extensions: vec![install.clone()],
+        ..Default::default()
+    });
+    resources.reload();
+    assert!(resources.get_extensions().errors.is_empty());
+    assert_eq!(&resources.native_extension_artifacts()[0].path, installed);
 
     let request = JsonEnvelope {
         version: ABI_V1,

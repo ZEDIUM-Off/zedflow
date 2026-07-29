@@ -6,7 +6,9 @@ use std::{
 
 use serde_json::Value;
 
-use super::provenance::{ExtensionSource, ProvenanceReceipt, digest_file, digest_tree};
+use super::provenance::{
+    ExtensionSource, NativeExtensionInstall, ProvenanceReceipt, digest_file, digest_tree,
+};
 
 /// Copies a development source into an empty staging directory. Symlinks and
 /// build/VCS output are refused, so Cargo never builds unreviewed artifacts.
@@ -93,7 +95,8 @@ pub fn materialize_source(source: &ExtensionSource, destination: &Path) -> Resul
     }
 }
 
-/// Fetches a source, builds it locally, and stores only the local build output.
+/// Fetches a source, builds it locally, and returns the receipt that registers
+/// the immutable source and content-addressed artifact with the resource loader.
 pub fn install_source(
     source: &ExtensionSource,
     source_work_dir: &Path,
@@ -101,9 +104,39 @@ pub fn install_source(
     artifact: &Path,
     store: &Path,
     previous: Option<String>,
-) -> Result<(PathBuf, ProvenanceReceipt), String> {
-    let source_dir = materialize_source(source, source_work_dir)?;
-    build_and_store(source, &source_dir, staging, artifact, store, previous)
+) -> Result<NativeExtensionInstall, String> {
+    fs::create_dir_all(source_work_dir.parent().unwrap_or_else(|| Path::new(".")))
+        .map_err(|error| error.to_string())?;
+    let pending = source_work_dir.with_extension(format!(
+        "pending-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock after Unix epoch")
+            .as_nanos()
+    ));
+    if pending.exists() {
+        fs::remove_dir_all(&pending).map_err(|error| error.to_string())?;
+    }
+    let result = (|| {
+        let source_dir = materialize_source(source, &pending)?;
+        let (artifact, receipt) =
+            build_and_store(source, &source_dir, staging, artifact, store, previous)?;
+        let destination = source_work_dir.join(&receipt.source_sha256);
+        if !destination.exists() {
+            fs::create_dir_all(source_work_dir).map_err(|error| error.to_string())?;
+            fs::rename(&pending, &destination).map_err(|error| error.to_string())?;
+        }
+        Ok(NativeExtensionInstall {
+            source_dir: destination,
+            artifact,
+            receipt,
+        })
+    })();
+    if pending.exists() {
+        let _ = fs::remove_dir_all(&pending);
+    }
+    result
 }
 
 pub fn build_source(staging: &Path) -> Result<(), String> {
@@ -148,7 +181,20 @@ pub fn store_artifact(store: &Path, artifact: &Path) -> io::Result<PathBuf> {
             })?);
     if !destination.exists() {
         fs::create_dir_all(destination.parent().expect("parent"))?;
-        fs::copy(artifact, &destination)?;
+        let pending = destination.with_extension(format!(
+            "pending-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock after Unix epoch")
+                .as_nanos()
+        ));
+        fs::copy(artifact, &pending)?;
+        if fs::rename(&pending, &destination).is_err() && !destination.exists() {
+            let _ = fs::remove_file(&pending);
+            return Err(io::Error::other("could not persist extension artifact"));
+        }
+        let _ = fs::remove_file(pending);
     }
     Ok(destination)
 }
