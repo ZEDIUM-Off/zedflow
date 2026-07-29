@@ -5,8 +5,8 @@ pub mod types;
 pub mod wrapper;
 
 pub use abi::{
-    ABI_OK, ABI_V1, AbiBytes, AbiHandle, AbiOwnedBytes, AbiStatus, AbiV1, JsonEnvelope,
-    MAX_JSON_BYTES,
+    ABI_HANDLE_EXTENSION, ABI_OK, ABI_V1, AbiBytes, AbiHandle, AbiOwnedBytes, AbiStatus, AbiV1,
+    JsonEnvelope, MAX_JSON_BYTES,
 };
 pub use loader::{
     NativeExtension, NativeExtensionArtifact, clear_extension_cache, create_extension_runtime,
