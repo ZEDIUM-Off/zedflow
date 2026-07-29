@@ -966,10 +966,27 @@
       "intent": "Repair the default interactive native-extension runtime dispatch: make the real main/InteractiveMode event and user-input path retain the trusted startup ExtensionRunner and route lifecycle, input, session, tool, command, and provider registrations through it, rather than leaving runner dispatch test-only. Add an executable default-harness native artifact regression. Preserve trusted provenance/digest activation, ABI v1 process-safety, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R12",
-      "kind": "reviewer",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R2",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
+      ],
+      "intent": "Repair the real default interactive harness dispatch: make main and InteractiveMode drive the retained trusted startup ExtensionRunner through actual event/user-input flow, dispatching lifecycle, input, session, tool, command, and provider registrations rather than exposing test-only methods. Add an executable default-harness native artifact regression. Preserve trusted provenance/digest activation, ABI v1 process-safety, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation, dependencies, and TypeScript deferral."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R13",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R2"
       ],
       "ownership": [],
       "validation": [
@@ -982,7 +999,7 @@
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R12"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R13"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
