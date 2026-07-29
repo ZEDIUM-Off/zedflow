@@ -1432,10 +1432,25 @@
       "intent": "Freshly convert frozen Pi Coding-agent test batch 3 into real executable Rust tests after the restoreSandboxEnv source port. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise actual public/runtime behavior."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R3",
-      "kind": "validator",
+      "id": "SEM-CA-V8-PROMPT-TEMPLATES-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-TEST-BATCH-3-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/prompt-templates.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib prompt_templates::tests::substitutes_once_and_preserves_unknown_dollars"
+      ],
+      "intent": "Repair the deterministic prompt-template slice expansion failure exposed by cargo test -p zedflow-coding-agent --lib: ${@:2:2} must consume its closing brace and preserve Pi substitution semantics. Modify only the owned runtime module and its embedded executable test."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R4",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-PROMPT-TEMPLATES-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1444,13 +1459,13 @@
         "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
         "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Independently validate the fresh SEM-CA-V8 test batch 3 after the restoreSandboxEnv source port. All declared V8 test targets must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the prompt-template slice repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R3"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R4"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
