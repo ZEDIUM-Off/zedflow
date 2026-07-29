@@ -9,4 +9,4 @@ pub use loader::{
 };
 pub use runner::{ExtensionRunner, emit_project_trust_event};
 pub use types::*;
-pub use wrapper::{wrap_registered_tool, wrap_registered_tools};
+pub use wrapper::{execute_registered_tool, wrap_registered_tool, wrap_registered_tools};
