@@ -839,10 +839,27 @@
       "intent": "Repair the default interactive native-extension host pipeline. Resolve only trusted native artifacts bound to source-install provenance/digest receipts through the resource configuration path, then make the real default entrypoint construct and retain the resulting ExtensionRunner and route its lifecycle, input, session, tool, command, and provider operations through that runner without duplicate mode dispatch. Add an executable default-harness regression. Include the extensions module root only to expose the existing host pipeline. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R1",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-INSTALL-PROVENANCE-REPAIR-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
+        "crates/zedflow-coding-agent/tests/extension-package-manager.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extension-package-manager"
+      ],
+      "intent": "Repair the source-install provenance handoff before default startup: atomically persist/register each source directory, content-addressed native artifact, and digest-bound provenance receipt in the existing install/provenance location and schema so the default resource loader has a trusted receipt to consume. Add an executable installation regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
+    },
+    {
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R2",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-INSTALL-PROVENANCE-REPAIR-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
@@ -853,13 +870,13 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
       ],
-      "intent": "Repair the default interactive startup provenance handoff: make installed source-only native-extension provenance receipts available to the default ResourceLoader/main path, then load only trusted digest-bound artifacts into the real interactive ExtensionRunner. Add an executable regression through the default startup path rather than direct runner injection. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
+      "intent": "Repair the default interactive startup provenance handoff using the persisted source-install registration: make the default ResourceLoader/main path resolve only trusted digest-bound artifacts into the real interactive ExtensionRunner, with an executable default-startup regression rather than direct runner injection. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R10",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R11",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R1"
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R2"
       ],
       "ownership": [],
       "validation": [
@@ -872,7 +889,7 @@
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R10"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R11"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
