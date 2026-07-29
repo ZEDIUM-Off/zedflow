@@ -3,8 +3,12 @@
 use std::{
     collections::HashMap,
     fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Mutex, OnceLock},
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use libloading::Library;
@@ -19,6 +23,7 @@ use super::types::{Extension, ExtensionFactory, ExtensionRuntime, LoadExtensions
 
 static CACHE: OnceLock<Mutex<HashMap<String, Extension>>> = OnceLock::new();
 static LIBRARIES: OnceLock<Mutex<Vec<Library>>> = OnceLock::new();
+static SNAPSHOT_COUNTER: AtomicU64 = AtomicU64::new(0);
 fn cache() -> &'static Mutex<HashMap<String, Extension>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -50,11 +55,11 @@ impl NativeExtension {
         if !artifact.trusted {
             return Err("native extension artifact is not trusted".into());
         }
-        let path = verified_artifact_path(artifact)?;
-        let library = unsafe { Library::new(&path) }.map_err(|error| {
+        let snapshot = verified_artifact_snapshot(artifact)?;
+        let library = unsafe { Library::new(&snapshot.path) }.map_err(|error| {
             format!(
                 "failed to load native extension {}: {error}",
-                path.display()
+                artifact.path.display()
             )
         })?;
         let entry: libloading::Symbol<AbiEntryV1> =
@@ -70,9 +75,6 @@ impl NativeExtension {
         validate_table_header(header)?;
         let table = unsafe { *table_pointer };
         validate_table(&table)?;
-        // Recheck the content-addressed artifact immediately before activation.
-        verified_artifact_path(artifact)?;
-
         let request = request.encode()?;
         let input = AbiBytes {
             ptr: request.as_ptr(),
@@ -146,18 +148,69 @@ impl Drop for NativeExtension {
     }
 }
 
-fn verified_artifact_path(artifact: &NativeExtensionArtifact) -> Result<PathBuf, String> {
-    let path = fs::canonicalize(&artifact.path)
-        .map_err(|error| format!("cannot canonicalize native extension artifact: {error}"))?;
-    if !path.is_file() {
+struct VerifiedArtifactSnapshot {
+    path: PathBuf,
+    directory: PathBuf,
+}
+
+impl Drop for VerifiedArtifactSnapshot {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.directory);
+    }
+}
+
+fn verified_artifact_snapshot(
+    artifact: &NativeExtensionArtifact,
+) -> Result<VerifiedArtifactSnapshot, String> {
+    let mut source = fs::File::open(&artifact.path)
+        .map_err(|error| format!("cannot open native extension artifact: {error}"))?;
+    if !source
+        .metadata()
+        .map_err(|error| error.to_string())?
+        .is_file()
+    {
         return Err("native extension artifact is not a file".into());
     }
-    let digest = Sha256::digest(fs::read(&path).map_err(|error| error.to_string())?);
-    let actual = format!("{digest:x}");
-    if !actual.eq_ignore_ascii_case(&artifact.sha256) {
-        return Err("native extension artifact SHA-256 mismatch".into());
+
+    let directory = std::env::temp_dir().join(format!(
+        "zedflow-native-extension-{}-{}",
+        std::process::id(),
+        SNAPSHOT_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir(&directory).map_err(|error| error.to_string())?;
+    let path = directory.join("artifact");
+    let result = (|| {
+        let mut snapshot = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|error| error.to_string())?;
+        let mut digest = Sha256::new();
+        let mut buffer = [0_u8; 8192];
+        loop {
+            let read = source
+                .read(&mut buffer)
+                .map_err(|error| error.to_string())?;
+            if read == 0 {
+                break;
+            }
+            digest.update(&buffer[..read]);
+            snapshot
+                .write_all(&buffer[..read])
+                .map_err(|error| error.to_string())?;
+        }
+        snapshot.sync_all().map_err(|error| error.to_string())?;
+        let actual = format!("{:x}", digest.finalize());
+        if !actual.eq_ignore_ascii_case(&artifact.sha256) {
+            return Err("native extension artifact SHA-256 mismatch".into());
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&directory);
+        return Err(error);
     }
-    Ok(path)
+    Ok(VerifiedArtifactSnapshot { path, directory })
 }
 
 /// # Safety
