@@ -657,10 +657,25 @@
       "intent": "Repair the missing V3D source-install/provenance deliverable: add executable source-only crate, GitHub, and path installation plus provenance/trust behavior and behavior tests, including the extensions module-root exports required to wire those owned install/provenance APIs. Do not add dependencies, accept prebuilt artifacts, use TypeScript execution shortcuts, or weaken tests."
     },
     {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R4",
-      "kind": "validator",
+      "id": "SEM-CA-V3F-RUST-EXTENSIONS-ABI-TEST-REPAIR-R5",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/extensions-abi-v1.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extensions-abi-v1"
+      ],
+      "intent": "Repair the deterministic extensions-abi-v1 behavioral failure at tests/extensions-abi-v1.rs:16 without weakening its ABI, unsafe, or separately compiled cdylib assertions. Do not edit production code, add dependencies, accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
+    },
+    {
+      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R5",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V3F-RUST-EXTENSIONS-ABI-TEST-REPAIR-R5"
       ],
       "ownership": [],
       "validation": [
@@ -674,13 +689,13 @@
         "cargo test -p zedflow-coding-agent --test extension-package-manager",
         "cargo test -p zedflow-coding-agent --test resource-extension-runtime"
       ],
-      "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the source-install/provenance repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
+      "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the focused extensions-abi-v1 repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
     },
     {
       "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R3",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R4"
+        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R5"
       ],
       "ownership": [],
       "validation": [
