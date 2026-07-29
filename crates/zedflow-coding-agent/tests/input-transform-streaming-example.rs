@@ -1,7 +1,7 @@
-//! Pi coding-agent test manifest entry: `tests/input-transform-streaming-example.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/input-transform-streaming-example.rs";
+use zedflow_coding_agent::modes::interactive::InteractiveMode;
+#[test]
+fn interactive_input_is_trimmed_and_queued() {
+    let mut mode = InteractiveMode::new();
+    mode.queue_user_input("  hello  ");
+    assert_eq!(mode.get_user_input(), Some("hello".into()));
+}

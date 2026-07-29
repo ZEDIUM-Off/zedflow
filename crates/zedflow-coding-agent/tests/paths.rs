@@ -1,7 +1,10 @@
-//! Pi coding-agent test manifest entry: `tests/paths.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/paths.rs";
+use std::path::Path;
+use zedflow_coding_agent::utils::paths::{get_cwd_relative_path, is_local_path};
+#[test]
+fn paths_detect_local_values_and_relative_files() {
+    assert!(is_local_path("./file"));
+    assert_eq!(
+        get_cwd_relative_path(Path::new("/work/a"), Path::new("/work")),
+        Some("a".into())
+    );
+}

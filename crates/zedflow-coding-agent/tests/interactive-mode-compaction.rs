@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/interactive-mode-compaction.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/interactive-mode-compaction.rs";
+use zedflow_coding_agent::modes::interactive::InteractiveMode;
+#[test]
+fn status_updates_are_coalesced_to_latest_value() {
+    let mut mode = InteractiveMode::new();
+    mode.show_status("first");
+    assert_eq!(mode.show_status("second"), "second");
+    assert_eq!(mode.last_status(), Some("second"));
+}

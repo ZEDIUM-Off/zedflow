@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/print-mode.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/print-mode.rs";
+use zedflow_coding_agent::{AssistantResult, render_print_result};
+#[test]
+fn print_mode_returns_success_and_newline_for_text() {
+    assert_eq!(
+        render_print_result(&AssistantResult::Text("done".into())),
+        (0, "done\n".into())
+    );
+}

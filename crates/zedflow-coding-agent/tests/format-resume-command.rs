@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/format-resume-command.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/format-resume-command.rs";
+use zedflow_coding_agent::modes::interactive::{get_path_command_argument, quote_if_needed};
+#[test]
+fn commands_parse_paths_and_quote_spaces() {
+    assert_eq!(
+        get_path_command_argument("/import 'a b'", "/import"),
+        Some("a b".into())
+    );
+    assert_eq!(quote_if_needed("a b"), "'a b'");
+}

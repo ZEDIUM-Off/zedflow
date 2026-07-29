@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/interactive-mode-anthropic-warning.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/interactive-mode-anthropic-warning.rs";
+use zedflow_coding_agent::modes::interactive::is_anthropic_subscription_auth_key;
+#[test]
+fn anthropic_subscription_keys_are_detected() {
+    assert!(is_anthropic_subscription_auth_key(Some("sk-ant-oat-token")));
+    assert!(!is_anthropic_subscription_auth_key(Some("sk-other")));
+}

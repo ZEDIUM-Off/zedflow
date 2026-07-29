@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/git-merge-and-resolve-extension.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/git-merge-and-resolve-extension.rs";
+use zedflow_coding_agent::utils::git::parse_git_url;
+#[test]
+fn git_sources_are_parsed_for_extension_installation() {
+    let source = parse_git_url("https://github.com/owner/repo.git@main").unwrap();
+    assert_eq!(source.host, "github.com");
+    assert_eq!(source.repo, "https://github.com/owner/repo.git");
+    assert_eq!(source.ref_name.as_deref(), Some("main"));
+}

@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/plan-mode-utils.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/plan-mode-utils.rs";
+use zedflow_coding_agent::prompt_templates::{parse_command_args, substitute_args};
+#[test]
+fn plan_arguments_preserve_quoted_words() {
+    let args = parse_command_args("one 'two words'");
+    assert_eq!(substitute_args("$1 / $2", &args), "one / two words");
+}

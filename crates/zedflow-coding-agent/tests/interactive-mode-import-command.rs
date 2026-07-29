@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/interactive-mode-import-command.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/interactive-mode-import-command.rs";
+use zedflow_coding_agent::modes::interactive::get_path_command_argument;
+#[test]
+fn import_requires_a_complete_command_and_path() {
+    assert_eq!(
+        get_path_command_argument("/import archive.json", "/import"),
+        Some("archive.json".into())
+    );
+    assert_eq!(get_path_command_argument("/important x", "/import"), None);
+}

@@ -1,7 +1,11 @@
-//! Pi coding-agent test manifest entry: `tests/keybindings-migration.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/keybindings-migration.rs";
+use serde_json::json;
+use std::collections::BTreeMap;
+use zedflow_coding_agent::keybindings::migrate_keybindings_config;
+#[test]
+fn legacy_keybinding_names_are_migrated() {
+    let mut raw = BTreeMap::new();
+    raw.insert("cursorUp".into(), json!("up"));
+    let (migrated, changed) = migrate_keybindings_config(&raw);
+    assert!(changed);
+    assert_eq!(migrated.get("tui.editor.cursorUp"), Some(&json!("up")));
+}

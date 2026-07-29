@@ -1,7 +1,5 @@
-//! Pi coding-agent test manifest entry: `tests/pi-user-agent.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/pi-user-agent.rs";
+use zedflow_coding_agent::utils::pi_user_agent::get_pi_user_agent;
+#[test]
+fn user_agent_includes_version() {
+    assert!(get_pi_user_agent("1.2.3").starts_with("pi/1.2.3 ("));
+}

@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/interactive-mode-startup-input.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/interactive-mode-startup-input.rs";
+use zedflow_coding_agent::modes::interactive::InteractiveMode;
+#[test]
+fn blank_startup_input_is_ignored() {
+    let mut mode = InteractiveMode::new();
+    mode.queue_user_input(" ");
+    mode.queue_user_input("start");
+    assert_eq!(mode.pending_user_input_count(), 1);
+    assert_eq!(mode.get_user_input(), Some("start".into()));
+}
