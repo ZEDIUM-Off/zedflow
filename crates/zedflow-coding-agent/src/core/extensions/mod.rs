@@ -13,7 +13,7 @@ pub use abi::{
 pub use loader::{
     NativeExtension, NativeExtensionArtifact, clear_extension_cache, create_extension_runtime,
     discover_and_load_extensions, load_extension_from_factory, load_extensions,
-    load_extensions_cached,
+    load_extensions_cached, load_native_extensions,
 };
 pub use runner::{ExtensionRunner, emit_project_trust_event};
 pub use types::*;

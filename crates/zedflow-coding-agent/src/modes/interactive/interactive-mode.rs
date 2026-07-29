@@ -9,6 +9,12 @@ use std::{
 
 use zedflow_tui::{ProcessTerminal, Terminal, Tui};
 
+use crate::extensions::{
+    ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner, InputEvent,
+    SessionActionResult,
+};
+use serde_json::Value;
+
 /// Parse the first argument of an interactive path command (`/import` or
 /// `/export`). The command must be a complete token; quoted arguments have
 /// their matching outer quotes removed.
@@ -86,6 +92,7 @@ pub struct InteractiveMode {
     tui: Tui,
     pending_user_inputs: VecDeque<String>,
     last_status: Option<String>,
+    extensions: ExtensionRunner,
 }
 
 impl Default for InteractiveState {
@@ -108,11 +115,33 @@ impl InteractiveMode {
 
     #[must_use]
     pub fn with_terminal(terminal: impl Terminal + 'static) -> Self {
+        Self::with_terminal_and_extensions(terminal, ExtensionRunner::new(Vec::new()))
+    }
+
+    #[must_use]
+    pub fn with_extension_runner(extensions: ExtensionRunner) -> Self {
+        Self::with_terminal_and_extensions(ProcessTerminal::new(), extensions)
+    }
+
+    #[must_use]
+    pub fn with_terminal_and_extensions(
+        terminal: impl Terminal + 'static,
+        mut extensions: ExtensionRunner,
+    ) -> Self {
+        extensions.set_context(
+            ExtensionMode::Tui,
+            std::env::current_dir()
+                .unwrap_or_default()
+                .display()
+                .to_string(),
+            true,
+        );
         Self {
             state: InteractiveState::Created,
             tui: Tui::with_terminal(terminal),
             pending_user_inputs: VecDeque::new(),
             last_status: None,
+            extensions,
         }
     }
 
@@ -123,6 +152,10 @@ impl InteractiveMode {
     pub fn run(&mut self) -> io::Result<()> {
         self.tui.start()?;
         self.state = InteractiveState::Running;
+        self.extensions.emit(ExtensionEvent {
+            kind: ExtensionEventKind::SessionStart,
+            data: serde_json::json!({"mode":"interactive"}),
+        });
         Ok(())
     }
 
@@ -170,9 +203,43 @@ impl InteractiveMode {
     /// Queue startup input until the interactive consumer is ready.
     pub fn queue_user_input(&mut self, text: impl Into<String>) {
         let text = text.into().trim().to_owned();
-        if !text.is_empty() {
-            self.pending_user_inputs.push_back(text);
+        if text.is_empty() {
+            return;
         }
+        let result = self.extensions.emit_input(InputEvent::Text(text.clone()));
+        if !result.consumed {
+            self.pending_user_inputs
+                .push_back(result.replacement.unwrap_or(text));
+        }
+    }
+
+    pub fn emit_session_event(&mut self, kind: ExtensionEventKind, data: Value) -> Vec<Value> {
+        self.extensions.emit(ExtensionEvent { kind, data })
+    }
+
+    pub fn invoke_extension_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, crate::extensions::ExtensionError> {
+        self.extensions.invoke_tool(name, arguments)
+    }
+
+    pub fn invoke_extension_command(
+        &mut self,
+        name: &str,
+        args: &[String],
+    ) -> Result<SessionActionResult, crate::extensions::ExtensionError> {
+        self.extensions.invoke_command(name, args)
+    }
+
+    pub fn emit_provider_event(&mut self, kind: ExtensionEventKind, data: Value) -> Vec<Value> {
+        self.extensions.emit(ExtensionEvent { kind, data })
+    }
+
+    #[must_use]
+    pub fn extension_runner(&self) -> &ExtensionRunner {
+        &self.extensions
     }
 
     /// Return queued input in submission order, matching `getUserInput()`.
@@ -194,5 +261,11 @@ impl InteractiveMode {
     #[must_use]
     pub fn last_status(&self) -> Option<&str> {
         self.last_status.as_deref()
+    }
+}
+
+impl Drop for InteractiveMode {
+    fn drop(&mut self) {
+        self.extensions.shutdown("interactive mode ended");
     }
 }

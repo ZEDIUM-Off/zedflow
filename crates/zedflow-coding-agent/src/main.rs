@@ -2,7 +2,9 @@
 
 use std::{io, time::Duration};
 use zedflow_coding_agent::cli::{Mode, parse_args};
-use zedflow_coding_agent::{modes::InteractiveMode, rpc_entry};
+use zedflow_coding_agent::{
+    config, core::resource_loader::DefaultResourceLoader, modes::InteractiveMode, rpc_entry,
+};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -29,7 +31,12 @@ fn dispatch_runtime_mode(mode: Option<Mode>) -> io::Result<()> {
         Some(Mode::Rpc) => rpc_entry::run(io::stdin().lock(), io::stdout()),
         Some(Mode::Text) | Some(Mode::Json) => Ok(()),
         None => {
-            let mut mode = InteractiveMode::new();
+            let cwd = std::env::current_dir()?;
+            let resources = DefaultResourceLoader::new(&cwd, config::get_agent_dir());
+            let runner = resources
+                .native_extension_runner()
+                .map_err(io::Error::other)?;
+            let mut mode = InteractiveMode::with_extension_runner(runner);
             mode.run()?;
             loop {
                 mode.pump_events(Duration::from_millis(10))?;

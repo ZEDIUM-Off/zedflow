@@ -5,7 +5,11 @@ use std::{
 
 use super::{
     diagnostics::ResourceDiagnostic,
-    extensions::{ExtensionError, LoadExtensionsResult, discover_and_load_extensions},
+    extensions::{
+        ABI_V1, ExtensionError, ExtensionRunner, ExtensionSource, JsonEnvelope,
+        LoadExtensionsResult, NativeExtensionArtifact, ProvenanceReceipt, digest_file,
+        discover_and_load_extensions, load_native_extensions,
+    },
     prompt_templates::{LoadPromptTemplatesOptions, PromptTemplate, load_prompt_templates},
     skills::{LoadSkillsOptions, LoadSkillsResult, load_skills},
     system_prompt::build_system_prompt,
@@ -21,7 +25,57 @@ pub struct ResourceExtensionPaths {
     pub skill_paths: Vec<PathBuf>,
     pub prompt_paths: Vec<PathBuf>,
     pub theme_paths: Vec<PathBuf>,
+    /// Native code is accepted only when an explicit trust decision and its
+    /// source-install receipt bind it to the configured artifact digest.
+    pub native_extensions: Vec<NativeExtensionResource>,
 }
+
+#[derive(Debug, Clone)]
+pub struct NativeExtensionResource {
+    pub path: PathBuf,
+    pub receipt: ProvenanceReceipt,
+    pub trusted: bool,
+}
+
+impl NativeExtensionResource {
+    fn artifact(&self) -> Result<NativeExtensionArtifact, String> {
+        if !self.trusted {
+            return Err(format!(
+                "native extension artifact is not trusted: {}",
+                self.path.display()
+            ));
+        }
+        let source = ExtensionSource::parse(&self.receipt.source)?;
+        if source.canonical() != self.receipt.source {
+            return Err("native extension receipt source is not canonical".into());
+        }
+        if !is_sha256(&self.receipt.source_sha256) || !is_sha256(&self.receipt.artifact_sha256) {
+            return Err("native extension receipt has an invalid SHA-256".into());
+        }
+        if self
+            .receipt
+            .previous_artifact_sha256
+            .as_deref()
+            .is_some_and(|digest| !is_sha256(digest))
+        {
+            return Err("native extension receipt has an invalid previous artifact SHA-256".into());
+        }
+        let digest = digest_file(&self.path).map_err(|error| error.to_string())?;
+        if !digest.eq_ignore_ascii_case(&self.receipt.artifact_sha256) {
+            return Err("native extension artifact does not match its provenance receipt".into());
+        }
+        Ok(NativeExtensionArtifact {
+            path: self.path.clone(),
+            sha256: self.receipt.artifact_sha256.clone(),
+            trusted: true,
+        })
+    }
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ResourceLoaderReloadOptions;
 
@@ -182,10 +236,28 @@ impl DefaultResourceLoader {
     pub fn get_append_system_prompt(&self) -> &[String] {
         &self.append_system_prompt
     }
+    /// Resolves the configured native artifacts immediately before loading.
+    /// This keeps trust, receipt, and digest checks on the same configuration path.
+    pub fn native_extension_runner(&self) -> Result<ExtensionRunner, String> {
+        let artifacts = self
+            .extra
+            .native_extensions
+            .iter()
+            .map(NativeExtensionResource::artifact)
+            .collect::<Result<Vec<_>, _>>()?;
+        load_native_extensions(
+            &artifacts,
+            &JsonEnvelope {
+                version: ABI_V1,
+                payload: serde_json::Value::Null,
+            },
+        )
+    }
     pub fn extend_resources(&mut self, paths: ResourceExtensionPaths) {
         self.extra.skill_paths.extend(paths.skill_paths);
         self.extra.prompt_paths.extend(paths.prompt_paths);
         self.extra.theme_paths.extend(paths.theme_paths);
+        self.extra.native_extensions.extend(paths.native_extensions);
     }
 }
 impl ResourceLoader for DefaultResourceLoader {
