@@ -64,12 +64,19 @@ struct StartupMarker;
 impl Extension for StartupMarker {
     fn initialize(&mut self, api: &mut ExtensionApi, _: JsonValue) -> Result<(), String> {
         api.on_event("session_start");
+        api.on_event("input");
+        api.register_tool("native-tool");
+        api.register_command("native-command");
+        api.register_provider("native-provider", serde_json::json!({"native": true}));
         Ok(())
     }
 
-    fn invoke(&mut self, _: &mut ExtensionApi, request: JsonValue) -> Result<JsonValue, String> {
-        if request["kind"] == "event" && request["event"] == "session_start" {
-            std::fs::write(std::env::var("ZEDFLOW_STARTUP_MARKER").map_err(|error| error.to_string())?, request.to_string()).map_err(|error| error.to_string())?;
+    fn invoke(&mut self, api: &mut ExtensionApi, request: JsonValue) -> Result<JsonValue, String> {
+        if request["kind"] == "event" && request["event"] == "input" {
+            std::fs::write(
+                std::env::var("ZEDFLOW_STARTUP_MARKER").map_err(|error| error.to_string())?,
+                serde_json::json!({"request": request, "api": api.snapshot()}).to_string(),
+            ).map_err(|error| error.to_string())?;
         }
         Ok(serde_json::json!({"result": null}))
     }
@@ -111,12 +118,21 @@ export_extension!(StartupMarker);
         .current_dir(&root)
         .env("PI_CODING_AGENT_DIR", root.join("agent"))
         .env("ZEDFLOW_STARTUP_MARKER", &marker)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
     let deadline = Instant::now() + Duration::from_secs(40);
+    thread::sleep(Duration::from_millis(100));
+    use std::io::Write as _;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(b"native input\r")
+        .unwrap();
+    child.stdin.as_mut().unwrap().flush().unwrap();
     while !marker.exists() && Instant::now() < deadline {
         assert!(
             child.try_wait().unwrap().is_none(),
@@ -129,9 +145,13 @@ export_extension!(StartupMarker);
     let event: serde_json::Value = serde_json::from_slice(&fs::read(&marker).unwrap()).unwrap();
     let _ = fs::remove_dir_all(root);
 
-    assert_eq!(event["kind"], "event");
-    assert_eq!(event["event"], "session_start");
-    assert_eq!(event["context"]["hasUi"], true);
+    assert_eq!(event["request"]["kind"], "event");
+    assert_eq!(event["request"]["event"], "input");
+    assert_eq!(event["request"]["data"]["text"], "native input");
+    assert_eq!(event["request"]["context"]["hasUi"], true);
+    assert_eq!(event["api"]["tools"], json!(["native-tool"]));
+    assert_eq!(event["api"]["commands"], json!(["native-command"]));
+    assert_eq!(event["api"]["providers"]["native-provider"]["native"], true);
 }
 
 #[test]

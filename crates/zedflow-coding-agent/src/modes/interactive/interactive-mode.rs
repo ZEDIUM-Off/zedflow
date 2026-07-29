@@ -4,11 +4,12 @@ use std::{
     collections::{HashSet, VecDeque},
     io,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
 use serde_json::Value;
-use zedflow_tui::{ProcessTerminal, Terminal, Tui};
+use zedflow_tui::{Component, ProcessTerminal, Terminal, Tui};
 
 use crate::extensions::{
     ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner, InputEvent,
@@ -93,6 +94,7 @@ pub struct InteractiveMode {
     pending_user_inputs: VecDeque<String>,
     last_status: Option<String>,
     extension_runner: Option<ExtensionRunner>,
+    submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
 }
 
 impl Default for InteractiveState {
@@ -121,6 +123,7 @@ impl InteractiveMode {
             pending_user_inputs: VecDeque::new(),
             last_status: None,
             extension_runner: None,
+            submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 
@@ -139,6 +142,9 @@ impl InteractiveMode {
     }
 
     pub fn run(&mut self) -> io::Result<()> {
+        self.tui.root.add_child(InteractiveInput::new(Arc::clone(
+            &self.submitted_terminal_inputs,
+        )));
         self.tui.start()?;
         self.state = InteractiveState::Running;
         if let Some(runner) = &mut self.extension_runner {
@@ -153,7 +159,12 @@ impl InteractiveMode {
 
     /// Pump terminal input and resize events on the thread that owns this mode.
     pub fn pump_events(&mut self, timeout: Duration) -> io::Result<usize> {
-        self.tui.pump_events(timeout)
+        let count = self.tui.pump_events(timeout)?;
+        let submitted = std::mem::take(&mut *self.submitted_terminal_inputs.lock().unwrap());
+        for input in submitted {
+            self.queue_user_input(input);
+        }
+        Ok(count)
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
@@ -198,16 +209,35 @@ impl InteractiveMode {
     /// Queue startup input until the interactive consumer is ready.
     pub fn queue_user_input(&mut self, text: impl Into<String>) {
         let text = text.into().trim().to_owned();
-        if !text.is_empty() {
-            let input = self
-                .extension_runner
-                .as_mut()
-                .map(|runner| runner.emit_input(InputEvent::Text(text.clone())));
-            if !input.as_ref().is_some_and(|result| result.consumed) {
-                self.pending_user_inputs
-                    .push_back(input.and_then(|result| result.replacement).unwrap_or(text));
-            }
+        if text.is_empty() {
+            return;
         }
+        let input = self
+            .extension_runner
+            .as_mut()
+            .map(|runner| runner.emit_input(InputEvent::Text(text.clone())));
+        if input.as_ref().is_some_and(|result| result.consumed) {
+            return;
+        }
+        let text = input.and_then(|result| result.replacement).unwrap_or(text);
+        if let Some((command, args)) = text.strip_prefix('/').and_then(|text| {
+            let mut words = text.split_whitespace();
+            words
+                .next()
+                .map(|command| (command, words.map(str::to_owned).collect::<Vec<_>>()))
+        }) && let Some(runner) = &mut self.extension_runner
+            && runner
+                .runtime
+                .commands
+                .iter()
+                .any(|registered| registered.name == command)
+        {
+            if let Err(error) = runner.invoke_command(command, &args) {
+                self.show_status(error.message);
+            }
+            return;
+        }
+        self.pending_user_inputs.push_back(text);
     }
 
     /// Return queued input in submission order, matching `getUserInput()`.
@@ -273,6 +303,40 @@ impl InteractiveMode {
         self.extension_runner
             .as_ref()
             .map_or(&[], |runner| &runner.runtime.providers)
+    }
+}
+
+struct InteractiveInput {
+    value: String,
+    submitted: Arc<Mutex<VecDeque<String>>>,
+}
+
+impl InteractiveInput {
+    fn new(submitted: Arc<Mutex<VecDeque<String>>>) -> Self {
+        Self {
+            value: String::new(),
+            submitted,
+        }
+    }
+}
+
+impl Component for InteractiveInput {
+    fn render(&self, width: usize) -> Vec<String> {
+        vec![self.value.chars().take(width).collect()]
+    }
+
+    fn handle_input(&mut self, data: &str) {
+        match data {
+            "\r" | "\n" => {
+                let input = std::mem::take(&mut self.value);
+                self.submitted.lock().unwrap().push_back(input);
+            }
+            "\x7f" => {
+                self.value.pop();
+            }
+            _ if data.chars().all(|character| !character.is_control()) => self.value.push_str(data),
+            _ => {}
+        }
     }
 }
 
