@@ -817,12 +817,13 @@
       "intent": "Repair native ExtensionAPI lifecycle-event activation: retain each trusted NativeExtension event registration from its ABI API snapshot during loader activation and dispatch it through ExtensionRuntime/ExtensionRunner emit. Add executable regressions proving a compiled native extension event handler participates in runner lifecycle dispatch. Preserve approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R2",
+      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R3",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-EVENTS-REPAIR-R1"
       ],
       "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
         "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
         "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
         "crates/zedflow-coding-agent/src/core/resource-loader.rs",
@@ -835,13 +836,13 @@
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
       ],
-      "intent": "Repair the default interactive native-extension host pipeline. Resolve only trusted native artifacts bound to source-install provenance/digest receipts through the resource configuration path, then make the real default entrypoint construct and retain the resulting ExtensionRunner and route its lifecycle, input, session, tool, command, and provider operations through that runner without duplicate mode dispatch. Add an executable default-harness regression. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
+      "intent": "Repair the default interactive native-extension host pipeline. Resolve only trusted native artifacts bound to source-install provenance/digest receipts through the resource configuration path, then make the real default entrypoint construct and retain the resulting ExtensionRunner and route its lifecycle, input, session, tool, command, and provider operations through that runner without duplicate mode dispatch. Add an executable default-harness regression. Include the extensions module root only to expose the existing host pipeline. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
     },
     {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R8",
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R9",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R2"
+        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R3"
       ],
       "ownership": [],
       "validation": [
@@ -854,7 +855,7 @@
       "id": "SEM-CA-V5-CLI-MODES",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R8"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R9"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/main.rs",
