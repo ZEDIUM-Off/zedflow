@@ -7,7 +7,13 @@ use std::{
     time::Duration,
 };
 
+use serde_json::Value;
 use zedflow_tui::{ProcessTerminal, Terminal, Tui};
+
+use crate::extensions::{
+    ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner, InputEvent,
+    ProviderConfig, SessionActionResult,
+};
 
 /// Parse the first argument of an interactive path command (`/import` or
 /// `/export`). The command must be a complete token; quoted arguments have
@@ -86,6 +92,7 @@ pub struct InteractiveMode {
     tui: Tui,
     pending_user_inputs: VecDeque<String>,
     last_status: Option<String>,
+    extension_runner: Option<ExtensionRunner>,
 }
 
 impl Default for InteractiveState {
@@ -113,7 +120,18 @@ impl InteractiveMode {
             tui: Tui::with_terminal(terminal),
             pending_user_inputs: VecDeque::new(),
             last_status: None,
+            extension_runner: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_extension_runner(
+        terminal: impl Terminal + 'static,
+        extension_runner: ExtensionRunner,
+    ) -> Self {
+        let mut mode = Self::with_terminal(terminal);
+        mode.extension_runner = Some(extension_runner);
+        mode
     }
 
     pub fn tui_mut(&mut self) -> &mut Tui {
@@ -123,6 +141,13 @@ impl InteractiveMode {
     pub fn run(&mut self) -> io::Result<()> {
         self.tui.start()?;
         self.state = InteractiveState::Running;
+        if let Some(runner) = &mut self.extension_runner {
+            runner.set_context(ExtensionMode::Tui, current_dir(), true);
+            runner.emit(ExtensionEvent {
+                kind: ExtensionEventKind::SessionStart,
+                data: serde_json::json!({}),
+            });
+        }
         Ok(())
     }
 
@@ -132,6 +157,9 @@ impl InteractiveMode {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
+        if let Some(runner) = &mut self.extension_runner {
+            runner.shutdown("interactive mode stopped");
+        }
         let result = self.tui.stop();
         self.state = InteractiveState::Stopped;
         result
@@ -171,7 +199,14 @@ impl InteractiveMode {
     pub fn queue_user_input(&mut self, text: impl Into<String>) {
         let text = text.into().trim().to_owned();
         if !text.is_empty() {
-            self.pending_user_inputs.push_back(text);
+            let input = self
+                .extension_runner
+                .as_mut()
+                .map(|runner| runner.emit_input(InputEvent::Text(text.clone())));
+            if !input.as_ref().is_some_and(|result| result.consumed) {
+                self.pending_user_inputs
+                    .push_back(input.and_then(|result| result.replacement).unwrap_or(text));
+            }
         }
     }
 
@@ -195,4 +230,54 @@ impl InteractiveMode {
     pub fn last_status(&self) -> Option<&str> {
         self.last_status.as_deref()
     }
+
+    /// The single extension dispatch point for interactive lifecycle events.
+    pub fn emit_extension_event(&mut self, kind: ExtensionEventKind, data: Value) -> Vec<Value> {
+        self.extension_runner
+            .as_mut()
+            .map_or_else(Vec::new, |runner| {
+                runner.emit(ExtensionEvent { kind, data })
+            })
+    }
+
+    pub fn invoke_extension_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Value, ExtensionError> {
+        self.extension_runner
+            .as_mut()
+            .ok_or_else(|| ExtensionError {
+                message: "no interactive extension runner".into(),
+                source: None,
+            })?
+            .invoke_tool(name, arguments)
+    }
+
+    pub fn invoke_extension_command(
+        &mut self,
+        name: &str,
+        args: &[String],
+    ) -> Result<SessionActionResult, ExtensionError> {
+        self.extension_runner
+            .as_mut()
+            .ok_or_else(|| ExtensionError {
+                message: "no interactive extension runner".into(),
+                source: None,
+            })?
+            .invoke_command(name, args)
+    }
+
+    #[must_use]
+    pub fn extension_providers(&self) -> &[ProviderConfig] {
+        self.extension_runner
+            .as_ref()
+            .map_or(&[], |runner| &runner.runtime.providers)
+    }
+}
+
+fn current_dir() -> String {
+    std::env::current_dir()
+        .map(|path| path.display().to_string())
+        .unwrap_or_default()
 }

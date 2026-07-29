@@ -5,7 +5,10 @@ use std::{
 
 use super::{
     diagnostics::ResourceDiagnostic,
-    extensions::{ExtensionError, LoadExtensionsResult, discover_and_load_extensions},
+    extensions::{
+        ExtensionError, LoadExtensionsResult, NativeExtensionArtifact, NativeExtensionInstall,
+        discover_and_load_extensions,
+    },
     prompt_templates::{LoadPromptTemplatesOptions, PromptTemplate, load_prompt_templates},
     skills::{LoadSkillsOptions, LoadSkillsResult, load_skills},
     system_prompt::build_system_prompt,
@@ -21,6 +24,8 @@ pub struct ResourceExtensionPaths {
     pub skill_paths: Vec<PathBuf>,
     pub prompt_paths: Vec<PathBuf>,
     pub theme_paths: Vec<PathBuf>,
+    /// Native code is accepted only from a locally built source-install receipt.
+    pub native_extensions: Vec<NativeExtensionInstall>,
 }
 #[derive(Debug, Clone, Default)]
 pub struct ResourceLoaderReloadOptions;
@@ -84,6 +89,7 @@ pub struct DefaultResourceLoader {
     system_prompt: Option<String>,
     append_system_prompt: Vec<String>,
     extra: ResourceExtensionPaths,
+    native_extension_artifacts: Vec<NativeExtensionArtifact>,
 }
 impl DefaultResourceLoader {
     #[must_use]
@@ -101,6 +107,7 @@ impl DefaultResourceLoader {
             system_prompt: None,
             append_system_prompt: Vec::new(),
             extra: ResourceExtensionPaths::default(),
+            native_extension_artifacts: Vec::new(),
         }
     }
     pub fn reload(&mut self) {
@@ -125,6 +132,30 @@ impl DefaultResourceLoader {
             self.extensions.errors.extend(extensions.errors);
             return;
         }
+        let native_extension_artifacts = self
+            .extra
+            .native_extensions
+            .iter()
+            .map(|install| {
+                install
+                    .resolve()
+                    .map(|(path, sha256)| NativeExtensionArtifact {
+                        path,
+                        sha256,
+                        trusted: true,
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>();
+        let native_extension_artifacts = match native_extension_artifacts {
+            Ok(artifacts) => artifacts,
+            Err(message) => {
+                self.extensions.errors.push(ExtensionError {
+                    message,
+                    source: None,
+                });
+                return;
+            }
+        };
         let skills = load_skills(LoadSkillsOptions {
             cwd: self.cwd.display().to_string(),
             agent_dir: self.agent_dir.display().to_string(),
@@ -149,6 +180,7 @@ impl DefaultResourceLoader {
         });
         let agents_files = load_project_context_files(&self.cwd, &self.agent_dir);
         self.extensions = extensions;
+        self.native_extension_artifacts = native_extension_artifacts;
         self.skills = skills;
         self.prompts = prompts;
         self.prompt_diagnostics.clear();
@@ -159,6 +191,9 @@ impl DefaultResourceLoader {
         &self.extensions
     }
     #[must_use]
+    pub fn native_extension_artifacts(&self) -> &[NativeExtensionArtifact] {
+        &self.native_extension_artifacts
+    }
     pub fn get_skills(&self) -> &LoadSkillsResult {
         &self.skills
     }
@@ -186,6 +221,7 @@ impl DefaultResourceLoader {
         self.extra.skill_paths.extend(paths.skill_paths);
         self.extra.prompt_paths.extend(paths.prompt_paths);
         self.extra.theme_paths.extend(paths.theme_paths);
+        self.extra.native_extensions.extend(paths.native_extensions);
     }
 }
 impl ResourceLoader for DefaultResourceLoader {

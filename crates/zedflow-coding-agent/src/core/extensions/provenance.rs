@@ -93,6 +93,34 @@ pub struct ProvenanceReceipt {
     pub previous_artifact_sha256: Option<String>,
 }
 
+/// Source-install receipt supplied to the resource loader before native code is enabled.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NativeExtensionInstall {
+    pub source_dir: PathBuf,
+    pub artifact: PathBuf,
+    pub receipt: ProvenanceReceipt,
+}
+
+impl NativeExtensionInstall {
+    /// Resolves an artifact only when the recorded source and artifact still match.
+    pub fn resolve(&self) -> Result<(PathBuf, String), String> {
+        if let ExtensionSource::Path(path) = ExtensionSource::parse(&self.receipt.source)?
+            && path != self.source_dir
+        {
+            return Err("native extension receipt source does not match source directory".into());
+        }
+        let source_sha256 = digest_tree(&self.source_dir).map_err(|error| error.to_string())?;
+        if source_sha256 != self.receipt.source_sha256 {
+            return Err("native extension source SHA-256 mismatch".into());
+        }
+        let artifact_sha256 = digest_file(&self.artifact).map_err(|error| error.to_string())?;
+        if artifact_sha256 != self.receipt.artifact_sha256 {
+            return Err("native extension artifact SHA-256 mismatch".into());
+        }
+        Ok((self.artifact.clone(), artifact_sha256))
+    }
+}
+
 pub fn receipt(
     source: &ExtensionSource,
     source_dir: &Path,

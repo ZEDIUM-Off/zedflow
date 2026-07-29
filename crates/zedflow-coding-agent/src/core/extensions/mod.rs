@@ -13,7 +13,7 @@ pub use abi::{
 pub use loader::{
     NativeExtension, NativeExtensionArtifact, clear_extension_cache, create_extension_runtime,
     discover_and_load_extensions, load_extension_from_factory, load_extensions,
-    load_extensions_cached,
+    load_extensions_cached, load_native_extensions,
 };
 pub use runner::{ExtensionRunner, emit_project_trust_event};
 pub use types::*;
@@ -22,4 +22,6 @@ pub use wrapper::{execute_registered_tool, wrap_registered_tool, wrap_registered
 pub use install::{
     build_and_store, build_source, install_source, materialize_source, stage_source, store_artifact,
 };
-pub use provenance::{ExtensionSource, ProvenanceReceipt, digest_file, digest_tree, receipt};
+pub use provenance::{
+    ExtensionSource, NativeExtensionInstall, ProvenanceReceipt, digest_file, digest_tree, receipt,
+};
