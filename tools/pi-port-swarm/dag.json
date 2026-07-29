@@ -635,7 +635,7 @@
       "intent": "Repair the deterministic ABI v1 table-validation failure at crates/zedflow-coding-agent/tests/extensions-abi-v1.rs:17. Make a valid ABI_V1 table with the declared struct size and required callbacks pass validation while preserving rejection of malformed tables and invalid/oversized envelopes. Do not change ABI scope, loader behavior, dependencies, or unrelated extension surfaces."
     },
     {
-      "id": "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R2",
+      "id": "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R3",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V3F-RUST-EXTENSIONS-ABI-REPAIR-R1"
@@ -648,18 +648,39 @@
         "crates/zedflow-coding-agent/tests/package-manager.rs",
         "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
         "crates/zedflow-coding-agent/tests/package-command-paths.rs",
-        "crates/zedflow-coding-agent/tests/extension-package-manager.rs"
+        "crates/zedflow-coding-agent/tests/extension-package-manager.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/mod.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Repair the missing V3D source-install/provenance deliverable: add executable source-only crate, GitHub, and path installation plus provenance/trust behavior and behavior tests. Do not add dependencies, accept prebuilt artifacts, use TypeScript execution shortcuts, or weaken tests."
+      "intent": "Repair the missing V3D source-install/provenance deliverable: add executable source-only crate, GitHub, and path installation plus provenance/trust behavior and behavior tests, including the extensions module-root exports required to wire those owned install/provenance APIs. Do not add dependencies, accept prebuilt artifacts, use TypeScript execution shortcuts, or weaken tests."
+    },
+    {
+      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R4",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R3"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets",
+        "cargo test -p zedflow-coding-agent --test extensions-abi-v1",
+        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib",
+        "cargo test -p zedflow-coding-agent --test extensions-sdk-build",
+        "cargo test -p zedflow-coding-agent --test extensions-runner",
+        "cargo test -p zedflow-coding-agent --test extensions-input-event",
+        "cargo test -p zedflow-coding-agent --test extension-package-manager",
+        "cargo test -p zedflow-coding-agent --test resource-extension-runtime"
+      ],
+      "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the source-install/provenance repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
     },
     {
       "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R3",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R2"
+        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R4"
       ],
       "ownership": [],
       "validation": [
