@@ -22,7 +22,7 @@ Produce a behaviorally faithful, executable one-to-one Rust port of frozen Pi AI
 <a id="non-goals"></a>
 ## Non-goals
 
-No Stage 2/LangGraph work, Ratatui rewrite, direct `unicode-width` substitution, alternate-screen redesign, frozen gitlink mutation, compatibility façade, credential fabrication, promotion to `main`, or dependency substitution not explicitly approved below.
+No Stage 2/LangGraph work, Ratatui rewrite, direct `unicode-width` substitution, alternate-screen redesign, frozen gitlink mutation, credential fabrication, promotion to `main`, prebuilt native extension installation, dynamic-library unload in ABI v1, or TypeScript/jiti extension compatibility in the current closure. TS compatibility is a later adapter.
 
 <a id="review-flags"></a>
 ## Review Flags
@@ -34,11 +34,12 @@ No Stage 2/LangGraph work, Ratatui rewrite, direct `unicode-width` substitution,
 | RF-S3 | BQ | High | Apple Terminal modifier polling and exact Windows VT input may require another native dependency. | SEM-TUI-V5 | Try approved Crossterm path; otherwise stop with exact `ARBITRATION_REQUIRED`. |
 | RF-S4 | R | Medium | Live-provider/OAuth tests require external capabilities. | AI/CA | Keep narrowly capability-gated with explicit reason; all deterministic behavior must execute. |
 | RF-S5 | R | Medium | PTY/ConPTY automation may justify a test-only dependency. | final native gate | Use current Node/xterm oracle first; any Rust PTY dependency requires arbitration. |
+| RF-S6 | BQ resolved | High | Pi executes TS extensions in-process through jiti; Zedflow requires compiled Rust extensions. | Coding-agent V3 | User approved maximum ExtensionAPI capability alignment through separately compiled Rust cdylibs, custom ABI v1, source-only crate/GitHub install and local build; TS compatibility is deferred. |
 
 <a id="global-acceptance"></a>
 ## Global Acceptance Criteria
 
-1. Every mapped Rust source is semantically implemented and reachable; every mapped test contains executable behavior or an approved exact disposition.
+1. Every mapped Rust source is semantically implemented and reachable; every mapped test contains executable behavior or an approved exact disposition. The approved extension substitution preserves Pi ExtensionAPI capabilities through Rust cdylibs while explicitly deferring TS/jiti source compatibility.
 2. No `MODULE_PATH`, `TEST_PATH`, `PortPlaceholder`, runtime no-op, `not wired yet`, unexplained `#[ignore]`, dead mapped module, or advertised unreachable CLI mode remains.
 3. TUI preserves Pi terminal lifecycle, raw input/Kitty parser, differential renderer, components, Markdown ANSI/OSC-8, Unicode 17 composite width, images and restoration behavior.
 4. Default interactive, print/text/json, RPC, sessions, tools, extensions, skills, themes, packages and Orchestrator run end to end.
@@ -48,7 +49,7 @@ No Stage 2/LangGraph work, Ratatui rewrite, direct `unicode-width` substitution,
 <a id="legacy-policy"></a>
 ## Legacy / workaround policy
 
-No aliases, shims, type weakening, marker constants, empty tests, compile-only assertions, blanket ignores, direct source-path assertions, or broad exception entries may stand in for behavior. Fix root causes in shared code. Do not delete files unless separately approved; disposition duplicate legacy paths explicitly. New replacement dependencies are `ARBITRATION_REQUIRED`.
+No aliases, shims, type weakening, marker constants, empty tests, compile-only assertions, blanket ignores, direct source-path assertions, or broad exception entries may stand in for behavior. Fix root causes in shared code. Do not delete files unless separately approved; disposition duplicate legacy paths explicitly. Approved extension dependencies are exactly `libloading = "=0.9.0"` and reused `sha2 = "0.10"`; all other replacement dependencies remain `ARBITRATION_REQUIRED`.
 
 <a id="breaking-changes"></a>
 ## Planned Breaking Changes and Propagation Map
@@ -57,6 +58,7 @@ No aliases, shims, type weakening, marker constants, empty tests, compile-only a
 |---|---|---|---|---|
 | Strict semantic manifest gate | SEM-V1 | Existing crates intentionally fail closure | package semantic units | exceptions for markers/tests |
 | Crossterm terminal lifecycle | SEM-TUI-V1 | terminal contracts become fallible/native | TUI V2-V6 and Coding-agent V4-V5 | line REPL or Crossterm key-parser substitution |
+| Rust extension ABI replaces jiti execution | SEM-CA-V3A–V3G | TS source compatibility is deferred; extension packages become Rust cdylibs | ABI/SDK/install/resource validators and fidelity review | Bun/Deno shortcut, Rust trait objects across ABI, prebuilt artifact install, or capability loss |
 | Real Coding-agent runtime wiring | SEM-CA-V4/V5 | placeholder APIs become executable/fallible | CA test batches and validation | keep `not wired yet` branches |
 | Orchestrator runtime replaces constants | SEM-ORCH-V1 | real IPC/process errors surface | ORCH validators/review | marker modules |
 
@@ -65,7 +67,7 @@ No aliases, shims, type weakening, marker constants, empty tests, compile-only a
 
 - W0: `SEM-V1-CLOSURE-GUARD`.
 - W1: `SEM-TUI-V1` through `SEM-TUI-V7` in order.
-- W2: `SEM-CA-V1` through `SEM-CA-V12` in order.
+- W2: `SEM-CA-V1`, `SEM-CA-V2`, Rust extension sequence `SEM-CA-V3A` through `SEM-CA-V3G`, then `SEM-CA-V4` through `SEM-CA-V12`.
 - W3: `SEM-ORCH-V1` through `SEM-ORCH-V3`.
 - W4: `SEM-AI-V1-RESIDUALS` and `SEM-AG-V1-RESIDUALS` are disjoint; controller still enforces one writer. Then residual validation.
 - W5: workspace, fidelity, Rust-quality, end-user, docs, checkpoint.
@@ -92,47 +94,53 @@ No aliases, shims, type weakening, marker constants, empty tests, compile-only a
 | legend | #legend | L8-L15 | Legend |
 | goal | #goal | L17-L20 | Goal |
 | non-goals | #non-goals | L22-L25 | Non-goals |
-| review-flags | #review-flags | L27-L36 | Review Flags |
-| global-acceptance | #global-acceptance | L38-L46 | Global Acceptance Criteria |
-| legacy-policy | #legacy-policy | L48-L51 | Legacy / workaround policy |
-| breaking-changes | #breaking-changes | L53-L61 | Planned Breaking Changes and Propagation Map |
-| orchestration | #orchestration | L63-L71 | Subagent Orchestration Plan |
-| parallelization-constraints | #parallelization-constraints | L73-L82 | Parallelization Constraints |
-| canonical-line-references | #canonical-line-references | L84-L136 | Canonical Line References |
-| phases-and-tasks | #phases-and-tasks | L138-L2249 | Phases and Tasks |
-| sem-v1-closure-guard | #sem-v1-closure-guard | L141-L197 | SEM-V1-CLOSURE-GUARD |
-| sem-tui-v1-portable-terminal | #sem-tui-v1-portable-terminal | L199-L262 | SEM-TUI-V1-PORTABLE-TERMINAL |
-| sem-tui-v2-renderer | #sem-tui-v2-renderer | L264-L331 | SEM-TUI-V2-RENDERER |
-| sem-tui-v3-input-editing | #sem-tui-v3-input-editing | L333-L407 | SEM-TUI-V3-INPUT-EDITING |
-| sem-tui-v4-components | #sem-tui-v4-components | L409-L478 | SEM-TUI-V4-COMPONENTS |
-| sem-tui-v5-native-backends | #sem-tui-v5-native-backends | L480-L540 | SEM-TUI-V5-NATIVE-BACKENDS |
-| sem-tui-v6-validate | #sem-tui-v6-validate | L542-L597 | SEM-TUI-V6-VALIDATE |
-| sem-tui-v7-fidelity | #sem-tui-v7-fidelity | L599-L654 | SEM-TUI-V7-FIDELITY |
-| sem-ca-v1-core-tools | #sem-ca-v1-core-tools | L656-L717 | SEM-CA-V1-CORE-TOOLS |
-| sem-ca-v2-session-config | #sem-ca-v2-session-config | L719-L790 | SEM-CA-V2-SESSION-CONFIG |
-| sem-ca-v3-extensions-resources | #sem-ca-v3-extensions-resources | L792-L870 | SEM-CA-V3-EXTENSIONS-RESOURCES |
-| sem-ca-v4-interactive | #sem-ca-v4-interactive | L872-L927 | SEM-CA-V4-INTERACTIVE |
-| sem-ca-v5-cli-modes | #sem-ca-v5-cli-modes | L929-L993 | SEM-CA-V5-CLI-MODES |
-| sem-ca-v6-test-batch-1 | #sem-ca-v6-test-batch-1 | L995-L1085 | SEM-CA-V6-TEST-BATCH-1 |
-| sem-ca-v7-test-batch-2 | #sem-ca-v7-test-batch-2 | L1087-L1177 | SEM-CA-V7-TEST-BATCH-2 |
-| sem-ca-v8-test-batch-3 | #sem-ca-v8-test-batch-3 | L1179-L1269 | SEM-CA-V8-TEST-BATCH-3 |
-| sem-ca-v9-test-batch-4 | #sem-ca-v9-test-batch-4 | L1271-L1361 | SEM-CA-V9-TEST-BATCH-4 |
-| sem-ca-v10-test-batch-5 | #sem-ca-v10-test-batch-5 | L1363-L1442 | SEM-CA-V10-TEST-BATCH-5 |
-| sem-ca-v11-validate | #sem-ca-v11-validate | L1444-L1499 | SEM-CA-V11-VALIDATE |
-| sem-ca-v12-fidelity | #sem-ca-v12-fidelity | L1501-L1556 | SEM-CA-V12-FIDELITY |
-| sem-orch-v1-runtime | #sem-orch-v1-runtime | L1558-L1616 | SEM-ORCH-V1-RUNTIME |
-| sem-orch-v2-validate | #sem-orch-v2-validate | L1618-L1673 | SEM-ORCH-V2-VALIDATE |
-| sem-orch-v3-fidelity | #sem-orch-v3-fidelity | L1675-L1730 | SEM-ORCH-V3-FIDELITY |
-| sem-ai-v1-residuals | #sem-ai-v1-residuals | L1732-L1789 | SEM-AI-V1-RESIDUALS |
-| sem-ag-v1-residuals | #sem-ag-v1-residuals | L1791-L1847 | SEM-AG-V1-RESIDUALS |
-| sem-residuals-v2-validate | #sem-residuals-v2-validate | L1849-L1904 | SEM-RESIDUALS-V2-VALIDATE |
-| sem-final-v1-workspace | #sem-final-v1-workspace | L1906-L1961 | SEM-FINAL-V1-WORKSPACE |
-| sem-final-v2-fidelity | #sem-final-v2-fidelity | L1963-L2018 | SEM-FINAL-V2-FIDELITY |
-| sem-final-v3-rust-quality | #sem-final-v3-rust-quality | L2020-L2075 | SEM-FINAL-V3-RUST-QUALITY |
-| sem-final-v4-enduser | #sem-final-v4-enduser | L2077-L2132 | SEM-FINAL-V4-ENDUSER |
-| sem-final-v5-docs | #sem-final-v5-docs | L2134-L2191 | SEM-FINAL-V5-DOCS |
-| sem-final-v6-checkpoint | #sem-final-v6-checkpoint | L2193-L2249 | SEM-FINAL-V6-CHECKPOINT |
-| pre-finalization-review | #pre-finalization-review | L2251-L2258 | Pre-finalization Review Summary |
+| review-flags | #review-flags | L27-L37 | Review Flags |
+| global-acceptance | #global-acceptance | L39-L47 | Global Acceptance Criteria |
+| legacy-policy | #legacy-policy | L49-L52 | Legacy / workaround policy |
+| breaking-changes | #breaking-changes | L54-L63 | Planned Breaking Changes and Propagation Map |
+| orchestration | #orchestration | L65-L73 | Subagent Orchestration Plan |
+| parallelization-constraints | #parallelization-constraints | L75-L84 | Parallelization Constraints |
+| canonical-line-references | #canonical-line-references | L86-L144 | Canonical Line References |
+| phases-and-tasks | #phases-and-tasks | L146-L2641 | Phases and Tasks |
+| sem-v1-closure-guard | #sem-v1-closure-guard | L149-L205 | SEM-V1-CLOSURE-GUARD |
+| sem-tui-v1-portable-terminal | #sem-tui-v1-portable-terminal | L207-L270 | SEM-TUI-V1-PORTABLE-TERMINAL |
+| sem-tui-v2-renderer | #sem-tui-v2-renderer | L272-L339 | SEM-TUI-V2-RENDERER |
+| sem-tui-v3-input-editing | #sem-tui-v3-input-editing | L341-L415 | SEM-TUI-V3-INPUT-EDITING |
+| sem-tui-v4-components | #sem-tui-v4-components | L417-L486 | SEM-TUI-V4-COMPONENTS |
+| sem-tui-v5-native-backends | #sem-tui-v5-native-backends | L488-L548 | SEM-TUI-V5-NATIVE-BACKENDS |
+| sem-tui-v6-validate | #sem-tui-v6-validate | L550-L605 | SEM-TUI-V6-VALIDATE |
+| sem-tui-v7-fidelity | #sem-tui-v7-fidelity | L607-L662 | SEM-TUI-V7-FIDELITY |
+| sem-ca-v1-core-tools | #sem-ca-v1-core-tools | L664-L725 | SEM-CA-V1-CORE-TOOLS |
+| sem-ca-v2-session-config | #sem-ca-v2-session-config | L727-L798 | SEM-CA-V2-SESSION-CONFIG |
+| sem-ca-v3a-rust-extension-api-r1 | #sem-ca-v3a-rust-extension-api-r1 | L800-L865 | SEM-CA-V3A-RUST-EXTENSION-API-R1 |
+| sem-ca-v3b-rust-extension-abi-loader-r1 | #sem-ca-v3b-rust-extension-abi-loader-r1 | L867-L931 | SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1 |
+| sem-ca-v3c-rust-extension-sdk-fixture-r1 | #sem-ca-v3c-rust-extension-sdk-fixture-r1 | L933-L993 | SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1 |
+| sem-ca-v3d-source-install-provenance-r1 | #sem-ca-v3d-source-install-provenance-r1 | L995-L1064 | SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1 |
+| sem-ca-v3e-remaining-resources-r1 | #sem-ca-v3e-remaining-resources-r1 | L1066-L1146 | SEM-CA-V3E-REMAINING-RESOURCES-R1 |
+| sem-ca-v3f-rust-extensions-validate-r1 | #sem-ca-v3f-rust-extensions-validate-r1 | L1148-L1204 | SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1 |
+| sem-ca-v3g-rust-extensions-fidelity-r1 | #sem-ca-v3g-rust-extensions-fidelity-r1 | L1206-L1262 | SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1 |
+| sem-ca-v4-interactive | #sem-ca-v4-interactive | L1264-L1319 | SEM-CA-V4-INTERACTIVE |
+| sem-ca-v5-cli-modes | #sem-ca-v5-cli-modes | L1321-L1385 | SEM-CA-V5-CLI-MODES |
+| sem-ca-v6-test-batch-1 | #sem-ca-v6-test-batch-1 | L1387-L1477 | SEM-CA-V6-TEST-BATCH-1 |
+| sem-ca-v7-test-batch-2 | #sem-ca-v7-test-batch-2 | L1479-L1569 | SEM-CA-V7-TEST-BATCH-2 |
+| sem-ca-v8-test-batch-3 | #sem-ca-v8-test-batch-3 | L1571-L1661 | SEM-CA-V8-TEST-BATCH-3 |
+| sem-ca-v9-test-batch-4 | #sem-ca-v9-test-batch-4 | L1663-L1753 | SEM-CA-V9-TEST-BATCH-4 |
+| sem-ca-v10-test-batch-5 | #sem-ca-v10-test-batch-5 | L1755-L1834 | SEM-CA-V10-TEST-BATCH-5 |
+| sem-ca-v11-validate | #sem-ca-v11-validate | L1836-L1891 | SEM-CA-V11-VALIDATE |
+| sem-ca-v12-fidelity | #sem-ca-v12-fidelity | L1893-L1948 | SEM-CA-V12-FIDELITY |
+| sem-orch-v1-runtime | #sem-orch-v1-runtime | L1950-L2008 | SEM-ORCH-V1-RUNTIME |
+| sem-orch-v2-validate | #sem-orch-v2-validate | L2010-L2065 | SEM-ORCH-V2-VALIDATE |
+| sem-orch-v3-fidelity | #sem-orch-v3-fidelity | L2067-L2122 | SEM-ORCH-V3-FIDELITY |
+| sem-ai-v1-residuals | #sem-ai-v1-residuals | L2124-L2181 | SEM-AI-V1-RESIDUALS |
+| sem-ag-v1-residuals | #sem-ag-v1-residuals | L2183-L2239 | SEM-AG-V1-RESIDUALS |
+| sem-residuals-v2-validate | #sem-residuals-v2-validate | L2241-L2296 | SEM-RESIDUALS-V2-VALIDATE |
+| sem-final-v1-workspace | #sem-final-v1-workspace | L2298-L2353 | SEM-FINAL-V1-WORKSPACE |
+| sem-final-v2-fidelity | #sem-final-v2-fidelity | L2355-L2410 | SEM-FINAL-V2-FIDELITY |
+| sem-final-v3-rust-quality | #sem-final-v3-rust-quality | L2412-L2467 | SEM-FINAL-V3-RUST-QUALITY |
+| sem-final-v4-enduser | #sem-final-v4-enduser | L2469-L2524 | SEM-FINAL-V4-ENDUSER |
+| sem-final-v5-docs | #sem-final-v5-docs | L2526-L2583 | SEM-FINAL-V5-DOCS |
+| sem-final-v6-checkpoint | #sem-final-v6-checkpoint | L2585-L2641 | SEM-FINAL-V6-CHECKPOINT |
+| pre-finalization-review | #pre-finalization-review | L2643-L2650 | Pre-finalization Review Summary |
 <!-- CANONICAL_LINE_REFERENCES_END -->
 
 <a id="phases-and-tasks"></a>
@@ -162,7 +170,7 @@ Files:
 | modify/create as required | `tools/pi-port-swarm/test_manifest.py` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -227,7 +235,7 @@ Files:
 | modify/create as required | `crates/zedflow-tui/tests/tui-cell-size-input.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -296,7 +304,7 @@ Files:
 | modify/create as required | `crates/zedflow-tui/tests/viewport-overwrite-repro.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -372,7 +380,7 @@ Files:
 | modify/create as required | `crates/zedflow-tui/tests/regression-regional-indicator-width.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -443,7 +451,7 @@ Files:
 | modify/create as required | `crates/zedflow-tui/tests/virtual-terminal.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -505,7 +513,7 @@ Files:
 | modify/create as required | `crates/zedflow-tui/tests/keys.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -562,7 +570,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -619,7 +627,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -682,7 +690,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/core/output-guard.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -755,7 +763,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/core/trust-manager.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -789,8 +797,8 @@ Stay inside ownership. Do not implement neighboring units or Stage 2. Do not use
 Run the stated validation responsibility. If blocked, stop and return exact evidence with REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
 ```
 
-<a id="sem-ca-v3-extensions-resources"></a>
-### SEM-CA-V3-EXTENSIONS-RESOURCES
+<a id="sem-ca-v3a-rust-extension-api-r1"></a>
+### SEM-CA-V3A-RUST-EXTENSION-API-R1
 
 Assignable: yes
 
@@ -798,75 +806,459 @@ Execution metadata:
 - Wave: W2
 - Context: fresh
 - Depends on: SEM-CA-V2-SESSION-CONFIG
-- Can run in parallel with: only disjoint AI/Agent residual peer where applicable
-- Must not run in parallel with: any unit sharing an ownership prefix
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
 
 Scope boundaries:
-- Goal: Port extensions, packages, resources, skills, prompt templates, keybindings, SDK, exports, telemetry and platform utilities. Any new dependency substitution remains ARBITRATION_REQUIRED.
-- Non-goals: neighboring units, Stage 2, promotion, unapproved dependencies.
-- Forbidden work: placeholders, vacuous tests, broad exceptions, frozen Pi mutation, out-of-scope cleanup.
+- Goal: Port Pi ExtensionAPI capabilities to native Rust in-process contracts and executable handlers: tools, commands, keybindings/flags, lifecycle/input/session events, providers/models, compaction, UI/components, session actions, stale-context invalidation, errors and shutdown. Keep all Rust types inside one compilation boundary; no dynamic loading or source installation yet.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
 
 Files:
 | Action | Path | Purpose |
 |---|---|---|
-| modify/create as required | `Cargo.lock` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/Cargo.toml` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/bun` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/export-html` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/footer-data-provider.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/http-dispatcher.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/index.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/keybindings.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/package-manager.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/prompt-templates.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/provider-attribution.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/provider-display-names.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/resource-loader.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/sdk.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/skills.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/slash-commands.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/source-info.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/system-prompt.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/telemetry.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/timings.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/core/experimental.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/package-manager-cli.rs` | exclusive controller ownership for this unit |
-| modify/create as required | `crates/zedflow-coding-agent/src/utils` | exclusive controller ownership for this unit |
+| modify/create as required | `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/types.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/runner.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/wrapper.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/mod.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/index.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/index.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extensions-runner.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extensions-input-event.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/compaction-extensions.rs` | exclusive scope for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
-- Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
-- Dependency outputs: predecessor result, candidate SHA, declared validation logs.
-- Neighboring out-of-scope units: all other IDs in this plan.
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
 
 Implementation outline:
-1. Read the complete frozen Pi counterpart and all Rust callers/exports before editing.
-2. Implement observable behavior at the shared root cause; wire modules and real tests.
-3. Run only declared/local checks; return a structured result with evidence and remaining blocker classification.
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
 
 Validation responsibility:
 - Type: locally-validating
 - Must run: cargo fmt --package zedflow-coding-agent --check
-- Must NOT run: workspace-wide gates or mutate files outside ownership.
+- Must NOT run: workspace-wide gates or out-of-scope edits.
 
 Output contract:
-- Structured PASS/BLOCKED result, exact base/candidate SHA, changed files or reviewed scope, commands/evidence, residual risks, and one valid blocker classification when not accepted.
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
 
 Acceptance criteria:
-- Port extensions, packages, resources, skills, prompt templates, keybindings, SDK, exports, telemetry and platform utilities. Any new dependency substitution remains ARBITRATION_REQUIRED.
-- No forbidden workaround or out-of-scope edit; all declared commands pass.
+- Port Pi ExtensionAPI capabilities to native Rust in-process contracts and executable handlers: tools, commands, keybindings/flags, lifecycle/input/session events, providers/models, compaction, UI/components, session actions, stale-context invalidation, errors and shutdown. Keep all Rust types inside one compilation boundary; no dynamic loading or source installation yet.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
 
 Handoff to dependent units:
-- Commit/result SHA and durable validation logs; name any intentionally deferred behavior and its owning downstream ID.
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
 
 Subagent prompt:
 ```text
-Implement only SEM-CA-V3-EXTENSIONS-RESOURCES from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
-Read this entire unit, its listed frozen Pi counterparts, Rust callers/module roots, dependency outputs, and the global acceptance/legacy rules before editing.
-Task: Port extensions, packages, resources, skills, prompt templates, keybindings, SDK, exports, telemetry and platform utilities. Any new dependency substitution remains ARBITRATION_REQUIRED.
-Stay inside ownership. Do not implement neighboring units or Stage 2. Do not use marker code, vacuous tests, broad exceptions, or unapproved dependency substitutions.
-Run the stated validation responsibility. If blocked, stop and return exact evidence with REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+Implement only SEM-CA-V3A-RUST-EXTENSION-API-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Port Pi ExtensionAPI capabilities to native Rust in-process contracts and executable handlers: tools, commands, keybindings/flags, lifecycle/input/session events, providers/models, compaction, UI/components, session actions, stale-context invalidation, errors and shutdown. Keep all Rust types inside one compilation boundary; no dynamic loading or source installation yet.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+```
+
+<a id="sem-ca-v3b-rust-extension-abi-loader-r1"></a>
+### SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1
+
+Assignable: yes
+
+Execution metadata:
+- Wave: W2
+- Context: fresh
+- Depends on: SEM-CA-V3A-RUST-EXTENSION-API-R1
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
+
+Scope boundaries:
+- Goal: Implement approved custom C ABI v1 and in-process cdylib loader with libloading =0.9.0. Use bounded versioned JSON envelopes, validated repr(C) tables/handles, trust+SHA-256 checks, no unwind across FFI, one scoped unsafe loader module, and process-lifetime Library retention with no unload v1.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
+
+Files:
+| Action | Path | Purpose |
+|---|---|---|
+| modify/create as required | `Cargo.lock` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/Cargo.toml` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/lib.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/abi.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/loader.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/mod.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extensions-discovery.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extensions-abi-v1.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs` | exclusive scope for this unit |
+
+Required context package:
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
+
+Implementation outline:
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
+
+Validation responsibility:
+- Type: locally-validating
+- Must run: cargo fmt --package zedflow-coding-agent --check
+- Must NOT run: workspace-wide gates or out-of-scope edits.
+
+Output contract:
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
+
+Acceptance criteria:
+- Implement approved custom C ABI v1 and in-process cdylib loader with libloading =0.9.0. Use bounded versioned JSON envelopes, validated repr(C) tables/handles, trust+SHA-256 checks, no unwind across FFI, one scoped unsafe loader module, and process-lifetime Library retention with no unload v1.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
+
+Handoff to dependent units:
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
+
+Subagent prompt:
+```text
+Implement only SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Implement approved custom C ABI v1 and in-process cdylib loader with libloading =0.9.0. Use bounded versioned JSON envelopes, validated repr(C) tables/handles, trust+SHA-256 checks, no unwind across FFI, one scoped unsafe loader module, and process-lifetime Library retention with no unload v1.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+```
+
+<a id="sem-ca-v3c-rust-extension-sdk-fixture-r1"></a>
+### SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1
+
+Assignable: yes
+
+Execution metadata:
+- Wave: W2
+- Context: fresh
+- Depends on: SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
+
+Scope boundaries:
+- Goal: Expose an ergonomic Rust Extension trait/ExtensionApi and export_extension! macro from the existing coding-agent crate, preserving the five-crate workspace. Compile a real fixture cdylib separately, load it, and exercise Pi-equivalent registration, invocation, UI/provider/event behavior and shutdown through ABI v1.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
+
+Files:
+| Action | Path | Purpose |
+|---|---|---|
+| modify/create as required | `crates/zedflow-coding-agent/src/core/sdk.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/abi.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/mod.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extensions-sdk-build.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/fixtures/rust-extension` | exclusive scope for this unit |
+
+Required context package:
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
+
+Implementation outline:
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
+
+Validation responsibility:
+- Type: locally-validating
+- Must run: cargo fmt --package zedflow-coding-agent --check
+- Must NOT run: workspace-wide gates or out-of-scope edits.
+
+Output contract:
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
+
+Acceptance criteria:
+- Expose an ergonomic Rust Extension trait/ExtensionApi and export_extension! macro from the existing coding-agent crate, preserving the five-crate workspace. Compile a real fixture cdylib separately, load it, and exercise Pi-equivalent registration, invocation, UI/provider/event behavior and shutdown through ABI v1.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
+
+Handoff to dependent units:
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
+
+Subagent prompt:
+```text
+Implement only SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Expose an ergonomic Rust Extension trait/ExtensionApi and export_extension! macro from the existing coding-agent crate, preserving the five-crate workspace. Compile a real fixture cdylib separately, load it, and exercise Pi-equivalent registration, invocation, UI/provider/event behavior and shutdown through ABI v1.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+```
+
+<a id="sem-ca-v3d-source-install-provenance-r1"></a>
+### SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1
+
+Assignable: yes
+
+Execution metadata:
+- Wave: W2
+- Context: fresh
+- Depends on: SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
+
+Scope boundaries:
+- Goal: Implement the approved source-only extension installation norm: crate:<name>@<exact-version>, github:<owner>/<repo>@<resolved-commit>[#package], and path: development sources; mandatory local Cargo build, no prebuilt artifacts, locked/offline build after fetch, sanitized staging, sha2 0.10 provenance receipt, content-addressed artifact store, exact trust binding and rollback metadata.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
+
+Files:
+| Action | Path | Purpose |
+|---|---|---|
+| modify/create as required | `Cargo.lock` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/Cargo.toml` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/package-manager.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/source-info.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/install.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/provenance.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/extensions/mod.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/package-manager-cli.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/bun` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/package-manager.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/package-manager-ssh.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/package-command-paths.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/extension-package-manager.rs` | exclusive scope for this unit |
+| modify/create as required | `.agents/port-manifests/exceptions.tsv` | exclusive scope for this unit |
+
+Required context package:
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
+
+Implementation outline:
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
+
+Validation responsibility:
+- Type: locally-validating
+- Must run: cargo fmt --package zedflow-coding-agent --check
+- Must NOT run: workspace-wide gates or out-of-scope edits.
+
+Output contract:
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
+
+Acceptance criteria:
+- Implement the approved source-only extension installation norm: crate:<name>@<exact-version>, github:<owner>/<repo>@<resolved-commit>[#package], and path: development sources; mandatory local Cargo build, no prebuilt artifacts, locked/offline build after fetch, sanitized staging, sha2 0.10 provenance receipt, content-addressed artifact store, exact trust binding and rollback metadata.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
+
+Handoff to dependent units:
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
+
+Subagent prompt:
+```text
+Implement only SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Implement the approved source-only extension installation norm: crate:<name>@<exact-version>, github:<owner>/<repo>@<resolved-commit>[#package], and path: development sources; mandatory local Cargo build, no prebuilt artifacts, locked/offline build after fetch, sanitized staging, sha2 0.10 provenance receipt, content-addressed artifact store, exact trust binding and rollback metadata.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+```
+
+<a id="sem-ca-v3e-remaining-resources-r1"></a>
+### SEM-CA-V3E-REMAINING-RESOURCES-R1
+
+Assignable: yes
+
+Execution metadata:
+- Wave: W2
+- Context: fresh
+- Depends on: SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
+
+Scope boundaries:
+- Goal: Port the remaining frozen Pi resources surface—atomic extension/resource reload, skills, prompt templates, keybindings, exports, footer/provider metadata, telemetry, timing and platform utilities—against the validated Rust extension runtime. Failed extension reload must preserve prior active state and surface diagnostics.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
+
+Files:
+| Action | Path | Purpose |
+|---|---|---|
+| modify/create as required | `crates/zedflow-coding-agent/src/core/export-html` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/footer-data-provider.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/http-dispatcher.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/index.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/keybindings.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/prompt-templates.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/provider-attribution.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/provider-display-names.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/resource-loader.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/skills.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/slash-commands.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/system-prompt.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/telemetry.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/timings.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/core/experimental.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/src/utils` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/resource-extension-runtime.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/resource-loader.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/skills.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/sdk-skills.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/prompt-templates.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/footer-data-provider.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/export-html-skill-block.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/export-html-whitespace.rs` | exclusive scope for this unit |
+| modify/create as required | `crates/zedflow-coding-agent/tests/export-html-xss.rs` | exclusive scope for this unit |
+
+Required context package:
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
+
+Implementation outline:
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
+
+Validation responsibility:
+- Type: locally-validating
+- Must run: cargo fmt --package zedflow-coding-agent --check
+- Must NOT run: workspace-wide gates or out-of-scope edits.
+
+Output contract:
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
+
+Acceptance criteria:
+- Port the remaining frozen Pi resources surface—atomic extension/resource reload, skills, prompt templates, keybindings, exports, footer/provider metadata, telemetry, timing and platform utilities—against the validated Rust extension runtime. Failed extension reload must preserve prior active state and surface diagnostics.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
+
+Handoff to dependent units:
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
+
+Subagent prompt:
+```text
+Implement only SEM-CA-V3E-REMAINING-RESOURCES-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Port the remaining frozen Pi resources surface—atomic extension/resource reload, skills, prompt templates, keybindings, exports, footer/provider metadata, telemetry, timing and platform utilities—against the validated Rust extension runtime. Failed extension reload must preserve prior active state and surface diagnostics.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+```
+
+<a id="sem-ca-v3f-rust-extensions-validate-r1"></a>
+### SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1
+
+Assignable: yes
+
+Execution metadata:
+- Wave: W2
+- Context: fresh
+- Depends on: SEM-CA-V3E-REMAINING-RESOURCES-R1
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
+
+Scope boundaries:
+- Goal: Validate the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts or marker tests.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
+
+Files:
+| Action | Path | Purpose |
+|---|---|---|
+| read only | exact predecessor candidate and frozen Pi extension sources/tests | validation/review only |
+
+Required context package:
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
+
+Implementation outline:
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
+
+Validation responsibility:
+- Type: integration-validating
+- Must run: cargo fmt --package zedflow-coding-agent --check; cargo check -p zedflow-coding-agent --all-targets; cargo test -p zedflow-coding-agent --test extensions-abi-v1; cargo test -p zedflow-coding-agent --test extensions-loader-cdylib; cargo test -p zedflow-coding-agent --test extensions-sdk-build; cargo test -p zedflow-coding-agent --test extensions-runner; cargo test -p zedflow-coding-agent --test extensions-input-event; cargo test -p zedflow-coding-agent --test extension-package-manager; cargo test -p zedflow-coding-agent --test resource-extension-runtime
+- Must NOT run: source edits.
+
+Output contract:
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
+
+Acceptance criteria:
+- Validate the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts or marker tests.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
+
+Handoff to dependent units:
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
+
+Subagent prompt:
+```text
+Implement only SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Validate the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts or marker tests.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
+```
+
+<a id="sem-ca-v3g-rust-extensions-fidelity-r1"></a>
+### SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1
+
+Assignable: yes
+
+Execution metadata:
+- Wave: W2
+- Context: fresh
+- Depends on: SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1
+- Can run in parallel with: none (ordered ABI/lifecycle contract)
+- Must not run in parallel with: any Coding-agent writer
+
+Scope boundaries:
+- Goal: Independently verify maximum Pi ExtensionAPI capability alignment through Rust extensions while accepting the approved language/loading substitution. Review trust/digest/TOCTOU handling, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility is deferred, not silently claimed.
+- Non-goals: TypeScript/jiti compatibility, Stage 2, additional workspace crates, hot unload, prebuilt extension installation, neighboring units.
+- Forbidden work: Rust trait objects/String/Vec/futures across ABI, broad dispositions, unaudited unsafe, marker tests, capability loss presented as parity.
+
+Files:
+| Action | Path | Purpose |
+|---|---|---|
+| read only | exact predecessor candidate and frozen Pi extension sources/tests | validation/review only |
+
+Required context package:
+- Plan references: Goal, Global Acceptance, Legacy policy, RF-S1, RF-S4, RF-S6, and this unit.
+- Required decision/spec: `docs/porting/RUST_EXTENSION_ARCHITECTURE.md` in full.
+- Frozen Pi references: `src/core/extensions/{types,loader,runner,wrapper,index}.ts`, `src/core/sdk.ts`, `src/core/{package-manager,resource-loader,skills,prompt-templates}.ts`, and mapped tests as relevant.
+- Dependency outputs: exact predecessor result, changed API/ABI contracts, candidate SHA and logs.
+- Neighboring out-of-scope units: all other IDs.
+
+Implementation outline:
+1. Read complete frozen behavior and current Rust callers before editing.
+2. Implement only the owned layer against the approved Rust substitution; preserve all representable Pi ExtensionAPI behavior.
+3. Add executable behavior tests, run only declared validation, and return exact evidence or a valid blocker classification.
+
+Validation responsibility:
+- Type: integration-validating
+- Must run: independent source/behavior/security review necessary for the stated intent
+- Must NOT run: source edits.
+
+Output contract:
+- Structured PASS/BLOCKED result with base/candidate SHA, changed/reviewed files, executable tests, command evidence, ABI/security residuals, and one valid blocker classification when blocked.
+
+Acceptance criteria:
+- Independently verify maximum Pi ExtensionAPI capability alignment through Rust extensions while accepting the approved language/loading substitution. Review trust/digest/TOCTOU handling, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility is deferred, not silently claimed.
+- All ABI ownership/lifetime/trust rules in the architecture spec hold; no forbidden workaround or unapproved dependency.
+
+Handoff to dependent units:
+- Exact public contracts, ABI/message versions, artifact/receipt schema, candidate SHA and durable logs.
+
+Subagent prompt:
+```text
+Implement only SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1 from .agents/plans/pi-stage-1-port-recovery.md in fresh context.
+Read this unit and docs/porting/RUST_EXTENSION_ARCHITECTURE.md completely, then read the listed frozen Pi counterparts, current Rust callers/module roots and predecessor outputs.
+Preserve maximum Pi ExtensionAPI capability alignment through the approved Rust cdylib substitution. Stay inside ownership. Do not add Bun/Deno, another crate, hot-unload, prebuilt artifacts, broad dispositions, or unaudited unsafe.
+Task: Independently verify maximum Pi ExtensionAPI capability alignment through Rust extensions while accepting the approved language/loading substitution. Review trust/digest/TOCTOU handling, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility is deferred, not silently claimed.
+Run the stated validation responsibility. If blocked, stop with exact evidence and REPAIRABLE, PLAN_CHANGE_REQUIRED, ARBITRATION_REQUIRED, or TRANSIENT.
 ```
 
 <a id="sem-ca-v4-interactive"></a>
@@ -877,7 +1269,7 @@ Assignable: yes
 Execution metadata:
 - Wave: W2
 - Context: fresh
-- Depends on: SEM-CA-V3-EXTENSIONS-RESOURCES
+- Depends on: SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1
 - Can run in parallel with: only disjoint AI/Agent residual peer where applicable
 - Must not run in parallel with: any unit sharing an ownership prefix
 
@@ -892,7 +1284,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/modes/interactive` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -958,7 +1350,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/rpc-entry.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1050,7 +1442,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/lib.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1142,7 +1534,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/lib.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1234,7 +1626,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/lib.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1326,7 +1718,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/lib.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1407,7 +1799,7 @@ Files:
 | modify/create as required | `crates/zedflow-coding-agent/src/lib.rs` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1464,7 +1856,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1521,7 +1913,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1581,7 +1973,7 @@ Files:
 | modify/create as required | `Cargo.lock` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1638,7 +2030,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1695,7 +2087,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1754,7 +2146,7 @@ Files:
 | modify/create as required | `crates/zedflow-ai/tests` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1812,7 +2204,7 @@ Files:
 | modify/create as required | `crates/zedflow-agent/tests` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1869,7 +2261,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1926,7 +2318,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -1983,7 +2375,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -2040,7 +2432,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -2097,7 +2489,7 @@ Files:
 | read only | exact predecessor candidate | validation/review only |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -2156,7 +2548,7 @@ Files:
 | modify/create as required | `.agents/state` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -2214,7 +2606,7 @@ Files:
 | modify/create as required | `.agents/port-swarm/decisions.md` | exclusive controller ownership for this unit |
 
 Required context package:
-- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S5 as applicable.
+- Plan references: this unit, Goal, Global Acceptance, Legacy policy, RF-S1 through RF-S6 as applicable.
 - Required files: owned Rust paths and their one-to-one files/tests under `references/pi/packages/` at frozen SHA `2b00dade7cec918aefb025c8b7a4fa304a30acdd`.
 - Dependency outputs: predecessor result, candidate SHA, declared validation logs.
 - Neighboring out-of-scope units: all other IDs in this plan.
@@ -2253,6 +2645,6 @@ Run the stated validation responsibility. If blocked, stop and return exact evid
 
 | Reviewer | Status | Required changes applied | Remaining concerns |
 |---|---|---|---|
-| Feasibility / file references | reviewed | semantic audit converted into bounded package/file groups; Crossterm scope narrowed | macOS/Windows exact native parity may stop at RF-S3 |
-| Sequencing / dependency graph | reviewed | strict guard first; TUI→Coding-agent→Orchestrator; exact-SHA gates | one writer makes execution intentionally serial |
-| Scope isolation / prompt quality | reviewed | fresh IDs, ownership prefixes, explicit forbidden work and validation roles | large Coding-agent test corpus remains five bounded batches |
+| Feasibility / file references | reviewed | TUI/native blockers resolved; extension surface split into API, ABI/loader, SDK fixture, source installer, resources and gates | native cdylibs remain trusted code and v1 intentionally never unloads |
+| Sequencing / dependency graph | reviewed | strict guard first; TUI→Coding-agent; V3A→V3G before interactive V4; exact-SHA gates | one writer makes execution intentionally serial |
+| Scope isolation / prompt quality | reviewed | fresh IDs, exact ownership, full ABI safety contract and executable fixture gate | large later Coding-agent test corpus remains five bounded batches |

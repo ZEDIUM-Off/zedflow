@@ -17,8 +17,8 @@ python3 tools/pi-port-swarm/manifest.py status
 |---|---:|---|
 | AI | 247/247 rows accounted for | open: placeholder error/transport paths and deterministic ignored tests |
 | Agent | 45/45 rows accounted for | open: four ignored behaviors |
-| TUI | 61/61 rows accounted for | invalid: dead components and skeletal terminal/runtime |
-| Coding-agent | 332 rows accounted for | invalid: 70 marker-only sources, 164 vacuous tests, unwired modes |
+| TUI | 61/61 rows accounted for | semantic TUI fidelity accepted after terminal/native/renderer/component repair; final workspace gate still pending |
+| Coding-agent | 332 rows accounted for | core tools and session/config accepted; Rust extension architecture approved and remaining interactive/CLI/test closure pending |
 | Orchestrator | 13/13 rows accounted for | invalid: marker-only runtime and no executable Rust tests |
 
 Audit evidence is retained in `.pi-subagents/artifacts/44c53eb4_pi-port-scout_{0,1,2}_output.md`. `automation/pi-port@f83a96fe` remains mechanical evidence only.
@@ -39,6 +39,8 @@ The user approved exact `crossterm = "=0.29.0"` for safe raw mode, size/restorat
 
 The user subsequently approved exact target-specific `windows-sys = "=0.61.2"` (`Win32_Foundation`, `Win32_System_Console`) and `objc2-core-graphics = "=0.3.2"` (`default-features = false`, `CGEventSource`, `CGEventTypes`). One documented Windows-only `unsafe` boundary may enable `ENABLE_VIRTUAL_TERMINAL_INPUT`; unsafe remains denied everywhere else. Rust PTY/ConPTY dev-dependencies remain arbitration-gated. Frozen Node/@xterm-headless is the differential visual oracle until separately replaced.
 
+The canonical extension decision is `docs/porting/RUST_EXTENSION_ARCHITECTURE.md`: maximum Pi `ExtensionAPI` capability alignment through separately compiled Rust `cdylib` extensions loaded in-process, custom C ABI v1, exact `libloading = "=0.9.0"`, reused `sha2 = "0.10"`, one audited unsafe loader module, process-lifetime library retention, and source-only crates.io/GitHub/local installation with mandatory local Cargo build and provenance receipt. TS/jiti compatibility is deferred and must not be claimed by Stage 1.
+
 The controller now permits a reviewed CAS upgrade from a fully completed DAG to a fresh, non-reused, reachable DAG while preserving all external runtime history. The semantic controller candidate must descend from `f83a96fe`, preserve the Pi gitlink, pass control tests, atomically upgrade `automation/pi-port`, and only then restart dispatch.
 
 ## Stage-1 exit gate
@@ -47,7 +49,7 @@ Stage 1 is complete only when all of the following hold on one recorded commit S
 
 1. Every frozen source/test has a reachable semantic implementation/executable test or exact approved disposition; markers and empty tests do not count.
 2. No dead mapped module, runtime placeholder/no-op, unwired CLI mode, unexplained ignore, or pending dependency arbitration remains.
-3. Default TUI, print/text/json, RPC, sessions, tools, extensions, skills, themes, package management and Orchestrator run end to end with differential Pi tests.
+3. Default TUI, print/text/json, RPC, sessions, tools, Rust extensions, skills, themes, package management and Orchestrator run end to end. Extension capability behavior is compared with Pi while the approved TS/jiti source-compatibility adapter remains deferred.
 4. Provider transport, errors, streaming, cancellation, compaction and persistence pass independent fidelity review.
 5. Workspace fmt/check/executed tests and strict semantic manifest pass.
 6. Independent end-user, fidelity and Rust-quality reviews accept the same immutable SHA.

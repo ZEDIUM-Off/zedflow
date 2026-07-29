@@ -491,47 +491,168 @@
       "intent": "Port Pi sessions, persistence/tree operations, migrations, settings, auth, trust, model registry/resolution and configuration errors; --no-session only disables conversation persistence."
     },
     {
-      "id": "SEM-CA-V3-EXTENSIONS-RESOURCES",
+      "id": "SEM-CA-V3A-RUST-EXTENSION-API-R1",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V2-SESSION-CONFIG"
       ],
       "ownership": [
+        "docs/porting/RUST_EXTENSION_ARCHITECTURE.md",
+        "crates/zedflow-coding-agent/src/core/extensions/types.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/wrapper.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/index.rs",
+        "crates/zedflow-coding-agent/src/core/index.rs",
+        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
+        "crates/zedflow-coding-agent/tests/extensions-input-event.rs",
+        "crates/zedflow-coding-agent/tests/compaction-extensions.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Port Pi ExtensionAPI capabilities to native Rust in-process contracts and executable handlers: tools, commands, keybindings/flags, lifecycle/input/session events, providers/models, compaction, UI/components, session actions, stale-context invalidation, errors and shutdown. Keep all Rust types inside one compilation boundary; no dynamic loading or source installation yet."
+    },
+    {
+      "id": "SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V3A-RUST-EXTENSION-API-R1"
+      ],
+      "ownership": [
         "Cargo.lock",
         "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/abi.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
+        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
+        "crates/zedflow-coding-agent/tests/extensions-abi-v1.rs",
+        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Implement approved custom C ABI v1 and in-process cdylib loader with libloading =0.9.0. Use bounded versioned JSON envelopes, validated repr(C) tables/handles, trust+SHA-256 checks, no unwind across FFI, one scoped unsafe loader module, and process-lifetime Library retention with no unload v1."
+    },
+    {
+      "id": "SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/sdk.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/abi.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
+        "crates/zedflow-coding-agent/tests/extensions-sdk-build.rs",
+        "crates/zedflow-coding-agent/tests/fixtures/rust-extension"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Expose an ergonomic Rust Extension trait/ExtensionApi and export_extension! macro from the existing coding-agent crate, preserving the five-crate workspace. Compile a real fixture cdylib separately, load it, and exercise Pi-equivalent registration, invocation, UI/provider/event behavior and shutdown through ABI v1."
+    },
+    {
+      "id": "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1"
+      ],
+      "ownership": [
+        "Cargo.lock",
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/core/source-info.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
+        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
         "crates/zedflow-coding-agent/src/bun",
-        "crates/zedflow-coding-agent/src/core/extensions",
+        "crates/zedflow-coding-agent/tests/package-manager.rs",
+        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
+        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
+        "crates/zedflow-coding-agent/tests/extension-package-manager.rs",
+        ".agents/port-manifests/exceptions.tsv"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Implement the approved source-only extension installation norm: crate:<name>@<exact-version>, github:<owner>/<repo>@<resolved-commit>[#package], and path: development sources; mandatory local Cargo build, no prebuilt artifacts, locked/offline build after fetch, sanitized staging, sha2 0.10 provenance receipt, content-addressed artifact store, exact trust binding and rollback metadata."
+    },
+    {
+      "id": "SEM-CA-V3E-REMAINING-RESOURCES-R1",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1"
+      ],
+      "ownership": [
         "crates/zedflow-coding-agent/src/core/export-html",
         "crates/zedflow-coding-agent/src/core/footer-data-provider.rs",
         "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
         "crates/zedflow-coding-agent/src/core/index.rs",
         "crates/zedflow-coding-agent/src/core/keybindings.rs",
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
         "crates/zedflow-coding-agent/src/core/prompt-templates.rs",
         "crates/zedflow-coding-agent/src/core/provider-attribution.rs",
         "crates/zedflow-coding-agent/src/core/provider-display-names.rs",
         "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
         "crates/zedflow-coding-agent/src/core/skills.rs",
         "crates/zedflow-coding-agent/src/core/slash-commands.rs",
-        "crates/zedflow-coding-agent/src/core/source-info.rs",
         "crates/zedflow-coding-agent/src/core/system-prompt.rs",
         "crates/zedflow-coding-agent/src/core/telemetry.rs",
         "crates/zedflow-coding-agent/src/core/timings.rs",
         "crates/zedflow-coding-agent/src/core/experimental.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/src/utils"
+        "crates/zedflow-coding-agent/src/utils",
+        "crates/zedflow-coding-agent/tests/resource-extension-runtime.rs",
+        "crates/zedflow-coding-agent/tests/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/skills.rs",
+        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
+        "crates/zedflow-coding-agent/tests/prompt-templates.rs",
+        "crates/zedflow-coding-agent/tests/footer-data-provider.rs",
+        "crates/zedflow-coding-agent/tests/export-html-skill-block.rs",
+        "crates/zedflow-coding-agent/tests/export-html-whitespace.rs",
+        "crates/zedflow-coding-agent/tests/export-html-xss.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check"
       ],
-      "intent": "Port extensions, packages, resources, skills, prompt templates, keybindings, SDK, exports, telemetry and platform utilities. Any new dependency substitution remains ARBITRATION_REQUIRED."
+      "intent": "Port the remaining frozen Pi resources surface\u2014atomic extension/resource reload, skills, prompt templates, keybindings, exports, footer/provider metadata, telemetry, timing and platform utilities\u2014against the validated Rust extension runtime. Failed extension reload must preserve prior active state and surface diagnostics."
+    },
+    {
+      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V3E-REMAINING-RESOURCES-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets",
+        "cargo test -p zedflow-coding-agent --test extensions-abi-v1",
+        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib",
+        "cargo test -p zedflow-coding-agent --test extensions-sdk-build",
+        "cargo test -p zedflow-coding-agent --test extensions-runner",
+        "cargo test -p zedflow-coding-agent --test extensions-input-event",
+        "cargo test -p zedflow-coding-agent --test extension-package-manager",
+        "cargo test -p zedflow-coding-agent --test resource-extension-runtime"
+      ],
+      "intent": "Validate the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts or marker tests."
+    },
+    {
+      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R1"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Independently verify maximum Pi ExtensionAPI capability alignment through Rust extensions while accepting the approved language/loading substitution. Review trust/digest/TOCTOU handling, C ABI soundness, panic/reentrancy/cancellation/stale handles, process-lifetime no-unload, source-only crates.io/GitHub install and local build receipts. TypeScript compatibility is deferred, not silently claimed."
     },
     {
       "id": "SEM-CA-V4-INTERACTIVE",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V3-EXTENSIONS-RESOURCES"
+        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/modes/interactive"
