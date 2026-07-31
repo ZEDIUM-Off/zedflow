@@ -16,6 +16,30 @@ use crate::extensions::{
 
 pub use serde_json::Value as JsonValue;
 
+/// Applies the SDK's settings-derived stream timeout defaults.
+#[must_use]
+pub fn apply_stream_timeout_defaults(
+    mut options: zedflow_ai::types::SimpleStreamOptions,
+    http_idle_timeout_ms: u64,
+    websocket_connect_timeout_ms: u64,
+) -> zedflow_ai::types::SimpleStreamOptions {
+    // Pi maps a zero idle timeout to the largest practical timeout; a request
+    // value of zero is preserved because it is an explicit override.
+    options.stream.timeout_ms = options
+        .stream
+        .timeout_ms
+        .or(Some(if http_idle_timeout_ms == 0 {
+            i32::MAX as u64
+        } else {
+            http_idle_timeout_ms
+        }));
+    options.stream.websocket_connect_timeout_ms = options
+        .stream
+        .websocket_connect_timeout_ms
+        .or(Some(websocket_connect_timeout_ms));
+    options
+}
+
 /// Deterministic public SDK surface for the Codex cache-probe tool loop.
 pub use crate::agent_session::{
     CodexCacheProbeAssistant, CodexCacheProbeMessage, CodexCacheProbeSession, CodexCacheProbeTurn,
