@@ -1485,10 +1485,24 @@
       "intent": "Replace each session-manager Cargo [[test]] alias path with its corresponding nested executable file. Update the seven nested executable tests to import SessionInfo from zedflow_coding_agent::session_manager rather than the sdk-session-manager harness-only crate module. Do not alter runtime code or test semantics."
     },
     {
-      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R2",
-      "kind": "validator",
+      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-LIB-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-REPAIR-R2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/lib.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Remove only the seven obsolete #[cfg(test)] session-manager nested path-module declarations from src/lib.rs. The corresponding nested files execute as Cargo integration-test targets; do not alter runtime code, Cargo metadata, or test semantics."
+    },
+    {
+      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R3",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-LIB-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1496,13 +1510,13 @@
         "cargo check -p zedflow-coding-agent --all-targets",
         "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
       ],
-      "intent": "Independently validate the session-manager nested executable targets after their paths and imports are repaired. All eight declared targets must compile and execute against public/runtime behavior. No source edits."
+      "intent": "Independently validate the session-manager nested executable targets after obsolete lib.rs path modules are removed. All eight declared targets must compile and execute against public/runtime behavior. No source edits."
     },
     {
       "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R6",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R2"
+        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R3"
       ],
       "ownership": [],
       "validation": [
