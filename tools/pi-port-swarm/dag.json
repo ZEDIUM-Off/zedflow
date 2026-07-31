@@ -1762,11 +1762,68 @@
       "intent": "Reapply the scoped Armin bitmap rendering, animation, and crate-root wiring repair. Keep the repair limited to these owned files."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R1",
-      "kind": "validator",
+      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V11-MANIFEST-STRUCTURAL-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-CA-V11-PROMPT-TEMPLATE-SLICE-REPAIR-R1",
         "REPLAN-REPLAN-SEM-CA-V11-ARMIN-WIRING-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/bun/cli.rs",
+        "crates/zedflow-coding-agent/src/bun/register-bedrock.rs",
+        "crates/zedflow-coding-agent/src/core/export-html/index.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/index.rs",
+        "crates/zedflow-coding-agent/src/core/index.rs",
+        "crates/zedflow-coding-agent/src/core/telemetry.rs",
+        "crates/zedflow-coding-agent/src/modes/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/dynamic-border.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/keybinding-hints.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/login-dialog.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/model-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/scoped-models-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/settings-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/show-images-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/thinking-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/tree-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/trust-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/model-search.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
+      ],
+      "intent": "Repair the deterministic strict-manifest failures only: replace the diagnosed Coding-agent marker-only module targets with reachable implementations and wire the diagnosed dead interactive components. Do not modify unlisted files, add dependencies, weaken the manifest, or add dispositions."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-CA-V11-MANIFEST-STRUCTURAL-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1775,13 +1832,13 @@
         "cargo test -p zedflow-coding-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
       ],
-      "intent": "Repeat Coding-agent package validation after the scoped prompt-template and Armin repairs. No source edits."
+      "intent": "Repeat Coding-agent package validation after the scoped manifest structural repair. No source edits."
     },
     {
       "id": "SEM-CA-V12-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R1"
+        "REPLAN-REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [],
