@@ -1530,10 +1530,33 @@
       "intent": "Replace the unrelated ExtensionApi registration marker in sdk-codex-cache-probe-tool-loop.rs with an executable, deterministic Codex cache-probe/tool-loop test against the public coding-agent SDK. Implement only the minimum session/SDK runtime behavior required for that probe; preserve Pi append-only multi-turn and deterministic custom-tool-loop semantics, capability-gating live Codex transport only with an explicit reason. Do not alter unrelated tests or runtime modules."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R7",
-      "kind": "validator",
+      "id": "SEM-CA-V8-SDK-BEHAVIORS-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-CODEX-CACHE-PROBE-TOOL-LOOP-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/sdk-openrouter-attribution.rs",
+        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
+        "crates/zedflow-coding-agent/tests/sdk-stream-options.rs",
+        "crates/zedflow-coding-agent/src/core/sdk.rs",
+        "crates/zedflow-coding-agent/src/core/agent-session.rs",
+        "crates/zedflow-coding-agent/src/core/model-registry.rs",
+        "crates/zedflow-coding-agent/src/core/provider-attribution.rs",
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/src/core/skills.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test sdk-openrouter-attribution --test sdk-skills --test sdk-stream-options"
+      ],
+      "intent": "Replace only the duplicated ExtensionApi registration markers in sdk-openrouter-attribution.rs, sdk-skills.rs, and sdk-stream-options.rs with deterministic executable tests of the corresponding frozen Pi SDK behavior. Implement only the minimal existing SDK/session, model-registry, attribution, resource-loader, and skills runtime behavior needed for those tests; preserve OpenRouter attribution/header precedence, SDK skill discovery/injection, and stream timeout option forwarding/override semantics. Do not modify sdk-session-manager.rs or unrelated SDK tests."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R8",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-SDK-BEHAVIORS-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1542,13 +1565,13 @@
         "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
         "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the Codex cache-probe/tool-loop repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the SDK behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R7"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R8"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
