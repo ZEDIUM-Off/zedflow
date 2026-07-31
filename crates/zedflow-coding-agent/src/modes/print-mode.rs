@@ -52,6 +52,19 @@ pub fn prompts(options: &PrintModeOptions) -> Vec<String> {
         .collect()
 }
 
+/// Pi enters print mode for an explicit print flag or either redirected stream.
+#[must_use]
+pub fn should_run_print(explicit_print: bool, stdin_is_tty: bool, stdout_is_tty: bool) -> bool {
+    explicit_print || !stdin_is_tty || !stdout_is_tty
+}
+
+/// Piped whitespace is not a prompt.
+#[must_use]
+pub fn piped_initial_message(input: String) -> Option<String> {
+    let input = input.trim().to_owned();
+    (!input.is_empty()).then_some(input)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -61,5 +74,17 @@ mod tests {
             render_print_result(&AssistantResult::Text("done".into())),
             (0, "done\n".into())
         );
+    }
+
+    #[test]
+    fn redirected_streams_select_print_and_trim_piped_input() {
+        assert!(should_run_print(false, false, true));
+        assert!(should_run_print(false, true, false));
+        assert!(!should_run_print(false, true, true));
+        assert_eq!(
+            piped_initial_message("  piped prompt\n".into()).as_deref(),
+            Some("piped prompt")
+        );
+        assert_eq!(piped_initial_message(" \n".into()), None);
     }
 }

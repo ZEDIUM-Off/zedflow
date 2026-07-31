@@ -1,6 +1,12 @@
 //! `pi` command entry point.
 
-use std::{fs, io, path::Path, time::Duration};
+use std::{
+    fs,
+    io::{self, IsTerminal, Read, Write},
+    path::Path,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use zedflow_coding_agent::cli::{Mode, parse_args};
 use zedflow_coding_agent::{
     config::get_agent_dir,
@@ -67,13 +73,27 @@ fn dispatch(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
 
-    match parsed.mode.or(parsed.print.then_some(Mode::Text)) {
-        Some(Mode::Rpc) => {
-            rpc_entry::run(io::stdin().lock(), io::stdout()).map_err(|e| e.to_string())
-        }
-        Some(Mode::Text) | Some(Mode::Json) => run_print(args, &parsed),
-        None => run_interactive(args, &parsed).map_err(|e| e.to_string()),
+    if parsed.mode == Some(Mode::Rpc) {
+        return rpc_entry::run(io::stdin().lock(), io::stdout()).map_err(|e| e.to_string());
     }
+
+    let stdin_is_tty = io::stdin().is_terminal();
+    let stdout_is_tty = io::stdout().is_terminal();
+    if matches!(parsed.mode, Some(Mode::Text | Mode::Json))
+        || zedflow_coding_agent::modes::print_mode::should_run_print(
+            parsed.print,
+            stdin_is_tty,
+            stdout_is_tty,
+        )
+    {
+        let initial_message = (!stdin_is_tty)
+            .then(read_piped_stdin)
+            .transpose()?
+            .flatten();
+        return run_print(args, &parsed, initial_message.as_deref());
+    }
+
+    run_interactive(args, &parsed).map_err(|e| e.to_string())
 }
 
 fn dispatch_package(
@@ -182,28 +202,103 @@ fn export_file(input: &str, output: Option<&str>) -> Result<std::path::PathBuf, 
     Ok(output)
 }
 
-fn run_print(args: &[String], parsed: &zedflow_coding_agent::cli::Args) -> Result<(), String> {
+fn read_piped_stdin() -> Result<Option<String>, String> {
+    let mut input = String::new();
+    io::stdin()
+        .lock()
+        .read_to_string(&mut input)
+        .map_err(|error| error.to_string())?;
+    Ok(zedflow_coding_agent::modes::print_mode::piped_initial_message(input))
+}
+
+fn run_print(
+    args: &[String],
+    parsed: &zedflow_coding_agent::cli::Args,
+    initial_message: Option<&str>,
+) -> Result<(), String> {
     let runtime = rpc_entry::create_runtime_for_args(args).map_err(|error| error.to_string())?;
     let session = runtime.session();
+    let json = parsed.mode == Some(Mode::Json);
+    let output = Arc::new(Mutex::new(io::stdout()));
     let result = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| error.to_string())?
         .block_on(async {
+            if json {
+                let header = session.session().get_metadata().await;
+                let mut writer = output.lock().map_err(|_| "print output lock is poisoned")?;
+                writeln!(
+                    writer,
+                    "{}",
+                    serde_json::json!({
+                        "type": "session",
+                        "version": 1,
+                        "id": header.id,
+                        "timestamp": header.created_at,
+                        "cwd": runtime.cwd(),
+                    })
+                )
+                .and_then(|()| writer.flush())
+                .map_err(|error| error.to_string())?;
+            }
+            let event_output = Arc::clone(&output);
+            let unsubscribe = json.then(|| {
+                session.subscribe(Arc::new(move |event| {
+                    let event_output = Arc::clone(&event_output);
+                    Box::pin(async move {
+                        let mut writer = event_output.lock().map_err(|_| {
+                            zedflow_coding_agent::agent_session::AgentHarnessError::new(
+                                zedflow_coding_agent::agent_session::AgentHarnessErrorCode::Hook,
+                                "print output lock is poisoned",
+                                None,
+                            )
+                        })?;
+                        writeln!(
+                            writer,
+                            "{}",
+                            serde_json::to_string(&event).map_err(|error| {
+                                zedflow_coding_agent::agent_session::AgentHarnessError::new(
+                                    zedflow_coding_agent::agent_session::AgentHarnessErrorCode::Hook,
+                                    error.to_string(),
+                                    None,
+                                )
+                            })?
+                        )
+                        .and_then(|()| writer.flush())
+                        .map_err(|error| {
+                            zedflow_coding_agent::agent_session::AgentHarnessError::new(
+                                zedflow_coding_agent::agent_session::AgentHarnessErrorCode::Hook,
+                                error.to_string(),
+                                None,
+                            )
+                        })?;
+                        Ok(())
+                    })
+                }))
+            });
             let mut result = None;
+            if let Some(prompt) = initial_message {
+                result = Some(session.prompt(prompt, None).await);
+            }
             for prompt in &parsed.messages {
                 result = Some(session.prompt(prompt, None).await);
             }
+            drop(unsubscribe);
             result
                 .ok_or_else(|| "print mode requires a prompt".to_owned())?
                 .map_err(|error| error.to_string())
         })?;
-    if parsed.mode == Some(Mode::Json) {
-        println!(
-            "{}",
-            serde_json::to_string(&result).map_err(|error| error.to_string())?
-        );
+    if json {
         return Ok(());
+    }
+    if matches!(
+        result.stop_reason,
+        zedflow_ai::StopReason::Error | zedflow_ai::StopReason::Aborted
+    ) {
+        return Err(result
+            .error_message
+            .unwrap_or_else(|| format!("Request {:?}", result.stop_reason)));
     }
     for content in result.content {
         if let zedflow_ai::AssistantContentBlock::Text(text) = content {
