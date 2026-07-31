@@ -108,7 +108,7 @@ impl OrchestratorSupervisor {
         let Some(mut record) = storage::get_instance(id)? else {
             return Ok(None);
         };
-        if let Some(mut process) = self.live.remove(id) {
+        if let Some(process) = self.live.remove(id) {
             record.status = InstanceStatus::Stopping;
             storage::upsert_instance(&record)?;
             process.dispose()?;
@@ -120,7 +120,7 @@ impl OrchestratorSupervisor {
         Ok(Some(record))
     }
     pub fn handle_rpc(&mut self, id: &str, command: Value) -> io::Result<Option<Value>> {
-        let Some(process) = self.live.get_mut(id) else {
+        let Some(process) = self.live.get(id) else {
             return Ok(None);
         };
         let response = process.send(command.clone())?;
@@ -130,6 +130,16 @@ impl OrchestratorSupervisor {
             }
         }
         Ok(Some(response))
+    }
+    pub fn open_rpc_stream(
+        &self,
+        id: &str,
+        events: tokio::sync::mpsc::UnboundedSender<Value>,
+        ui_requests: tokio::sync::mpsc::UnboundedSender<Value>,
+    ) -> Option<(RpcProcessInstance, u64)> {
+        let process = self.live.get(id)?.clone();
+        let subscriber = process.subscribe(events, ui_requests);
+        Some((process, subscriber))
     }
     pub async fn shutdown(&mut self) -> io::Result<()> {
         for id in self.live.keys().cloned().collect::<Vec<_>>() {
