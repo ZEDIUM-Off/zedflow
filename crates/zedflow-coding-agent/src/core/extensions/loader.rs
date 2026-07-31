@@ -608,6 +608,35 @@ pub fn load_extensions_cached(paths: &[impl AsRef<Path>]) -> LoadExtensionsResul
     result
 }
 
+fn is_extension_file(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|extension| extension.to_str()),
+        Some("ts" | "js")
+    )
+}
+
+fn resolve_extension_entries(dir: &Path) -> Vec<PathBuf> {
+    let package_entries = fs::read_to_string(dir.join("package.json"))
+        .ok()
+        .and_then(|contents| serde_json::from_str::<Value>(&contents).ok())
+        .and_then(|manifest| manifest["pi"]["extensions"].as_array().cloned())
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.as_str().map(|entry| dir.join(entry)))
+        .filter(|path| path.is_file() && is_extension_file(path))
+        .collect::<Vec<_>>();
+    if !package_entries.is_empty() {
+        return package_entries;
+    }
+
+    ["index.ts", "index.js"]
+        .into_iter()
+        .map(|name| dir.join(name))
+        .find(|path| path.is_file())
+        .into_iter()
+        .collect()
+}
+
 #[must_use]
 pub fn discover_and_load_extensions(cwd: impl AsRef<Path>) -> LoadExtensionsResult {
     let dir = cwd.as_ref().join(".pi/extensions");
@@ -617,7 +646,18 @@ pub fn discover_and_load_extensions(cwd: impl AsRef<Path>) -> LoadExtensionsResu
     let paths: Vec<_> = entries
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| path.is_file())
+        .flat_map(|path| {
+            if path.is_file() {
+                is_extension_file(&path)
+                    .then_some(path)
+                    .into_iter()
+                    .collect()
+            } else if path.is_dir() {
+                resolve_extension_entries(&path)
+            } else {
+                Vec::new()
+            }
+        })
         .collect();
     load_extensions(&paths)
 }
