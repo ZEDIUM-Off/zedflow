@@ -1729,25 +1729,42 @@
       "intent": "Convert frozen Pi Coding-agent test batch 5 into real executable Rust tests. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise the actual public/runtime behavior."
     },
     {
-      "id": "REPLAN-SEM-CA-V11-ARMIN-REPAIR",
+      "id": "REPLAN-SEM-CA-V11-PROMPT-TEMPLATES-REPAIR-R2",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V10-TEST-BATCH-5"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs"
+        "crates/zedflow-coding-agent/src/core/prompt-templates.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib prompt_templates::tests::substitutes_once_and_preserves_unknown_dollars"
+      ],
+      "intent": "Repair the deterministic prompt-template failure diagnosed by the failed Coding-agent package gate in the owned runtime module. Preserve frozen Pi substitution semantics; do not broaden into adjacent core resources."
+    },
+    {
+      "id": "REPLAN-SEM-CA-V11-ARMIN-WIRING-REPAIR-R2",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-CA-V10-TEST-BATCH-5"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs",
+        "crates/zedflow-coding-agent/src/lib.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --all-targets"
       ],
-      "intent": "Replace the diagnosed marker-only Armin component with the frozen Pi observable bitmap rendering and animation behavior. Keep the repair limited to armin.rs; do not add a disposition or broaden to sibling components."
+      "intent": "Replace the diagnosed marker-only Armin component with frozen Pi observable bitmap rendering and animation behavior, and wire its module through the crate root so the behavior is reachable. Keep the repair limited to these owned files."
     },
     {
-      "id": "REPLAN-SEM-CA-V11-VALIDATE-R1",
+      "id": "REPLAN-SEM-CA-V11-VALIDATE-R2",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-SEM-CA-V11-ARMIN-REPAIR"
+        "REPLAN-SEM-CA-V11-PROMPT-TEMPLATES-REPAIR-R2",
+        "REPLAN-SEM-CA-V11-ARMIN-WIRING-REPAIR-R2"
       ],
       "ownership": [],
       "validation": [
@@ -1756,13 +1773,13 @@
         "cargo test -p zedflow-coding-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
       ],
-      "intent": "Repeat the failed Coding-agent package validation after the scoped Armin repair. No source edits."
+      "intent": "Repeat the failed Coding-agent package validation after the scoped prompt-template and Armin wiring repairs. No source edits."
     },
     {
       "id": "SEM-CA-V12-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-SEM-CA-V11-VALIDATE-R1"
+        "REPLAN-SEM-CA-V11-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [],
