@@ -1966,20 +1966,35 @@
       "intent": "Validate Pi-compatible non-TTY print-mode selection, piped stdin initial-message handling, and text/JSON session-event output. No source edits."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R4",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-COMPONENTS-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-CLI-PRINT-RUNTIME-VALIDATE-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib"
+      ],
+      "intent": "Replace the diagnosed marker-only interactive component modules with reachable Pi-equivalent rendering and interaction behavior. Own only the identified interactive components; no markers, source-path assertions, or vacuous tests."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R5",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-COMPONENTS-REPAIR-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently re-review frozen Pi Coding-agent against Rust after the CLI/print runtime repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Reject marker modules and vacuous tests."
+      "intent": "Independently re-review frozen Pi Coding-agent against Rust after interactive component repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Reject marker modules and vacuous tests."
     },
     {
       "id": "SEM-ORCH-V1-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R4"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R5"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
