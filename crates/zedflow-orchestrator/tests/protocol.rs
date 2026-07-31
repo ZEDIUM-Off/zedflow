@@ -39,3 +39,15 @@ fn protocol_uses_jsonl_and_pi_wire_tags() {
         matches!(response, OrchestratorResponse::StatusResult { instance: Some(instance), .. } if instance.status == InstanceStatus::Online)
     );
 }
+
+#[test]
+fn stop_response_uses_pi_instance_id_wire_field() {
+    let response = OrchestratorResponse::StopResult {
+        ok: true,
+        instance_id: Some("pi-1".into()),
+    };
+
+    let line = encode_message(&response).unwrap();
+    assert!(line.contains("\"instanceId\":\"pi-1\""));
+    assert_eq!(parse_response_line(line.trim()).unwrap(), response);
+}

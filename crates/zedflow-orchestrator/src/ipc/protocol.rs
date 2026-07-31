@@ -76,7 +76,7 @@ pub enum OrchestratorResponse {
     },
     StopResult {
         ok: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "instanceId", skip_serializing_if = "Option::is_none")]
         instance_id: Option<String>,
     },
     StatusResult {
