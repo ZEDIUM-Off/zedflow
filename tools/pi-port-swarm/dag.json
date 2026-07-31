@@ -1886,20 +1886,37 @@
       "intent": "Validate the repaired Pi package-manager resource resolution, npm/git/local source operations, persisted package settings, CLI wiring, and executable behavior tests. No source edits."
     },
     {
-      "id": "REPLAN-SEM-CA-V12-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-RUNTIME-WIRING-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-VALIDATE-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-mode"
+      ],
+      "intent": "Wire the default interactive CLI path to an AgentSessionRuntime and make InteractiveMode drive that runtime rather than only queue submitted input. Replace the FIFO-only test with executable runtime/session behavior coverage; preserve existing print/text/json and RPC paths."
+    },
+    {
+      "id": "REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-RUNTIME-WIRING-REPAIR-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently re-review frozen Pi Coding-agent against Rust, including TUI default, print/text/json, RPC, sessions, tools, compaction, extensions, themes, skills, and package management. Reject marker modules and vacuous tests."
+      "intent": "Independently re-review frozen Pi Coding-agent against Rust after the interactive runtime wiring repair, including the default TUI/session/tools/compaction path plus print/text/json, RPC, extensions, themes, skills, and package management. Reject marker modules and vacuous tests."
     },
     {
       "id": "SEM-ORCH-V1-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-SEM-CA-V12-FIDELITY-R1"
+        "REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R2"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
