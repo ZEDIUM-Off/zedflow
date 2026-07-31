@@ -1,8 +1,18 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
-use zedflow_coding_agent::modes::interactive::{
-    InteractiveMode, get_path_command_argument, is_anthropic_subscription_auth_key,
-    is_api_key_login_provider, quote_if_needed,
+use zedflow_agent::harness::{
+    env::nodejs::NodeExecutionEnv,
+    session::{InMemorySessionStorage, Session},
+    types::{AgentHarnessOptions, Session as SessionTrait},
+};
+use zedflow_ai::{Model, Models};
+use zedflow_coding_agent::{
+    agent_session::AgentSession,
+    agent_session_runtime::AgentSessionRuntime,
+    modes::interactive::{
+        InteractiveMode, get_path_command_argument, is_anthropic_subscription_auth_key,
+        is_api_key_login_provider, quote_if_needed,
+    },
 };
 
 #[test]
@@ -22,16 +32,40 @@ fn path_commands_follow_pi_argument_rules() {
 }
 
 #[test]
-fn startup_input_is_trimmed_and_consumed_in_order() {
-    let mut mode = InteractiveMode::new();
-    mode.queue_user_input("  first  ");
-    mode.queue_user_input("   ");
-    mode.queue_user_input("second");
+fn submitted_input_is_driven_through_the_session_runtime() {
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let session_store = Arc::new(Session::new(InMemorySessionStorage::default()));
+    let session = AgentSession::new(AgentHarnessOptions {
+        env: Arc::new(NodeExecutionEnv::with_cwd(&cwd)),
+        session: Arc::clone(&session_store) as Arc<dyn SessionTrait>,
+        models: Models::default(),
+        tools: None,
+        resources: None,
+        system_prompt: None,
+        stream_options: None,
+        model: Model::default(),
+        thinking_level: None,
+        active_tool_names: None,
+        steering_mode: None,
+        follow_up_mode: None,
+    })
+    .unwrap();
+    let runtime = AgentSessionRuntime::new(session, cwd);
+    let mut mode = InteractiveMode::with_runtime(zedflow_tui::ProcessTerminal::new(), runtime);
+    mode.queue_user_input("  prompt  ");
 
-    assert_eq!(mode.pending_user_input_count(), 2);
-    assert_eq!(mode.get_user_input().as_deref(), Some("first"));
-    assert_eq!(mode.get_user_input().as_deref(), Some("second"));
-    assert_eq!(mode.get_user_input(), None);
+    assert!(mode.process_next_user_input().unwrap());
+    assert_eq!(mode.pending_user_input_count(), 0);
+    assert!(
+        !tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(session_store.get_entries())
+            .is_empty()
+    );
+    assert!(!mode.process_next_user_input().unwrap());
 }
 
 #[test]

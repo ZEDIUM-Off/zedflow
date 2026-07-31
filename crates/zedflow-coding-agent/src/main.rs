@@ -72,7 +72,7 @@ fn dispatch(args: &[String]) -> Result<(), String> {
             rpc_entry::run(io::stdin().lock(), io::stdout()).map_err(|e| e.to_string())
         }
         Some(Mode::Text) | Some(Mode::Json) => run_print(args, &parsed),
-        None => run_interactive().map_err(|e| e.to_string()),
+        None => run_interactive(args, &parsed).map_err(|e| e.to_string()),
     }
 }
 
@@ -213,7 +213,8 @@ fn run_print(args: &[String], parsed: &zedflow_coding_agent::cli::Args) -> Resul
     Ok(())
 }
 
-fn run_interactive() -> io::Result<()> {
+fn run_interactive(args: &[String], parsed: &zedflow_coding_agent::cli::Args) -> io::Result<()> {
+    let runtime = rpc_entry::create_runtime_for_args(args)?;
     let cwd = std::env::current_dir()?;
     let mut resources = DefaultResourceLoader::new(&cwd, get_agent_dir());
     resources.reload();
@@ -225,11 +226,18 @@ fn run_interactive() -> io::Result<()> {
         },
     )
     .map_err(io::Error::other)?;
-    let mut mode =
-        InteractiveMode::with_extension_runner(zedflow_tui::ProcessTerminal::new(), runner);
+    let mut mode = InteractiveMode::with_runtime_and_extension_runner(
+        zedflow_tui::ProcessTerminal::new(),
+        runtime,
+        runner,
+    );
+    for message in &parsed.messages {
+        mode.queue_user_input(message);
+    }
     mode.run()?;
     loop {
         mode.pump_events(Duration::from_millis(10))?;
+        while mode.process_next_user_input()? {}
     }
 }
 

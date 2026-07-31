@@ -11,9 +11,12 @@ use std::{
 use serde_json::Value;
 use zedflow_tui::{Component, ProcessTerminal, Terminal, Tui};
 
-use crate::extensions::{
-    ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner, InputEvent,
-    ProviderConfig, SessionActionResult,
+use crate::{
+    agent_session_runtime::AgentSessionRuntime,
+    extensions::{
+        ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner,
+        InputEvent, ProviderConfig, SessionActionResult,
+    },
 };
 
 /// Parse the first argument of an interactive path command (`/import` or
@@ -94,6 +97,7 @@ pub struct InteractiveMode {
     pending_user_inputs: VecDeque<String>,
     last_status: Option<String>,
     extension_runner: Option<ExtensionRunner>,
+    runtime: Option<AgentSessionRuntime>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
 }
 
@@ -123,6 +127,7 @@ impl InteractiveMode {
             pending_user_inputs: VecDeque::new(),
             last_status: None,
             extension_runner: None,
+            runtime: None,
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -134,6 +139,24 @@ impl InteractiveMode {
     ) -> Self {
         let mut mode = Self::with_terminal(terminal);
         mode.extension_runner = Some(extension_runner);
+        mode
+    }
+
+    #[must_use]
+    pub fn with_runtime(terminal: impl Terminal + 'static, runtime: AgentSessionRuntime) -> Self {
+        let mut mode = Self::with_terminal(terminal);
+        mode.runtime = Some(runtime);
+        mode
+    }
+
+    #[must_use]
+    pub fn with_runtime_and_extension_runner(
+        terminal: impl Terminal + 'static,
+        runtime: AgentSessionRuntime,
+        extension_runner: ExtensionRunner,
+    ) -> Self {
+        let mut mode = Self::with_extension_runner(terminal, extension_runner);
+        mode.runtime = Some(runtime);
         mode
     }
 
@@ -243,6 +266,29 @@ impl InteractiveMode {
     /// Return queued input in submission order, matching `getUserInput()`.
     pub fn get_user_input(&mut self) -> Option<String> {
         self.pending_user_inputs.pop_front()
+    }
+
+    /// Submit one queued input to the active session runtime.
+    ///
+    /// Returns `true` when an input was consumed. Errors are shown in the TUI
+    /// status area so the interactive loop remains usable after a failed turn.
+    pub fn process_next_user_input(&mut self) -> io::Result<bool> {
+        let Some(input) = self.get_user_input() else {
+            return Ok(false);
+        };
+        let Some(runtime) = self.runtime.clone() else {
+            self.pending_user_inputs.push_front(input);
+            return Ok(false);
+        };
+        let result = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| io::Error::other(error.to_string()))?
+            .block_on(async move { runtime.session().prompt(input, None).await });
+        if let Err(error) = result {
+            self.show_status(error.to_string());
+        }
+        Ok(true)
     }
 
     #[must_use]
