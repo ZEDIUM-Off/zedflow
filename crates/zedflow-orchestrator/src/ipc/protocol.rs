@@ -16,16 +16,20 @@ pub enum OrchestratorRequest {
     },
     List,
     Stop {
+        #[serde(rename = "instanceId")]
         instance_id: String,
     },
     Status {
+        #[serde(rename = "instanceId")]
         instance_id: String,
     },
     Rpc {
+        #[serde(rename = "instanceId")]
         instance_id: String,
         command: Value,
     },
     RpcStream {
+        #[serde(rename = "instanceId")]
         instance_id: String,
     },
 }
