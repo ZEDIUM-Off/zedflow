@@ -1463,10 +1463,24 @@
       "intent": "Add the minimal Cargo integration-test wiring for the seven nested session-manager tests: aggregate them under the real sdk-session-manager target and register the existing declared target names as aliases to that executable harness. Do not alter runtime code or test semantics."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R5",
-      "kind": "validator",
+      "id": "SEM-CA-V8-SESSION-MANAGER-ALIAS-PATHS-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-SESSION-MANAGER-TEST-WIRING-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Replace each existing session-manager Cargo [[test]] alias path with its corresponding nested executable file: build-context -> tests/session-manager/build-context.rs, custom-session-id -> tests/session-manager/custom-session-id.rs, file-operations -> tests/session-manager/file-operations.rs, labels -> tests/session-manager/labels.rs, migration -> tests/session-manager/migration.rs, save-entry -> tests/session-manager/save-entry.rs, tree-traversal -> tests/session-manager/tree-traversal.rs. Do not modify test behavior or runtime code."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R6",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-SESSION-MANAGER-ALIAS-PATHS-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1481,7 +1495,7 @@
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R5"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R6"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
