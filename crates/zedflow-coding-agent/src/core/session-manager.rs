@@ -4,6 +4,8 @@
 //! coding-agent-facing namespace and keeps callers from depending on the
 //! lower-level harness path.
 
+use std::time::SystemTime;
+
 pub use zedflow_agent::harness::session::{
     InMemorySessionRepo, InMemorySessionStorage, InMemorySessionStorageOptions, JsonlSessionRepo,
     JsonlSessionStorage, JsonlSessionStorageCreateOptions, JsonlSessionStorageFileSystem,
@@ -53,4 +55,18 @@ impl SessionInfo {
     pub fn is_persisted(&self) -> bool {
         self.session_file.is_some()
     }
+}
+
+/// Pi lists sessions by the timestamp of their last user or assistant message,
+/// falling back to the file modification time for header-only sessions.
+#[must_use]
+pub fn session_modified_timestamp(
+    file_modified: SystemTime,
+    message_timestamps: impl IntoIterator<Item = Option<SystemTime>>,
+) -> SystemTime {
+    message_timestamps
+        .into_iter()
+        .flatten()
+        .last()
+        .unwrap_or(file_modified)
 }

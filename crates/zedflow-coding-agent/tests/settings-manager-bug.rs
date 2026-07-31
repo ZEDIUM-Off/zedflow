@@ -1,26 +1,21 @@
-use zedflow_coding_agent::settings_manager::{CompactionSettings, Settings, SettingsManager};
+use std::fs;
+
+use zedflow_coding_agent::settings_manager::SettingsManager;
+
 #[test]
-fn project_settings_override_global_and_nested_settings_merge() {
-    let manager = SettingsManager::with_settings(
-        Settings {
-            theme: Some("dark".into()),
-            compaction: Some(CompactionSettings {
-                enabled: Some(true),
-                reserve_tokens: Some(4),
-                keep_recent_tokens: None,
-            }),
-            ..Default::default()
-        },
-        Settings {
-            theme: Some("light".into()),
-            compaction: Some(CompactionSettings {
-                enabled: None,
-                reserve_tokens: None,
-                keep_recent_tokens: Some(9),
-            }),
-            ..Default::default()
-        },
-    );
-    assert_eq!(manager.settings().theme.as_deref(), Some("light"));
-    assert_eq!(manager.get_compaction_settings(), (true, 4, 9));
+fn changing_one_setting_preserves_external_unknown_settings() {
+    let root = std::env::temp_dir().join(format!("zedflow-settings-bug-{}", std::process::id()));
+    let global = root.join("settings.json");
+    fs::create_dir_all(&root).unwrap();
+    fs::write(&global, r#"{"theme":"dark","packages":["old"]}"#).unwrap();
+    let manager = SettingsManager::from_paths(&global, root.join("project.json"));
+
+    fs::write(&global, r#"{"theme":"dark","packages":[]}"#).unwrap();
+    manager.set_retry_enabled(false).unwrap();
+
+    let saved: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&global).unwrap()).unwrap();
+    assert_eq!(saved["packages"], serde_json::json!([]));
+    assert_eq!(saved["retry"]["enabled"], false);
+    fs::remove_dir_all(root).unwrap();
 }

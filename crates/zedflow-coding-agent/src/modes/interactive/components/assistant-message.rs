@@ -1,8 +1,26 @@
-//! Pi coding-agent module: `modes/interactive/components/assistant-message.rs`.
-//!
-//! This manifest entry is kept explicit so the Rust crate mirrors the frozen
-//! TypeScript package layout. Host-specific behavior remains in the owning
-//! runtime modules.
+//! Pi-compatible streaming assistant-message state.
 
-#[allow(dead_code)]
-pub const MODULE_PATH: &str = "modes/interactive/components/assistant-message.rs";
+/// The visible content accumulated while an assistant message streams.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StreamingAssistantMessage {
+    thinking: String,
+    text: String,
+}
+
+impl StreamingAssistantMessage {
+    /// Replaces the streamed snapshot, rather than appending it twice.
+    pub fn update_content(&mut self, thinking: impl Into<String>, text: impl Into<String>) {
+        self.thinking = thinking.into();
+        self.text = text.into();
+    }
+
+    #[must_use]
+    pub fn thinking(&self) -> &str {
+        &self.thinking
+    }
+
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
