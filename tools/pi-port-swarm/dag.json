@@ -1607,10 +1607,30 @@
       "intent": "Replace the remaining duplicate marker tests with deterministic executable tests of their declared frozen Pi behavior: invalid session files, read-only session-id handling, message-derived session modification timestamps, selector path deletion, selector rename, selector search, settings-manager bug behavior, settings-manager merging, non-interactive stdout cleanliness, and streaming render debugging. Modify only the listed existing runtime roots when required by those tests; do not alter unrelated RPC tests or runtime modules."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R11",
-      "kind": "validator",
+      "id": "SEM-CA-V8-TEST-BATCH-3-SESSION-MANAGER-BEHAVIORS-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-TEST-BATCH-3-DUPLICATE-BEHAVIORS-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Replace the seven duplicate generic SessionInfo persistence tests with deterministic executable tests of their declared session-manager behavior: build context, custom session ID, file operations, labels, migration, save entry, and tree traversal. Exercise minimal existing runtime APIs only; do not modify runtime code or unrelated tests."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R12",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-TEST-BATCH-3-SESSION-MANAGER-BEHAVIORS-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1619,13 +1639,13 @@
         "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
         "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the duplicate-behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject duplicate or marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the session-manager behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject duplicate or marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R11"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R12"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
