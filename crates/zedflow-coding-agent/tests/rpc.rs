@@ -1,23 +1,34 @@
 use std::io::Cursor;
-use zedflow_coding_agent::{RpcClient, RpcCommand, handle_command_line, run_rpc_loop};
+use zedflow_coding_agent::{RpcResponse, handle_command_line, run_rpc_loop};
 
 #[test]
-fn rpc_protocol_preserves_request_identity_and_errors() {
-    let mut client = RpcClient::new();
-    let encoded = client.encode(RpcCommand::GetState { id: None });
-    assert!(encoded.contains("req_1"));
-    let response = handle_command_line(&encoded);
-    assert!(response.success && response.id.as_deref() == Some("req_1"));
-    assert!(!handle_command_line(r#"{"id":"x","type":"unknown"}"#).success);
+fn rpc_preserves_request_identity_and_returns_command_error_envelopes() {
+    let response = handle_command_line(r#"{"id":"request-7","type":"unknown"}"#);
+
+    assert_eq!(response.id.as_deref(), Some("request-7"));
+    assert_eq!(response.command, "unknown");
+    assert!(!response.success);
+    assert_eq!(response.response_type, "response");
 }
 
 #[test]
-fn rpc_loop_emits_one_json_response_per_input_line() {
+fn rpc_writes_one_json_response_per_input_record() {
     let mut output = Vec::new();
     run_rpc_loop(
-        Cursor::new("{\"type\":\"get_state\",\"id\":\"a\"}\n"),
+        Cursor::new("{\"id\":\"a\",\"type\":\"get_state\"}\nnot json\n"),
         &mut output,
     )
     .unwrap();
-    assert!(String::from_utf8(output).unwrap().contains("\"id\":\"a\""));
+
+    let responses: Vec<RpcResponse> = std::str::from_utf8(&output)
+        .unwrap()
+        .lines()
+        .map(serde_json::from_str)
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(responses.len(), 2);
+    assert_eq!(responses[0].id.as_deref(), Some("a"));
+    assert!(responses[0].success);
+    assert_eq!(responses[1].command, "parse");
+    assert!(!responses[1].success);
 }

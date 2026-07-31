@@ -1,23 +1,24 @@
-use std::io::Cursor;
-use zedflow_coding_agent::{RpcClient, RpcCommand, handle_command_line, run_rpc_loop};
+use zedflow_coding_agent::modes::rpc::{JsonlReader, serialize_json_line};
 
 #[test]
-fn rpc_protocol_preserves_request_identity_and_errors() {
-    let mut client = RpcClient::new();
-    let encoded = client.encode(RpcCommand::GetState { id: None });
-    assert!(encoded.contains("req_1"));
-    let response = handle_command_line(&encoded);
-    assert!(response.success && response.id.as_deref() == Some("req_1"));
-    assert!(!handle_command_line(r#"{"id":"x","type":"unknown"}"#).success);
+fn jsonl_frames_only_lf_and_preserves_unicode_separators() {
+    let line = serialize_json_line(&serde_json::json!({"text":"a\u{2028}b\u{2029}c"}));
+    let mut reader = JsonlReader::new();
+
+    assert_eq!(
+        reader.push(line.as_bytes()),
+        vec![line.trim_end().to_owned()]
+    );
+    assert_eq!(
+        JsonlReader::parse::<serde_json::Value>(line.trim()).unwrap(),
+        serde_json::json!({"text":"a\u{2028}b\u{2029}c"})
+    );
 }
 
 #[test]
-fn rpc_loop_emits_one_json_response_per_input_line() {
-    let mut output = Vec::new();
-    run_rpc_loop(
-        Cursor::new("{\"type\":\"get_state\",\"id\":\"a\"}\n"),
-        &mut output,
-    )
-    .unwrap();
-    assert!(String::from_utf8(output).unwrap().contains("\"id\":\"a\""));
+fn jsonl_accepts_crlf_and_emits_an_unterminated_final_record() {
+    let mut reader = JsonlReader::new();
+
+    assert_eq!(reader.push(b"{\"a\":1}\r\n{\"b\":2}"), vec![r#"{"a":1}"#]);
+    assert_eq!(reader.finish().as_deref(), Some(r#"{"b":2}"#));
 }
