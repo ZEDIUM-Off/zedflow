@@ -1,4 +1,5 @@
 use crate::{
+    radius::RadiusPresence,
     rpc_process::RpcProcessInstance,
     storage,
     types::{InstanceRecord, InstanceStatus},
@@ -26,6 +27,7 @@ fn refreshes_metadata(command: &Value) -> bool {
 }
 pub struct OrchestratorSupervisor {
     live: HashMap<String, RpcProcessInstance>,
+    radius: RadiusPresence,
 }
 impl Default for OrchestratorSupervisor {
     fn default() -> Self {
@@ -36,9 +38,19 @@ impl OrchestratorSupervisor {
     pub fn new() -> Self {
         Self {
             live: HashMap::new(),
+            radius: RadiusPresence::default(),
         }
     }
+    pub fn start_radius(&self, label: Option<String>) -> io::Result<()> {
+        self.radius.start(label).map(|_| ())
+    }
+    pub fn stop_radius(&self) -> io::Result<()> {
+        self.radius.stop()
+    }
     pub fn recover_after_restart(&mut self) -> io::Result<()> {
+        for instance in storage::load_instances()? {
+            self.radius.disconnect_pi(&instance)?;
+        }
         let stamp = now();
         let instances = storage::load_instances()?
             .into_iter()
@@ -84,8 +96,21 @@ impl OrchestratorSupervisor {
                 record.status = InstanceStatus::Online;
                 record.last_seen_at = Some(now());
                 self.live.insert(record.id.clone(), process);
-                storage::upsert_instance(&record)?;
-                Ok(record)
+                match self.radius.register_pi(record.clone()) {
+                    Ok(registered) => {
+                        record = registered;
+                        storage::upsert_instance(&record)?;
+                        Ok(record)
+                    }
+                    Err(error) => {
+                        if let Some(mut process) = self.live.remove(&record.id) {
+                            let _ = process.dispose();
+                        }
+                        record.status = InstanceStatus::Error;
+                        storage::upsert_instance(&record)?;
+                        Err(error)
+                    }
+                }
             }
             Err(error) => {
                 record.status = InstanceStatus::Stopped;
@@ -105,6 +130,7 @@ impl OrchestratorSupervisor {
         }
         record.status = InstanceStatus::Stopped;
         record.last_seen_at = Some(now());
+        self.radius.disconnect_pi(&record)?;
         storage::remove_instance(id)?;
         Ok(Some(record))
     }
@@ -124,6 +150,7 @@ impl OrchestratorSupervisor {
         for id in self.live.keys().cloned().collect::<Vec<_>>() {
             self.stop_instance(&id)?;
         }
+        self.stop_radius()?;
         Ok(())
     }
 }
