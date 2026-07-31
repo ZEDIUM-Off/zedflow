@@ -2000,10 +2000,26 @@
       "intent": "Repair the default extension-discovery runtime contract: do not silently report .ts/.js files as loaded extensions. Route only approved provenance-bound Rust cdylib artifacts into the existing default interactive ExtensionRunner and return explicit diagnostics for deferred TypeScript/jiti inputs. Preserve the approved Rust cdylib ABI v1, source-only install policy, trust root, no-unload rule, and all represented ExtensionAPI capabilities; do not add a JS runtime, dependencies, compatibility shims, or weaken tests."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R7",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-FILTER-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
+        "crates/zedflow-coding-agent/tests/extensions-discovery.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extensions-discovery"
+      ],
+      "intent": "Restrict extension discovery to frozen Pi-supported extension file types and packages; reject inert regular files such as README rather than registering marker modules. Add an executable regression proving unsupported files are ignored."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R8",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-FILTER-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2011,13 +2027,13 @@
         "cargo check -p zedflow-coding-agent --all-targets",
         "cargo test -p zedflow-coding-agent --test extensions-discovery --test resource-extension-runtime"
       ],
-      "intent": "Independently re-review frozen Pi Coding-agent after the extension-discovery repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Verify that TypeScript/jiti source execution remains the approved explicit deferral rather than a silent no-op, while Rust cdylibs preserve the approved ExtensionAPI capability substitution. Reject marker modules and vacuous tests."
+      "intent": "Independently re-review frozen Pi Coding-agent after the extension-discovery repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Verify that TypeScript/jiti source execution remains the approved explicit deferral rather than a silent no-op, while Rust cdylibs preserve the approved ExtensionAPI capability substitution. Reject marker modules and vacuous tests. Re-check that extension discovery ignores unsupported regular files rather than registering marker modules."
     },
     {
       "id": "SEM-ORCH-V1-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R7"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R8"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
