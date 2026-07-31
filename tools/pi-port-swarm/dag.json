@@ -1463,24 +1463,46 @@
       "intent": "Add the minimal Cargo integration-test wiring for the seven nested session-manager tests: aggregate them under the real sdk-session-manager target and register the existing declared target names as aliases to that executable harness. Do not alter runtime code or test semantics."
     },
     {
-      "id": "SEM-CA-V8-SESSION-MANAGER-ALIAS-PATHS-REPAIR-R1",
+      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-REPAIR-R2",
       "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-SESSION-MANAGER-TEST-WIRING-R1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml"
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
       ],
-      "intent": "Replace each existing session-manager Cargo [[test]] alias path with its corresponding nested executable file: build-context -> tests/session-manager/build-context.rs, custom-session-id -> tests/session-manager/custom-session-id.rs, file-operations -> tests/session-manager/file-operations.rs, labels -> tests/session-manager/labels.rs, migration -> tests/session-manager/migration.rs, save-entry -> tests/session-manager/save-entry.rs, tree-traversal -> tests/session-manager/tree-traversal.rs. Do not modify test behavior or runtime code."
+      "intent": "Replace each session-manager Cargo [[test]] alias path with its corresponding nested executable file. Update the seven nested executable tests to import SessionInfo from zedflow_coding_agent::session_manager rather than the sdk-session-manager harness-only crate module. Do not alter runtime code or test semantics."
+    },
+    {
+      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-REPAIR-R2"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets",
+        "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
+      ],
+      "intent": "Independently validate the session-manager nested executable targets after their paths and imports are repaired. All eight declared targets must compile and execute against public/runtime behavior. No source edits."
     },
     {
       "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R6",
       "kind": "validator",
       "depends_on": [
-        "SEM-CA-V8-SESSION-MANAGER-ALIAS-PATHS-REPAIR-R1"
+        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [
