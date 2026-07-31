@@ -89,11 +89,13 @@ pub fn substitute_args(content: &str, args: &[String]) -> String {
                 out.push('$');
                 rest = tail;
             } else {
-                let index = tail[..count]
-                    .parse::<usize>()
-                    .unwrap_or(0)
-                    .saturating_sub(1);
-                out.push_str(args.get(index).map_or("", String::as_str));
+                let value = tail[..count].parse::<usize>().ok();
+                out.push_str(
+                    value
+                        .and_then(|value| value.checked_sub(1))
+                        .and_then(|index| args.get(index))
+                        .map_or("", String::as_str),
+                );
                 rest = &tail[count..];
             }
         }
@@ -106,10 +108,12 @@ fn parse_default(input: &str, args: &[String]) -> Option<(usize, String)> {
     let end = input.find('}')?;
     let value = &input[..end];
     let (number, fallback) = value.split_once(":-")?;
-    let index = number.parse::<usize>().ok()?.saturating_sub(1);
+    let value = number.parse::<usize>().ok();
     Some((
         end + 1,
-        args.get(index)
+        value
+            .and_then(|value| value.checked_sub(1))
+            .and_then(|index| args.get(index))
             .filter(|value| !value.is_empty())
             .cloned()
             .unwrap_or_else(|| fallback.into()),
@@ -273,10 +277,10 @@ mod tests {
     fn substitutes_once_and_preserves_unknown_dollars() {
         assert_eq!(
             substitute_args(
-                "$1 ${2:-two} ${@:2:2} $UNKNOWN",
+                "$0 ${0:-zero} $1 ${2:-two} ${@:2:2} $UNKNOWN",
                 &["one".into(), "".into(), "three".into()]
             ),
-            "one two  three $UNKNOWN"
+            " zero one two  three $UNKNOWN"
         );
     }
 }
