@@ -33,28 +33,28 @@ path = "tests/sdk-session-manager.rs"
 
 [[test]]
 name = "build-context"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/build-context.rs"
 
 [[test]]
 name = "custom-session-id"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/custom-session-id.rs"
 
 [[test]]
 name = "file-operations"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/file-operations.rs"
 
 [[test]]
 name = "labels"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/labels.rs"
 
 [[test]]
 name = "migration"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/migration.rs"
 
 [[test]]
 name = "save-entry"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/save-entry.rs"
 
 [[test]]
 name = "tree-traversal"
-path = "tests/sdk-session-manager.rs"
+path = "tests/session-manager/tree-traversal.rs"

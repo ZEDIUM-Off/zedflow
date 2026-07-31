@@ -1,4 +1,4 @@
-use crate::session_manager::SessionInfo;
+use zedflow_coding_agent::session_manager::SessionInfo;
 #[test]
 fn persisted_session_records_file_while_memory_session_does_not() {
     let memory = SessionInfo::in_memory("/work", "id");
