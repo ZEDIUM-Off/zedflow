@@ -1,7 +1,5 @@
-//! Pi coding-agent test manifest entry: `tests/theme-picker.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/theme-picker.rs";
+#[test]
+fn supported_syntax_choices_include_common_languages() {
+    assert!(zedflow_coding_agent::utils::syntax_highlight::supports_language("json"));
+    assert!(zedflow_coding_agent::utils::syntax_highlight::supports_language("bash"));
+}

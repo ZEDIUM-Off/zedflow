@@ -1,7 +1,7 @@
-//! Pi coding-agent test manifest entry: `tests/user-message.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/user-message.rs";
+#[test]
+fn user_visible_footer_text_normalizes_control_whitespace() {
+    assert_eq!(
+        zedflow_coding_agent::footer::sanitize_status_text(" hello\t there "),
+        "hello there"
+    );
+}

@@ -1,7 +1,10 @@
-//! Pi coding-agent test manifest entry: `tests/theme-export.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/theme-export.rs";
+#[test]
+fn rendered_highlight_text_has_no_html_markup() {
+    assert_eq!(
+        zedflow_coding_agent::utils::syntax_highlight::render_highlighted_html(
+            "<b>export</b>",
+            &Default::default()
+        ),
+        "export"
+    );
+}

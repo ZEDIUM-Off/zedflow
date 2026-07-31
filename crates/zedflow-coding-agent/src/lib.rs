@@ -347,3 +347,25 @@ mod suite_lax_message_content;
 #[cfg(test)]
 #[path = "../tests/suite/agent-session-bash-persistence.rs"]
 mod ported_agent_session_bash_persistence;
+
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5943-session-start-notify.rs"]
+mod suite_5943_session_start_notify;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5996-session-name-newlines.rs"]
+mod suite_5996_session_name_newlines;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/6019-explicit-provider-retry-message.rs"]
+mod suite_6019_explicit_provider_retry_message;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/6162-extension-active-tools-next-turn.rs"]
+mod suite_6162_extension_active_tools_next_turn;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/6260-inline-extension-naming.rs"]
+mod suite_6260_inline_extension_naming;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/extension-factory-cache.rs"]
+mod suite_extension_factory_cache;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/pre-prompt-compaction-no-continue.rs"]
+mod suite_pre_prompt_compaction_no_continue;

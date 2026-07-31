@@ -1,7 +1,4 @@
-//! Pi coding-agent test manifest entry: `tests/utilities.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/utilities.rs";
+#[test]
+fn utility_format_size_uses_readable_units() {
+    assert_eq!(zedflow_coding_agent::truncate::format_size(1024), "1.0KB");
+}

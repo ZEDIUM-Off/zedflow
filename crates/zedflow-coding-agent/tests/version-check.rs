@@ -1,7 +1,7 @@
-//! Pi coding-agent test manifest entry: `tests/version-check.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/version-check.rs";
+#[test]
+fn semantic_versions_sort_numerically() {
+    assert_eq!(
+        zedflow_coding_agent::utils::version_check::compare_package_versions("v1.10.0", "1.9.0"),
+        Some(1)
+    );
+}

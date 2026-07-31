@@ -1,7 +1,12 @@
-//! Pi coding-agent test manifest entry: `tests/trigger-compact-extension.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/trigger-compact-extension.rs";
+#[test]
+fn tail_compaction_keeps_the_latest_lines() {
+    let result = zedflow_coding_agent::truncate::truncate_tail(
+        "one\ntwo\nthree\n",
+        zedflow_coding_agent::truncate::TruncationOptions {
+            max_lines: 1,
+            max_bytes: 100,
+        },
+    );
+    assert!(result.truncated);
+    assert_eq!(result.content, "three");
+}

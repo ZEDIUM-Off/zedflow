@@ -1,7 +1,5 @@
-//! Pi coding-agent test manifest entry: `tests/suite/regressions/5943-session-start-notify.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/suite/regressions/5943-session-start-notify.rs";
+#[test]
+fn startup_prompt_exposes_visible_tools() {
+    let prompt = zedflow_coding_agent::system_prompt::build_system_prompt(&Default::default());
+    assert!(prompt.contains("Available tools:\n(none)"));
+}
