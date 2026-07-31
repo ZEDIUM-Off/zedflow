@@ -16,6 +16,12 @@ use crate::extensions::{
 
 pub use serde_json::Value as JsonValue;
 
+/// Deterministic public SDK surface for the Codex cache-probe tool loop.
+pub use crate::agent_session::{
+    CodexCacheProbeAssistant, CodexCacheProbeMessage, CodexCacheProbeSession, CodexCacheProbeTurn,
+    CodexCacheProbeUsage,
+};
+
 /// The small host-facing surface available to a native extension.
 #[derive(Debug, Default)]
 pub struct ExtensionApi {
