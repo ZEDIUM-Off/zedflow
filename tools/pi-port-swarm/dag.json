@@ -1729,10 +1729,25 @@
       "intent": "Convert frozen Pi Coding-agent test batch 5 into real executable Rust tests. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise the actual public/runtime behavior."
     },
     {
-      "id": "SEM-CA-V11-VALIDATE",
-      "kind": "validator",
+      "id": "REPLAN-SEM-CA-V11-ARMIN-REPAIR",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V10-TEST-BATCH-5"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --all-targets"
+      ],
+      "intent": "Replace the diagnosed marker-only Armin component with the frozen Pi observable bitmap rendering and animation behavior. Keep the repair limited to armin.rs; do not add a disposition or broaden to sibling components."
+    },
+    {
+      "id": "REPLAN-SEM-CA-V11-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-SEM-CA-V11-ARMIN-REPAIR"
       ],
       "ownership": [],
       "validation": [
@@ -1741,13 +1756,13 @@
         "cargo test -p zedflow-coding-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
       ],
-      "intent": "Validate executable Coding-agent tests, strict manifest closure and all runtime modes. No source edits."
+      "intent": "Repeat the failed Coding-agent package validation after the scoped Armin repair. No source edits."
     },
     {
       "id": "SEM-CA-V12-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-CA-V11-VALIDATE"
+        "REPLAN-SEM-CA-V11-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [],
