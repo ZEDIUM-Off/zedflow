@@ -1,9 +1,20 @@
-use zedflow_coding_agent::session_manager::SessionInfo;
-#[test]
-fn persisted_session_records_file_while_memory_session_does_not() {
-    let memory = SessionInfo::in_memory("/work", "id");
-    let saved = SessionInfo::persisted("/work", "session.jsonl", "id");
-    assert!(!memory.is_persisted());
-    assert!(saved.is_persisted());
-    assert_eq!(saved.session_file.as_deref(), Some("session.jsonl"));
+use serde_json::json;
+use zedflow_agent::harness::{
+    session::{InMemorySessionStorage, Session},
+    types::SessionTreeEntry,
+};
+
+#[tokio::test]
+async fn saved_custom_entry_is_linked_into_the_active_branch() {
+    let session = Session::new(InMemorySessionStorage::default());
+    let first = session.append_custom_entry("first", None).await.unwrap();
+    let second = session
+        .append_custom_entry("data", Some(json!({"ok": true})))
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(session.get_entry(&second).await, Some(SessionTreeEntry::Custom(entry)) if entry.base.parent_id.as_deref() == Some(&first) && entry.data == Some(json!({"ok": true})))
+    );
+    assert_eq!(session.get_branch(None).await.len(), 2);
 }

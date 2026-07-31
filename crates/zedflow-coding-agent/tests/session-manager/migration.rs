@@ -1,9 +1,31 @@
-use zedflow_coding_agent::session_manager::SessionInfo;
-#[test]
-fn persisted_session_records_file_while_memory_session_does_not() {
-    let memory = SessionInfo::in_memory("/work", "id");
-    let saved = SessionInfo::persisted("/work", "session.jsonl", "id");
-    assert!(!memory.is_persisted());
-    assert!(saved.is_persisted());
-    assert_eq!(saved.session_file.as_deref(), Some("session.jsonl"));
+use std::{fs, sync::Arc};
+
+use zedflow_agent::harness::{
+    env::nodejs::NodeExecutionEnv, session::JsonlSessionStorage, types::SessionErrorCode,
+};
+
+#[tokio::test]
+async fn rejects_unmigrated_session_file_versions() {
+    let file = std::env::temp_dir().join(format!(
+        "zedflow-legacy-session-{}.jsonl",
+        std::process::id()
+    ));
+    fs::write(
+        &file,
+        r#"{"type":"session","version":2,"id":"old","timestamp":"2025-01-01T00:00:00.000Z","cwd":"/tmp"}
+"#,
+    )
+    .unwrap();
+
+    let error = match JsonlSessionStorage::open(
+        Arc::new(NodeExecutionEnv::with_cwd("/tmp")),
+        file.to_string_lossy().into_owned(),
+    )
+    .await
+    {
+        Ok(_) => panic!("legacy session must be rejected"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, SessionErrorCode::InvalidSession);
+    fs::remove_file(file).unwrap();
 }

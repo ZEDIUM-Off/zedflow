@@ -1,9 +1,23 @@
-use zedflow_coding_agent::session_manager::SessionInfo;
-#[test]
-fn persisted_session_records_file_while_memory_session_does_not() {
-    let memory = SessionInfo::in_memory("/work", "id");
-    let saved = SessionInfo::persisted("/work", "session.jsonl", "id");
-    assert!(!memory.is_persisted());
-    assert!(saved.is_persisted());
-    assert_eq!(saved.session_file.as_deref(), Some("session.jsonl"));
+use zedflow_agent::harness::session::{InMemorySessionStorage, Session};
+
+#[tokio::test]
+async fn labels_follow_the_latest_change_and_can_be_cleared() {
+    let session = Session::new(InMemorySessionStorage::default());
+    let entry_id = session.append_custom_entry("data", None).await.unwrap();
+
+    session
+        .append_label(entry_id.clone(), Some("first".into()))
+        .await
+        .unwrap();
+    session
+        .append_label(entry_id.clone(), Some("latest".into()))
+        .await
+        .unwrap();
+    assert_eq!(
+        session.get_label(&entry_id).await.as_deref(),
+        Some("latest")
+    );
+
+    session.append_label(entry_id.clone(), None).await.unwrap();
+    assert_eq!(session.get_label(&entry_id).await, None);
 }
