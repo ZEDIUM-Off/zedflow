@@ -1903,10 +1903,41 @@
       "intent": "Wire the default interactive CLI path to an AgentSessionRuntime and make InteractiveMode drive that runtime rather than only queue submitted input. Replace the FIFO-only test with executable runtime/session behavior coverage; preserve existing print/text/json and RPC paths."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R2",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-RUNTIME-WIRING-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-mode"
+      ],
+      "intent": "Port Pi interactive event-driven runtime behavior: subscribe to AgentSession events, render user/assistant/tool/compaction state, handle /compact, and serialize compaction UI/queue transitions. Preserve the existing default CLI, print/text/json, and RPC wiring."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-REPAIR-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets",
+        "cargo test -p zedflow-coding-agent --test interactive-mode",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
+      ],
+      "intent": "Validate interactive event subscription, user/assistant/tool rendering, /compact handling, compaction UI/queue behavior, and executable interactive-mode coverage. No source edits."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [],
@@ -1916,7 +1947,7 @@
       "id": "SEM-ORCH-V1-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R2"
+        "REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R3"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
