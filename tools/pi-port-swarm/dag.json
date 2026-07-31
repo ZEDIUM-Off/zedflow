@@ -2084,20 +2084,37 @@
       "intent": "Implement the frozen Radius HTTP registration, machine/Pi heartbeat scheduling with retry/backoff and three-404 recovery, remote disconnect, and supervisor lifecycle wiring; use the already locked reqwest transport and executable local HTTP tests only. Own Cargo.lock for the required resolved lockfile update."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R2",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-IPC-CAMELCASE-REPAIR",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR-CARGO-LOCK"
       ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/ipc/protocol.rs",
+        "crates/zedflow-orchestrator/tests/protocol.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test protocol",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Serialize and deserialize Pi IPC instanceId wire fields for stop, status, rpc, and rpc_stream requests; update executable protocol tests without changing the frozen protocol."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-IPC-CAMELCASE-REPAIR"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust, including the repaired Radius lifecycle and its Cargo.lock update; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust, including the IPC camelCase wire-field repair and Radius lifecycle; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R2"
+        "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R3"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2113,7 +2130,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R2"
+        "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R3"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
