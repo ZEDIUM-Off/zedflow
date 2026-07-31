@@ -1553,10 +1553,34 @@
       "intent": "Replace only the duplicated ExtensionApi registration markers in sdk-openrouter-attribution.rs, sdk-skills.rs, and sdk-stream-options.rs with deterministic executable tests of the corresponding frozen Pi SDK behavior. Implement only the minimal existing SDK/session, model-registry, attribution, resource-loader, and skills runtime behavior needed for those tests; preserve OpenRouter attribution/header precedence, SDK skill discovery/injection, and stream timeout option forwarding/override semantics. Do not modify sdk-session-manager.rs or unrelated SDK tests."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R8",
-      "kind": "validator",
+      "id": "SEM-CA-V8-RPC-TEST-BEHAVIORS-REPAIR-R2",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-SDK-BEHAVIORS-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/rpc-client-clone.rs",
+        "crates/zedflow-coding-agent/tests/rpc-client-process-exit.rs",
+        "crates/zedflow-coding-agent/tests/rpc-example.rs",
+        "crates/zedflow-coding-agent/tests/rpc-jsonl.rs",
+        "crates/zedflow-coding-agent/tests/rpc-prompt-response-semantics.rs",
+        "crates/zedflow-coding-agent/tests/rpc.rs",
+        "crates/zedflow-coding-agent/src/modes/rpc/jsonl.rs",
+        "crates/zedflow-coding-agent/src/modes/rpc/rpc-client.rs",
+        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
+        "crates/zedflow-coding-agent/src/modes/rpc/rpc-types.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc"
+      ],
+      "intent": "Replace the six duplicated generic RPC marker tests with deterministic executable tests of their declared frozen Pi behaviors: client cloning, client process exit, RPC example flow, JSONL framing, prompt/response semantics, and RPC command/runtime behavior. Modify only the minimal existing RPC runtime needed for those tests; preserve request identity, JSONL framing, command error envelopes, prompt responses, clone behavior, and process-exit behavior. No marker tests, source-path assertions, blanket ignores, or unrelated source edits."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R10",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-RPC-TEST-BEHAVIORS-REPAIR-R2"
       ],
       "ownership": [],
       "validation": [
@@ -1565,13 +1589,13 @@
         "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
         "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the SDK behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the RPC behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R8"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R10"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
