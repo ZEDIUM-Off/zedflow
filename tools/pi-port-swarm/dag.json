@@ -2062,7 +2062,7 @@
       "intent": "Validate executable Orchestrator tests, strict manifest closure and package compilation."
     },
     {
-      "id": "REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR",
+      "id": "REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR-CARGO-LOCK",
       "kind": "writer",
       "depends_on": [
         "SEM-ORCH-V2-VALIDATE"
@@ -2073,30 +2073,31 @@
         "crates/zedflow-orchestrator/src/serve.rs",
         "crates/zedflow-orchestrator/src/handler.rs",
         "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs"
+        "crates/zedflow-orchestrator/tests/radius.rs",
+        "Cargo.lock"
       ],
       "validation": [
         "cargo fmt --package zedflow-orchestrator --check",
         "cargo test -p zedflow-orchestrator --test radius",
         "cargo check -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Implement the frozen Radius HTTP registration, machine/Pi heartbeat scheduling with retry/backoff and three-404 recovery, remote disconnect, and supervisor lifecycle wiring; use the already locked reqwest transport and executable local HTTP tests only."
+      "intent": "Implement the frozen Radius HTTP registration, machine/Pi heartbeat scheduling with retry/backoff and three-404 recovery, remote disconnect, and supervisor lifecycle wiring; use the already locked reqwest transport and executable local HTTP tests only. Own Cargo.lock for the required resolved lockfile update."
     },
     {
-      "id": "REPLAN-SEM-ORCH-V3-FIDELITY-R1",
+      "id": "REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R2",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR"
+        "REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR-CARGO-LOCK"
       ],
       "ownership": [],
       "validation": [],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust, including the repaired Radius lifecycle; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust, including the repaired Radius lifecycle and its Cargo.lock update; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-SEM-ORCH-V3-FIDELITY-R1"
+        "REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R2"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2112,7 +2113,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-SEM-ORCH-V3-FIDELITY-R1"
+        "REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R2"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
