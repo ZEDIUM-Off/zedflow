@@ -1835,20 +1835,54 @@
       "intent": "Repeat Coding-agent package validation after the scoped manifest structural repair. No source edits."
     },
     {
-      "id": "SEM-CA-V12-FIDELITY",
-      "kind": "reviewer",
+      "id": "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-FIDELITY-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R2"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
+        "crates/zedflow-coding-agent/tests/package-manager.rs",
+        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
+        "crates/zedflow-coding-agent/tests/package-command-paths.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
+      ],
+      "intent": "Port Pi PackageManager resource-package resolution and persisted package settings for npm, git, and local sources; wire install/remove/update and configured extension, skill, prompt, and theme resources through the package-manager CLI. Preserve the approved source-only Rust cdylib artifact/provenance policy; do not add dependencies, execute TypeScript, accept prebuilt artifacts, or weaken tests."
+    },
+    {
+      "id": "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-FIDELITY-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets",
+        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths",
+        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
+      ],
+      "intent": "Validate the repaired Pi package-manager resource resolution, npm/git/local source operations, persisted package settings, CLI wiring, and executable behavior tests. No source edits."
+    },
+    {
+      "id": "REPLAN-SEM-CA-V12-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-VALIDATE-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently compare frozen Pi Coding-agent with Rust, including TUI default, print/text/json, RPC, sessions, tools, compaction, extensions, themes, skills and package management. Reject marker modules and vacuous tests."
+      "intent": "Independently re-review frozen Pi Coding-agent against Rust, including TUI default, print/text/json, RPC, sessions, tools, compaction, extensions, themes, skills, and package management. Reject marker modules and vacuous tests."
     },
     {
       "id": "SEM-ORCH-V1-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V12-FIDELITY"
+        "REPLAN-SEM-CA-V12-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
