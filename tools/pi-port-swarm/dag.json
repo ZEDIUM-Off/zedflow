@@ -2101,20 +2101,44 @@
       "intent": "Serialize and deserialize Pi IPC instanceId wire fields for stop, status, rpc, and rpc_stream requests; update executable protocol tests without changing the frozen protocol."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R3",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-STREAM-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-IPC-CAMELCASE-REPAIR"
       ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/ipc/server.rs",
+        "crates/zedflow-orchestrator/src/handler.rs",
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/src/rpc-process.rs",
+        "crates/zedflow-orchestrator/src/serve.rs",
+        "crates/zedflow-orchestrator/tests/rpc-stream.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test rpc-stream",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Implement frozen Pi rpc_stream lifecycle fidelity only: keep the IPC socket open after rpc_ready, forward RPC responses, session events, and extension UI requests, serialize queued client JSONL commands and UI responses, and preserve non-stream RPC behavior. Add executable local stream lifecycle tests; do not change protocol fields or Radius behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R4",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-STREAM-REPAIR-R1"
+      ],
       "ownership": [],
-      "validation": [],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust, including the IPC camelCase wire-field repair and Radius lifecycle; reject source-marker or compile-only closure."
+      "validation": [
+        "cargo test -p zedflow-orchestrator --test rpc-stream",
+        "cargo test -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust after the rpc_stream lifecycle repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase fields, and Radius lifecycle; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R3"
+        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R4"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2130,7 +2154,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R3"
+        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R4"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
