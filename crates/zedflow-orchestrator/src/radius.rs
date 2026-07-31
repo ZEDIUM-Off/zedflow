@@ -2,10 +2,22 @@ use crate::{
     config, storage,
     types::{InstanceRecord, MachineRecord, RadiusRegistration},
 };
-use serde::Deserialize;
-use std::{env, io};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    env, io,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tokio::{
+    sync::Mutex,
+    task::JoinHandle,
+    time::{Duration, sleep},
+};
 
 pub const DEFAULT_RADIUS_URL: &str = "https://radius.pi.dev/";
+const NOT_FOUND_RETRY_THRESHOLD: u32 = 3;
+
 pub fn radius_url() -> String {
     env::var("PI_RADIUS_URL").unwrap_or_else(|_| DEFAULT_RADIUS_URL.into())
 }
@@ -24,17 +36,20 @@ struct Credential {
     access: Option<String>,
 }
 pub fn radius_access_token() -> io::Result<String> {
-    if let Ok(key) = env::var("PI_RADIUS_API_KEY") {
-        if !key.is_empty() {
-            return Ok(key);
+    if let Ok(text) = std::fs::read_to_string(config::auth_path()) {
+        if let Some(token) = serde_json::from_str::<AuthFile>(&text)
+            .map_err(io::Error::other)?
+            .radius
+            .filter(|credential| credential.kind == "oauth")
+            .and_then(|credential| credential.access)
+            .filter(|token| !token.is_empty())
+        {
+            return Ok(token);
         }
     }
-    let text = std::fs::read_to_string(config::auth_path())?;
-    let auth: AuthFile = serde_json::from_str(&text).map_err(io::Error::other)?;
-    auth.radius
-        .filter(|credential| credential.kind == "oauth")
-        .and_then(|credential| credential.access)
-        .filter(|token| !token.is_empty())
+    env::var("PI_RADIUS_API_KEY")
+        .ok()
+        .filter(|key| !key.is_empty())
         .ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -46,51 +61,307 @@ pub fn is_radius_enabled() -> bool {
     radius_access_token().is_ok()
 }
 pub fn compute_backoff_delay_ms(failures: u32) -> u64 {
-    (1_000u64
+    1_000u64
         .saturating_mul(2u64.saturating_pow(failures.saturating_sub(1)))
-        .min(30_000))
-    .min(30_000)
+        .min(30_000)
 }
-pub struct RadiusPresence {
+fn now() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .to_string()
+}
+fn error(error: impl std::fmt::Display) -> io::Error {
+    io::Error::other(error.to_string())
+}
+
+#[derive(Deserialize)]
+struct Registration {
+    id: String,
+    #[serde(flatten)]
+    registration: RadiusRegistration,
+}
+#[derive(Debug)]
+struct HttpError {
+    status: reqwest::StatusCode,
+    message: String,
+}
+impl std::fmt::Display for HttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "HTTP {}: {}", self.status, self.message)
+    }
+}
+impl std::error::Error for HttpError {}
+async fn post<T: for<'a> Deserialize<'a>, B: Serialize>(
+    client: &reqwest::Client,
+    path: &str,
+    body: &B,
+) -> Result<T, HttpError> {
+    let url = format!("{}{}", radius_orchestrator_base_url(), path);
+    let response = client
+        .post(url)
+        .bearer_auth(radius_access_token().map_err(|e| HttpError {
+            status: reqwest::StatusCode::UNAUTHORIZED,
+            message: e.to_string(),
+        })?)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| HttpError {
+            status: reqwest::StatusCode::BAD_GATEWAY,
+            message: e.to_string(),
+        })?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(HttpError {
+            status,
+            message: text,
+        });
+    }
+    serde_json::from_str(&text).map_err(|e| HttpError {
+        status,
+        message: e.to_string(),
+    })
+}
+async fn maybe_post<B: Serialize>(
+    client: &reqwest::Client,
+    path: &str,
+    body: &B,
+) -> Result<(), HttpError> {
+    post::<serde_json::Value, _>(client, path, body)
+        .await
+        .map(|_| ())
+}
+
+#[derive(Default)]
+struct State {
     machine: Option<MachineRecord>,
+    machine_task: Option<JoinHandle<()>>,
+    pi_tasks: HashMap<String, JoinHandle<()>>,
+}
+#[derive(Clone)]
+pub struct RadiusPresence {
+    client: reqwest::Client,
+    state: Arc<Mutex<State>>,
 }
 impl Default for RadiusPresence {
     fn default() -> Self {
-        Self { machine: None }
+        Self {
+            client: reqwest::Client::new(),
+            state: Arc::new(Mutex::new(State::default())),
+        }
     }
 }
+
 impl RadiusPresence {
-    pub fn start(&mut self, label: Option<String>) -> io::Result<Option<MachineRecord>> {
+    pub async fn start(&self, label: Option<String>) -> io::Result<Option<MachineRecord>> {
         if !is_radius_enabled() {
             return Ok(None);
         }
-        let machine = storage::load_machine()?.unwrap_or(MachineRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            created_at: "0".into(),
-            last_seen_at: None,
+        let existing = self
+            .state
+            .lock()
+            .await
+            .machine
+            .clone()
+            .or(storage::load_machine()?);
+        let registration: Registration = post(
+            &self.client,
+            "machines/register",
+            &serde_json::json!({
+                "machineId": existing.as_ref().map(|machine| &machine.id), "label": label,
+                "hostname": env::var("HOSTNAME").unwrap_or_default(), "platform": env::consts::OS,
+                "arch": env::consts::ARCH, "version": config::VERSION,
+                "capabilities": { "spawn": true, "relay": false, "iroh": false }
+            }),
+        )
+        .await
+        .map_err(error)?;
+        let machine = MachineRecord {
+            id: registration.id,
+            created_at: existing.map(|m| m.created_at).unwrap_or_else(now),
+            last_seen_at: Some(now()),
             label,
-        });
+        };
         storage::save_machine(&machine)?;
-        self.machine = Some(machine.clone());
+        let mut state = self.state.lock().await;
+        if let Some(task) = state.machine_task.take() {
+            task.abort();
+        }
+        state.machine = Some(machine.clone());
+        state.machine_task =
+            Some(self.spawn_machine_heartbeat(registration.registration.heartbeat_interval_ms));
         Ok(Some(machine))
     }
-    pub fn stop(&mut self) {
-        self.machine = None;
+    pub async fn stop(&self) -> io::Result<()> {
+        let (machine, tasks) = {
+            let mut state = self.state.lock().await;
+            let mut tasks = state
+                .pi_tasks
+                .drain()
+                .map(|(_, task)| task)
+                .collect::<Vec<_>>();
+            if let Some(task) = state.machine_task.take() {
+                tasks.push(task);
+            }
+            (state.machine.take(), tasks)
+        };
+        for task in tasks {
+            task.abort();
+        }
+        if let Some(machine) = machine {
+            if is_radius_enabled() {
+                match maybe_post(
+                    &self.client,
+                    &format!("machines/{}/disconnect", machine.id),
+                    &serde_json::json!({}),
+                )
+                .await
+                {
+                    Ok(())
+                    | Err(HttpError {
+                        status: reqwest::StatusCode::NOT_FOUND,
+                        ..
+                    }) => (),
+                    Err(e) => return Err(error(e)),
+                }
+            }
+        }
+        Ok(())
     }
-    pub fn register_pi(&self, instance: InstanceRecord) -> io::Result<InstanceRecord> {
+    pub async fn register_pi(&self, instance: InstanceRecord) -> io::Result<InstanceRecord> {
         if !is_radius_enabled() {
             return Ok(instance);
         }
-        if self.machine.is_none() && storage::load_machine()?.is_none() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "No registered machine available for Pi registration",
-            ));
+        let machine = self
+            .state
+            .lock()
+            .await
+            .machine
+            .clone()
+            .or(storage::load_machine()?)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "No registered machine available for Pi registration",
+                )
+            })?;
+        let registration: Registration = post(&self.client, "pis/register", &serde_json::json!({
+            "machineId": machine.id, "label": instance.label, "cwd": instance.cwd,
+            "hostname": env::var("HOSTNAME").unwrap_or_default(), "pid": std::process::id(), "transport": "local-rpc",
+            "capabilities": { "rpc": true, "relay": false, "iroh": false }, "sessionId": instance.session_id
+        })).await.map_err(error)?;
+        let mut result = instance;
+        result.radius_pi_id = Some(registration.id.clone());
+        let mut state = self.state.lock().await;
+        if let Some(task) = state.pi_tasks.remove(&result.id) {
+            task.abort();
         }
-        Ok(instance)
+        state.pi_tasks.insert(
+            result.id.clone(),
+            self.spawn_pi_heartbeat(
+                result.id.clone(),
+                registration.id,
+                registration.registration.heartbeat_interval_ms,
+            ),
+        );
+        Ok(result)
     }
-    pub fn disconnect_pi(&self, _instance: &InstanceRecord) -> io::Result<()> {
-        Ok(())
+    pub async fn disconnect_pi(&self, instance: &InstanceRecord) -> io::Result<()> {
+        if let Some(task) = self.state.lock().await.pi_tasks.remove(&instance.id) {
+            task.abort();
+        }
+        let Some(id) = &instance.radius_pi_id else {
+            return Ok(());
+        };
+        if !is_radius_enabled() {
+            return Ok(());
+        }
+        match maybe_post(
+            &self.client,
+            &format!("pis/{id}/disconnect"),
+            &serde_json::json!({}),
+        )
+        .await
+        {
+            Ok(())
+            | Err(HttpError {
+                status: reqwest::StatusCode::NOT_FOUND,
+                ..
+            }) => Ok(()),
+            Err(e) => Err(error(e)),
+        }
+    }
+    fn spawn_machine_heartbeat(&self, interval_ms: u64) -> JoinHandle<()> {
+        let this = self.clone();
+        tokio::spawn(async move {
+            let mut not_found = 0;
+            let mut failures = 0;
+            loop {
+                sleep(Duration::from_millis(if failures == 0 {
+                    interval_ms
+                } else {
+                    compute_backoff_delay_ms(failures)
+                }))
+                .await;
+                let machine = this.state.lock().await.machine.clone();
+                let Some(machine) = machine else { return };
+                match maybe_post(&this.client, &format!("machines/{}/heartbeat", machine.id), &serde_json::json!({ "cwd": config::orchestrator_dir(), "socketPath": config::socket_path() })).await { Ok(()) => { not_found = 0; failures = 0; }, Err(e) if e.status == reqwest::StatusCode::NOT_FOUND => { not_found += 1; failures = 0; if not_found >= NOT_FOUND_RETRY_THRESHOLD { let label = machine.label; let _ = this.start(label).await; return; } }, Err(_) => failures += 1 }
+            }
+        })
+    }
+    fn spawn_pi_heartbeat(
+        &self,
+        instance_id: String,
+        radius_id: String,
+        interval_ms: u64,
+    ) -> JoinHandle<()> {
+        let this = self.clone();
+        tokio::spawn(async move {
+            let mut not_found = 0;
+            let mut failures = 0;
+            let radius_id = radius_id;
+            loop {
+                sleep(Duration::from_millis(if failures == 0 {
+                    interval_ms
+                } else {
+                    compute_backoff_delay_ms(failures)
+                }))
+                .await;
+                match maybe_post(
+                    &this.client,
+                    &format!("pis/{radius_id}/heartbeat"),
+                    &serde_json::json!({}),
+                )
+                .await
+                {
+                    Ok(()) => {
+                        not_found = 0;
+                        failures = 0;
+                    }
+                    Err(e) if e.status == reqwest::StatusCode::NOT_FOUND => {
+                        not_found += 1;
+                        failures = 0;
+                        if not_found >= NOT_FOUND_RETRY_THRESHOLD {
+                            let Some(instance) = storage::get_instance(&instance_id).ok().flatten()
+                            else {
+                                return;
+                            };
+                            match this.register_pi(instance).await {
+                                Ok(updated) => {
+                                    let _ = storage::upsert_instance(&updated);
+                                    return;
+                                }
+                                Err(_) => failures = 1,
+                            };
+                        }
+                    }
+                    Err(_) => failures += 1,
+                }
+            }
+        })
     }
 }
 pub fn default_registration() -> RadiusRegistration {

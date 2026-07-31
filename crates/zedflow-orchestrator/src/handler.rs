@@ -3,13 +3,13 @@ use crate::{
     supervisor::OrchestratorSupervisor,
 };
 
-pub fn handle_ipc_request(
+pub async fn handle_ipc_request(
     supervisor: &mut OrchestratorSupervisor,
     request: OrchestratorRequest,
 ) -> OrchestratorResponse {
     match request {
         OrchestratorRequest::Spawn { cwd, label, .. } => {
-            match supervisor.spawn_instance(cwd, label) {
+            match supervisor.spawn_instance(cwd, label).await {
                 Ok(instance) => OrchestratorResponse::SpawnResult {
                     ok: true,
                     instance: Some(instance.into()),
@@ -34,14 +34,16 @@ pub fn handle_ipc_request(
                 Err(error) => error_response(error),
             }
         }
-        OrchestratorRequest::Stop { instance_id } => match supervisor.stop_instance(&instance_id) {
-            Ok(Some(_)) => OrchestratorResponse::StopResult {
-                ok: true,
-                instance_id: Some(instance_id),
-            },
-            Ok(None) => unknown(&instance_id),
-            Err(error) => error_response(error),
-        },
+        OrchestratorRequest::Stop { instance_id } => {
+            match supervisor.stop_instance(&instance_id).await {
+                Ok(Some(_)) => OrchestratorResponse::StopResult {
+                    ok: true,
+                    instance_id: Some(instance_id),
+                },
+                Ok(None) => unknown(&instance_id),
+                Err(error) => error_response(error),
+            }
+        }
         OrchestratorRequest::Rpc {
             instance_id,
             command,
