@@ -69,6 +69,73 @@ fn submitted_input_is_driven_through_the_session_runtime() {
 }
 
 #[test]
+fn session_events_are_rendered_when_the_mode_pumps() {
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let session = AgentSession::new(AgentHarnessOptions {
+        env: Arc::new(NodeExecutionEnv::with_cwd(&cwd)),
+        session: Arc::new(Session::new(InMemorySessionStorage::default())) as Arc<dyn SessionTrait>,
+        models: Models::default(),
+        tools: None,
+        resources: None,
+        system_prompt: None,
+        stream_options: None,
+        model: Model::default(),
+        thinking_level: None,
+        active_tool_names: None,
+        steering_mode: None,
+        follow_up_mode: None,
+    })
+    .unwrap();
+    let runtime = AgentSessionRuntime::new(session, cwd);
+    let runtime_session = runtime.session();
+    let mut mode = InteractiveMode::with_runtime(zedflow_tui::ProcessTerminal::new(), runtime);
+
+    tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(runtime_session.next_turn("queued", None))
+        .unwrap();
+    assert!(!mode.process_next_user_input().unwrap());
+    assert!(
+        mode.rendered_events()
+            .iter()
+            .any(|event| event == "queue: 1")
+    );
+}
+
+#[test]
+fn compact_command_is_dispatched_without_becoming_a_prompt() {
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let session = AgentSession::new(AgentHarnessOptions {
+        env: Arc::new(NodeExecutionEnv::with_cwd(&cwd)),
+        session: Arc::new(Session::new(InMemorySessionStorage::default())) as Arc<dyn SessionTrait>,
+        models: Models::default(),
+        tools: None,
+        resources: None,
+        system_prompt: None,
+        stream_options: None,
+        model: Model::default(),
+        thinking_level: None,
+        active_tool_names: None,
+        steering_mode: None,
+        follow_up_mode: None,
+    })
+    .unwrap();
+    let runtime = AgentSessionRuntime::new(session, cwd);
+    let mut mode = InteractiveMode::with_runtime(zedflow_tui::ProcessTerminal::new(), runtime);
+    mode.queue_user_input("/compact preserve decisions");
+
+    assert!(mode.process_next_user_input().unwrap());
+    assert_eq!(mode.pending_user_input_count(), 0);
+    assert_eq!(mode.last_status(), Some("Nothing to compact"));
+}
+
+#[test]
 fn provider_login_and_auth_key_rules_match_pi() {
     let oauth = HashSet::from(["oauth-provider".to_owned()]);
     let builtins = HashSet::from(["builtin-provider".to_owned()]);

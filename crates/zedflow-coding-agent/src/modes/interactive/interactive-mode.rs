@@ -9,6 +9,10 @@ use std::{
 };
 
 use serde_json::Value;
+use zedflow_agent::{
+    harness::types::{AgentHarnessEvent, AgentHarnessOwnEvent},
+    types::{AgentEvent, AgentMessage},
+};
 use zedflow_tui::{Component, ProcessTerminal, Terminal, Tui};
 
 use crate::{
@@ -98,6 +102,10 @@ pub struct InteractiveMode {
     last_status: Option<String>,
     extension_runner: Option<ExtensionRunner>,
     runtime: Option<AgentSessionRuntime>,
+    session_events: Arc<Mutex<VecDeque<AgentHarnessEvent>>>,
+    rendered_events: Arc<Mutex<Vec<String>>>,
+    compacting: bool,
+    compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
 }
 
@@ -128,6 +136,10 @@ impl InteractiveMode {
             last_status: None,
             extension_runner: None,
             runtime: None,
+            session_events: Arc::new(Mutex::new(VecDeque::new())),
+            rendered_events: Arc::new(Mutex::new(Vec::new())),
+            compacting: false,
+            compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
@@ -145,7 +157,7 @@ impl InteractiveMode {
     #[must_use]
     pub fn with_runtime(terminal: impl Terminal + 'static, runtime: AgentSessionRuntime) -> Self {
         let mut mode = Self::with_terminal(terminal);
-        mode.runtime = Some(runtime);
+        mode.set_runtime(runtime);
         mode
     }
 
@@ -156,15 +168,94 @@ impl InteractiveMode {
         extension_runner: ExtensionRunner,
     ) -> Self {
         let mut mode = Self::with_extension_runner(terminal, extension_runner);
-        mode.runtime = Some(runtime);
+        mode.set_runtime(runtime);
         mode
+    }
+
+    fn set_runtime(&mut self, runtime: AgentSessionRuntime) {
+        let events = Arc::clone(&self.session_events);
+        // The harness retains the listener; dropping its returned teardown closure
+        // deliberately keeps this mode subscribed for the runtime's lifetime.
+        let _ = runtime.session().subscribe(Arc::new(move |event| {
+            events.lock().unwrap().push_back(event);
+            Box::pin(async { Ok(()) })
+        }));
+        self.runtime = Some(runtime);
+    }
+
+    fn drain_session_events(&mut self) -> io::Result<()> {
+        let events = std::mem::take(&mut *self.session_events.lock().unwrap());
+        for event in events {
+            self.render_session_event(event);
+        }
+        self.tui.request_render(false)
+    }
+
+    fn render_session_event(&mut self, event: AgentHarnessEvent) {
+        let text = match event {
+            AgentHarnessEvent::Agent(AgentEvent::MessageStart { message }) => {
+                format!("{}", message_label(&message))
+            }
+            AgentHarnessEvent::Agent(AgentEvent::MessageUpdate { .. }) => {
+                "assistant: streaming".into()
+            }
+            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionStart { tool_name, .. }) => {
+                format!("tool: {tool_name}")
+            }
+            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionEnd {
+                tool_name,
+                is_error,
+                ..
+            }) => {
+                format!(
+                    "tool: {tool_name} {}",
+                    if is_error { "failed" } else { "done" }
+                )
+            }
+            AgentHarnessEvent::Agent(AgentEvent::AgentStart) => "assistant: working".into(),
+            AgentHarnessEvent::Agent(AgentEvent::AgentEnd { .. }) => "assistant: idle".into(),
+            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::QueueUpdate(queue)) => {
+                format!(
+                    "queue: {}",
+                    queue.steer.len() + queue.follow_up.len() + queue.next_turn.len()
+                )
+            }
+            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionBeforeCompact(_)) => {
+                self.compacting = true;
+                "compaction: working".into()
+            }
+            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionCompact(_)) => {
+                self.compacting = false;
+                "compaction: complete".into()
+            }
+            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::ToolCall(tool)) => {
+                format!("tool: {}", tool.tool_name)
+            }
+            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::ToolResult(tool)) => {
+                format!(
+                    "tool: {} {}",
+                    tool.tool_name,
+                    if tool.is_error { "failed" } else { "done" }
+                )
+            }
+            _ => return,
+        };
+        self.rendered_events.lock().unwrap().push(text);
     }
 
     pub fn tui_mut(&mut self) -> &mut Tui {
         &mut self.tui
     }
 
+    #[must_use]
+    pub fn rendered_events(&self) -> Vec<String> {
+        self.rendered_events.lock().unwrap().clone()
+    }
+
     pub fn run(&mut self) -> io::Result<()> {
+        self.tui
+            .root
+            .add_child(EventLog::new(Arc::clone(&self.rendered_events)));
         self.tui.root.add_child(InteractiveInput::new(Arc::clone(
             &self.submitted_terminal_inputs,
         )));
@@ -187,6 +278,7 @@ impl InteractiveMode {
         for input in submitted {
             self.queue_user_input(input);
         }
+        self.drain_session_events()?;
         Ok(count)
     }
 
@@ -273,20 +365,47 @@ impl InteractiveMode {
     /// Returns `true` when an input was consumed. Errors are shown in the TUI
     /// status area so the interactive loop remains usable after a failed turn.
     pub fn process_next_user_input(&mut self) -> io::Result<bool> {
+        self.drain_session_events()?;
         let Some(input) = self.get_user_input() else {
             return Ok(false);
         };
+        if self.compacting {
+            self.compaction_queue.push_back(input);
+            self.show_status("Queued message for after compaction");
+            return Ok(true);
+        }
         let Some(runtime) = self.runtime.clone() else {
             self.pending_user_inputs.push_front(input);
             return Ok(false);
         };
+        let compact_instructions = input.strip_prefix("/compact").and_then(|rest| {
+            (rest.is_empty() || rest.starts_with(char::is_whitespace))
+                .then(|| rest.trim().to_owned())
+        });
         let result = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|error| io::Error::other(error.to_string()))?
-            .block_on(async move { runtime.session().prompt(input, None).await });
+            .block_on(async move {
+                if let Some(instructions) = compact_instructions {
+                    runtime
+                        .session()
+                        .compact((!instructions.is_empty()).then_some(instructions.as_str()))
+                        .await
+                        .map(|_| ())
+                } else {
+                    runtime.session().prompt(input, None).await.map(|_| ())
+                }
+            });
+        self.drain_session_events()?;
         if let Err(error) = result {
             self.show_status(error.to_string());
+        }
+        while !self.compacting {
+            let Some(input) = self.compaction_queue.pop_front() else {
+                break;
+            };
+            self.pending_user_inputs.push_back(input);
         }
         Ok(true)
     }
@@ -352,6 +471,22 @@ impl InteractiveMode {
     }
 }
 
+struct EventLog {
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl EventLog {
+    fn new(events: Arc<Mutex<Vec<String>>>) -> Self {
+        Self { events }
+    }
+}
+
+impl Component for EventLog {
+    fn render(&self, _width: usize) -> Vec<String> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
 struct InteractiveInput {
     value: String,
     submitted: Arc<Mutex<VecDeque<String>>>,
@@ -384,6 +519,15 @@ impl Component for InteractiveInput {
             _ => {}
         }
     }
+}
+
+fn message_label(message: &AgentMessage) -> String {
+    let json = serde_json::to_value(message).unwrap_or_default();
+    let role = json
+        .get("role")
+        .and_then(Value::as_str)
+        .unwrap_or("message");
+    format!("{role}: received")
 }
 
 fn current_dir() -> String {
