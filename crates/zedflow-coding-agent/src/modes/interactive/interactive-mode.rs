@@ -13,13 +13,17 @@ use zedflow_agent::{
     harness::types::{AgentHarnessEvent, AgentHarnessOwnEvent},
     types::{AgentEvent, AgentMessage},
 };
-use zedflow_tui::{Component, ProcessTerminal, Terminal, Tui};
+use zedflow_tui::{Component, ProcessTerminal, Terminal, Text, Tui};
 
 use crate::{
     agent_session_runtime::AgentSessionRuntime,
     extensions::{
         ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner,
         InputEvent, ProviderConfig, SessionActionResult,
+    },
+    modes_interactive_components_index::{
+        assistant_message::StreamingAssistantMessage, tool_execution::ToolExecutionComponent,
+        user_message::UserMessageComponent,
     },
 };
 
@@ -194,7 +198,7 @@ impl InteractiveMode {
     fn render_session_event(&mut self, event: AgentHarnessEvent) {
         let text = match event {
             AgentHarnessEvent::Agent(AgentEvent::MessageStart { message }) => {
-                format!("{}", message_label(&message))
+                format!("{}: {}", message_label(&message), message_content(&message))
             }
             AgentHarnessEvent::Agent(AgentEvent::MessageUpdate { .. }) => {
                 "assistant: streaming".into()
@@ -482,8 +486,25 @@ impl EventLog {
 }
 
 impl Component for EventLog {
-    fn render(&self, _width: usize) -> Vec<String> {
-        self.events.lock().unwrap().clone()
+    fn render(&self, width: usize) -> Vec<String> {
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|event| {
+                if let Some(text) = event.strip_prefix("user: ") {
+                    UserMessageComponent::new(text, 1).render(width)
+                } else if let Some(text) = event.strip_prefix("assistant: ") {
+                    let mut message = StreamingAssistantMessage::default();
+                    message.update_content("", text);
+                    message.render(width)
+                } else if let Some(tool_name) = event.strip_prefix("tool: ") {
+                    ToolExecutionComponent::new(tool_name, "").render(width)
+                } else {
+                    Text::new(event, 1, 0).render(width)
+                }
+            })
+            .collect()
     }
 }
 
@@ -528,6 +549,23 @@ fn message_label(message: &AgentMessage) -> String {
         .and_then(Value::as_str)
         .unwrap_or("message");
     format!("{role}: received")
+}
+
+fn message_content(message: &AgentMessage) -> String {
+    let json = serde_json::to_value(message).unwrap_or_default();
+    match json.get("content") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|part| {
+                part.get("text")
+                    .or_else(|| part.get("thinking"))
+                    .and_then(Value::as_str)
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
 }
 
 fn current_dir() -> String {
