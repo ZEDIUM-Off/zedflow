@@ -2062,20 +2062,41 @@
       "intent": "Validate executable Orchestrator tests, strict manifest closure and package compilation."
     },
     {
-      "id": "SEM-ORCH-V3-FIDELITY",
-      "kind": "reviewer",
+      "id": "REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR",
+      "kind": "writer",
       "depends_on": [
         "SEM-ORCH-V2-VALIDATE"
       ],
+      "ownership": [
+        "crates/zedflow-orchestrator/Cargo.toml",
+        "crates/zedflow-orchestrator/src/radius.rs",
+        "crates/zedflow-orchestrator/src/serve.rs",
+        "crates/zedflow-orchestrator/src/handler.rs",
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/tests/radius.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test radius",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Implement the frozen Radius HTTP registration, machine/Pi heartbeat scheduling with retry/backoff and three-404 recovery, remote disconnect, and supervisor lifecycle wiring; use the already locked reqwest transport and executable local HTTP tests only."
+    },
+    {
+      "id": "REPLAN-SEM-ORCH-V3-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Independently compare every frozen Pi Orchestrator runtime module and protocol behavior against Rust; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust, including the repaired Radius lifecycle; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "SEM-ORCH-V3-FIDELITY"
+        "REPLAN-SEM-ORCH-V3-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2091,7 +2112,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "SEM-ORCH-V3-FIDELITY"
+        "REPLAN-SEM-ORCH-V3-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
