@@ -1447,10 +1447,26 @@
       "intent": "Repair the deterministic prompt-template slice expansion failure exposed by cargo test -p zedflow-coding-agent --lib: ${@:2:2} must consume its closing brace and preserve Pi substitution semantics. Modify only the owned runtime module and its embedded executable test."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R4",
-      "kind": "validator",
+      "id": "SEM-CA-V8-SESSION-MANAGER-TEST-WIRING-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-PROMPT-TEMPLATES-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/Cargo.toml",
+        "crates/zedflow-coding-agent/tests/sdk-session-manager.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
+      ],
+      "intent": "Add the minimal Cargo integration-test wiring for the seven nested session-manager tests: aggregate them under the real sdk-session-manager target and register the existing declared target names as aliases to that executable harness. Do not alter runtime code or test semantics."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R5",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-SESSION-MANAGER-TEST-WIRING-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1459,13 +1475,13 @@
         "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
         "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the prompt-template slice repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after session-manager integration-test wiring. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R4"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R5"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
