@@ -26,3 +26,35 @@ unicode-normalization = "0.1"
 zedflow-agent = { path = "../zedflow-agent" }
 zedflow-ai = { path = "../zedflow-ai" }
 zedflow-tui = { path = "../zedflow-tui" }
+
+[[test]]
+name = "sdk-session-manager"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "build-context"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "custom-session-id"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "file-operations"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "labels"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "migration"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "save-entry"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "tree-traversal"
+path = "tests/sdk-session-manager.rs"
