@@ -116,8 +116,29 @@ fn dispatch_package(
             println!("Removed: {source}");
             Ok(())
         }
-        PackageCommand::Install | PackageCommand::Update => {
-            Err("native package installation requires an explicit Cargo artifact".into())
+        PackageCommand::Install => {
+            let source = command.source.ok_or("install requires a source")?;
+            manager.install_source(&source, scope)?;
+            println!("Installed: {source}");
+            Ok(())
+        }
+        PackageCommand::Update => {
+            let target = command.update_target.ok_or("update target missing")?;
+            if !zedflow_coding_agent::package_manager_cli::update_target_includes_extensions(
+                &target,
+            ) {
+                return Err("self update is not available in the source-only build".into());
+            }
+            let source = match target {
+                zedflow_coding_agent::package_manager_cli::UpdateTarget::Extensions(source) => {
+                    source
+                }
+                zedflow_coding_agent::package_manager_cli::UpdateTarget::All => command.source,
+                zedflow_coding_agent::package_manager_cli::UpdateTarget::SelfOnly => unreachable!(),
+            };
+            let count = manager.update(source.as_deref(), scope)?;
+            println!("Updated {count} package(s)");
+            Ok(())
         }
     }
 }

@@ -4,8 +4,9 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use zedflow_coding_agent::package_manager::{
-    DefaultPackageManager, NativePackageSpec, PackageScope,
+use zedflow_coding_agent::{
+    package_manager::{DefaultPackageManager, PackageScope},
+    resource_loader::DefaultResourceLoader,
 };
 
 fn temp_dir() -> PathBuf {
@@ -39,25 +40,36 @@ fn installs_lists_and_removes_only_locally_built_source_extensions() {
         "#[unsafe(no_mangle)]\npub extern \"C\" fn zedflow_rust_extension_fixture() {}\n",
     )
     .unwrap();
+    fs::create_dir_all(source.join("skills/example")).unwrap();
+    fs::write(
+        source.join("skills/example/SKILL.md"),
+        "---\nname: example\ndescription: package skill\n---\n",
+    )
+    .unwrap();
 
+    fs::create_dir_all(root.join("cwd")).unwrap();
     let manager = DefaultPackageManager::new(root.join("cwd"), root.join("agent"));
     let source_spec = format!("path:{}", source.display());
-    let artifact = PathBuf::from(format!(
-        "{}zedflow_rust_extension_fixture{}",
-        std::env::consts::DLL_PREFIX,
-        std::env::consts::DLL_SUFFIX
-    ));
+    // The command-facing source install derives Cargo's cdylib name; callers
+    // cannot provide a prebuilt artifact path.
     let install = manager
-        .install_and_persist(
-            &NativePackageSpec {
-                source: source_spec.clone(),
-                artifact,
-            },
-            PackageScope::User,
-        )
+        .install_source(&source_spec, PackageScope::User)
         .unwrap();
     assert!(install.artifact.is_file());
     assert_eq!(manager.list_configured_packages().len(), 1);
+    let mut resources = DefaultResourceLoader::new(root.join("cwd"), root.join("agent"));
+    resources.reload();
+    assert!(
+        resources
+            .get_skills()
+            .skills
+            .iter()
+            .any(|skill| skill.name == "example"),
+        "skills: {:?}; diagnostics: {:?}; extensions: {:?}",
+        resources.get_skills().skills,
+        resources.get_skills().diagnostics,
+        resources.get_extensions().errors,
+    );
     assert!(manager.remove(&source_spec, PackageScope::User).unwrap());
     assert!(manager.list_configured_packages().is_empty());
     let _ = fs::remove_dir_all(root);

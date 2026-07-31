@@ -132,8 +132,8 @@ impl DefaultResourceLoader {
             self.extensions.errors.extend(extensions.errors);
             return;
         }
-        let persisted_native_extensions =
-            match NativeExtensionInstall::load_persisted(&extension_dir) {
+        let mut persisted_native_extensions =
+            match NativeExtensionInstall::load_persisted(&extension_dir.join("source")) {
                 Ok(installs) => installs,
                 Err(message) => {
                     self.extensions.errors.push(ExtensionError {
@@ -143,6 +143,20 @@ impl DefaultResourceLoader {
                     return;
                 }
             };
+        // PackageManager persists user packages below the agent directory and
+        // project packages below .pi; both are configured resources.
+        match NativeExtensionInstall::load_persisted(
+            &self.agent_dir.join("extensions").join("source"),
+        ) {
+            Ok(installs) => persisted_native_extensions.extend(installs),
+            Err(message) => {
+                self.extensions.errors.push(ExtensionError {
+                    message,
+                    source: None,
+                });
+                return;
+            }
+        }
         let native_extension_artifacts = persisted_native_extensions
             .iter()
             .chain(&self.extra.native_extensions)
@@ -166,34 +180,53 @@ impl DefaultResourceLoader {
                 return;
             }
         };
+        let package_roots: Vec<_> = persisted_native_extensions
+            .iter()
+            .map(|install| install.source_dir.clone())
+            .collect();
+        let skill_paths = self
+            .extra
+            .skill_paths
+            .iter()
+            .cloned()
+            .chain(package_roots.iter().map(|root| root.join("skills")))
+            .map(|path| path.display().to_string())
+            .collect();
+        let prompt_paths = self
+            .extra
+            .prompt_paths
+            .iter()
+            .cloned()
+            .chain(package_roots.iter().map(|root| root.join("prompts")))
+            .map(|path| path.display().to_string())
+            .collect();
         let skills = load_skills(LoadSkillsOptions {
             cwd: self.cwd.display().to_string(),
             agent_dir: self.agent_dir.display().to_string(),
-            skill_paths: self
-                .extra
-                .skill_paths
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect(),
+            skill_paths,
             include_defaults: true,
         });
         let prompts = load_prompt_templates(LoadPromptTemplatesOptions {
             cwd: self.cwd.display().to_string(),
             agent_dir: self.agent_dir.display().to_string(),
-            prompt_paths: self
-                .extra
-                .prompt_paths
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect(),
+            prompt_paths,
             include_defaults: true,
         });
+        let themes = load_themes(
+            self.extra
+                .theme_paths
+                .iter()
+                .cloned()
+                .chain(package_roots.iter().map(|root| root.join("themes"))),
+        );
         let agents_files = load_project_context_files(&self.cwd, &self.agent_dir);
         self.extensions = extensions;
         self.native_extension_artifacts = native_extension_artifacts;
         self.skills = skills;
         self.prompts = prompts;
         self.prompt_diagnostics.clear();
+        self.themes = themes;
+        self.theme_diagnostics.clear();
         self.agents_files = agents_files;
     }
     #[must_use]
@@ -234,6 +267,43 @@ impl DefaultResourceLoader {
         self.extra.native_extensions.extend(paths.native_extensions);
     }
 }
+fn load_themes(paths: impl IntoIterator<Item = PathBuf>) -> Vec<Theme> {
+    let mut themes = Vec::new();
+    for path in paths {
+        let Ok(entries) = fs::read_dir(path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                let name = fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                    .and_then(|value| {
+                        value
+                            .get("name")
+                            .and_then(|name| name.as_str())
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_else(|| {
+                        path.file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned()
+                    });
+                themes.push(Theme {
+                    name,
+                    file_path: path.display().to_string(),
+                });
+            }
+        }
+    }
+    themes
+}
+
 impl ResourceLoader for DefaultResourceLoader {
     fn get_extensions(&self) -> &LoadExtensionsResult {
         self.get_extensions()

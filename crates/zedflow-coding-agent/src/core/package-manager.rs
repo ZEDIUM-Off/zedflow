@@ -63,11 +63,89 @@ impl DefaultPackageManager {
     fn source_for(&self, value: &str, scope: PackageScope) -> Result<ExtensionSource, String> {
         let source = ExtensionSource::parse(value)?;
         Ok(match source {
+            // Pi resolves user-local paths from the agent directory and project
+            // paths from the project, not from its managed install store.
             ExtensionSource::Path(path) if path.is_relative() => {
-                ExtensionSource::Path(self.package_dir(scope).join(path))
+                ExtensionSource::Path(match scope {
+                    PackageScope::User => self.agent_dir.join(path),
+                    PackageScope::Project => self.cwd.join(path),
+                })
             }
             source => source,
         })
+    }
+
+    /// Installs a source using Cargo's conventional cdylib artifact name.
+    /// This keeps the CLI source-only: the supplied value never names or loads
+    /// a prebuilt artifact.
+    pub fn install_source(
+        &self,
+        source: &str,
+        scope: PackageScope,
+    ) -> Result<NativeExtensionInstall, String> {
+        let source = self.source_for(source, scope)?;
+        let name = match &source {
+            ExtensionSource::Path(path) => cargo_library_name(path)?,
+            ExtensionSource::Crate { name, .. } => name.clone(),
+            ExtensionSource::Github { repo, package, .. } => package
+                .as_deref()
+                .map(Path::new)
+                .and_then(Path::file_name)
+                .and_then(|name| name.to_str())
+                .unwrap_or(repo)
+                .to_owned(),
+        }
+        .replace('-', "_");
+        self.install_and_persist(
+            &NativePackageSpec {
+                source: source.canonical(),
+                artifact: PathBuf::from(format!(
+                    "{}{}{}",
+                    std::env::consts::DLL_PREFIX,
+                    name,
+                    std::env::consts::DLL_SUFFIX
+                )),
+            },
+            scope,
+        )
+    }
+
+    /// Rebuilds one configured source, or every configured source in `scope`.
+    pub fn update(&self, source: Option<&str>, scope: PackageScope) -> Result<usize, String> {
+        let installs =
+            NativeExtensionInstall::load_persisted(&self.package_dir(scope).join("source"))?;
+        let requested = source
+            .map(|value| {
+                self.source_for(value, scope)
+                    .map(|source| source.canonical())
+            })
+            .transpose()?;
+        let selected: Vec<_> = installs
+            .into_iter()
+            .filter(|install| {
+                requested
+                    .as_deref()
+                    .is_none_or(|value| install.receipt.source == value)
+            })
+            .collect();
+        if source.is_some() && selected.is_empty() {
+            return Err(format!("Package not found: {}", source.unwrap()));
+        }
+        for install in &selected {
+            let artifact = install
+                .artifact
+                .file_name()
+                .ok_or("installed artifact has no file name")?
+                .into();
+            self.install_and_persist(
+                &NativePackageSpec {
+                    source: install.receipt.source.clone(),
+                    artifact,
+                },
+                scope,
+            )?;
+        }
+        Ok(selected.len())
     }
 
     /// Installs only source-built native extensions and atomically records their
@@ -158,4 +236,31 @@ impl DefaultPackageManager {
             .into_iter()
             .find(|install| install.receipt.source == source.canonical())
     }
+}
+
+fn cargo_library_name(source: &Path) -> Result<String, String> {
+    let manifest = fs::read_to_string(source.join("Cargo.toml"))
+        .map_err(|error| format!("{}: {error}", source.join("Cargo.toml").display()))?;
+    let mut section = "";
+    let mut package_name = None;
+    for line in manifest.lines().map(str::trim) {
+        if line.starts_with('[') && line.ends_with(']') {
+            section = &line[1..line.len() - 1];
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "name" {
+            continue;
+        }
+        let name = value.trim().trim_matches('"');
+        if section == "lib" {
+            return Ok(name.to_owned());
+        }
+        if section == "package" {
+            package_name = Some(name.to_owned());
+        }
+    }
+    package_name.ok_or_else(|| "extension Cargo.toml has no package or lib name".into())
 }
