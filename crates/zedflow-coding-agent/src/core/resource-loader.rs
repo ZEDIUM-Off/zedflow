@@ -128,10 +128,6 @@ impl DefaultResourceLoader {
         } else {
             discover_and_load_extensions(&self.cwd)
         };
-        if !extensions.errors.is_empty() {
-            self.extensions.errors.extend(extensions.errors);
-            return;
-        }
         let mut persisted_native_extensions =
             match NativeExtensionInstall::load_persisted(&extension_dir.join("source")) {
                 Ok(installs) => installs,

@@ -558,6 +558,16 @@ pub fn load_extensions(paths: &[impl AsRef<Path>]) -> LoadExtensionsResult {
         if !path.exists() {
             continue;
         }
+        if matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some("ts" | "js")
+        ) {
+            result.errors.push(native_error(format!(
+                "deferred TypeScript/jiti extension {}: JavaScript extension runtimes are not available",
+                path.display()
+            )));
+            continue;
+        }
         let name = path
             .file_stem()
             .and_then(|v| v.to_str())
