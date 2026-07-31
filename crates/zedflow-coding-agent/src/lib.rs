@@ -32,6 +32,8 @@ pub mod keybindings;
 #[path = "core/package-manager.rs"]
 pub mod package_manager;
 
+#[path = "modes/interactive/components/armin.rs"]
+pub mod armin;
 #[path = "modes/interactive/components/custom-entry.rs"]
 pub mod custom_entry;
 #[path = "modes/interactive/components/custom-message.rs"]
