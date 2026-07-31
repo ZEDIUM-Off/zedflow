@@ -1577,10 +1577,40 @@
       "intent": "Replace the six duplicated generic RPC marker tests with deterministic executable tests of their declared frozen Pi behaviors: client cloning, client process exit, RPC example flow, JSONL framing, prompt/response semantics, and RPC command/runtime behavior. Modify only the minimal existing RPC runtime needed for those tests; preserve request identity, JSONL framing, command error envelopes, prompt responses, clone behavior, and process-exit behavior. No marker tests, source-path assertions, blanket ignores, or unrelated source edits."
     },
     {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R10",
-      "kind": "validator",
+      "id": "SEM-CA-V8-TEST-BATCH-3-DUPLICATE-BEHAVIORS-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-CA-V8-RPC-TEST-BEHAVIORS-REPAIR-R2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/session-file-invalid.rs",
+        "crates/zedflow-coding-agent/tests/session-id-readonly.rs",
+        "crates/zedflow-coding-agent/tests/session-info-modified-timestamp.rs",
+        "crates/zedflow-coding-agent/tests/session-selector-path-delete.rs",
+        "crates/zedflow-coding-agent/tests/session-selector-rename.rs",
+        "crates/zedflow-coding-agent/tests/session-selector-search.rs",
+        "crates/zedflow-coding-agent/tests/settings-manager-bug.rs",
+        "crates/zedflow-coding-agent/tests/settings-manager.rs",
+        "crates/zedflow-coding-agent/tests/stdout-cleanliness.rs",
+        "crates/zedflow-coding-agent/tests/streaming-render-debug.rs",
+        "crates/zedflow-coding-agent/src/core/session-manager.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs",
+        "crates/zedflow-coding-agent/src/core/settings-manager.rs",
+        "crates/zedflow-coding-agent/src/core/output-guard.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
+        "crates/zedflow-coding-agent/src/cli.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check"
+      ],
+      "intent": "Replace the remaining duplicate marker tests with deterministic executable tests of their declared frozen Pi behavior: invalid session files, read-only session-id handling, message-derived session modification timestamps, selector path deletion, selector rename, selector search, settings-manager bug behavior, settings-manager merging, non-interactive stdout cleanliness, and streaming render debugging. Modify only the listed existing runtime roots when required by those tests; do not alter unrelated RPC tests or runtime modules."
+    },
+    {
+      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R11",
+      "kind": "validator",
+      "depends_on": [
+        "SEM-CA-V8-TEST-BATCH-3-DUPLICATE-BEHAVIORS-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -1589,13 +1619,13 @@
         "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
         "cargo test -p zedflow-coding-agent --lib"
       ],
-      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the RPC behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
+      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the duplicate-behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject duplicate or marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
     },
     {
       "id": "SEM-CA-V9-TEST-BATCH-4",
       "kind": "writer",
       "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R10"
+        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R11"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
