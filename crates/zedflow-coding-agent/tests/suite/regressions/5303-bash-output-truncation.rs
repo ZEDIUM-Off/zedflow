@@ -1,7 +1,14 @@
-//! Pi coding-agent test manifest entry: `tests/suite/regressions/5303-bash-output-truncation.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::truncate::{TruncatedBy, TruncationOptions, truncate_head};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/suite/regressions/5303-bash-output-truncation.rs";
+#[test]
+fn truncation_reports_the_limit_that_discarded_output() {
+    let result = truncate_head(
+        "one\ntwo",
+        TruncationOptions {
+            max_lines: 1,
+            max_bytes: 100,
+        },
+    );
+    assert_eq!(result.content, "one");
+    assert_eq!(result.truncated_by, Some(TruncatedBy::Lines));
+}

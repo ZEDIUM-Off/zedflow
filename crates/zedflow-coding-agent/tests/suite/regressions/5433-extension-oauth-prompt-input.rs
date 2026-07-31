@@ -1,7 +1,7 @@
-//! Pi coding-agent test manifest entry: `tests/suite/regressions/5433-extension-oauth-prompt-input.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::prompt_templates::{parse_command_args, substitute_args};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/suite/regressions/5433-extension-oauth-prompt-input.rs";
+#[test]
+fn prompt_arguments_preserve_quotes_and_expand_slices() {
+    let args = parse_command_args("one 'two words' three");
+    assert_eq!(substitute_args("$1:$2", &args), "one:two words");
+}
