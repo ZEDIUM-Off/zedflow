@@ -2139,10 +2139,28 @@
       "intent": "Serialize StopResult.instance_id as frozen Pi IPC instanceId and add an executable response round-trip assertion; preserve all other protocol behavior."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R5",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SUPERVISOR-LIFECYCLE-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-RESPONSE-CAMELCASE-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/src/rpc-process.rs",
+        "crates/zedflow-orchestrator/tests/supervisor.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test supervisor",
+        "cargo test -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Port frozen Pi supervisor session and RPC-exit lifecycle fidelity only: synchronize sessionId/sessionFile from get_state before registering a live instance, persist changed session metadata after commands, and on RPC exit mark the record error, disconnect Radius, and remove the live instance. Add executable local lifecycle tests; do not change IPC wire fields or Radius HTTP protocol."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R6",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SUPERVISOR-LIFECYCLE-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2150,13 +2168,13 @@
         "cargo test -p zedflow-orchestrator --test rpc-stream",
         "cargo test -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior against Rust after the stop response camelCase repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, and Radius lifecycle; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the supervisor lifecycle repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, and RPC-exit cleanup; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R5"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R6"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2172,7 +2190,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R5"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R6"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
