@@ -1982,20 +1982,42 @@
       "intent": "Replace the diagnosed marker-only interactive component modules and wire InteractiveMode to their Pi-equivalent reachable rendering and interaction behavior. Own only the identified interactive components and interactive-mode wiring; no markers, source-path assertions, or vacuous tests."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R6",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-COMPONENTS-REPAIR-R2"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
+        "crates/zedflow-coding-agent/tests/resource-extension-runtime.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test extensions-discovery --test resource-extension-runtime"
+      ],
+      "intent": "Repair the default extension-discovery runtime contract: do not silently report .ts/.js files as loaded extensions. Route only approved provenance-bound Rust cdylib artifacts into the existing default interactive ExtensionRunner and return explicit diagnostics for deferred TypeScript/jiti inputs. Preserve the approved Rust cdylib ABI v1, source-only install policy, trust root, no-unload rule, and all represented ExtensionAPI capabilities; do not add a JS runtime, dependencies, compatibility shims, or weaken tests."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R7",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-REPAIR-R1"
+      ],
       "ownership": [],
-      "validation": [],
-      "intent": "Independently re-review frozen Pi Coding-agent against Rust after the reachable interactive component repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Reject marker modules and vacuous tests."
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent --all-targets",
+        "cargo test -p zedflow-coding-agent --test extensions-discovery --test resource-extension-runtime"
+      ],
+      "intent": "Independently re-review frozen Pi Coding-agent after the extension-discovery repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Verify that TypeScript/jiti source execution remains the approved explicit deferral rather than a silent no-op, while Rust cdylibs preserve the approved ExtensionAPI capability substitution. Reject marker modules and vacuous tests."
     },
     {
       "id": "SEM-ORCH-V1-RUNTIME",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R6"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R7"
       ],
       "ownership": [
         "crates/zedflow-orchestrator/src",
