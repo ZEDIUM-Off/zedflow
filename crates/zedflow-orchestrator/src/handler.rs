@@ -72,36 +72,17 @@ pub fn open_rpc_stream(
     instance_id: &str,
     outgoing: mpsc::UnboundedSender<Value>,
 ) -> Option<RpcStream> {
-    let (process, subscriber) =
-        supervisor.open_rpc_stream(instance_id, outgoing.clone(), outgoing.clone())?;
-    let request_process = process.clone();
-    let instance_id = instance_id.to_owned();
+    let handle = supervisor.open_rpc_stream(instance_id, outgoing.clone(), outgoing.clone())?;
+    let request_handle = handle.clone();
     Some(RpcStream::new(
         move |request| {
             if request.get("type").and_then(Value::as_str) == Some("extension_ui_response") {
-                return request_process.handle_ui_response(&request);
+                return request_handle.handle_ui_response(&request);
             }
-            let refreshes_metadata = matches!(
-                request.get("type").and_then(Value::as_str),
-                Some(
-                    "new_session"
-                        | "switch_session"
-                        | "fork"
-                        | "clone"
-                        | "set_session_name"
-                        | "prompt"
-                )
-            );
-            let response = request_process.send(request)?;
-            if refreshes_metadata {
-                if let Some(record) = crate::storage::get_instance(&instance_id)? {
-                    crate::storage::upsert_instance(&record)?;
-                }
-            }
-            let _ = outgoing.send(response);
+            let _ = outgoing.send(request_handle.handle_rpc(request)?);
             Ok(())
         },
-        move || process.unsubscribe(subscriber),
+        move || handle.close(),
     ))
 }
 

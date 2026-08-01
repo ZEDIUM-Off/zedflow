@@ -40,8 +40,58 @@ fn session_metadata(response: &Value) -> Option<(String, Option<String>)> {
         .flatten()
 }
 
+#[derive(Clone)]
+struct LiveInstance {
+    process: RpcProcessInstance,
+    record: InstanceRecord,
+}
+
+#[derive(Clone)]
+pub struct RpcStreamHandle {
+    process: RpcProcessInstance,
+    subscriber: u64,
+    id: String,
+    live: Arc<Mutex<HashMap<String, LiveInstance>>>,
+    records: Arc<Mutex<()>>,
+}
+impl RpcStreamHandle {
+    pub fn handle_rpc(&self, command: Value) -> io::Result<Value> {
+        let response = self.process.send(command.clone())?;
+        if refreshes_metadata(&command) {
+            sync_session_metadata(&self.id, &self.process, &self.live, &self.records)?;
+        }
+        Ok(response)
+    }
+    pub fn handle_ui_response(&self, response: &Value) -> io::Result<()> {
+        self.process.handle_ui_response(response)
+    }
+    pub fn close(&self) {
+        self.process.unsubscribe(self.subscriber);
+    }
+}
+
+fn sync_session_metadata(
+    id: &str,
+    process: &RpcProcessInstance,
+    live: &Arc<Mutex<HashMap<String, LiveInstance>>>,
+    records: &Arc<Mutex<()>>,
+) -> io::Result<()> {
+    let response = process.send(serde_json::json!({"type": "get_state"}))?;
+    let _records = records.lock().unwrap();
+    let mut live = live.lock().unwrap();
+    let Some(instance) = live.get_mut(id) else {
+        return Ok(());
+    };
+    if let Some((session_id, session_file)) = session_metadata(&response) {
+        instance.record.session_id = Some(session_id);
+        instance.record.session_file = session_file;
+    }
+    instance.record.last_seen_at = Some(now());
+    storage::upsert_instance(&instance.record)
+}
+
 pub struct OrchestratorSupervisor {
-    live: Arc<Mutex<HashMap<String, RpcProcessInstance>>>,
+    live: Arc<Mutex<HashMap<String, LiveInstance>>>,
     records: Arc<Mutex<()>>,
     radius: RadiusPresence,
 }
@@ -86,21 +136,20 @@ impl OrchestratorSupervisor {
         storage::load_instances()
     }
     pub fn get_instance(&self, id: &str) -> io::Result<Option<InstanceRecord>> {
+        if let Some(instance) = self.live.lock().unwrap().get(id) {
+            return Ok(Some(instance.record.clone()));
+        }
         let _records = self.records.lock().unwrap();
         storage::get_instance(id)
     }
     fn sync_session_metadata(&self, id: &str, process: &RpcProcessInstance) -> io::Result<()> {
-        let response = process.send(serde_json::json!({"type": "get_state"}))?;
-        let Some((session_id, session_file)) = session_metadata(&response) else {
-            return Ok(());
-        };
+        sync_session_metadata(id, process, &self.live, &self.records)
+    }
+    fn update_record(&self, record: InstanceRecord) -> io::Result<()> {
+        if let Some(instance) = self.live.lock().unwrap().get_mut(&record.id) {
+            instance.record = record.clone();
+        }
         let _records = self.records.lock().unwrap();
-        let Some(mut record) = storage::get_instance(id)? else {
-            return Ok(());
-        };
-        record.session_id = Some(session_id);
-        record.session_file = session_file;
-        record.last_seen_at = Some(now());
         storage::upsert_instance(&record)
     }
     fn bind_exit(&self, id: String, process: &RpcProcessInstance) {
@@ -109,25 +158,22 @@ impl OrchestratorSupervisor {
         let radius = self.radius.clone();
         let handle = tokio::runtime::Handle::current();
         process.on_exit(move || {
-            if live.lock().unwrap().remove(&id).is_none() {
-                return;
-            }
-            let _records = records.lock().unwrap();
-            let Ok(Some(mut record)) = storage::get_instance(&id) else {
+            let Some(mut instance) = live.lock().unwrap().remove(&id) else {
                 return;
             };
             if matches!(
-                record.status,
+                instance.record.status,
                 InstanceStatus::Stopping | InstanceStatus::Stopped
             ) {
                 return;
             }
-            record.status = InstanceStatus::Error;
-            record.last_seen_at = Some(now());
-            let _ = storage::upsert_instance(&record);
+            instance.record.status = InstanceStatus::Error;
+            instance.record.last_seen_at = Some(now());
+            let _records = records.lock().unwrap();
+            let _ = storage::upsert_instance(&instance.record);
             let radius = radius.clone();
             handle.spawn(async move {
-                let _ = radius.disconnect_pi(&record).await;
+                let _ = radius.disconnect_pi(&instance.record).await;
             });
         });
     }
@@ -148,37 +194,42 @@ impl OrchestratorSupervisor {
             session_file: None,
             radius_pi_id: None,
         };
-        storage::upsert_instance(&record)?;
+        self.update_record(record.clone())?;
         match RpcProcessInstance::new(&cwd) {
             Ok(process) => {
-                self.live
-                    .lock()
-                    .unwrap()
-                    .insert(record.id.clone(), process.clone());
+                self.live.lock().unwrap().insert(
+                    record.id.clone(),
+                    LiveInstance {
+                        process: process.clone(),
+                        record: record.clone(),
+                    },
+                );
                 self.bind_exit(record.id.clone(), &process);
                 self.sync_session_metadata(&record.id, &process)?;
-                record = storage::get_instance(&record.id)?.expect("spawned record exists");
+                record = self
+                    .get_instance(&record.id)?
+                    .expect("spawned record exists");
                 record = self.radius.register_pi(record).await?;
                 record.status = InstanceStatus::Online;
                 record.last_seen_at = Some(now());
-                storage::upsert_instance(&record)?;
+                self.update_record(record.clone())?;
                 Ok(record)
             }
             Err(error) => {
                 record.status = InstanceStatus::Stopped;
-                storage::upsert_instance(&record)?;
+                self.update_record(record)?;
                 Err(error)
             }
         }
     }
     pub async fn stop_instance(&mut self, id: &str) -> io::Result<Option<InstanceRecord>> {
-        let Some(mut record) = storage::get_instance(id)? else {
+        let Some(mut record) = self.get_instance(id)? else {
             return Ok(None);
         };
-        if let Some(process) = self.live.lock().unwrap().remove(id) {
+        if let Some(instance) = self.live.lock().unwrap().remove(id) {
             record.status = InstanceStatus::Stopping;
-            storage::upsert_instance(&record)?;
-            process.dispose()?;
+            self.update_record(record.clone())?;
+            instance.process.dispose()?;
         }
         self.radius.disconnect_pi(&record).await?;
         record.status = InstanceStatus::Stopped;
@@ -187,7 +238,13 @@ impl OrchestratorSupervisor {
         Ok(Some(record))
     }
     pub fn handle_rpc(&mut self, id: &str, command: Value) -> io::Result<Option<Value>> {
-        let Some(process) = self.live.lock().unwrap().get(id).cloned() else {
+        let Some(process) = self
+            .live
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|instance| instance.process.clone())
+        else {
             return Ok(None);
         };
         let response = process.send(command.clone())?;
@@ -201,10 +258,16 @@ impl OrchestratorSupervisor {
         id: &str,
         events: tokio::sync::mpsc::UnboundedSender<Value>,
         ui_requests: tokio::sync::mpsc::UnboundedSender<Value>,
-    ) -> Option<(RpcProcessInstance, u64)> {
-        let process = self.live.lock().unwrap().get(id)?.clone();
+    ) -> Option<RpcStreamHandle> {
+        let process = self.live.lock().unwrap().get(id)?.process.clone();
         let subscriber = process.subscribe(events, ui_requests);
-        Some((process, subscriber))
+        Some(RpcStreamHandle {
+            process,
+            subscriber,
+            id: id.to_owned(),
+            live: self.live.clone(),
+            records: self.records.clone(),
+        })
     }
     pub async fn shutdown(&mut self) -> io::Result<()> {
         let ids = self
