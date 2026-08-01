@@ -18,6 +18,7 @@ struct Inner {
     pending: Mutex<HashMap<String, mpsc::Sender<io::Result<Value>>>>,
     subscribers: Mutex<HashMap<u64, UnboundedSender<Value>>>,
     ui_request_handler: Mutex<Option<(u64, UnboundedSender<Value>)>>,
+    exit_listeners: Mutex<HashMap<u64, Box<dyn Fn() + Send + Sync>>>,
     next_subscriber: AtomicU64,
     exited: AtomicBool,
 }
@@ -52,6 +53,7 @@ impl RpcProcessInstance {
             pending: Mutex::new(HashMap::new()),
             subscribers: Mutex::new(HashMap::new()),
             ui_request_handler: Mutex::new(None),
+            exit_listeners: Mutex::new(HashMap::new()),
             next_subscriber: AtomicU64::new(0),
             exited: AtomicBool::new(false),
         });
@@ -136,6 +138,20 @@ impl RpcProcessInstance {
         }
     }
 
+    pub fn on_exit(&self, listener: impl Fn() + Send + Sync + 'static) -> u64 {
+        let id = self.inner.next_subscriber.fetch_add(1, Ordering::SeqCst);
+        self.inner
+            .exit_listeners
+            .lock()
+            .unwrap()
+            .insert(id, Box::new(listener));
+        id
+    }
+
+    pub fn remove_exit_listener(&self, id: u64) {
+        self.inner.exit_listeners.lock().unwrap().remove(&id);
+    }
+
     pub fn dispose(&self) -> io::Result<()> {
         self.inner.exited.store(true, Ordering::SeqCst);
         self.inner.child.lock().unwrap().kill().or_else(|e| {
@@ -186,6 +202,9 @@ fn read_stdout(stdout: std::process::ChildStdout, inner: Arc<Inner>) {
         line.clear();
     }
     inner.exited.store(true, Ordering::SeqCst);
+    for listener in inner.exit_listeners.lock().unwrap().values() {
+        listener();
+    }
     for (_, pending) in inner.pending.lock().unwrap().drain() {
         let _ = pending.send(Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
