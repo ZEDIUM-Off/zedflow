@@ -2157,24 +2157,44 @@
       "intent": "Port frozen Pi supervisor session and RPC-exit lifecycle fidelity only: synchronize sessionId/sessionFile from get_state before registering a live instance, persist changed session metadata after commands, and on RPC exit mark the record error, disconnect Radius, and remove the live instance. Add executable local lifecycle tests; do not change IPC wire fields or Radius HTTP protocol."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R6",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STREAM-SESSION-METADATA-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SUPERVISOR-LIFECYCLE-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/handler.rs",
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/tests/rpc-stream.rs",
+        "crates/zedflow-orchestrator/tests/supervisor.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test rpc-stream --test supervisor",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "After each streamed new_session, switch_session, fork, clone, set_session_name, or prompt RPC response, synchronize the live instance and persisted record sessionId/sessionFile from get_state exactly as frozen Pi supervisor.openRpcStream does. Add executable stream lifecycle coverage; preserve IPC fields, Radius behavior, and non-stream RPC behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R7",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STREAM-SESSION-METADATA-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
         "cargo test -p zedflow-orchestrator --test protocol",
         "cargo test -p zedflow-orchestrator --test rpc-stream",
+        "cargo test -p zedflow-orchestrator --test supervisor",
         "cargo test -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the supervisor lifecycle repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, and RPC-exit cleanup; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the streamed session-metadata repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, and RPC-exit cleanup; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R6"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R7"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2190,7 +2210,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R6"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R7"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
