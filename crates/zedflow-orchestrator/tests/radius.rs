@@ -1,16 +1,81 @@
 use std::{
+    ffi::OsString,
     io::{BufRead, BufReader, Read},
     net::TcpListener,
+    sync::{Mutex, OnceLock},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use zedflow_orchestrator::{
-    radius::RadiusPresence,
+    radius::{RadiusPresence, radius_access_token},
     types::{InstanceRecord, InstanceStatus},
 };
 
+static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+struct EnvGuard(Vec<(&'static str, Option<OsString>)>);
+
+impl EnvGuard {
+    fn new(names: &[&'static str]) -> Self {
+        Self(
+            names
+                .iter()
+                .map(|&name| (name, std::env::var_os(name)))
+                .collect(),
+        )
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        for (name, value) in &self.0 {
+            unsafe {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn reads_oauth_credentials_from_pi_config_agent_directory() {
+    let _lock = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+    let _environment =
+        EnvGuard::new(&["PI_CONFIG_DIR", "PI_ORCHESTRATOR_DIR", "PI_RADIUS_API_KEY"]);
+    let temp = std::env::temp_dir().join(format!(
+        "zedflow-radius-auth-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(temp.join("agent")).unwrap();
+    std::fs::write(
+        temp.join("agent/auth.json"),
+        r#"{"radius":{"type":"oauth","access":"stored-token"}}"#,
+    )
+    .unwrap();
+    unsafe {
+        std::env::set_var("PI_CONFIG_DIR", &temp);
+        std::env::set_var("PI_ORCHESTRATOR_DIR", temp.join("orchestrator"));
+        std::env::remove_var("PI_RADIUS_API_KEY");
+    }
+
+    assert_eq!(radius_access_token().unwrap(), "stored-token");
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
 #[tokio::test]
 async fn accepts_empty_2xx_heartbeat_and_disconnect_responses() {
+    let _lock = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+    let _environment = EnvGuard::new(&[
+        "PI_RADIUS_API_KEY",
+        "PI_RADIUS_ORCHESTRATOR_URL",
+        "PI_ORCHESTRATOR_DIR",
+    ]);
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
@@ -121,9 +186,4 @@ async fn accepts_empty_2xx_heartbeat_and_disconnect_responses() {
             .iter()
             .any(|path| path == "/v1/machines/machine-1/disconnect")
     );
-    unsafe {
-        std::env::remove_var("PI_RADIUS_API_KEY");
-        std::env::remove_var("PI_RADIUS_ORCHESTRATOR_URL");
-        std::env::remove_var("PI_ORCHESTRATOR_DIR");
-    }
 }

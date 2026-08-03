@@ -15,7 +15,11 @@ pub fn orchestrator_dir() -> PathBuf {
     pi_dir.join("orchestrator")
 }
 pub fn auth_path() -> PathBuf {
-    orchestrator_dir().join("auth.json")
+    let pi_dir = env::var_os("PI_CONFIG_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".pi")))
+        .unwrap_or_else(|| PathBuf::from(".pi"));
+    pi_dir.join("agent").join("auth.json")
 }
 pub fn machine_path() -> PathBuf {
     orchestrator_dir().join("machine.json")
