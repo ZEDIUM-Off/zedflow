@@ -2376,11 +2376,22 @@
       "intent": "Revise only the diagnosed documentation and test-assertion wording so strict semantic manifest matching evaluates executable code rather than prose; do not alter runtime behavior or weaken the manifest gate."
     },
     {
-      "id": "REPLAN-SEM-RESIDUALS-V2-VALIDATE-R1",
-      "kind": "validator",
+      "id": "REPLAN-REPLAN-SEM-RESIDUALS-V2-LAZY-API-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1"
       ],
+      "ownership": [
+        "crates/zedflow-ai/src/api/lazy.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --check",
+        "cargo test -p zedflow-ai --all-targets"
+      ],
+      "intent": "Replace the diagnosed terminal-error transport facade in the lazy provider API with the frozen Pi lazy-stream semantics; preserve incremental forwarding, terminal error completion, and real provider transport wiring without weakening the semantic manifest gate."
+    },
+    {
+      "kind": "validator",
       "ownership": [],
       "validation": [
         "cargo check -p zedflow-ai --all-targets",
@@ -2390,13 +2401,17 @@
         "cargo test -p zedflow-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-agent"
       ],
-      "intent": "Validate AI and Agent deterministic tests, transport/streaming/cancellation behavior and strict semantic closure. Re-run after REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1 preserves the strict gate while removing prose-only matcher hits."
+      "intent": "Re-run AI and Agent deterministic tests, transport/streaming/cancellation behavior and strict semantic closure after the lazy provider API repair.",
+      "id": "REPLAN-REPLAN-SEM-RESIDUALS-V2-VALIDATE-R2",
+      "depends_on": [
+        "REPLAN-REPLAN-SEM-RESIDUALS-V2-LAZY-API-REPAIR-R1"
+      ]
     },
     {
       "id": "SEM-FINAL-V1-WORKSPACE",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-SEM-RESIDUALS-V2-VALIDATE-R1"
+        "REPLAN-REPLAN-SEM-RESIDUALS-V2-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [
