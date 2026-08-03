@@ -40,10 +40,9 @@ impl Drop for EnvGuard {
 }
 
 #[test]
-fn reads_oauth_credentials_from_pi_config_agent_directory() {
+fn ignores_pi_config_dir_for_radius_credentials() {
     let _lock = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-    let _environment =
-        EnvGuard::new(&["PI_CONFIG_DIR", "PI_ORCHESTRATOR_DIR", "PI_RADIUS_API_KEY"]);
+    let _environment = EnvGuard::new(&["PI_AGENT_DIR", "PI_CONFIG_DIR", "PI_RADIUS_API_KEY"]);
     let temp = std::env::temp_dir().join(format!(
         "zedflow-radius-auth-{}-{}",
         std::process::id(),
@@ -52,19 +51,27 @@ fn reads_oauth_credentials_from_pi_config_agent_directory() {
             .unwrap()
             .as_nanos()
     ));
-    std::fs::create_dir_all(temp.join("agent")).unwrap();
+    let agent_dir = temp.join("agent");
+    let config_dir = temp.join("config");
+    std::fs::create_dir_all(&agent_dir).unwrap();
+    std::fs::create_dir_all(config_dir.join("agent")).unwrap();
     std::fs::write(
-        temp.join("agent/auth.json"),
-        r#"{"radius":{"type":"oauth","access":"stored-token"}}"#,
+        agent_dir.join("auth.json"),
+        r#"{"radius":{"type":"oauth","access":"agent-token"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        config_dir.join("agent/auth.json"),
+        r#"{"radius":{"type":"oauth","access":"config-token"}}"#,
     )
     .unwrap();
     unsafe {
-        std::env::set_var("PI_CONFIG_DIR", &temp);
-        std::env::set_var("PI_ORCHESTRATOR_DIR", temp.join("orchestrator"));
+        std::env::set_var("PI_AGENT_DIR", agent_dir);
+        std::env::set_var("PI_CONFIG_DIR", config_dir);
         std::env::remove_var("PI_RADIUS_API_KEY");
     }
 
-    assert_eq!(radius_access_token().unwrap(), "stored-token");
+    assert_eq!(radius_access_token().unwrap(), "agent-token");
     std::fs::remove_dir_all(temp).unwrap();
 }
 
