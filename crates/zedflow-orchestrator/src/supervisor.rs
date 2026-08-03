@@ -305,11 +305,15 @@ impl OrchestratorSupervisor {
         let mut record = instance.record;
         record.status = InstanceStatus::Stopping;
         self.update_record(record.clone())?;
-        instance.process.dispose()?;
-        self.radius.disconnect_pi(&record).await?;
+        let cleanup = async {
+            instance.process.dispose()?;
+            self.radius.disconnect_pi(&record).await
+        }
+        .await;
+        storage::remove_instance(id)?;
+        cleanup?;
         record.status = InstanceStatus::Stopped;
         record.last_seen_at = Some(now());
-        storage::remove_instance(id)?;
         Ok(Some(record))
     }
     pub fn handle_rpc(&mut self, id: &str, command: Value) -> io::Result<Option<Value>> {

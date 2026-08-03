@@ -570,3 +570,85 @@ done
     }
     fs::remove_dir_all(dir).unwrap();
 }
+
+#[tokio::test]
+async fn stop_removes_persisted_instance_when_radius_disconnect_fails() {
+    let _env = ENV_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        let mut paths = Vec::new();
+        for (status, response) in [
+            (
+                "200 OK",
+                r#"{"id":"machine-1","heartbeatIntervalMs":60000,"expiresInMs":120000}"#,
+            ),
+            (
+                "200 OK",
+                r#"{"id":"pi-1","heartbeatIntervalMs":60000,"expiresInMs":120000}"#,
+            ),
+            ("500 Internal Server Error", "{}"),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut first = String::new();
+            reader.read_line(&mut first).unwrap();
+            paths.push(first.split_whitespace().nth(1).unwrap().to_owned());
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            let reply = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
+                response.len()
+            );
+            std::io::Write::write_all(&mut stream, reply.as_bytes()).unwrap();
+        }
+        paths
+    });
+    let dir = std::env::temp_dir().join(format!("zedflow-supervisor-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&dir).unwrap();
+    let command = dir.join("rpc.sh");
+    fs::write(&command, "#!/bin/sh\nwhile IFS= read -r line; do id=$(printf '%s\\n' \"$line\" | sed -n 's/.*\"id\":\"\\([^\"]*\\)\".*/\\1/p'); printf '{\"type\":\"response\",\"id\":\"%s\",\"success\":true,\"command\":\"get_state\",\"data\":{\"sessionId\":\"session-1\"}}\\n' \"$id\"; done\n").unwrap();
+    let mut permissions = fs::metadata(&command).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&command, permissions).unwrap();
+    unsafe {
+        std::env::set_var("PI_RADIUS_API_KEY", "test-token");
+        std::env::set_var(
+            "PI_RADIUS_ORCHESTRATOR_URL",
+            format!("http://{address}/v1/"),
+        );
+        std::env::set_var("PI_ORCHESTRATOR_DIR", &dir);
+        std::env::set_var("PI_ORCHESTRATOR_RPC_COMMAND", &command);
+    }
+
+    let mut supervisor = OrchestratorSupervisor::new();
+    supervisor.start_radius().await.unwrap();
+    let instance = supervisor
+        .spawn_instance(dir.to_string_lossy().into_owned(), None)
+        .await
+        .unwrap();
+    let error = supervisor.stop_instance(&instance.id).await.unwrap_err();
+    assert!(error.to_string().contains("HTTP 500"));
+    assert!(supervisor.get_instance(&instance.id).unwrap().is_none());
+    assert_eq!(
+        server.join().unwrap(),
+        [
+            "/v1/machines/register",
+            "/v1/pis/register",
+            "/v1/pis/pi-1/disconnect"
+        ]
+    );
+
+    unsafe {
+        std::env::remove_var("PI_RADIUS_API_KEY");
+        std::env::remove_var("PI_RADIUS_ORCHESTRATOR_URL");
+        std::env::remove_var("PI_ORCHESTRATOR_DIR");
+        std::env::remove_var("PI_ORCHESTRATOR_RPC_COMMAND");
+    }
+    fs::remove_dir_all(dir).unwrap();
+}
