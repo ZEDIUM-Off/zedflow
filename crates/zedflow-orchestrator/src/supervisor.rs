@@ -214,8 +214,16 @@ impl OrchestratorSupervisor {
             let _records = records.lock().unwrap();
             let _ = storage::upsert_instance(&instance.record);
             let radius = radius.clone();
+            let records = records.clone();
+            let record = instance.record;
             handle.spawn(async move {
-                let _ = radius.disconnect_pi(&instance.record).await;
+                if radius.disconnect_pi(&record).await.is_ok() {
+                    let mut record = record;
+                    record.radius_pi_id = None;
+                    record.last_seen_at = Some(now());
+                    let _records = records.lock().unwrap();
+                    let _ = storage::upsert_instance(&record);
+                }
             });
         })
     }
