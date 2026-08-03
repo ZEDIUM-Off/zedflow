@@ -179,7 +179,7 @@ impl OrchestratorSupervisor {
         let _records = self.records.lock().unwrap();
         storage::upsert_instance(&record)
     }
-    fn bind_exit(&self, id: String, process: &RpcProcessInstance) {
+    fn bind_exit(&self, id: String, process: &RpcProcessInstance) -> u64 {
         let live = self.live.clone();
         let records = self.records.clone();
         let radius = self.radius.clone();
@@ -202,7 +202,24 @@ impl OrchestratorSupervisor {
             handle.spawn(async move {
                 let _ = radius.disconnect_pi(&instance.record).await;
             });
-        });
+        })
+    }
+    async fn fail_spawn(
+        &self,
+        mut record: InstanceRecord,
+        process: &RpcProcessInstance,
+        exit_listener: u64,
+    ) {
+        process.remove_exit_listener(exit_listener);
+        record.status = InstanceStatus::Error;
+        record.last_seen_at = Some(now());
+        let _ = self.update_record(record.clone());
+        let _ = self.radius.disconnect_pi(&record).await;
+        let _ = process.dispose();
+        record.status = InstanceStatus::Stopped;
+        record.last_seen_at = Some(now());
+        let _ = self.update_record(record.clone());
+        self.live.lock().unwrap().remove(&record.id);
     }
     pub async fn spawn_instance(
         &mut self,
@@ -231,12 +248,21 @@ impl OrchestratorSupervisor {
                         record: record.clone(),
                     },
                 );
-                self.bind_exit(record.id.clone(), &process);
-                self.sync_session_metadata(&record.id, &process)?;
+                let exit_listener = self.bind_exit(record.id.clone(), &process);
+                if let Err(error) = self.sync_session_metadata(&record.id, &process) {
+                    self.fail_spawn(record, &process, exit_listener).await;
+                    return Err(error);
+                }
                 record = self
                     .get_instance(&record.id)?
                     .expect("spawned record exists");
-                record = self.radius.register_pi(record).await?;
+                record = match self.radius.register_pi(record.clone()).await {
+                    Ok(record) => record,
+                    Err(error) => {
+                        self.fail_spawn(record, &process, exit_listener).await;
+                        return Err(error);
+                    }
+                };
                 record.status = InstanceStatus::Online;
                 record.last_seen_at = Some(now());
                 self.update_record(record.clone())?;
