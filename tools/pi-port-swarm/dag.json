@@ -2423,10 +2423,25 @@
       ]
     },
     {
-      "id": "SEM-FINAL-V1-WORKSPACE",
-      "kind": "validator",
+      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-MODEL-REGISTRY-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-SEM-RESIDUALS-V2-VALIDATE-R3"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/model-registry.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo check -p zedflow-coding-agent"
+      ],
+      "intent": "Repair the diagnosed ModelRegistry built-in-model loading compile failure only: make compat::get_models() handling match its Vec<zedflow_ai::Model> return contract at model-registry.rs:198. Preserve model registry behavior; do not weaken types, alter unrelated model resolution, or change files outside ownership."
+    },
+    {
+      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-SEM-FINAL-V1-WORKSPACE-MODEL-REGISTRY-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2441,7 +2456,7 @@
       "id": "SEM-FINAL-V2-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-FINAL-V1-WORKSPACE"
+        "REPLAN-SEM-FINAL-V1-WORKSPACE-R1"
       ],
       "ownership": [],
       "validation": [],
