@@ -68,12 +68,51 @@ pub fn compute_backoff_delay_ms(failures: u32) -> u64 {
         .saturating_mul(2u64.saturating_pow(failures.saturating_sub(1)))
         .min(30_000)
 }
-fn now() -> String {
-    SystemTime::now()
+pub(crate) fn now() -> String {
+    let duration = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .to_string()
+        .unwrap_or_default();
+    unix_millis_to_iso(duration.as_secs() * 1_000 + u64::from(duration.subsec_millis()))
+}
+
+fn unix_millis_to_iso(millis: u64) -> String {
+    let secs = millis / 1_000;
+    let milliseconds = millis % 1_000;
+    let (year, month, day) = civil_from_days((secs / 86_400) as i64);
+    let second_of_day = secs % 86_400;
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}.{milliseconds:03}Z",
+        second_of_day / 3_600,
+        (second_of_day % 3_600) / 60,
+        second_of_day % 60,
+    )
+}
+
+fn civil_from_days(days: i64) -> (i64, u64, u64) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let month_index = (5 * doy + 2) / 153;
+    let day = doy - (153 * month_index + 2) / 5 + 1;
+    let month = month_index + if month_index < 10 { 3 } else { -9 };
+    (year + i64::from(month <= 2), month as u64, day as u64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unix_millis_to_iso;
+
+    #[test]
+    fn formats_pi_iso_timestamps() {
+        assert_eq!(unix_millis_to_iso(0), "1970-01-01T00:00:00.000Z");
+        assert_eq!(
+            unix_millis_to_iso(1_741_437_296_123),
+            "2025-03-08T12:34:56.123Z"
+        );
+    }
 }
 fn error(error: impl std::fmt::Display) -> io::Error {
     io::Error::other(error.to_string())

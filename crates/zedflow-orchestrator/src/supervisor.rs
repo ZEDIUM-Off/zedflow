@@ -1,5 +1,5 @@
 use crate::{
-    radius::RadiusPresence,
+    radius::{RadiusPresence, now},
     rpc_process::RpcProcessInstance,
     storage,
     types::{InstanceRecord, InstanceStatus},
@@ -9,17 +9,8 @@ use std::{
     collections::HashMap,
     io,
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
 };
 use uuid::Uuid;
-
-fn now() -> String {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-        .to_string()
-}
 fn refreshes_metadata(command: &Value) -> bool {
     matches!(
         command.get("type").and_then(Value::as_str),
