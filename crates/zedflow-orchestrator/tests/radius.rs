@@ -2,6 +2,7 @@ use std::{
     io::{BufRead, BufReader, Read},
     net::TcpListener,
     thread,
+    time::{Duration, Instant},
 };
 use zedflow_orchestrator::{
     radius::RadiusPresence,
@@ -9,22 +10,25 @@ use zedflow_orchestrator::{
 };
 
 #[tokio::test]
-async fn registers_and_disconnects_radius_resources() {
+async fn accepts_empty_2xx_heartbeat_and_disconnect_responses() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
     let address = listener.local_addr().unwrap();
     let server = thread::spawn(move || {
         let mut paths = Vec::new();
-        for response in [
-            r#"{"id":"machine-1","heartbeatIntervalMs":60000,"expiresInMs":120000}"#,
-            r#"{"id":"pi-1","heartbeatIntervalMs":60000,"expiresInMs":120000}"#,
-            "{}",
-            "{}",
-        ] {
-            let (mut stream, _) = listener.accept().unwrap();
+        let deadline = Instant::now() + Duration::from_millis(250);
+        while Instant::now() < deadline {
+            let Ok((mut stream, _)) = listener.accept() else {
+                thread::sleep(Duration::from_millis(1));
+                continue;
+            };
             let mut reader = BufReader::new(stream.try_clone().unwrap());
             let mut first = String::new();
             reader.read_line(&mut first).unwrap();
-            paths.push(first.split_whitespace().nth(1).unwrap().to_owned());
+            let Some(path) = first.split_whitespace().nth(1).map(str::to_owned) else {
+                continue;
+            };
+            paths.push(path.clone());
             let mut length = 0;
             loop {
                 let mut line = String::new();
@@ -41,6 +45,15 @@ async fn registers_and_disconnects_radius_resources() {
             }
             let mut body = vec![0; length];
             reader.read_exact(&mut body).unwrap();
+            let response = match path.as_str() {
+                "/v1/machines/register" => {
+                    r#"{"id":"machine-1","heartbeatIntervalMs":1,"expiresInMs":120000}"#
+                }
+                "/v1/pis/register" => {
+                    r#"{"id":"pi-1","heartbeatIntervalMs":1,"expiresInMs":120000}"#
+                }
+                _ => "",
+            };
             let reply = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 response.len(),
@@ -84,16 +97,29 @@ async fn registers_and_disconnects_radius_resources() {
         .await
         .unwrap();
     assert_eq!(instance.radius_pi_id.as_deref(), Some("pi-1"));
+    tokio::time::sleep(Duration::from_millis(50)).await;
     radius.disconnect_pi(&instance).await.unwrap();
     radius.stop().await.unwrap();
-    assert_eq!(
-        server.join().unwrap(),
-        [
-            "/v1/machines/register",
-            "/v1/pis/register",
-            "/v1/pis/pi-1/disconnect",
-            "/v1/machines/machine-1/disconnect"
-        ]
+    let paths = server.join().unwrap();
+    assert!(
+        paths
+            .iter()
+            .filter(|path| path.as_str() == "/v1/machines/machine-1/heartbeat")
+            .count()
+            >= 2
+    );
+    assert!(
+        paths
+            .iter()
+            .filter(|path| path.as_str() == "/v1/pis/pi-1/heartbeat")
+            .count()
+            >= 2
+    );
+    assert!(paths.iter().any(|path| path == "/v1/pis/pi-1/disconnect"));
+    assert!(
+        paths
+            .iter()
+            .any(|path| path == "/v1/machines/machine-1/disconnect")
     );
     unsafe {
         std::env::remove_var("PI_RADIUS_API_KEY");

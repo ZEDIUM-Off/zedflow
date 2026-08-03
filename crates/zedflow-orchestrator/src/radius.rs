@@ -133,9 +133,28 @@ async fn maybe_post<B: Serialize>(
     path: &str,
     body: &B,
 ) -> Result<(), HttpError> {
-    post::<serde_json::Value, _>(client, path, body)
+    let url = format!("{}{}", radius_orchestrator_base_url(), path);
+    let response = client
+        .post(url)
+        .bearer_auth(radius_access_token().map_err(|e| HttpError {
+            status: reqwest::StatusCode::UNAUTHORIZED,
+            message: e.to_string(),
+        })?)
+        .json(body)
+        .send()
         .await
-        .map(|_| ())
+        .map_err(|e| HttpError {
+            status: reqwest::StatusCode::BAD_GATEWAY,
+            message: e.to_string(),
+        })?;
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    Err(HttpError {
+        status,
+        message: response.text().await.unwrap_or_default(),
+    })
 }
 
 type Recovery = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
