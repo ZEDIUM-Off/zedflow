@@ -1,6 +1,6 @@
 //! Helpers for deferred provider stream construction.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::types::{
@@ -26,8 +26,9 @@ where
 
 /// Wraps a lazily loaded canonical provider implementation.
 ///
-/// The loader is evaluated once on the first stream call. Loader failures are cached and surfaced
-/// as one terminal error event in every returned stream.
+/// This mirrors Pi's `lazyApi`: each stream call invokes `load`, while the concrete Rust provider
+/// stream is returned unchanged so its events remain incremental. Rust provider modules are linked
+/// statically; callers that need module-level caching can use their own `OnceLock`.
 #[must_use]
 pub fn lazy_api<E>(
     load: impl Fn() -> Result<ProviderStreams, E> + Send + Sync + 'static,
@@ -35,41 +36,21 @@ pub fn lazy_api<E>(
 where
     E: ToString,
 {
-    let cache = Arc::new(OnceLock::<Result<ProviderStreams, String>>::new());
     let load = Arc::new(load);
-    let stream_cache = Arc::clone(&cache);
     let stream_load = Arc::clone(&load);
-    let simple_cache = Arc::clone(&cache);
     let simple_load = Arc::clone(&load);
 
     ProviderStreams {
         stream: Arc::new(move |model, context, options| {
             lazy_stream(model, || {
-                cached_streams(&stream_cache, &stream_load)
-                    .map(|streams| (streams.stream)(model, context, options))
+                (stream_load)().map(|streams| (streams.stream)(model, context, options))
             })
         }),
         stream_simple: Arc::new(move |model, context, options| {
             lazy_stream(model, || {
-                cached_streams(&simple_cache, &simple_load)
-                    .map(|streams| (streams.stream_simple)(model, context, options))
+                (simple_load)().map(|streams| (streams.stream_simple)(model, context, options))
             })
         }),
-    }
-}
-
-/// Returns canonical provider streams that terminate immediately with an unimplemented error.
-#[must_use]
-pub fn terminal_error_api(module: &'static str) -> ProviderStreams {
-    ProviderStreams {
-        stream: Arc::new(move |model, _context, _options: Option<&StreamOptions>| {
-            terminal_error_stream(model, format!("{module} transport is not implemented"))
-        }),
-        stream_simple: Arc::new(
-            move |model, _context, _options: Option<&SimpleStreamOptions>| {
-                terminal_error_stream(model, format!("{module} transport is not implemented"))
-            },
-        ),
     }
 }
 
@@ -98,18 +79,6 @@ pub fn terminal_error_stream(model: &Model, error: impl ToString) -> AssistantMe
     stream
 }
 
-fn cached_streams<E>(
-    cache: &OnceLock<Result<ProviderStreams, String>>,
-    load: &Arc<impl Fn() -> Result<ProviderStreams, E> + Send + Sync + 'static>,
-) -> Result<ProviderStreams, String>
-where
-    E: ToString,
-{
-    cache
-        .get_or_init(|| load().map_err(|error| error.to_string()))
-        .clone()
-}
-
 fn unix_timestamp_millis() -> u64 {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -119,6 +88,8 @@ fn unix_timestamp_millis() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use futures::StreamExt;
     use futures::executor::block_on;
 
@@ -174,11 +145,14 @@ mod tests {
     }
 
     #[test]
-    fn lazy_api_returns_actual_stream_with_delayed_incremental_delivery() {
+    fn lazy_api_loads_per_call_and_returns_actual_stream_with_delayed_incremental_delivery() {
         block_on(async {
+            let loads = Arc::new(AtomicUsize::new(0));
+            let load_count = Arc::clone(&loads);
             let release = Arc::new(std::sync::Barrier::new(2));
             let producer_release = Arc::clone(&release);
             let provider = lazy_api(move || {
+                load_count.fetch_add(1, Ordering::SeqCst);
                 let producer_release = Arc::clone(&producer_release);
                 Ok::<_, String>(ProviderStreams {
                     stream: Arc::new(move |_model, _context, _options| {
@@ -217,6 +191,8 @@ mod tests {
             ));
             assert_eq!(stream.next().await, None);
             assert_eq!(stream.result().await, message(StopReason::Stop));
+            let _ = (provider.stream_simple)(&model(), &Context::default(), None);
+            assert_eq!(loads.load(Ordering::SeqCst), 2);
         });
     }
 }
