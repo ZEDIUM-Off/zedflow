@@ -94,3 +94,55 @@ impl Drop for TempDir {
         let _ = fs::remove_dir_all(&self.path);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_helpers_construct_expected_roles_and_content() {
+        let user = user_message("hello");
+        let assistant = assistant_message("world");
+
+        assert_eq!(message_role(&user), Some("user"));
+        assert_eq!(message_role(&assistant), Some("assistant"));
+        assert_eq!(
+            message_roles(&[user.clone(), assistant.clone()]),
+            ["user", "assistant"]
+        );
+        assert_eq!(
+            user,
+            AgentMessage::Custom(json!({
+                "role": "user",
+                "content": [{ "type": "text", "text": "hello" }],
+                "timestamp": 0
+            }))
+        );
+        assert_eq!(assistant_role_and_text(&assistant), ("assistant", "world"));
+    }
+
+    #[test]
+    fn temp_dir_is_removed_when_dropped() {
+        let path = {
+            let dir = TempDir::new();
+            fs::write(dir.path().join("proof"), "present").expect("write temp file");
+            assert!(dir.path().is_dir());
+            assert_eq!(dir.string(), dir.path().to_string_lossy());
+            dir.path().to_owned()
+        };
+
+        assert!(!path.exists());
+    }
+
+    fn assistant_role_and_text(message: &AgentMessage) -> (&str, &str) {
+        let AgentMessage::Custom(value) = message else {
+            panic!("expected custom assistant message");
+        };
+        (
+            value["role"].as_str().expect("assistant role"),
+            value["content"][0]["text"]
+                .as_str()
+                .expect("assistant text"),
+        )
+    }
+}
