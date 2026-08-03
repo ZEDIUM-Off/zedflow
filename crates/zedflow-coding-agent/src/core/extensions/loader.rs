@@ -611,7 +611,7 @@ pub fn load_extensions_cached(paths: &[impl AsRef<Path>]) -> LoadExtensionsResul
 fn is_extension_file(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|extension| extension.to_str()),
-        Some("ts" | "js")
+        Some("ts" | "js" | "rs")
     )
 }
 
