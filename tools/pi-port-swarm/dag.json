@@ -2360,11 +2360,26 @@
       "intent": "Close the four ignored Agent behaviors with deterministic executable tests and any root-cause implementation fix: cancellation/e2e, UTF-16 truncation, compaction and persistence."
     },
     {
-      "id": "SEM-RESIDUALS-V2-VALIDATE",
-      "kind": "validator",
+      "id": "REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1",
+      "kind": "writer",
       "depends_on": [
         "SEM-AI-V1-RESIDUALS",
         "SEM-AG-V1-RESIDUALS"
+      ],
+      "ownership": [
+        "crates/zedflow-ai/src/api/lazy.rs",
+        "crates/zedflow-ai/src/providers/anthropic.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --check"
+      ],
+      "intent": "Revise only the diagnosed documentation and test-assertion wording so strict semantic manifest matching evaluates executable code rather than prose; do not alter runtime behavior or weaken the manifest gate."
+    },
+    {
+      "id": "REPLAN-SEM-RESIDUALS-V2-VALIDATE-R1",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2375,13 +2390,13 @@
         "cargo test -p zedflow-agent --all-targets",
         "python3 tools/pi-port-swarm/manifest.py check --package zedflow-agent"
       ],
-      "intent": "Validate AI and Agent deterministic tests, transport/streaming/cancellation behavior and strict semantic closure."
+      "intent": "Validate AI and Agent deterministic tests, transport/streaming/cancellation behavior and strict semantic closure. Re-run after REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1 preserves the strict gate while removing prose-only matcher hits."
     },
     {
       "id": "SEM-FINAL-V1-WORKSPACE",
       "kind": "validator",
       "depends_on": [
-        "SEM-RESIDUALS-V2-VALIDATE"
+        "REPLAN-SEM-RESIDUALS-V2-VALIDATE-R1"
       ],
       "ownership": [],
       "validation": [
