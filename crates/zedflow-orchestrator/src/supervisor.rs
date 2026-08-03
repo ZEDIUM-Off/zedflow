@@ -136,6 +136,21 @@ impl OrchestratorSupervisor {
                 }
             })
             .await;
+        let live = self.live.clone();
+        let records = self.records.clone();
+        self.radius
+            .set_pi_recovery(move |updated| {
+                let live = live.clone();
+                let records = records.clone();
+                async move {
+                    if let Some(live_instance) = live.lock().unwrap().get_mut(&updated.id) {
+                        live_instance.record = updated.clone();
+                        let _records = records.lock().unwrap();
+                        let _ = storage::upsert_instance(&updated);
+                    }
+                }
+            })
+            .await;
         self.radius.start(None).await.map(|_| ())
     }
     pub async fn recover_after_restart(&mut self) -> io::Result<()> {

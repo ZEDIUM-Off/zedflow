@@ -158,6 +158,8 @@ async fn maybe_post<B: Serialize>(
 }
 
 type Recovery = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+type PiRecovery =
+    Arc<dyn Fn(InstanceRecord) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 #[derive(Default)]
 struct State {
@@ -165,6 +167,7 @@ struct State {
     machine_task: Option<JoinHandle<()>>,
     pi_tasks: HashMap<String, JoinHandle<()>>,
     recovery: Option<Recovery>,
+    pi_recovery: Option<PiRecovery>,
 }
 #[derive(Clone)]
 pub struct RadiusPresence {
@@ -193,6 +196,22 @@ impl RadiusPresence {
         let recovery = self.state.lock().await.recovery.clone();
         if let Some(recovery) = recovery {
             recovery().await;
+        }
+    }
+
+    pub async fn set_pi_recovery<F, Fut>(&self, recovery: F)
+    where
+        F: Fn(InstanceRecord) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.state.lock().await.pi_recovery =
+            Some(Arc::new(move |instance| Box::pin(recovery(instance))));
+    }
+
+    async fn recover_pi(&self, instance: InstanceRecord) {
+        let recovery = self.state.lock().await.pi_recovery.clone();
+        if let Some(recovery) = recovery {
+            recovery(instance).await;
         }
     }
 
@@ -402,6 +421,7 @@ impl RadiusPresence {
                             match this.register_pi(instance).await {
                                 Ok(updated) => {
                                     let _ = storage::upsert_instance(&updated);
+                                    this.recover_pi(updated).await;
                                     return;
                                 }
                                 Err(_) => failures = 1,
