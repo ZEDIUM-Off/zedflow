@@ -23,7 +23,6 @@ fn get_e2e_api_key(provider: &str) -> Option<String> {
 
 fn get_anthropic_messages_models(provider: &str) -> Vec<Model> {
     get_models()
-        .expect("compat::get_models should expose the generated catalog")
         .into_iter()
         .filter(|model| model.provider == provider && model.api == "anthropic-messages")
         .collect()
@@ -31,7 +30,6 @@ fn get_anthropic_messages_models(provider: &str) -> Vec<Model> {
 
 fn anthropic_messages_cases() -> Vec<AnthropicLongCacheRetentionE2ECase> {
     get_providers()
-        .expect("compat::get_providers should expose generated providers")
         .into_iter()
         .flat_map(|provider| {
             let api_key = get_e2e_api_key(&provider);
@@ -130,7 +128,6 @@ fn covers_every_generated_anthropic_messages_model() {
         .map(|test_case| test_case.name)
         .collect::<Vec<_>>();
     let mut expected = get_providers()
-        .expect("compat::get_providers should expose generated providers")
         .into_iter()
         .flat_map(|provider| {
             get_anthropic_messages_models(&provider)

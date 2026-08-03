@@ -9,7 +9,7 @@ use zedflow_ai::types::{
     ToolResultMessageRole, UserMessage, UserMessageContent, UserMessageRole,
 };
 
-const BLOCKER: &str = "live Bedrock/Anthropic interleaved-thinking parity test skipped; compat::get_model/get_models, builtin provider dispatch, completeSimple, provider streaming, and provider credentials/network calls are still unavailable or must not run in P1.T2";
+const BLOCKER: &str = "live Bedrock/Anthropic interleaved-thinking parity test skipped; requires provider credentials/network, completeSimple, and real provider streaming";
 
 fn calculator_tool() -> Tool {
     Tool {
@@ -59,7 +59,7 @@ fn make_context() -> Context {
 }
 
 fn get_live_model(provider: &str, id: &str) -> Result<Model, String> {
-    get_model(provider, id).map_err(|error| format!("{BLOCKER}: {error}"))
+    get_model(provider, id).ok_or_else(|| format!("{BLOCKER}: unknown model {provider}/{id}"))
 }
 
 fn complete_simple_interleaved(

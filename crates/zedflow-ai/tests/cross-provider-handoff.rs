@@ -1,8 +1,8 @@
 //! Port of Pi `packages/ai/test/cross-provider-handoff.test.ts`.
 //!
 //! This is an integration/live-provider parity test. It is ignored because the source test
-//! intentionally calls real providers, and the Rust compat provider catalog/dispatch path is
-//! still represented by port placeholders.
+//! intentionally calls real providers. It remains capability-gated pending live credential
+//! resolution and cross-provider streaming parity.
 
 use std::collections::HashMap;
 use std::fs::write;
@@ -13,7 +13,7 @@ use zedflow_ai::compat::get_model;
 use zedflow_ai::env_api_keys::get_env_api_key;
 use zedflow_ai::types::{Api, Message, Tool};
 
-const BLOCKER: &str = "live cross-provider calls skipped; compat::get_model/completeSimple, OAuth resolveApiKey, builtin provider dispatch, and provider stream implementations are still request-capture blockers";
+const BLOCKER: &str = "live cross-provider calls skipped; requires provider credentials, OAuth resolution, completeSimple, and real provider streams";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ProviderModelPair {
@@ -386,8 +386,8 @@ fn dump_failure_payload(label: &str, error: &str, payload: Option<&Value>, messa
 }
 
 fn generate_context(pair: &ProviderModelPair, _api_key: &str) -> Result<CachedContext, String> {
-    let mut model =
-        get_model(pair.provider, pair.model).map_err(|error| format!("{BLOCKER}: {error}"))?;
+    let mut model = get_model(pair.provider, pair.model)
+        .ok_or_else(|| format!("{BLOCKER}: unknown model {}/{}", pair.provider, pair.model))?;
     if let Some(api) = pair.api_override {
         model.api = api.to_owned();
     }
@@ -476,16 +476,16 @@ fn should_handle_cross_provider_handoffs_for_each_target() {
             continue;
         }
 
-        let mut model = match get_model(target_pair.provider, target_pair.model) {
-            Ok(model) => model,
-            Err(error) => {
-                results.push(HandoffResult {
-                    target: target_pair.label,
-                    success: false,
-                    error: Some(format!("{BLOCKER}: {error}")),
-                });
-                continue;
-            }
+        let Some(mut model) = get_model(target_pair.provider, target_pair.model) else {
+            results.push(HandoffResult {
+                target: target_pair.label,
+                success: false,
+                error: Some(format!(
+                    "{BLOCKER}: unknown model {}/{}",
+                    target_pair.provider, target_pair.model
+                )),
+            });
+            continue;
         };
         if let Some(api) = target_pair.api_override {
             model.api = api.to_owned();
