@@ -2295,10 +2295,28 @@
       "intent": "Repair stop_instance fidelity only: when an instance is persisted but not live, return None without deleting its persisted record, matching frozen Pi supervisor.ts. Add an executable protocol regression proving the RPC stop request reports Pi's unknown-instance error and preserves the record. Preserve live-stop cleanup, Radius lifecycle, RPC FIFO, IPC fields, and unrelated supervisor behavior."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-INSTANCE-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-INSTANCE-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/config.rs",
+        "crates/zedflow-orchestrator/src/radius.rs",
+        "crates/zedflow-orchestrator/tests/radius.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test radius",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Repair Radius OAuth persistence fidelity only: read AuthStorage credentials from PI_CONFIG_DIR/agent/auth.json (default ~/.pi/agent/auth.json), not PI_ORCHESTRATOR_DIR/auth.json, while preserving PI_RADIUS_API_KEY fallback. Add an executable isolated credential-path regression; do not change Radius HTTP, supervisor, or IPC behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2307,13 +2325,13 @@
         "cargo test -p zedflow-orchestrator --test supervisor",
         "cargo test -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the stop_instance repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, and persisted/non-live stop semantics; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the Radius OAuth persistence repair, including AuthStorage credential location and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, and persisted/non-live stop semantics; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-INSTANCE-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2329,7 +2347,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-INSTANCE-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
