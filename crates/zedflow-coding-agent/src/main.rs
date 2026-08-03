@@ -78,14 +78,7 @@ fn dispatch(args: &[String]) -> Result<(), String> {
     }
 
     let stdin_is_tty = io::stdin().is_terminal();
-    let stdout_is_tty = io::stdout().is_terminal();
-    if matches!(parsed.mode, Some(Mode::Text | Mode::Json))
-        || zedflow_coding_agent::modes::print_mode::should_run_print(
-            parsed.print,
-            stdin_is_tty,
-            stdout_is_tty,
-        )
-    {
+    if parsed.print || matches!(parsed.mode, Some(Mode::Text | Mode::Json)) {
         let initial_message = (!stdin_is_tty)
             .then(read_piped_stdin)
             .transpose()?
