@@ -2438,25 +2438,38 @@
       "intent": "Repair the diagnosed ModelRegistry built-in-model loading compile failure only: make compat::get_models() handling match its Vec<zedflow_ai::Model> return contract at model-registry.rs:198. Preserve model registry behavior; do not weaken types, alter unrelated model resolution, or change files outside ownership."
     },
     {
-      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-R1",
+      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-EXTENSIONS-LOADER-R1",
       "kind": "writer",
       "depends_on": [
         "REPLAN-SEM-FINAL-V1-WORKSPACE-MODEL-REGISTRY-R1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs"
+        "crates/zedflow-coding-agent/src/core/extensions/loader.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
         "cargo test -p zedflow-coding-agent --lib resource_loader"
       ],
-      "intent": "Repair only the deterministic ResourceLoader extension-reload regression at resource-loader.rs:355: preserve the active extension set after a reload failure and report the error. Diagnose the empty initial extension set at the shared loading boundary; do not weaken assertions, change other files, or alter unrelated resource behavior."
+      "intent": "Repair only the deterministic ResourceLoader extension-discovery regression: make the shared extension loader admit the fixture representation that reaches ResourceLoader, preserving existing discovery behavior and the approved Rust extension architecture. Do not alter ResourceLoader, weaken assertions, add dependencies, or change unrelated extension behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-VALIDATE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-EXTENSIONS-LOADER-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib resource_loader"
+      ],
+      "intent": "Repeat the failed ResourceLoader extension-reload regression validation after the scoped shared-loader repair. No source edits."
     },
     {
       "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-R2",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-R1"
+        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-VALIDATE-R2"
       ],
       "ownership": [],
       "validation": [
