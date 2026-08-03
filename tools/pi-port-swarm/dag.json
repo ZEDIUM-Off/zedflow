@@ -2438,10 +2438,25 @@
       "intent": "Repair the diagnosed ModelRegistry built-in-model loading compile failure only: make compat::get_models() handling match its Vec<zedflow_ai::Model> return contract at model-registry.rs:198. Preserve model registry behavior; do not weaken types, alter unrelated model resolution, or change files outside ownership."
     },
     {
-      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-R1",
-      "kind": "validator",
+      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-SEM-FINAL-V1-WORKSPACE-MODEL-REGISTRY-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib resource_loader"
+      ],
+      "intent": "Repair only the deterministic ResourceLoader extension-reload regression at resource-loader.rs:355: preserve the active extension set after a reload failure and report the error. Diagnose the empty initial extension set at the shared loading boundary; do not weaken assertions, change other files, or alter unrelated resource behavior."
+    },
+    {
+      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-R2",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2456,7 +2471,7 @@
       "id": "SEM-FINAL-V2-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-SEM-FINAL-V1-WORKSPACE-R1"
+        "REPLAN-SEM-FINAL-V1-WORKSPACE-R2"
       ],
       "ownership": [],
       "validation": [],
