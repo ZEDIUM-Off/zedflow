@@ -16,9 +16,9 @@ use zedflow_ai::{
     ToolResultContentBlock, ToolResultMessage, ToolResultMessageRole, Usage, UserContentBlock,
     UserMessage, UserMessageContent, UserMessageRole,
     providers::faux::{
-        DEFAULT_MODEL_ID, FauxModelDefinition, FauxResponseStep, RegisterFauxProviderOptions,
-        faux_assistant_content_message, faux_assistant_message, faux_provider, faux_text,
-        faux_thinking, faux_tool_call,
+        DEFAULT_MODEL_ID, FauxModelDefinition, FauxResponseStep, FauxTokenSize,
+        RegisterFauxProviderOptions, faux_assistant_content_message, faux_assistant_message,
+        faux_provider, faux_text, faux_thinking, faux_tool_call,
     },
 };
 
@@ -580,10 +580,47 @@ fn continue_from_tool_result_processes_result() {
 }
 
 #[test]
-#[ignore = "abort timing requires async token-paced faux streaming; Rust faux provider currently stores tokens_per_second but emits synchronously, so running this would not validate Pi abort-during-stream behavior"]
-fn abort_during_streaming_is_represented_but_not_run_without_async_stream_timing() {
-    let _options = RegisterFauxProviderOptions {
-        tokens_per_second: Some(20.0),
-        ..RegisterFauxProviderOptions::default()
-    };
+fn abort_during_token_paced_streaming_records_an_aborted_message() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("runtime");
+    runtime.block_on(async {
+        let agent = faux_agent_with_options(
+            vec![FauxResponseStep::Message(faux_assistant_message(
+                "one two three four five six seven eight",
+            ))],
+            RegisterFauxProviderOptions {
+                tokens_per_second: Some(20.0),
+                token_size: FauxTokenSize {
+                    min: Some(1),
+                    max: Some(1),
+                },
+                ..RegisterFauxProviderOptions::default()
+            },
+            Vec::new(),
+            Vec::new(),
+            None,
+        );
+
+        let prompt = agent.prompt("Count slowly.");
+        tokio::pin!(prompt);
+        tokio::select! {
+            result = &mut prompt => result.expect("prompt should finish"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(30)) => {
+                agent.abort();
+                prompt.await.expect("aborted prompt should settle");
+            }
+        }
+
+        let state = agent.state();
+        assert!(!state.is_streaming);
+        let AgentMessage::Llm(Message::Assistant(message)) =
+            state.messages.last().expect("assistant message")
+        else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(message.stop_reason, StopReason::Aborted);
+        assert_eq!(state.error_message, message.error_message);
+    });
 }
