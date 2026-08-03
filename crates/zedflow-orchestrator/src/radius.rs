@@ -5,7 +5,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    env, io,
+    env,
+    future::Future,
+    io,
+    pin::Pin,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -135,11 +138,14 @@ async fn maybe_post<B: Serialize>(
         .map(|_| ())
 }
 
+type Recovery = Arc<dyn Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
+
 #[derive(Default)]
 struct State {
     machine: Option<MachineRecord>,
     machine_task: Option<JoinHandle<()>>,
     pi_tasks: HashMap<String, JoinHandle<()>>,
+    recovery: Option<Recovery>,
 }
 #[derive(Clone)]
 pub struct RadiusPresence {
@@ -156,7 +162,30 @@ impl Default for RadiusPresence {
 }
 
 impl RadiusPresence {
+    pub async fn set_recovery<F, Fut>(&self, recovery: F)
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.state.lock().await.recovery = Some(Arc::new(move || Box::pin(recovery())));
+    }
+
+    async fn recover_pis(&self) {
+        let recovery = self.state.lock().await.recovery.clone();
+        if let Some(recovery) = recovery {
+            recovery().await;
+        }
+    }
+
     pub async fn start(&self, label: Option<String>) -> io::Result<Option<MachineRecord>> {
+        self.register_machine(label, true).await
+    }
+
+    async fn register_machine(
+        &self,
+        label: Option<String>,
+        abort_existing_heartbeat: bool,
+    ) -> io::Result<Option<MachineRecord>> {
         if !is_radius_enabled() {
             return Ok(None);
         }
@@ -187,8 +216,10 @@ impl RadiusPresence {
         };
         storage::save_machine(&machine)?;
         let mut state = self.state.lock().await;
-        if let Some(task) = state.machine_task.take() {
-            task.abort();
+        if abort_existing_heartbeat {
+            if let Some(task) = state.machine_task.take() {
+                task.abort();
+            }
         }
         state.machine = Some(machine.clone());
         state.machine_task =
@@ -308,7 +339,7 @@ impl RadiusPresence {
                 .await;
                 let machine = this.state.lock().await.machine.clone();
                 let Some(machine) = machine else { return };
-                match maybe_post(&this.client, &format!("machines/{}/heartbeat", machine.id), &serde_json::json!({ "cwd": config::orchestrator_dir(), "socketPath": config::socket_path() })).await { Ok(()) => { not_found = 0; failures = 0; }, Err(e) if e.status == reqwest::StatusCode::NOT_FOUND => { not_found += 1; failures = 0; if not_found >= NOT_FOUND_RETRY_THRESHOLD { let label = machine.label; let _ = this.start(label).await; return; } }, Err(_) => failures += 1 }
+                match maybe_post(&this.client, &format!("machines/{}/heartbeat", machine.id), &serde_json::json!({ "cwd": config::orchestrator_dir(), "socketPath": config::socket_path() })).await { Ok(()) => { not_found = 0; failures = 0; }, Err(e) if e.status == reqwest::StatusCode::NOT_FOUND => { not_found += 1; failures = 0; if not_found >= NOT_FOUND_RETRY_THRESHOLD { let label = machine.label; if this.register_machine(label, false).await.is_ok() { this.recover_pis().await; } return; } }, Err(_) => failures += 1 }
             }
         })
     }

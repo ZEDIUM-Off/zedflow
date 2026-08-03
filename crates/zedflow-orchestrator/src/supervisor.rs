@@ -109,6 +109,33 @@ impl OrchestratorSupervisor {
         }
     }
     pub async fn start_radius(&self) -> io::Result<()> {
+        let radius = self.radius.clone();
+        let live = self.live.clone();
+        let records = self.records.clone();
+        self.radius
+            .set_recovery(move || {
+                let radius = radius.clone();
+                let live = live.clone();
+                let records = records.clone();
+                async move {
+                    let instances = live
+                        .lock()
+                        .unwrap()
+                        .values()
+                        .map(|instance| instance.record.clone())
+                        .collect::<Vec<_>>();
+                    for instance in instances {
+                        if let Ok(updated) = radius.register_pi(instance).await {
+                            if let Some(live_instance) = live.lock().unwrap().get_mut(&updated.id) {
+                                live_instance.record = updated.clone();
+                            }
+                            let _records = records.lock().unwrap();
+                            let _ = storage::upsert_instance(&updated);
+                        }
+                    }
+                }
+            })
+            .await;
         self.radius.start(None).await.map(|_| ())
     }
     pub async fn recover_after_restart(&mut self) -> io::Result<()> {
