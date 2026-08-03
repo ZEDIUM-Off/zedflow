@@ -2332,7 +2332,7 @@
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2348,7 +2348,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
@@ -2471,10 +2471,28 @@
       "intent": "Repair persisted InstanceRecord and MachineRecord timestamp creation and update paths to use frozen Pi ISO-8601 strings rather than Unix-millisecond strings. Limit changes to the diagnosed persistence sources; do not alter lifecycle, protocol, or test semantics."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/config.rs",
+        "crates/zedflow-orchestrator/src/radius.rs",
+        "crates/zedflow-orchestrator/tests/radius.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test radius",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Repair Radius AuthStorage credential-location fidelity: use PI_AGENT_DIR or the default ~/.pi/agent/auth.json, never PI_CONFIG_DIR, while preserving PI_RADIUS_API_KEY fallback. Add an isolated regression for PI_CONFIG_DIR being set; do not change Radius HTTP, supervisor, or IPC behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2483,7 +2501,7 @@
         "cargo test -p zedflow-orchestrator --test supervisor",
         "cargo test -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the timestamp-format repair, including AuthStorage credential location and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, persisted/non-live stop semantics, and ISO-8601 persisted InstanceRecord and MachineRecord timestamps. Reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the AuthStorage credential-location repair, including PI_AGENT_DIR/default ~/.pi/agent/auth.json resolution independent of PI_CONFIG_DIR and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, persisted/non-live stop semantics, and ISO-8601 persisted InstanceRecord and MachineRecord timestamps. Reject source-marker or compile-only closure."
     }
   ]
 }
