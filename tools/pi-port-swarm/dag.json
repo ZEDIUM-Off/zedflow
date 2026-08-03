@@ -2329,25 +2329,10 @@
       "intent": "Repair explicit live-stop cleanup fidelity only: after stop cleanup attempts (including RPC disposal or Radius disconnect failures), always remove the persisted instance record, matching frozen Pi supervisor.ts finally behavior; preserve the cleanup error after deletion. Add an executable deterministic supervisor regression covering failure cleanup and persisted-record removal. Do not change non-live stop semantics, Radius OAuth, IPC fields, FIFO, or unrelated supervisor behavior."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-FIDELITY-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo test -p zedflow-orchestrator --test protocol",
-        "cargo test -p zedflow-orchestrator --test rpc-stream",
-        "cargo test -p zedflow-orchestrator --test supervisor",
-        "cargo test -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the explicit stop-cleanup repair, including AuthStorage credential location and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, and persisted/non-live stop semantics; specifically reject a cleanup failure that leaves a persisted instance record. Reject source-marker or compile-only closure."
-    },
-    {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2363,7 +2348,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
@@ -2467,6 +2452,38 @@
         "git diff --check"
       ],
       "intent": "Record the terminal Stage-1 semantic checkpoint. Promotion to main remains a separate explicit human action; Stage 2 remains forbidden until promotion and repeated gates."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-REPAIR-R1",
+      "kind": "writer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/src/radius.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test supervisor --test radius",
+        "cargo test -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Repair persisted InstanceRecord and MachineRecord timestamp creation and update paths to use frozen Pi ISO-8601 strings rather than Unix-millisecond strings. Limit changes to the diagnosed persistence sources; do not alter lifecycle, protocol, or test semantics."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-REPAIR-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo test -p zedflow-orchestrator --test protocol",
+        "cargo test -p zedflow-orchestrator --test rpc-stream",
+        "cargo test -p zedflow-orchestrator --test supervisor",
+        "cargo test -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the timestamp-format repair, including AuthStorage credential location and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, persisted/non-live stop semantics, and ISO-8601 persisted InstanceRecord and MachineRecord timestamps. Reject source-marker or compile-only closure."
     }
   ]
 }
