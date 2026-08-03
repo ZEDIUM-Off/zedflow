@@ -2313,10 +2313,26 @@
       "intent": "Repair Radius OAuth persistence fidelity only: read AuthStorage credentials from PI_CONFIG_DIR/agent/auth.json (default ~/.pi/agent/auth.json), not PI_ORCHESTRATOR_DIR/auth.json, while preserving PI_RADIUS_API_KEY fallback. Add an executable isolated credential-path regression; do not change Radius HTTP, supervisor, or IPC behavior."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/tests/supervisor.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test supervisor"
+      ],
+      "intent": "Repair explicit live-stop cleanup fidelity only: after stop cleanup attempts (including RPC disposal or Radius disconnect failures), always remove the persisted instance record, matching frozen Pi supervisor.ts finally behavior; preserve the cleanup error after deletion. Add an executable deterministic supervisor regression covering failure cleanup and persisted-record removal. Do not change non-live stop semantics, Radius OAuth, IPC fields, FIFO, or unrelated supervisor behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2325,13 +2341,13 @@
         "cargo test -p zedflow-orchestrator --test supervisor",
         "cargo test -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the Radius OAuth persistence repair, including AuthStorage credential location and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, and persisted/non-live stop semantics; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the explicit stop-cleanup repair, including AuthStorage credential location and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, and persisted/non-live stop semantics; specifically reject a cleanup failure that leaves a persisted instance record. Reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2347,7 +2363,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-FIDELITY-R1"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-FIDELITY-R1"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
