@@ -2263,10 +2263,26 @@
       "intent": "Repair Pi-heartbeat 404 recovery only: after re-registering a live Pi, synchronize the supervisor live record with its replacement radiusPiId as frozen Pi RadiusPresence.reRegisterPi does, rather than only upserting storage. Add a direct executable 404 recovery regression; preserve Radius HTTP protocol, IPC fields, and unrelated supervisor lifecycle behavior."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R12",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-EXIT-CLEANUP-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-LIVE-SYNC-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/supervisor.rs",
+        "crates/zedflow-orchestrator/tests/supervisor.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test supervisor"
+      ],
+      "intent": "Repair unexpected RPC-exit Radius cleanup only: after disconnecting the live Pi, persist radius_pi_id as None as frozen Pi supervisor does so a restart cannot retain stale Radius metadata. Add a direct executable persisted-metadata regression; preserve Radius HTTP protocol, RPC FIFO, IPC fields, and unrelated supervisor lifecycle behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R13",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-EXIT-CLEANUP-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2281,7 +2297,7 @@
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R12"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R13"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2297,7 +2313,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R12"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R13"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
