@@ -299,14 +299,13 @@ impl OrchestratorSupervisor {
         }
     }
     pub async fn stop_instance(&mut self, id: &str) -> io::Result<Option<InstanceRecord>> {
-        let Some(mut record) = self.get_instance(id)? else {
+        let Some(instance) = self.live.lock().unwrap().remove(id) else {
             return Ok(None);
         };
-        if let Some(instance) = self.live.lock().unwrap().remove(id) {
-            record.status = InstanceStatus::Stopping;
-            self.update_record(record.clone())?;
-            instance.process.dispose()?;
-        }
+        let mut record = instance.record;
+        record.status = InstanceStatus::Stopping;
+        self.update_record(record.clone())?;
+        instance.process.dispose()?;
         self.radius.disconnect_pi(&record).await?;
         record.status = InstanceStatus::Stopped;
         record.last_seen_at = Some(now());
