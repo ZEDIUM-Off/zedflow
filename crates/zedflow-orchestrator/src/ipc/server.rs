@@ -135,31 +135,41 @@ where
             }
         }
     });
+    let (requests, mut queued_requests) = mpsc::unbounded_channel::<String>();
+    let handle_request = rpc_stream.request_handler();
+    let request_outgoing = outgoing.clone();
+    let request_worker = tokio::spawn(async move {
+        while let Some(line) = queued_requests.recv().await {
+            let request = match serde_json::from_str(&line) {
+                Ok(request) => request,
+                Err(error) => {
+                    let _ = request_outgoing.send(
+                        serde_json::json!({"type":"error","ok":false,"error":error.to_string()}),
+                    );
+                    continue;
+                }
+            };
+            let handle_request = handle_request.clone();
+            let outgoing = request_outgoing.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Err(error) = handle_request(request) {
+                    let _ = outgoing.send(
+                        serde_json::json!({"type":"error","ok":false,"error":error.to_string()}),
+                    );
+                }
+            })
+            .await;
+        }
+    });
     let mut lines = BufReader::new(read_half).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         let line = line.trim();
-        if line.is_empty() {
-            continue;
+        if !line.is_empty() && requests.send(line.to_owned()).is_err() {
+            break;
         }
-        let request = match serde_json::from_str(line) {
-            Ok(request) => request,
-            Err(error) => {
-                let _ = outgoing
-                    .send(serde_json::json!({"type":"error","ok":false,"error":error.to_string()}));
-                continue;
-            }
-        };
-        let handle_request = rpc_stream.request_handler();
-        let outgoing = outgoing.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Err(error) = handle_request(request) {
-                let _ = outgoing
-                    .send(serde_json::json!({"type":"error","ok":false,"error":error.to_string()}));
-            }
-        })
-        .await
-        .ok();
     }
+    drop(requests);
+    let _ = request_worker.await;
     drop(rpc_stream);
     drop(outgoing);
     let _ = writer.await;

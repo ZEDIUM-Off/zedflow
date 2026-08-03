@@ -31,7 +31,7 @@ fn ready() -> OrchestratorResponse {
 }
 
 #[tokio::test]
-async fn rpc_stream_keeps_socket_open_and_forwards_messages() {
+async fn rpc_stream_serializes_commands_in_received_order() {
     let _environment = ENV_LOCK.lock().unwrap();
     let dir = std::env::temp_dir().join(format!("zedflow-rpc-stream-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -48,6 +48,9 @@ async fn rpc_stream_keeps_socket_open_and_forwards_messages() {
                 Some(RpcStream::new(
                     move |command| {
                         let command_type = command["type"].as_str().unwrap().to_owned();
+                        if command_type == "get_state" {
+                            std::thread::sleep(Duration::from_millis(20));
+                        }
                         requests.lock().unwrap().push(command_type.clone());
                         if command_type == "get_state" {
                             messages
