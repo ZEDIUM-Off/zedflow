@@ -1,4 +1,4 @@
-//! Lazy provider stream helpers ported from Pi's `packages/ai/src/api/lazy.ts`.
+//! Helpers for deferred provider stream construction.
 
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
