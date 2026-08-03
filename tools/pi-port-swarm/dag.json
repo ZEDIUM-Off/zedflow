@@ -2227,10 +2227,27 @@
       "intent": "Repair frozen Pi supervisor spawn-failure cleanup after RPC acquisition: if session metadata synchronization or Radius registration fails, clear bindings, disconnect Radius, dispose RPC, mark stopped, and remove the live instance. Add executable regressions; preserve IPC and Radius protocol behavior."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R10",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-FIFO-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SPAWN-ROLLBACK-REPAIR-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/src/ipc/server.rs",
+        "crates/zedflow-orchestrator/tests/rpc-stream.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo test -p zedflow-orchestrator --test rpc-stream",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Serialize each rpc_stream JSONL command and extension UI response in received order through one per-stream FIFO queue, matching frozen Pi rpcRequestQueue behavior. Add executable order regression coverage; preserve stream forwarding, IPC fields, Radius behavior, and non-stream RPC behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R11",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-FIFO-REPAIR-R1"
       ],
       "ownership": [],
       "validation": [
@@ -2239,13 +2256,13 @@
         "cargo test -p zedflow-orchestrator --test supervisor",
         "cargo test -p zedflow-orchestrator --all-targets"
       ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the Radius recovery repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, and RPC-exit cleanup; reject source-marker or compile-only closure."
+      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the RPC FIFO repair, including persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, and RPC-exit cleanup; reject source-marker or compile-only closure."
     },
     {
       "id": "SEM-AI-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R10"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R11"
       ],
       "ownership": [
         "crates/zedflow-ai/src/compat.rs",
@@ -2261,7 +2278,7 @@
       "id": "SEM-AG-V1-RESIDUALS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R10"
+        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-FIDELITY-R11"
       ],
       "ownership": [
         "crates/zedflow-agent/src",
