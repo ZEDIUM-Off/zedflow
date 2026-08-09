@@ -111,6 +111,7 @@ pub struct InteractiveMode {
     compacting: bool,
     compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
+    exit_requested: bool,
 }
 
 impl Default for InteractiveState {
@@ -145,6 +146,7 @@ impl InteractiveMode {
             compacting: false,
             compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
+            exit_requested: false,
         }
     }
 
@@ -325,9 +327,18 @@ impl InteractiveMode {
         self.state
     }
 
+    #[must_use]
+    pub fn exit_requested(&self) -> bool {
+        self.exit_requested
+    }
+
     /// Queue startup input until the interactive consumer is ready.
     pub fn queue_user_input(&mut self, text: impl Into<String>) {
         let text = text.into().trim().to_owned();
+        if text == "/exit" {
+            self.exit_requested = true;
+            return;
+        }
         if text.is_empty() {
             return;
         }
@@ -529,6 +540,7 @@ impl Component for InteractiveInput {
 
     fn handle_input(&mut self, data: &str) {
         match data {
+            "\x03" => self.submitted.lock().unwrap().push_back("/exit".into()),
             "\r" | "\n" => {
                 let input = std::mem::take(&mut self.value);
                 self.submitted.lock().unwrap().push_back(input);

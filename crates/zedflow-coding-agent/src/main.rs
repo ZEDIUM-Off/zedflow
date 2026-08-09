@@ -322,11 +322,15 @@ fn run_interactive(args: &[String], parsed: &zedflow_coding_agent::cli::Args) ->
     for message in &parsed.messages {
         mode.queue_user_input(message);
     }
-    mode.run()?;
-    loop {
-        mode.pump_events(Duration::from_millis(10))?;
-        while mode.process_next_user_input()? {}
-    }
+    let result = mode.run().and_then(|()| {
+        while !mode.exit_requested() {
+            mode.pump_events(Duration::from_millis(10))?;
+            while !mode.exit_requested() && mode.process_next_user_input()? {}
+        }
+        Ok(())
+    });
+    let stop = mode.stop();
+    result.and(stop)
 }
 
 #[cfg(test)]
