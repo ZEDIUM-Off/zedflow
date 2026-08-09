@@ -2539,20 +2539,10 @@
       "intent": "Perform independent Rust safety, correctness, error-handling, cancellation, portability and maintainability review on the same exact candidate SHA."
     },
     {
-      "id": "SEM-FINAL-V4-ENDUSER",
-      "kind": "reviewer",
-      "depends_on": [
-        "SEM-FINAL-V3-RUST-QUALITY"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Run end-user black-box gates on the same SHA: default full-screen TUI, --print/text/json, RPC, sessions/no-session, tools, extensions, skills, themes, package management and Orchestrator; verify terminal restoration on normal and failure paths."
-    },
-    {
       "id": "SEM-FINAL-V5-DOCS",
       "kind": "writer",
       "depends_on": [
-        "SEM-FINAL-V4-ENDUSER"
+        "REPLAN-SEM-FINAL-V4-ENDUSER-R1"
       ],
       "ownership": [
         "docs/porting/BASELINE.md",
@@ -2689,6 +2679,32 @@
         "python3 tools/pi-port-swarm/manifest.py check"
       ],
       "intent": "Run the full Stage-1 workspace gates on one immutable candidate with no unexplained ignore, marker-only target, dead mapped module, placeholder/no-op or unwired CLI mode."
+    },
+    {
+      "id": "REPLAN-SEM-FINAL-V4-ORCHESTRATOR-CLI-R1",
+      "kind": "writer",
+      "depends_on": [
+        "SEM-FINAL-V3-RUST-QUALITY"
+      ],
+      "ownership": [
+        "crates/zedflow-orchestrator/Cargo.toml",
+        "crates/zedflow-orchestrator/src/main.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-orchestrator --check",
+        "cargo check -p zedflow-orchestrator --all-targets"
+      ],
+      "intent": "Add the missing Orchestrator CLI executable and route its user-facing commands into the existing Orchestrator runtime so cargo run -p zedflow-orchestrator -- --help succeeds. Preserve the frozen Pi CLI behavior; do not alter library runtime modules, add dependencies, or weaken end-user gates."
+    },
+    {
+      "id": "REPLAN-SEM-FINAL-V4-ENDUSER-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-SEM-FINAL-V4-ORCHESTRATOR-CLI-R1"
+      ],
+      "ownership": [],
+      "validation": [],
+      "intent": "Run end-user black-box gates on the same SHA: default full-screen TUI, --print/text/json, RPC, sessions/no-session, tools, extensions, skills, themes, package management and Orchestrator; verify terminal restoration on normal and failure paths."
     }
   ]
 }
