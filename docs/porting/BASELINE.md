@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Zedflow is in **Stage 1: semantic Pi TypeScript → Rust port awaiting one-SHA final-gate closure**. The accepted integration ref is `automation/pi-port@a9a23c387f372ed027c5a742047f93d0689955ed`; the frozen source remains `references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd`. Stage-2 Flow/Runtime Graph/LangGraph work and promotion to `main` remain forbidden.
+Zedflow is in **Stage 1: semantic Pi TypeScript → Rust port awaiting one-SHA final-gate closure**. The terminal semantic product candidate is `a9a23c387f372ed027c5a742047f93d0689955ed`; the frozen source remains `references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd`. Stage-2 Flow/Runtime Graph/LangGraph work and promotion to `main` remain forbidden.
 
 This is the sole current human status document. Operational facts come from the CAS integration ref, frozen gitlink, committed DAG, and external controller state:
 
@@ -55,6 +55,10 @@ The controller accepted the final reviews, but not on one immutable SHA:
 | End user | `a9a23c387f372ed027c5a742047f93d0689955ed` | independent review accepted |
 
 The workspace gate predates fidelity and end-user repairs; the fidelity and Rust-quality gates predate end-user repairs. Therefore Stage 1 is **not complete**. These gates must accept the same integration SHA before promotion can be considered, and all gates must pass again after an explicit promotion to `main`. Exact controller evidence is retained in `.agents/state/stage-1-final-gate-evidence.md`.
+
+## Terminal semantic checkpoint
+
+The terminal checkpoint was recorded from control commit `02c532989659a1ad8a20afacd1b41ad61f08c3fc`. It closes the current semantic DAG as an evidence checkpoint, not as Stage-1 acceptance: the final gates above did not accept one immutable SHA. Promotion to `main` requires an explicit human action after one-SHA closure, and Stage 2 remains forbidden until promotion and all gates pass again on `main`.
 
 ## Stage-1 exit gate
 
