@@ -2469,7 +2469,7 @@
       "id": "SEM-FINAL-V2-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-SEM-FINAL-V1-WORKSPACE-R3"
+        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R4"
       ],
       "ownership": [],
       "validation": [],
@@ -2592,10 +2592,25 @@
       "intent": "Repair only the deterministic default-CLI InteractiveMode startup regression in main.rs: preserve explicit print/text/json and RPC routing while ensuring the default CLI starts the interactive owner pump under the integration test pipe setup. Do not weaken the test, alter interactive-mode internals, or change unrelated routes."
     },
     {
-      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-R3",
-      "kind": "validator",
+      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-EXTENSION-FIXTURE-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-INTERACTIVE-CLI-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-native-extensions"
+      ],
+      "intent": "Repair only the diagnosed default-startup native-extension test fixture path: persist the built startup-marker install at the source-work directory consumed by ResourceLoader so the real default interactive lifecycle dispatch creates the marker. Do not weaken assertions, alter product code, add dependencies, or bypass provenance/trust validation."
+    },
+    {
+      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R4",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-EXTENSION-FIXTURE-R1"
       ],
       "ownership": [],
       "validation": [
