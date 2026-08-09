@@ -128,9 +128,18 @@ impl DefaultResourceLoader {
         } else {
             discover_and_load_extensions(&self.cwd)
         };
-        let mut persisted_native_extensions =
-            match NativeExtensionInstall::load_persisted(&extension_dir.join("source")) {
-                Ok(installs) => installs,
+        let agent_extensions = self.agent_dir.join("extensions");
+        let mut persisted_native_extensions = Vec::new();
+        // Application-managed receipts live at the extension root; PackageManager
+        // source installs retain their receipts below `source`.
+        for source_work_dir in [
+            extension_dir.clone(),
+            extension_dir.join("source"),
+            agent_extensions.clone(),
+            agent_extensions.join("source"),
+        ] {
+            match NativeExtensionInstall::load_persisted(&source_work_dir) {
+                Ok(installs) => persisted_native_extensions.extend(installs),
                 Err(message) => {
                     self.extensions.errors.push(ExtensionError {
                         message,
@@ -138,19 +147,6 @@ impl DefaultResourceLoader {
                     });
                     return;
                 }
-            };
-        // PackageManager persists user packages below the agent directory and
-        // project packages below .pi; both are configured resources.
-        match NativeExtensionInstall::load_persisted(
-            &self.agent_dir.join("extensions").join("source"),
-        ) {
-            Ok(installs) => persisted_native_extensions.extend(installs),
-            Err(message) => {
-                self.extensions.errors.push(ExtensionError {
-                    message,
-                    source: None,
-                });
-                return;
             }
         }
         let native_extension_artifacts = persisted_native_extensions
