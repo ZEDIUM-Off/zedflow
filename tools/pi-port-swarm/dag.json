@@ -2485,20 +2485,36 @@
       "intent": "Replace only the diagnosed AI placeholder parity paths with deterministic executable differential fixtures: exercise compat::complete and the provider dispatch matrix against the frozen TypeScript oracle using local/faux transports, while retaining narrow capability gates only for genuinely live credentials. Remove panic runners and blanket ignores for deterministic behavior; do not mutate references/pi, add dependencies, weaken assertions, or alter unrelated provider semantics."
     },
     {
-      "id": "REPLAN-SEM-FINAL-V2-FIDELITY-R1",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-SEM-FINAL-V2-AI-FROZEN-ORACLE-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-SEM-FINAL-V2-AI-DIFFERENTIAL-R1"
       ],
+      "ownership": [
+        "crates/zedflow-ai/tests/frozen-oracle.rs",
+        "crates/zedflow-ai/tests/fixtures/frozen-oracle.ts"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --check",
+        "cargo test -p zedflow-ai --test frozen-oracle"
+      ],
+      "intent": "Replace only the diagnosed hand-written AI oracle duplicate with an executable oracle that imports and exercises references/pi/packages/ai/src/compat.ts at the frozen gitlink. Drive compat.complete and provider/context conversion through deterministic faux provider transport, and compare Rust behavior against those oracle results. Do not mutate references/pi, reimplement Pi registry/compat behavior, add dependencies, use constant golden responses, weaken assertions, or change files outside ownership."
+    },
+    {
+      "id": "REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-SEM-FINAL-V2-AI-FROZEN-ORACLE-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Perform independent package-by-package Pi semantic fidelity review on the exact candidate SHA, including differential fixtures and the frozen TypeScript oracle. Require the repaired AI compat.complete and provider-matrix differential fixtures to execute against the frozen TypeScript oracle; reject panic runners, blanket ignores of deterministic behavior, or golden data without an executable oracle derivation."
+      "intent": "Repeat the independent package-by-package Pi semantic fidelity review on the exact repaired candidate SHA. Require the AI compat.complete and provider-matrix differential fixture to import and execute the frozen TypeScript implementation, exercise context/provider conversion through deterministic faux transport, and compare Rust results against that executable oracle; reject duplicate compatibility models, constant golden responses, panic runners, or blanket ignores of deterministic behavior."
     },
     {
       "id": "SEM-FINAL-V3-RUST-QUALITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-SEM-FINAL-V2-FIDELITY-R1"
+        "REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R2"
       ],
       "ownership": [],
       "validation": [],
