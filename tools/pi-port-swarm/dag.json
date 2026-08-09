@@ -2542,7 +2542,7 @@
       "id": "SEM-FINAL-V5-DOCS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R2"
+        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R3"
       ],
       "ownership": [
         "docs/porting/BASELINE.md",
@@ -2714,14 +2714,30 @@
       "intent": "Repair the default interactive exit and signal lifecycle at the shared owner boundary: handle /exit and Ctrl-C as local termination, ensure every normal and failure return calls InteractiveMode::stop before leaving the live TUI, and add executable PTY coverage proving process exit, termios restoration, and bracketed-paste disable output on both paths. Preserve print/text/json and RPC routing, the owner-thread event pump, extension shutdown, and frozen Pi behavior; do not add dependencies, use forced termination as cleanup, weaken restoration assertions, or alter unrelated interactive features."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R2",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-NONINTERACTIVE-CLI-REPAIR-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-FINAL-V4-INTERACTIVE-EXIT-RESTORE-R1"
       ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/rpc-entry.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test args --test print-mode"
+      ],
+      "intent": "Repair only the diagnosed non-interactive CLI failures: apply the parsed --api-key override when create_runtime_for_args/configured_model constructs the selected provider model, and make JSON mode return process failure after emitting an Error or Aborted stop result instead of returning success first. Preserve provider/model resolution, output formats, RPC and interactive routing; do not add dependencies, weaken error reporting, or alter unrelated runtime behavior."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-NONINTERACTIVE-CLI-REPAIR-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Run end-user black-box gates on the same SHA: default full-screen TUI, --print/text/json, RPC, sessions/no-session, tools, extensions, skills, themes, package management and Orchestrator; verify terminal restoration on normal and failure paths."
+      "intent": "Repeat the end-user black-box gates on the exact repaired SHA: default full-screen TUI, --print/text/json, RPC, sessions/no-session, tools, extensions, skills, themes, package management and Orchestrator; verify --api-key reaches the selected provider runtime, text/json failures return nonzero status, and terminal restoration holds on normal and failure paths."
     }
   ]
 }
