@@ -2469,7 +2469,7 @@
       "id": "SEM-FINAL-V2-FIDELITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R4"
+        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R5"
       ],
       "ownership": [],
       "validation": [],
@@ -2607,10 +2607,26 @@
       "intent": "Repair only the diagnosed default-startup native-extension test fixture path: persist the built startup-marker install at the source-work directory consumed by ResourceLoader so the real default interactive lifecycle dispatch creates the marker. Do not weaken assertions, alter product code, add dependencies, or bypass provenance/trust validation."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R4",
-      "kind": "validator",
+      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-RECEIPTS-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-EXTENSION-FIXTURE-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
+        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test resource-loader"
+      ],
+      "intent": "Repair only the deterministic persisted native-extension receipt regression: restore ResourceLoader discovery of application-persisted installs while preserving exact source/artifact/trust binding and rejection of forged or substituted receipts. Do not weaken the failing tests, bypass provenance checks, add dependencies, or alter unrelated resource loading."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R5",
+      "kind": "validator",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-RECEIPTS-R1"
       ],
       "ownership": [],
       "validation": [
