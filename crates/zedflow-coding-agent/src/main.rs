@@ -282,16 +282,11 @@ fn run_print(
                 .ok_or_else(|| "print mode requires a prompt".to_owned())?
                 .map_err(|error| error.to_string())
         })?;
+    if let Some(error) = print_failure(&result.stop_reason, result.error_message.as_deref()) {
+        return Err(error);
+    }
     if json {
         return Ok(());
-    }
-    if matches!(
-        result.stop_reason,
-        zedflow_ai::StopReason::Error | zedflow_ai::StopReason::Aborted
-    ) {
-        return Err(result
-            .error_message
-            .unwrap_or_else(|| format!("Request {:?}", result.stop_reason)));
     }
     for content in result.content {
         if let zedflow_ai::AssistantContentBlock::Text(text) = content {
@@ -299,6 +294,17 @@ fn run_print(
         }
     }
     Ok(())
+}
+
+fn print_failure(
+    stop_reason: &zedflow_ai::StopReason,
+    error_message: Option<&str>,
+) -> Option<String> {
+    matches!(
+        stop_reason,
+        zedflow_ai::StopReason::Error | zedflow_ai::StopReason::Aborted
+    )
+    .then(|| error_message.map_or_else(|| format!("Request {stop_reason:?}"), str::to_owned))
 }
 
 fn run_interactive(args: &[String], parsed: &zedflow_coding_agent::cli::Args) -> io::Result<()> {
@@ -336,6 +342,15 @@ fn run_interactive(args: &[String], parsed: &zedflow_coding_agent::cli::Args) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_print_result_is_process_error() {
+        assert_eq!(
+            print_failure(&zedflow_ai::StopReason::Error, Some("provider failed")),
+            Some("provider failed".to_owned())
+        );
+        assert_eq!(print_failure(&zedflow_ai::StopReason::Stop, None), None);
+    }
 
     #[test]
     fn export_route_writes_default_html_file() {

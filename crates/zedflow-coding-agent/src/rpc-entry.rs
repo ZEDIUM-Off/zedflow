@@ -33,7 +33,38 @@ use zedflow_agent::harness::{
         Session as AgentSessionTrait, SessionForkOptions, SessionMetadata, Skill as HarnessSkill,
     },
 };
-use zedflow_ai::{Model, Models, providers::all::builtin_models};
+use zedflow_ai::{
+    Model, Models,
+    auth::types::{ApiKeyAuth, ApiKeyResolveInput, AuthFuture, AuthResult, ResolvedAuth},
+    providers::all::builtin_models,
+};
+
+struct RuntimeApiKeyAuth {
+    api_key: String,
+    fallback: Option<Arc<dyn ApiKeyAuth>>,
+}
+
+impl ApiKeyAuth for RuntimeApiKeyAuth {
+    fn name(&self) -> &str {
+        "--api-key override"
+    }
+
+    fn resolve<'a>(
+        &'a self,
+        input: ApiKeyResolveInput<'a>,
+    ) -> AuthFuture<'a, AuthResult<Option<ResolvedAuth>>> {
+        Box::pin(async move {
+            let mut resolved = if let Some(fallback) = &self.fallback {
+                fallback.resolve(input).await?.unwrap_or_default()
+            } else {
+                ResolvedAuth::default()
+            };
+            resolved.auth.api_key = Some(self.api_key.clone());
+            resolved.source = Some("--api-key".to_owned());
+            Ok(Some(resolved))
+        })
+    }
+}
 
 #[must_use]
 pub fn rpc_args(args: &[String]) -> crate::cli::Args {
@@ -64,8 +95,8 @@ pub fn create_runtime_for_args(args: &[String]) -> io::Result<AgentSessionRuntim
     let cwd_string = cwd.to_string_lossy().into_owned();
     let parsed = parse_args(args.iter().cloned());
     let settings = SettingsManager::create(&cwd, config::get_agent_dir());
-    let models = builtin_models();
-    let model = configured_model(&parsed, &settings, &models);
+    let mut models = builtin_models();
+    let model = configured_model(&parsed, &settings, &mut models);
     let env = Arc::new(NodeExecutionEnv::with_cwd(&cwd_string));
     let session = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -493,7 +524,7 @@ fn queue_mode(value: &str) -> zedflow_agent::types::QueueMode {
     }
 }
 
-fn configured_model(args: &Args, settings: &SettingsManager, models: &Models) -> Model {
+fn configured_model(args: &Args, settings: &SettingsManager, models: &mut Models) -> Model {
     let configured_provider = settings.get_default_provider();
     let configured_model = settings.get_default_model();
     let provider = args
@@ -503,7 +534,7 @@ fn configured_model(args: &Args, settings: &SettingsManager, models: &Models) ->
         .map(str::to_owned);
     let requested = args.model.as_deref().or(configured_model.as_deref());
 
-    requested
+    let model = requested
         .and_then(|requested| {
             let (provider, id) = requested
                 .split_once('/')
@@ -523,7 +554,20 @@ fn configured_model(args: &Args, settings: &SettingsManager, models: &Models) ->
             provider.and_then(|provider| models.get_models(Some(&provider)).into_iter().next())
         })
         .or_else(|| models.get_models(None).into_iter().next())
-        .unwrap_or_default()
+        .unwrap_or_default();
+
+    if let (Some(api_key), Some(mut provider)) = (
+        args.api_key.clone(),
+        models.get_provider(&model.provider).cloned(),
+    ) {
+        provider.auth.api_key = Some(Arc::new(RuntimeApiKeyAuth {
+            api_key,
+            fallback: provider.auth.api_key.clone(),
+        }));
+        models.set_provider(provider);
+    }
+
+    model
 }
 
 #[cfg(test)]
@@ -531,6 +575,19 @@ mod tests {
     use super::*;
     use std::io::{Cursor, Write};
     use std::sync::{Arc, Mutex};
+    use zedflow_ai::auth::types::{AuthContext, AuthModel};
+
+    struct EmptyAuthContext;
+
+    impl AuthContext for EmptyAuthContext {
+        fn env<'a>(&'a self, _name: &'a str) -> AuthFuture<'a, Option<String>> {
+            Box::pin(async { None })
+        }
+
+        fn file_exists<'a>(&'a self, _path: &'a str) -> AuthFuture<'a, bool> {
+            Box::pin(async { false })
+        }
+    }
 
     struct SharedWriter(Arc<Mutex<Vec<u8>>>);
 
@@ -626,18 +683,42 @@ mod tests {
     }
 
     #[test]
-    fn configured_model_uses_rpc_provider_and_model_flags() {
+    fn configured_model_uses_rpc_provider_model_and_api_key_flags() {
         let args = rpc_args(&[
             "--provider".to_owned(),
             "openai".to_owned(),
             "--model".to_owned(),
             "gpt-4".to_owned(),
+            "--api-key".to_owned(),
+            "runtime-key".to_owned(),
         ]);
         let settings = SettingsManager::in_memory(Default::default());
-        let model = configured_model(&args, &settings, &builtin_models());
+        let mut models = builtin_models();
+        let model = configured_model(&args, &settings, &mut models);
+        let auth_model = AuthModel {
+            provider: model.provider.clone(),
+            api: model.api.clone(),
+            id: model.id.clone(),
+            base_url: Some(model.base_url.clone()),
+        };
+        let auth = models
+            .get_provider(&model.provider)
+            .and_then(|provider| provider.auth.api_key.as_ref())
+            .expect("provider API-key auth");
+        let resolved = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime")
+            .block_on(auth.resolve(ApiKeyResolveInput {
+                model: &auth_model,
+                ctx: &EmptyAuthContext,
+                credential: None,
+            }))
+            .expect("resolve auth")
+            .expect("resolved auth");
 
         assert_eq!(model.provider, "openai");
         assert_eq!(model.id, "gpt-4");
+        assert_eq!(resolved.auth.api_key.as_deref(), Some("runtime-key"));
     }
 
     #[test]
