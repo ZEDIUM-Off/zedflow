@@ -1,6 +1,7 @@
 //! Differential check against the dependency-free frozen TypeScript compat oracle.
 
 use std::process::Command;
+use std::sync::Arc;
 
 use futures::executor::block_on;
 use serde_json::{Value, json};
@@ -32,11 +33,34 @@ fn user(content: UserMessageContent) -> Message {
     })
 }
 
+fn describe_context(context: &Context) -> String {
+    context
+        .messages
+        .iter()
+        .map(|message| match message {
+            Message::User(message) => match &message.content {
+                UserMessageContent::Text(text) => format!("user:text:{}", text.chars().count()),
+                UserMessageContent::Blocks(blocks) => format!("user:blocks:{}", blocks.len()),
+            },
+            Message::Assistant(message) => format!("assistant:blocks:{}", message.content.len()),
+            Message::ToolResult(message) => format!("toolResult:blocks:{}", message.content.len()),
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
 fn rust_observation() -> Value {
-    let empty_registration = compat::register_faux_provider(RegisterFauxProviderOptions::default());
+    let empty_registration = compat::register_faux_provider(RegisterFauxProviderOptions {
+        api: Some("oracle-empty".into()),
+        ..RegisterFauxProviderOptions::default()
+    });
     empty_registration.set_responses(
         (0..4)
-            .map(|_| FauxResponseStep::Message(faux_assistant_message("handled")))
+            .map(|_| {
+                FauxResponseStep::Factory(Arc::new(|context, _, _, _| {
+                    faux_assistant_message(describe_context(context))
+                }))
+            })
             .collect(),
     );
     let empty_model = empty_registration.get_model(None).expect("faux model");
@@ -81,11 +105,16 @@ fn rust_observation() -> Value {
         .map(|(input, context)| {
             let response = block_on(compat::complete(&empty_model, context, None))
                 .expect("empty-message compat complete");
+            let text = match response.content.as_slice() {
+                [AssistantContentBlock::Text(text)] => text.text.clone(),
+                blocks => panic!("unexpected faux content: {blocks:?}"),
+            };
             json!({
                 "input": input,
                 "role": "assistant",
                 "contentDefined": true,
                 "error": response.error_message.is_some(),
+                "text": text,
             })
         })
         .collect();
@@ -103,12 +132,18 @@ fn rust_observation() -> Value {
                 }],
                 ..RegisterFauxProviderOptions::default()
             });
-            registration.set_responses(vec![FauxResponseStep::Message(faux_assistant_message(
-                *api,
+            registration.set_responses(vec![FauxResponseStep::Factory(Arc::new(
+                |context, _, _, model| {
+                    faux_assistant_message(format!("{}:{}", model.api, describe_context(context)))
+                },
             ))]);
+            let context = Context {
+                messages: vec![user(UserMessageContent::Text((*api).into()))],
+                ..Context::default()
+            };
             let response = block_on(compat::complete(
                 &registration.get_model(None).expect("faux model"),
-                &Context::default(),
+                &context,
                 None,
             ))
             .expect("dispatch compat complete");
