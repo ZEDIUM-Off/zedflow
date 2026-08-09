@@ -2542,7 +2542,7 @@
       "id": "SEM-FINAL-V5-DOCS",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-SEM-FINAL-V4-ENDUSER-R1"
+        "REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R2"
       ],
       "ownership": [
         "docs/porting/BASELINE.md",
@@ -2697,10 +2697,27 @@
       "intent": "Add the missing Orchestrator CLI executable and route its user-facing commands into the existing Orchestrator runtime so cargo run -p zedflow-orchestrator -- --help succeeds. Preserve the frozen Pi CLI behavior; do not alter library runtime modules, add dependencies, or weaken end-user gates."
     },
     {
-      "id": "REPLAN-SEM-FINAL-V4-ENDUSER-R1",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-SEM-FINAL-V4-INTERACTIVE-EXIT-RESTORE-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-SEM-FINAL-V4-ORCHESTRATOR-CLI-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-terminal-restoration.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-terminal-restoration"
+      ],
+      "intent": "Repair the default interactive exit and signal lifecycle at the shared owner boundary: handle /exit and Ctrl-C as local termination, ensure every normal and failure return calls InteractiveMode::stop before leaving the live TUI, and add executable PTY coverage proving process exit, termios restoration, and bracketed-paste disable output on both paths. Preserve print/text/json and RPC routing, the owner-thread event pump, extension shutdown, and frozen Pi behavior; do not add dependencies, use forced termination as cleanup, weaken restoration assertions, or alter unrelated interactive features."
+    },
+    {
+      "id": "REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R2",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-SEM-FINAL-V4-INTERACTIVE-EXIT-RESTORE-R1"
       ],
       "ownership": [],
       "validation": [],
