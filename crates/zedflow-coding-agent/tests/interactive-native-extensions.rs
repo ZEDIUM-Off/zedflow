@@ -41,7 +41,8 @@ fn default_startup_dispatches_session_lifecycle_to_persisted_native_extension() 
             .as_nanos()
     ));
     let extensions = root.join(".pi/extensions");
-    let source = extensions.join("source");
+    let source_work = extensions.join("source");
+    let source = source_work.join("startup-marker");
     let target = std::env::temp_dir().join("zedflow-interactive-native-extension-target");
     let marker = root.join("session-start.json");
     fs::create_dir_all(source.join("src")).unwrap();
@@ -112,7 +113,7 @@ export_extension!(StartupMarker);
         )
         .unwrap(),
     };
-    install.persist(&extensions).unwrap();
+    install.persist(&source_work).unwrap();
 
     let mut child = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_zedflow-coding-agent")))
         .current_dir(&root)
