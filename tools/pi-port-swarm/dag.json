@@ -2466,20 +2466,39 @@
       "intent": "Repeat the failed ResourceLoader extension-reload regression validation after the scoped shared-loader repair. No source edits."
     },
     {
-      "id": "SEM-FINAL-V2-FIDELITY",
-      "kind": "reviewer",
+      "id": "REPLAN-SEM-FINAL-V2-AI-DIFFERENTIAL-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R5"
       ],
+      "ownership": [
+        "crates/zedflow-ai/src/compat.rs",
+        "crates/zedflow-ai/tests/empty.rs",
+        "crates/zedflow-ai/tests/stream.rs",
+        "crates/zedflow-ai/tests/frozen-oracle.rs",
+        "crates/zedflow-ai/tests/fixtures/frozen-oracle.ts"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --check",
+        "cargo test -p zedflow-ai --test empty --test stream --test frozen-oracle"
+      ],
+      "intent": "Replace only the diagnosed AI placeholder parity paths with deterministic executable differential fixtures: exercise compat::complete and the provider dispatch matrix against the frozen TypeScript oracle using local/faux transports, while retaining narrow capability gates only for genuinely live credentials. Remove panic runners and blanket ignores for deterministic behavior; do not mutate references/pi, add dependencies, weaken assertions, or alter unrelated provider semantics."
+    },
+    {
+      "id": "REPLAN-SEM-FINAL-V2-FIDELITY-R1",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-SEM-FINAL-V2-AI-DIFFERENTIAL-R1"
+      ],
       "ownership": [],
       "validation": [],
-      "intent": "Perform independent package-by-package Pi semantic fidelity review on the exact candidate SHA, including differential fixtures and the frozen TypeScript oracle."
+      "intent": "Perform independent package-by-package Pi semantic fidelity review on the exact candidate SHA, including differential fixtures and the frozen TypeScript oracle. Require the repaired AI compat.complete and provider-matrix differential fixtures to execute against the frozen TypeScript oracle; reject panic runners, blanket ignores of deterministic behavior, or golden data without an executable oracle derivation."
     },
     {
       "id": "SEM-FINAL-V3-RUST-QUALITY",
       "kind": "reviewer",
       "depends_on": [
-        "SEM-FINAL-V2-FIDELITY"
+        "REPLAN-SEM-FINAL-V2-FIDELITY-R1"
       ],
       "ownership": [],
       "validation": [],
