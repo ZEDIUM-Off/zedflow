@@ -2501,20 +2501,38 @@
       "intent": "Replace only the diagnosed hand-written AI oracle duplicate with an executable oracle that imports and exercises references/pi/packages/ai/src/compat.ts at the frozen gitlink. Drive compat.complete and provider/context conversion through deterministic faux provider transport, and compare Rust behavior against those oracle results. Do not mutate references/pi, reimplement Pi registry/compat behavior, add dependencies, use constant golden responses, weaken assertions, or change files outside ownership."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R2",
-      "kind": "reviewer",
+      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-AI-PROVIDER-CONVERSION-ORACLE-R1",
+      "kind": "writer",
       "depends_on": [
         "REPLAN-REPLAN-SEM-FINAL-V2-AI-FROZEN-ORACLE-R1"
       ],
+      "ownership": [
+        "crates/zedflow-ai/tests/frozen-oracle.rs",
+        "crates/zedflow-ai/tests/fixtures/frozen-oracle.ts"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-ai --check",
+        "cargo test -p zedflow-ai --test frozen-oracle"
+      ],
+      "intent": "Repair only the diagnosed differential-oracle bypass. Keep each builtin API provider registered and invoke frozen compat.complete with builtin models while placing deterministic faux transport beneath the provider implementation; capture and compare provider-specific context conversion, serialized requests, and normalized results for every builtin API against the Rust builtin paths. Do not override builtin API IDs with registerFauxProvider, mutate references/pi, duplicate compatibility models, use constant golden responses, add dependencies, weaken assertions, or change files outside ownership."
+    },
+    {
+      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R3",
+      "kind": "reviewer",
+      "depends_on": [
+        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-AI-PROVIDER-CONVERSION-ORACLE-R1"
+      ],
       "ownership": [],
-      "validation": [],
-      "intent": "Repeat the independent package-by-package Pi semantic fidelity review on the exact repaired candidate SHA. Require the AI compat.complete and provider-matrix differential fixture to import and execute the frozen TypeScript implementation, exercise context/provider conversion through deterministic faux transport, and compare Rust results against that executable oracle; reject duplicate compatibility models, constant golden responses, panic runners, or blanket ignores of deterministic behavior."
+      "validation": [
+        "cargo test -p zedflow-ai --test frozen-oracle"
+      ],
+      "intent": "Repeat the independent package-by-package Pi semantic fidelity review on the exact repaired candidate SHA. Require the AI differential fixture to import and execute frozen compat.complete with builtin API registrations and models intact, inject deterministic faux transport only beneath each builtin provider conversion path, and compare provider-specific converted requests and results with Rust builtin behavior. Reject builtin-ID overrides, duplicate compatibility models, constant golden responses, panic runners, or blanket ignores of deterministic behavior."
     },
     {
       "id": "SEM-FINAL-V3-RUST-QUALITY",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R2"
+        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R3"
       ],
       "ownership": [],
       "validation": [],
