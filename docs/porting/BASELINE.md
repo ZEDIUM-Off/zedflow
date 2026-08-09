@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Zedflow is in **Stage 1: incomplete semantic Pi TypeScript → Rust port**. The frozen source remains `references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd`. The completed mechanical DAG proved file presence, not product fidelity. Stage-2 Flow/Runtime Graph/LangGraph work and promotion to `main` remain forbidden.
+Zedflow is in **Stage 1: semantic Pi TypeScript → Rust port awaiting one-SHA final-gate closure**. The accepted integration ref is `automation/pi-port@a9a23c387f372ed027c5a742047f93d0689955ed`; the frozen source remains `references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd`. Stage-2 Flow/Runtime Graph/LangGraph work and promotion to `main` remain forbidden.
 
 This is the sole current human status document. Operational facts come from the CAS integration ref, frozen gitlink, committed DAG, and external controller state:
 
@@ -15,11 +15,11 @@ python3 tools/pi-port-swarm/manifest.py status
 
 | Package | Mechanical inventory | Semantic state |
 |---|---:|---|
-| AI | 247/247 rows accounted for | open: placeholder error/transport paths and deterministic ignored tests |
-| Agent | 45/45 rows accounted for | open: four ignored behaviors |
-| TUI | 61/61 rows accounted for | semantic TUI fidelity accepted after terminal/native/renderer/component repair; final workspace gate still pending |
-| Coding-agent | 332 rows accounted for | core tools and session/config accepted; Rust extension architecture approved and remaining interactive/CLI/test closure pending |
-| Orchestrator | 13/13 rows accounted for | invalid: marker-only runtime and no executable Rust tests |
+| AI | 247/247 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
+| Agent | 45/45 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
+| TUI | 61/61 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
+| Coding-agent | 332 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
+| Orchestrator | 13/13 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
 
 Audit evidence is retained in `.pi-subagents/artifacts/44c53eb4_pi-port-scout_{0,1,2}_output.md`. `automation/pi-port@f83a96fe` remains mechanical evidence only.
 
@@ -42,6 +42,19 @@ The user subsequently approved exact target-specific `windows-sys = "=0.61.2"` (
 The canonical extension decision is `docs/porting/RUST_EXTENSION_ARCHITECTURE.md`: maximum Pi `ExtensionAPI` capability alignment through separately compiled Rust `cdylib` extensions loaded in-process, custom C ABI v1, exact `libloading = "=0.9.0"`, reused `sha2 = "0.10"`, one audited unsafe loader module, process-lifetime library retention, and source-only crates.io/GitHub/local installation with mandatory local Cargo build and provenance receipt. TS/jiti compatibility is deferred and must not be claimed by Stage 1.
 
 The controller now permits a reviewed CAS upgrade from a fully completed DAG to a fresh, non-reused, reachable DAG while preserving all external runtime history. The semantic controller candidate must descend from `f83a96fe`, preserve the Pi gitlink, pass control tests, atomically upgrade `automation/pi-port`, and only then restart dispatch.
+
+## Final-gate evidence
+
+The controller accepted the final reviews, but not on one immutable SHA:
+
+| Gate | Accepted SHA | Evidence |
+|---|---|---|
+| Workspace | `0b7206444c22b9f2d3ec7beebad4529ba9709962` | fmt, workspace check, executed workspace tests, and strict manifest returned 0 |
+| Fidelity | `26fd6e77dca31fe7c3ca13c1e85dcbc7809b8894` | independent review accepted; frozen AI oracle returned 0 |
+| Rust quality | `26fd6e77dca31fe7c3ca13c1e85dcbc7809b8894` | independent review accepted |
+| End user | `a9a23c387f372ed027c5a742047f93d0689955ed` | independent review accepted |
+
+The workspace gate predates fidelity and end-user repairs; the fidelity and Rust-quality gates predate end-user repairs. Therefore Stage 1 is **not complete**. These gates must accept the same integration SHA before promotion can be considered, and all gates must pass again after an explicit promotion to `main`. Exact controller evidence is retained in `.agents/state/stage-1-final-gate-evidence.md`.
 
 ## Stage-1 exit gate
 
