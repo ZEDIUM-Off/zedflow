@@ -462,11 +462,26 @@
       "intent": "Implement only P7.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete the exact oracle/fixture/PTY test files and compare frozen Pi versus final Rust behavior. Do not edit product code, weaken normalization, bless unexplained frames, use untracked pnpm state, credentials, or network. Run every oracle fixture as required by the plan in addition to the declared cargo gates. Return equal frame artifacts and terminal restoration evidence."
     },
     {
-      "id": "P8.T1",
-      "kind": "reviewer",
+      "id": "P8.T1-R1",
+      "kind": "writer",
       "depends_on": [
         "P1.T1",
         "P7.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib visual_truncate::tests::retains_the_tail_of_wrapped_output"
+      ],
+      "intent": "Repair only the deterministic visual_truncate tail-retention failure found by terminal P8.T1 on immutable candidate 3e46ead896aaddbd16d3ea6779f8d85539a9b01a. In fresh context, read the complete frozen Pi counterpart and all Rust callers, then modify only crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs at the shared root cause so wrapped output retains the expected tail [\"two  \", \"three\"] rather than [\"wo th\", \"ree  \"]. Do not weaken the embedded regression, edit other files, add dependencies, or run workspace-wide gates. Run every declared focused validation and return exact evidence."
+    },
+    {
+      "id": "P8.T1-V1",
+      "kind": "validator",
+      "depends_on": [
+        "P8.T1-R1"
       ],
       "ownership": [],
       "validation": [
@@ -476,13 +491,13 @@
         "python3 tools/pi-port-swarm/manifest.py check",
         "python3 tools/pi-port-swarm/controller.py validate"
       ],
-      "intent": "Execute only P8.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh read-only context on the exact candidate SHA supplied by the controller. Run every listed workspace, manifest, differential, PTY, and independent review gate. Do not edit or repair anything. On any failure, return the exact blocker and stop. On success, return immutable SHA and complete evidence bundle."
+      "intent": "Fresh read-only replacement for terminal P8.T1 on the exact P8.T1-R1 candidate SHA. Execute the complete P8 full workspace, manifest, differential, PTY, and independent review gate from .agents/plans/pi-tui-end-user-parity-repair.md. Run every listed command, do not edit or repair anything, and stop on the first failure with exact evidence. On success, return the immutable SHA and complete evidence bundle."
     },
     {
       "id": "P9.T1",
       "kind": "writer",
       "depends_on": [
-        "P8.T1"
+        "P8.T1-V1"
       ],
       "ownership": [
         "docs/porting/BASELINE.md",
