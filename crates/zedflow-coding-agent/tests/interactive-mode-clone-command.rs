@@ -10,7 +10,10 @@ fn clone_paths_are_shell_quoted_when_needed() {
 fn clone_is_dispatched_without_prompting() {
     let mut mode = InteractiveMode::new();
     mode.queue_user_input("/clone");
-    assert_eq!(mode.last_status(), Some("Clone requested"));
+    assert_eq!(
+        mode.last_status(),
+        Some("Clone requires selecting a session tree entry")
+    );
     assert_eq!(mode.pending_user_input_count(), 0);
 }
 

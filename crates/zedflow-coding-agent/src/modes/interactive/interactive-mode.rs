@@ -2,8 +2,9 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
-    io,
+    fs, io,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -17,25 +18,68 @@ use zedflow_tui::{Component, ProcessTerminal, Terminal, Text, Tui};
 
 use crate::{
     agent_session_runtime::AgentSessionRuntime,
+    auth_storage::AuthStorage,
+    config::{get_agent_dir, get_auth_path, get_sessions_dir},
     extensions::{
         ExtensionError, ExtensionEvent, ExtensionEventKind, ExtensionMode, ExtensionRunner,
         InputEvent, ProviderConfig, SessionActionResult,
     },
+    keybindings::KeybindingsManager,
     modes_interactive_components_index::{
         assistant_message::{AssistantContent, StopReason, StreamingAssistantMessage},
         compaction_summary_message::CompactionSummaryMessageComponent,
+        custom_editor::CustomEditor,
         footer::FooterSnapshot,
         status_indicator::{IdleStatus, WorkingStatusIndicator},
         tool_execution::ToolExecutionComponent,
         user_message::UserMessageComponent,
     },
+    modes_interactive_components_index::{
+        model_selector::{ModelItem, ModelSelector},
+        oauth_selector::{
+            AuthSelectorMode, AuthSelectorProvider, AuthSelectorProviderType, OAuthSelector,
+        },
+        scoped_models_selector::{ScopedModel, ScopedModelsSelector},
+        settings_selector::{SettingChoice, SettingsSelector},
+        trust_selector::TrustSelectorState,
+    },
+    session_manager,
+    session_selector::SessionSelectorState,
+    settings_manager::SettingsManager,
     slash_commands::{BuiltinSlashCommandId, parse_builtin_slash_command},
+    tree_selector::TreeSelectorState,
+    trust_manager::ProjectTrustStore,
+    user_message_selector::{UserMessageItem, UserMessageSelectorState},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BuiltinCommandOutcome {
     Success(String),
     Cancelled(String),
+    Action(BuiltinCommandAction),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BuiltinCommandAction {
+    Settings,
+    Model(Option<String>),
+    ScopedModels,
+    Export(Option<PathBuf>),
+    Import(PathBuf),
+    Share,
+    Copy,
+    Name(Option<String>),
+    Session,
+    Changelog,
+    Hotkeys,
+    Fork,
+    Clone,
+    Tree,
+    Trust,
+    Login,
+    Logout,
+    New,
+    Resume,
 }
 
 pub trait BuiltinCommandService: Send {
@@ -46,11 +90,22 @@ pub trait BuiltinCommandService: Send {
     ) -> Result<BuiltinCommandOutcome, String>;
 }
 
-/// Local, deterministic command boundary used by the live TUI. Commands that
-/// need a choice report the selector they opened; filesystem/provider effects
-/// remain behind the corresponding accepted service boundaries.
+/// Live command parser boundary. Effects are typed so `InteractiveMode` can
+/// mount the matching selector or operate on its active runtime; reload is the
+/// only effect that must remain owned by `main`'s resource loader.
 #[derive(Default)]
-pub struct LiveBuiltinCommandService;
+pub struct LiveBuiltinCommandService {
+    reload: Option<Box<dyn FnMut() -> Result<(), String> + Send>>,
+}
+
+impl LiveBuiltinCommandService {
+    #[must_use]
+    pub fn with_reload(reload: impl FnMut() -> Result<(), String> + Send + 'static) -> Self {
+        Self {
+            reload: Some(Box::new(reload)),
+        }
+    }
+}
 
 impl BuiltinCommandService for LiveBuiltinCommandService {
     fn execute(
@@ -58,42 +113,45 @@ impl BuiltinCommandService for LiveBuiltinCommandService {
         command: BuiltinSlashCommandId,
         arguments: &str,
     ) -> Result<BuiltinCommandOutcome, String> {
+        use BuiltinCommandAction as Action;
         use BuiltinSlashCommandId as Command;
-        let status = match command {
-            Command::Settings => "Settings selector opened".into(),
-            Command::Model => format!("Model selector opened{}", suffix(arguments)),
-            Command::ScopedModels => "Scoped models selector opened".into(),
-            Command::Export => format!("Export requested{}", suffix(arguments)),
+        let action = match command {
+            Command::Settings => Action::Settings,
+            Command::Model => Action::Model((!arguments.is_empty()).then(|| arguments.to_owned())),
+            Command::ScopedModels => Action::ScopedModels,
+            Command::Export => {
+                Action::Export((!arguments.is_empty()).then(|| PathBuf::from(arguments)))
+            }
             Command::Import if arguments.is_empty() => {
                 return Err("Usage: /import <path.jsonl>".into());
             }
-            Command::Import => format!("Import confirmation opened for {arguments}"),
-            Command::Share => "Share requested".into(),
-            Command::Copy => "Copy requested".into(),
-            Command::Name if arguments.is_empty() => "Session name requested".into(),
-            Command::Name => format!("Session name set: {arguments}"),
-            Command::Session => "Session info opened".into(),
-            Command::Changelog => "Changelog opened".into(),
-            Command::Hotkeys => "Hotkeys opened".into(),
-            Command::Fork => "Fork selector opened".into(),
-            Command::Clone => "Clone requested".into(),
-            Command::Tree => "Session tree opened".into(),
-            Command::Trust => "Trust selector opened".into(),
-            Command::Login => "Login selector opened".into(),
-            Command::Logout => "Logout selector opened".into(),
-            Command::New => "New session requested".into(),
-            Command::Resume => "Session selector opened".into(),
-            Command::Reload => "Resources reloaded".into(),
+            Command::Import => Action::Import(PathBuf::from(arguments)),
+            Command::Share => Action::Share,
+            Command::Copy => Action::Copy,
+            Command::Name => Action::Name((!arguments.is_empty()).then(|| arguments.to_owned())),
+            Command::Session => Action::Session,
+            Command::Changelog => Action::Changelog,
+            Command::Hotkeys => Action::Hotkeys,
+            Command::Fork => Action::Fork,
+            Command::Clone => Action::Clone,
+            Command::Tree => Action::Tree,
+            Command::Trust => Action::Trust,
+            Command::Login => Action::Login,
+            Command::Logout => Action::Logout,
+            Command::New => Action::New,
+            Command::Resume => Action::Resume,
+            Command::Reload => {
+                if let Some(reload) = &mut self.reload {
+                    reload()?;
+                }
+                return Ok(BuiltinCommandOutcome::Success(
+                    "Reloaded keybindings, extensions, skills, prompts, themes".into(),
+                ));
+            }
             Command::Compact | Command::Quit => unreachable!("handled by InteractiveMode"),
         };
-        Ok(BuiltinCommandOutcome::Success(status))
+        Ok(BuiltinCommandOutcome::Action(action))
     }
-}
-
-fn suffix(arguments: &str) -> String {
-    (!arguments.is_empty())
-        .then(|| format!(": {arguments}"))
-        .unwrap_or_default()
 }
 
 /// Parse the first argument of an interactive path command (`/import` or
@@ -183,6 +241,7 @@ pub struct InteractiveMode {
     compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
     builtin_commands: Box<dyn BuiltinCommandService>,
+    selector_actions: Arc<Mutex<VecDeque<SelectorAction>>>,
     exit_requested: bool,
 }
 
@@ -224,6 +283,7 @@ impl InteractiveMode {
             compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
             builtin_commands: Box::<LiveBuiltinCommandService>::default(),
+            selector_actions: Arc::new(Mutex::new(VecDeque::new())),
             exit_requested: false,
         }
     }
@@ -434,6 +494,7 @@ impl InteractiveMode {
             self.queue_user_input(input);
         }
         self.drain_session_events()?;
+        self.drain_selector_actions()?;
         Ok(count)
     }
 
@@ -503,6 +564,11 @@ impl InteractiveMode {
                     Ok(BuiltinCommandOutcome::Success(status))
                     | Ok(BuiltinCommandOutcome::Cancelled(status)) => {
                         self.show_status(status);
+                    }
+                    Ok(BuiltinCommandOutcome::Action(action)) => {
+                        if let Err(error) = self.apply_builtin_action(action) {
+                            self.show_status(error);
+                        }
                     }
                     Err(error) => {
                         self.show_status(error);
@@ -644,6 +710,603 @@ impl InteractiveMode {
         self.extension_runner
             .as_ref()
             .map_or(&[], |runner| &runner.runtime.providers)
+    }
+}
+
+impl InteractiveMode {
+    fn apply_builtin_action(&mut self, action: BuiltinCommandAction) -> Result<(), String> {
+        use BuiltinCommandAction as Action;
+        match action {
+            Action::Settings => {
+                self.mount_selector(LiveSelector::Settings(SettingsSelector::new(vec![
+                    SettingChoice {
+                        id: "theme".into(),
+                        label: "Theme".into(),
+                        description: "Terminal theme".into(),
+                        value: SettingsManager::create(current_dir(), get_agent_dir())
+                            .get_theme()
+                            .unwrap_or_else(|| "dark".into()),
+                        values: vec!["dark".into(), "light".into()],
+                    },
+                ])))
+            }
+            Action::Model(search) => {
+                let current =
+                    SettingsManager::create(current_dir(), get_agent_dir()).get_default_model();
+                let models = zedflow_ai::providers::all::builtin_models()
+                    .get_models(None)
+                    .into_iter()
+                    .map(|model| ModelItem {
+                        provider: model.provider.to_string(),
+                        id: model.id,
+                        name: model.name,
+                    })
+                    .collect();
+                let mut selector = ModelSelector::new(models, &[], current.as_deref());
+                if let Some(search) = search {
+                    selector.filter(&search);
+                }
+                self.mount_selector(LiveSelector::Model(selector));
+            }
+            Action::ScopedModels => {
+                let settings = SettingsManager::create(current_dir(), get_agent_dir());
+                let all = zedflow_ai::providers::all::builtin_models()
+                    .get_models(None)
+                    .into_iter()
+                    .map(|model| ScopedModel {
+                        full_id: format!("{}/{}", model.provider, model.id),
+                        name: model.name,
+                    })
+                    .collect();
+                self.mount_selector(LiveSelector::Scoped(ScopedModelsSelector::new(
+                    all,
+                    settings.get_enabled_models(),
+                )));
+            }
+            Action::Export(path) => self.export_active_session(path)?,
+            Action::Import(path) => self.mount_selector(LiveSelector::ConfirmImport(path)),
+            Action::Share => {
+                self.show_status("Sharing requires the configured GitHub CLI service");
+            }
+            Action::Copy => {
+                self.copy_last_assistant()?;
+            }
+            Action::Name(name) => self.name_session(name)?,
+            Action::Session => self.show_session_info()?,
+            Action::Changelog => {
+                self.show_status("Changelog opened");
+            }
+            Action::Hotkeys => {
+                self.show_status("Hotkeys opened");
+            }
+            Action::Fork => {
+                self.mount_selector(LiveSelector::Message(self.user_message_selector()?))
+            }
+            Action::Clone => {
+                self.show_status("Clone requires selecting a session tree entry");
+            }
+            Action::Tree => self.mount_selector(LiveSelector::Tree(self.tree_selector()?)),
+            Action::Trust => {
+                let store = ProjectTrustStore::new(get_agent_dir());
+                let saved = store
+                    .get_entry(current_dir())
+                    .map_err(|error| error.to_string())?;
+                self.mount_selector(LiveSelector::Trust(
+                    TrustSelectorState::new(current_dir(), saved)
+                        .map_err(|error| error.to_string())?,
+                ));
+            }
+            Action::Login => self.mount_selector(LiveSelector::Auth {
+                selector: OAuthSelector::with_mode(AuthSelectorMode::Login, login_providers()),
+                auth: AuthStorage::create(get_auth_path()),
+            }),
+            Action::Logout => {
+                let mut auth = AuthStorage::create(get_auth_path());
+                let providers = auth
+                    .list()
+                    .into_iter()
+                    .map(|id| AuthSelectorProvider {
+                        name: id.clone(),
+                        id,
+                        auth_type: AuthSelectorProviderType::ApiKey,
+                    })
+                    .collect();
+                // Reload before mounting: the selector is backed by the actual auth file.
+                auth.reload();
+                self.mount_selector(LiveSelector::Auth {
+                    selector: OAuthSelector::with_mode(AuthSelectorMode::Logout, providers),
+                    auth,
+                });
+            }
+            Action::New => self.replace_runtime(&[])?,
+            Action::Resume => {
+                let settings = SettingsManager::create(current_dir(), get_agent_dir());
+                let dir = settings.get_session_dir().unwrap_or_else(get_sessions_dir);
+                let sessions = session_manager::list_session_infos(
+                    dir,
+                    Some(PathBuf::from(current_dir()).as_path()),
+                    |_, _| {},
+                )
+                .map_err(|error| error.to_string())?;
+                self.mount_selector(LiveSelector::Session(SessionSelectorState::new(
+                    sessions, None,
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn user_message_selector(&self) -> Result<UserMessageSelectorState, String> {
+        let runtime = self.runtime.clone().ok_or("No active session")?;
+        let entries = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(runtime.session().session().get_entries());
+        let messages = entries
+            .into_iter()
+            .filter_map(|entry| {
+                let entry = serde_json::to_value(entry).ok()?;
+                let message = entry.get("message")?;
+                (message.get("role").and_then(Value::as_str) == Some("user")).then_some(())?;
+                Some(UserMessageItem {
+                    id: entry.get("id")?.as_str()?.to_owned(),
+                    text: message_json_text(message),
+                    timestamp: entry
+                        .get("timestamp")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned),
+                })
+            })
+            .collect();
+        Ok(UserMessageSelectorState::new(messages, None))
+    }
+
+    fn tree_selector(&self) -> Result<TreeSelectorState, String> {
+        let runtime = self.runtime.clone().ok_or("No active session")?;
+        let (entries, leaf) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(async {
+                let session = runtime.session().session();
+                (session.get_entries().await, session.get_leaf_id().await)
+            });
+        Ok(TreeSelectorState::from_session_tree(
+            &session_manager::build_session_tree(&entries),
+            leaf,
+            None,
+        ))
+    }
+
+    fn mount_selector(&mut self, selector: LiveSelector) {
+        self.tui.show_overlay(SelectorOverlay {
+            selector,
+            actions: Arc::clone(&self.selector_actions),
+        });
+        let _ = self.tui.request_render(false);
+    }
+
+    fn drain_selector_actions(&mut self) -> io::Result<()> {
+        let actions = std::mem::take(&mut *self.selector_actions.lock().unwrap());
+        for action in actions {
+            match action {
+                SelectorAction::Cancelled => {
+                    self.show_status("Selection cancelled");
+                }
+                SelectorAction::Import(path) => self
+                    .replace_runtime(&["--session".into(), path.display().to_string()])
+                    .map_err(io::Error::other)?,
+                SelectorAction::Resume(path) => self
+                    .replace_runtime(&["--session".into(), path.display().to_string()])
+                    .map_err(io::Error::other)?,
+                SelectorAction::Logout(provider) => {
+                    self.show_status(format!("Logged out of {provider}"));
+                }
+                SelectorAction::Trust { updates, trusted } => {
+                    ProjectTrustStore::new(get_agent_dir()).set_many(&updates)?;
+                    self.show_status(format!(
+                        "Saved trust decision: {}",
+                        if trusted { "trusted" } else { "untrusted" }
+                    ));
+                }
+                SelectorAction::Model(model) => {
+                    SettingsManager::create(current_dir(), get_agent_dir())
+                        .set_default_model_and_provider(model.provider, model.id)?;
+                    self.show_status("Model selected");
+                }
+                SelectorAction::Scoped(ids) => {
+                    SettingsManager::create(current_dir(), get_agent_dir())
+                        .set_enabled_models(ids)?;
+                    self.show_status("Model selection saved to settings");
+                }
+                SelectorAction::NavigateTree(entry_id) | SelectorAction::Fork(entry_id) => {
+                    let runtime = self
+                        .runtime
+                        .clone()
+                        .ok_or_else(|| io::Error::other("No active session"))?;
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(io::Error::other)?
+                        .block_on(runtime.session().session().move_to(Some(entry_id), None))
+                        .map_err(io::Error::other)?;
+                    self.show_status("Navigated to selected point");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn replace_runtime(&mut self, args: &[String]) -> Result<(), String> {
+        let runtime =
+            crate::rpc_entry::create_runtime_for_args(args).map_err(|error| error.to_string())?;
+        self.transcript.lock().unwrap().entries.clear();
+        self.set_runtime(runtime);
+        self.show_status("Session loaded");
+        Ok(())
+    }
+
+    fn export_active_session(&mut self, path: Option<PathBuf>) -> Result<(), String> {
+        let runtime = self.runtime.clone().ok_or("No active session to export")?;
+        let (metadata, entries) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(async {
+                let session = runtime.session().session();
+                (session.get_metadata().await, session.get_entries().await)
+            });
+        let mut jsonl = serde_json::to_string(&serde_json::json!({ "type": "session", "id": metadata.id, "timestamp": metadata.created_at, "cwd": runtime.cwd() })).map_err(|error| error.to_string())?;
+        for entry in entries {
+            jsonl.push('\n');
+            jsonl.push_str(&serde_json::to_string(&entry).map_err(|error| error.to_string())?);
+        }
+        jsonl.push('\n');
+        let output =
+            path.unwrap_or_else(|| PathBuf::from(format!("pi-session-{}.html", metadata.id)));
+        if output
+            .extension()
+            .is_some_and(|extension| extension == "jsonl")
+        {
+            fs::write(&output, jsonl).map_err(|error| error.to_string())?;
+        } else {
+            fs::write(&output, crate::export_html::export_session_to_html(&jsonl))
+                .map_err(|error| error.to_string())?;
+        }
+        self.show_status(format!("Session exported to: {}", output.display()));
+        Ok(())
+    }
+
+    fn name_session(&mut self, name: Option<String>) -> Result<(), String> {
+        let runtime = self.runtime.clone().ok_or("No active session")?;
+        let session = runtime.session().session();
+        let has_name = name.is_some();
+        let result = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(async {
+                match name {
+                    Some(name) => session.append_session_name(name).await.map(|_| ()),
+                    None => Ok(()),
+                }
+            });
+        result.map_err(|error| error.to_string())?;
+        self.show_status(if has_name {
+            "Session name set"
+        } else {
+            "Session name requested"
+        });
+        Ok(())
+    }
+
+    fn show_session_info(&mut self) -> Result<(), String> {
+        let runtime = self.runtime.clone().ok_or("No active session")?;
+        let metadata = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(runtime.session().session().get_metadata());
+        self.show_status(format!("Session {}", metadata.id));
+        Ok(())
+    }
+
+    fn copy_last_assistant(&mut self) -> Result<(), String> {
+        let runtime = self.runtime.clone().ok_or("No active session")?;
+        let entries = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(runtime.session().session().get_entries());
+        let text = entries
+            .into_iter()
+            .rev()
+            .find_map(|entry| {
+                serde_json::to_value(entry).ok().and_then(|entry| {
+                    (entry
+                        .get("message")
+                        .and_then(|message| message.get("role"))
+                        .and_then(Value::as_str)
+                        == Some("assistant"))
+                    .then_some(message_json_text(&entry))
+                })
+            })
+            .filter(|text| !text.is_empty())
+            .ok_or("No agent messages to copy yet")?;
+        crate::utils::clipboard::copy_to_clipboard(&text).map_err(|error| error.to_string())?;
+        self.show_status("Copied last agent message to clipboard");
+        Ok(())
+    }
+}
+
+fn login_providers() -> Vec<AuthSelectorProvider> {
+    let mut providers = zedflow_ai::providers::all::builtin_models()
+        .get_models(None)
+        .into_iter()
+        .map(|model| model.provider.to_string())
+        .collect::<Vec<_>>();
+    providers.sort();
+    providers.dedup();
+    providers
+        .into_iter()
+        .map(|id| AuthSelectorProvider {
+            name: id.clone(),
+            id,
+            auth_type: AuthSelectorProviderType::ApiKey,
+        })
+        .collect()
+}
+
+fn message_json_text(message: &Value) -> String {
+    message
+        .get("content")
+        .map_or_else(String::new, |content| match content {
+            Value::String(text) => text.clone(),
+            Value::Array(parts) => parts
+                .iter()
+                .filter_map(|part| part.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => String::new(),
+        })
+}
+
+#[derive(Debug)]
+enum SelectorAction {
+    Cancelled,
+    Import(PathBuf),
+    Resume(PathBuf),
+    Logout(String),
+    Trust {
+        updates: Vec<crate::trust_manager::ProjectTrustUpdate>,
+        trusted: bool,
+    },
+    Model(ModelItem),
+    Scoped(Option<Vec<String>>),
+    NavigateTree(String),
+    Fork(String),
+}
+
+enum LiveSelector {
+    Settings(SettingsSelector),
+    Model(ModelSelector),
+    Scoped(ScopedModelsSelector),
+    Session(SessionSelectorState),
+    Trust(TrustSelectorState),
+    Auth {
+        selector: OAuthSelector,
+        auth: AuthStorage,
+    },
+    ConfirmImport(PathBuf),
+    Message(UserMessageSelectorState),
+    Tree(TreeSelectorState),
+}
+
+struct SelectorOverlay {
+    selector: LiveSelector,
+    actions: Arc<Mutex<VecDeque<SelectorAction>>>,
+}
+impl SelectorOverlay {
+    fn title(&self) -> &str {
+        match &self.selector {
+            LiveSelector::Settings(_) => "Settings",
+            LiveSelector::Model(_) => "Select model",
+            LiveSelector::Scoped(_) => "Scoped models",
+            LiveSelector::Session(_) => "Resume session",
+            LiveSelector::Trust(_) => "Project trust",
+            LiveSelector::Auth { selector, .. } => {
+                if selector.mode == AuthSelectorMode::Login {
+                    "Login"
+                } else {
+                    "Logout"
+                }
+            }
+            LiveSelector::ConfirmImport(_) => "Import session",
+            LiveSelector::Message(_) => "Fork from message",
+            LiveSelector::Tree(_) => "Session tree",
+        }
+    }
+    fn move_selection(&mut self, down: bool) {
+        match &mut self.selector {
+            LiveSelector::Model(value) => value.move_selection(if down { 1 } else { -1 }),
+            LiveSelector::Scoped(value) => {
+                if down {
+                    value.selected += 1
+                } else {
+                    value.selected = value.selected.saturating_sub(1)
+                }
+            }
+            LiveSelector::Session(value) => {
+                if down {
+                    value.move_down()
+                } else {
+                    value.move_up()
+                }
+            }
+            LiveSelector::Trust(value) => {
+                if down {
+                    value.move_down()
+                } else {
+                    value.move_up()
+                }
+            }
+            LiveSelector::Auth { selector, .. } => {
+                selector.move_selection(if down { 1 } else { -1 })
+            }
+            LiveSelector::Settings(value) => value.move_selection(if down { 1 } else { -1 }),
+            LiveSelector::Message(value) => {
+                if down {
+                    value.move_down()
+                } else {
+                    value.move_up()
+                }
+            }
+            LiveSelector::Tree(value) => {
+                if down {
+                    value.move_down()
+                } else {
+                    value.move_up()
+                }
+            }
+            _ => {}
+        }
+    }
+    fn select(&mut self) {
+        let action = match &mut self.selector {
+            LiveSelector::Model(selector) => selector
+                .selected_model()
+                .cloned()
+                .map(SelectorAction::Model),
+            LiveSelector::Scoped(selector) => Some(SelectorAction::Scoped(
+                selector.enabled_ids().map(ToOwned::to_owned),
+            )),
+            LiveSelector::Session(selector) => match selector.select() {
+                crate::session_selector::SessionSelectorAction::Select(path) => {
+                    Some(SelectorAction::Resume(path))
+                }
+                _ => None,
+            },
+            LiveSelector::Trust(selector) => {
+                selector.select().map(|selection| SelectorAction::Trust {
+                    updates: selection.updates,
+                    trusted: selection.trusted,
+                })
+            }
+            LiveSelector::Auth { selector, auth } if selector.mode == AuthSelectorMode::Logout => {
+                selector
+                    .selected_provider()
+                    .map(|provider| provider.id.clone())
+                    .and_then(|provider| {
+                        auth.logout(&provider)
+                            .ok()
+                            .map(|()| SelectorAction::Logout(provider))
+                    })
+            }
+            LiveSelector::ConfirmImport(path) => Some(SelectorAction::Import(path.clone())),
+            LiveSelector::Settings(selector) => {
+                let _ = selector.activate();
+                None
+            }
+            LiveSelector::Message(selector) => match selector.select() {
+                crate::user_message_selector::UserMessageSelectorAction::Select(id) => {
+                    Some(SelectorAction::Fork(id))
+                }
+                _ => None,
+            },
+            LiveSelector::Tree(selector) => match selector.select() {
+                crate::tree_selector::TreeSelectorAction::Select(id) => {
+                    Some(SelectorAction::NavigateTree(id))
+                }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(action) = action {
+            self.actions.lock().unwrap().push_back(action);
+        }
+    }
+}
+impl Component for SelectorOverlay {
+    fn render(&self, width: usize) -> Vec<String> {
+        let mut lines = vec![format!("{}", self.title())];
+        match &self.selector {
+            LiveSelector::Session(selector) => {
+                lines.extend(selector.visible_sessions().take(8).map(|session| {
+                    format!(
+                        "  {}",
+                        session.name.as_deref().unwrap_or(&session.session_id)
+                    )
+                }))
+            }
+            LiveSelector::Trust(selector) => lines.extend(
+                selector
+                    .options()
+                    .iter()
+                    .enumerate()
+                    .map(|(index, option)| {
+                        format!(
+                            "{} {}",
+                            if index == selector.selected_index() {
+                                "→"
+                            } else {
+                                " "
+                            },
+                            option.label
+                        )
+                    }),
+            ),
+            LiveSelector::Auth { selector, .. } => {
+                lines.push(selector.selected_provider().map_or_else(
+                    || selector.empty_message().into(),
+                    |provider| format!("→ {}", provider.name),
+                ))
+            }
+            LiveSelector::Model(selector) => lines.push(selector.selected_model().map_or_else(
+                || "No models available".into(),
+                |model| format!("→ {}", model.full_id()),
+            )),
+            LiveSelector::Scoped(selector) => lines.push(selector.selected_model().map_or_else(
+                || "No models available".into(),
+                |model| format!("→ {}", model.full_id),
+            )),
+            LiveSelector::ConfirmImport(path) => {
+                lines.push(format!("Replace current session with {}?", path.display()))
+            }
+            LiveSelector::Message(selector) => lines.push(
+                selector
+                    .messages()
+                    .get(selector.selected_index())
+                    .map_or_else(
+                        || "No messages to fork from".into(),
+                        |message| {
+                            format!("→ {}", UserMessageSelectorState::normalized_text(message))
+                        },
+                    ),
+            ),
+            LiveSelector::Tree(selector) => lines.push(selector.selected_item().map_or_else(
+                || "No entries in session".into(),
+                |item| format!("→ {}", item.text),
+            )),
+            _ => lines.push("Use arrows and Enter; Escape cancels".into()),
+        }
+        lines
+            .into_iter()
+            .map(|line| line.chars().take(width).collect())
+            .collect()
+    }
+    fn handle_input(&mut self, data: &str) {
+        match data {
+            "\x1b" => self
+                .actions
+                .lock()
+                .unwrap()
+                .push_back(SelectorAction::Cancelled),
+            "\x1b[A" => self.move_selection(false),
+            "\x1b[B" => self.move_selection(true),
+            "\r" | "\n" => self.select(),
+            _ => {}
+        }
     }
 }
 
@@ -853,15 +1516,21 @@ impl Component for ActivityView {
 }
 
 struct EditorFooterView {
-    editor: TranscriptEditor,
+    editor: CustomEditor,
     footer: Arc<Mutex<FooterSnapshot>>,
 }
 impl EditorFooterView {
     fn new(submitted: Arc<Mutex<VecDeque<String>>>, footer: Arc<Mutex<FooterSnapshot>>) -> Self {
-        Self {
-            editor: TranscriptEditor::new(submitted),
-            footer,
-        }
+        let mut editor = CustomEditor::new(KeybindingsManager::create(get_agent_dir()));
+        let on_submit = Arc::clone(&submitted);
+        editor.editor_mut().on_submit = Some(Box::new(move |text| {
+            on_submit.lock().unwrap().push_back(text.to_owned());
+        }));
+        editor.on_ctrl_d = Some(Box::new(move || {
+            submitted.lock().unwrap().push_back("/exit".into());
+        }));
+        editor.set_focused(true);
+        Self { editor, footer }
     }
 }
 impl Component for EditorFooterView {
@@ -873,40 +1542,11 @@ impl Component for EditorFooterView {
     fn handle_input(&mut self, data: &str) {
         self.editor.handle_input(data);
     }
-}
-
-struct TranscriptEditor {
-    value: String,
-    submitted: Arc<Mutex<VecDeque<String>>>,
-}
-
-impl TranscriptEditor {
-    fn new(submitted: Arc<Mutex<VecDeque<String>>>) -> Self {
-        Self {
-            value: String::new(),
-            submitted,
-        }
+    fn set_focused(&mut self, focused: bool) {
+        self.editor.set_focused(focused);
     }
-}
-
-impl Component for TranscriptEditor {
-    fn render(&self, width: usize) -> Vec<String> {
-        vec![self.value.chars().take(width).collect()]
-    }
-
-    fn handle_input(&mut self, data: &str) {
-        match data {
-            "\x03" => self.submitted.lock().unwrap().push_back("/exit".into()),
-            "\r" | "\n" => {
-                let input = std::mem::take(&mut self.value);
-                self.submitted.lock().unwrap().push_back(input);
-            }
-            "\x7f" => {
-                self.value.pop();
-            }
-            _ if data.chars().all(|character| !character.is_control()) => self.value.push_str(data),
-            _ => {}
-        }
+    fn is_focused(&self) -> bool {
+        self.editor.is_focused()
     }
 }
 

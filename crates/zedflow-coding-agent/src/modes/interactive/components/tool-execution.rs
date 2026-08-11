@@ -107,7 +107,7 @@ impl Component for ToolExecutionComponent {
                 if self.expanded {
                     text.push_str(&output);
                 } else {
-                    let truncated = truncate_to_visual_lines(&output, PREVIEW_LINES, width, 1);
+                    let truncated = truncate_to_visual_lines(&output, PREVIEW_LINES, width, 0);
                     text.push_str(&truncated.visual_lines.join("\n"));
                     if truncated.skipped_count > 0 {
                         text.push_str(&format!("\n… {} lines hidden", truncated.skipped_count));
@@ -115,11 +115,7 @@ impl Component for ToolExecutionComponent {
                 }
             }
         } else if self.execution_started {
-            text.push_str(if self.args_complete {
-                "\nRunning..."
-            } else {
-                "\nPreparing..."
-            });
+            // Pi's generic tool fallback shows the call itself until a result arrives.
         }
         Text::new(text, 1, 1).render(width)
     }

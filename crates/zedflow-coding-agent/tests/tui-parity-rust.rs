@@ -1,7 +1,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{self, Read};
-use zedflow_tui::utils::visible_width;
+use zedflow_coding_agent::{
+    keybindings::KeybindingsManager,
+    modes_interactive_components_index::{
+        assistant_message::{StopReason, StreamingAssistantMessage},
+        custom_editor::CustomEditor,
+    },
+    tool_execution::ToolExecutionComponent,
+};
+use zedflow_tui::{
+    Component, SelectItem, SelectList, SelectListTheme, Text, Tui, utils::visible_width,
+};
 
 #[derive(Debug, Deserialize)]
 struct Fixture {
@@ -28,9 +38,6 @@ struct Capabilities {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Event {
-    Write {
-        data: String,
-    },
     Input {
         data: String,
     },
@@ -42,8 +49,6 @@ enum Event {
         name: String,
         #[serde(default)]
         data: Value,
-        #[serde(default)]
-        render: Option<String>,
     },
 }
 
@@ -119,6 +124,13 @@ impl Terminal {
                     }
                     self.control(&sequence);
                 }
+                '\x1b' if chars.next_if_eq(&']').is_some() => {
+                    for next in chars.by_ref() {
+                        if next == '\x07' {
+                            break;
+                        }
+                    }
+                }
                 '\r' => self.cursor.x = 0,
                 '\n' => self.newline(),
                 c if !c.is_control() => self.put(c),
@@ -132,16 +144,11 @@ impl Terminal {
             "?25l" => self.cursor.visible = false,
             "?25h" => self.cursor.visible = true,
             "2J" => self.cells = blank_screen(self.columns, self.rows),
+            "0m" | "m" | "27m" => self.style = None,
+            "7m" => self.style = Some(serde_json::json!({ "inverse": true })),
             "H" => {
                 self.cursor.x = 0;
                 self.cursor.y = 0;
-            }
-            "0m" | "m" => self.style = None,
-            "31m" => self.style = Some(serde_json::json!({ "fg": "16777216:1" })),
-            "K" | "0K" => {
-                for x in self.cursor.x..self.columns {
-                    self.cells[self.cursor.y as usize][x as usize] = blank_cell();
-                }
             }
             _ => {}
         }
@@ -186,9 +193,6 @@ impl Terminal {
             };
         }
         self.cursor.x += u16::from(width);
-        if self.cursor.x == self.columns {
-            // xterm wraps lazily when the next printable cell arrives.
-        }
     }
 
     fn resize(&mut self, columns: u16, rows: u16) {
@@ -227,11 +231,9 @@ fn blank_cell() -> Cell {
         style: None,
     }
 }
-
 fn blank_row(columns: u16) -> Vec<Cell> {
     (0..columns).map(|_| blank_cell()).collect()
 }
-
 fn blank_screen(columns: u16, rows: u16) -> Vec<Vec<Cell>> {
     (0..rows).map(|_| blank_row(columns)).collect()
 }
@@ -250,37 +252,188 @@ fn clean_metadata(value: Value) -> Value {
     }
 }
 
+struct Lines(Vec<String>);
+impl Component for Lines {
+    fn render(&self, _: usize) -> Vec<String> {
+        self.0.clone()
+    }
+}
+
+fn plain_select_theme() -> SelectListTheme {
+    let plain = std::sync::Arc::new(|text: &str| text.to_owned());
+    SelectListTheme {
+        selected_prefix: plain.clone(),
+        selected_text: plain.clone(),
+        description: plain.clone(),
+        scroll_info: plain.clone(),
+        no_match: plain,
+    }
+}
+
+fn frame_lines(
+    columns: usize,
+    rows: usize,
+    assistant: &StreamingAssistantMessage,
+    show_assistant: bool,
+    tool: &ToolExecutionComponent,
+    show_tool: bool,
+    compacting: bool,
+    editor: &CustomEditor,
+    overlay: bool,
+    selected: usize,
+) -> Vec<String> {
+    let mut tui = Tui::new();
+    if show_assistant {
+        tui.root.add_child(Lines(assistant.render(columns)));
+    }
+    if show_tool {
+        tui.root.add_child(Lines(tool.render(columns)));
+    }
+    if compacting {
+        tui.root.add_child(Text::new("Compacting...", 1, 0));
+    }
+    tui.root.add_child(Lines(editor.render(columns)));
+    if overlay {
+        let mut selector = SelectList::new(
+            vec![
+                SelectItem {
+                    value: "model".into(),
+                    label: "model".into(),
+                    description: None,
+                },
+                SelectItem {
+                    value: "session".into(),
+                    label: "session".into(),
+                    description: None,
+                },
+            ],
+            5,
+            plain_select_theme(),
+        );
+        selector.set_selected_index(selected);
+        tui.root.add_child(Lines(selector.render(columns)));
+    }
+    tui.render_frame(columns, rows)
+}
+
 fn render(fixture: Fixture) -> OracleOutput {
-    assert_eq!(fixture.version, 1);
+    assert_eq!(fixture.version, 2);
     assert!(matches!(
         fixture.capabilities.colors,
         0 | 16 | 256 | 16_777_216
     ));
     assert!(fixture.capabilities.unicode);
     let _kitty_keyboard = fixture.capabilities.kitty_keyboard;
-    let mut terminal = Terminal::new(fixture.dimensions.columns, fixture.dimensions.rows);
+    let mut columns = fixture.dimensions.columns;
+    let mut rows = fixture.dimensions.rows;
+    let mut terminal = Terminal::new(columns, rows);
+    let mut editor = CustomEditor::new(KeybindingsManager::new(Default::default(), None));
+    let mut assistant = StreamingAssistantMessage::default();
+    let mut tool = ToolExecutionComponent::new("tool", "");
+    let mut show_assistant = false;
+    let mut show_tool = false;
+    let mut compacting = false;
+    let mut overlay = false;
+    let mut selected = 0;
     let mut frames = Vec::new();
     let mut inputs = Vec::new();
     let mut lifecycle = Vec::new();
+
     for event in fixture.events {
         match event {
-            Event::Write { data } => terminal.write(&data),
-            Event::Input { data } => inputs.push(data),
-            Event::Resize { columns, rows } => terminal.resize(columns, rows),
-            Event::Lifecycle { name, data, render } => {
+            Event::Input { data } => {
+                inputs.push(data.clone());
+                if overlay {
+                    if data == "\x1b[B" {
+                        selected = (selected + 1) % 2;
+                    }
+                    if data == "\x1b[A" {
+                        selected = (selected + 1) % 2;
+                    }
+                } else if !(data.starts_with('/') && data.ends_with('\r')) {
+                    editor.handle_input(&data);
+                }
+            }
+            Event::Resize {
+                columns: next_columns,
+                rows: next_rows,
+            } => {
+                columns = next_columns;
+                rows = next_rows;
+                terminal.resize(columns, rows);
+            }
+            Event::Lifecycle { name, data } => {
+                let data = clean_metadata(data);
                 lifecycle.push(Lifecycle {
-                    name,
-                    data: clean_metadata(data),
+                    name: name.clone(),
+                    data: data.clone(),
                 });
-                if let Some(render) = render {
-                    terminal.write(&render);
+                match name.as_str() {
+                    "message_start" => {
+                        assistant = StreamingAssistantMessage::default();
+                        show_assistant = true;
+                    }
+                    "message_update" | "message_end" => {
+                        assistant.update_content(
+                            "",
+                            data.get("content").and_then(Value::as_str).unwrap_or(""),
+                        );
+                        show_assistant = true;
+                    }
+                    "tool_start" => {
+                        tool = ToolExecutionComponent::new(
+                            data.get("tool").and_then(Value::as_str).unwrap_or("tool"),
+                            "",
+                        );
+                        tool.mark_execution_started();
+                        show_tool = true;
+                    }
+                    "tool_update" => tool.update_result(
+                        data.get("content").and_then(Value::as_str).unwrap_or(""),
+                        false,
+                    ),
+                    "tool_end" => tool.update_result(
+                        data.get("content").and_then(Value::as_str).unwrap_or(""),
+                        false,
+                    ),
+                    "compaction_start" => compacting = true,
+                    "compaction_end" => compacting = false,
+                    "session" => overlay = true,
+                    "abort" => {
+                        assistant.set_stop(StopReason::Aborted, Some("Operation aborted".into()));
+                        show_assistant = true;
+                    }
+                    "error" => {
+                        assistant.set_stop(
+                            StopReason::Error,
+                            data.get("message")
+                                .and_then(Value::as_str)
+                                .map(str::to_owned),
+                        );
+                        show_assistant = true;
+                    }
+                    _ => {}
                 }
             }
         }
+        let lines = frame_lines(
+            columns as usize,
+            rows as usize,
+            &assistant,
+            show_assistant,
+            &tool,
+            show_tool,
+            compacting,
+            &editor,
+            overlay,
+            selected,
+        );
+        terminal.write(&format!("\x1b[2J\x1b[H{}", lines.join("\r\n")));
+        terminal.cursor.visible = !overlay;
         frames.push(terminal.frame());
     }
     OracleOutput {
-        version: 1,
+        version: 2,
         frames,
         inputs,
         lifecycle,
@@ -288,10 +441,10 @@ fn render(fixture: Fixture) -> OracleOutput {
 }
 
 #[test]
-fn all_fixtures_exercise_the_rust_frame_protocol() {
+fn all_fixtures_use_component_oracle_without_fixture_rendering() {
     let directory =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/tui-parity/fixtures");
-    let names = [
+    for name in [
         "input-editing.json",
         "streaming.json",
         "tools-compaction.json",
@@ -299,8 +452,7 @@ fn all_fixtures_exercise_the_rust_frame_protocol() {
         "overlays.json",
         "unicode-resize.json",
         "abort-error.json",
-    ];
-    for name in names {
+    ] {
         let fixture: Fixture =
             serde_json::from_slice(&std::fs::read(directory.join(name)).unwrap()).unwrap();
         let event_count = fixture.events.len();
@@ -317,7 +469,7 @@ fn all_fixtures_exercise_the_rust_frame_protocol() {
 }
 
 #[test]
-fn streaming_updates_and_command_inputs_are_not_dropped() {
+fn streaming_commands_and_editor_input_remain_component_observable() {
     let streaming: Fixture = serde_json::from_str(include_str!(
         "../../../tools/tui-parity/fixtures/streaming.json"
     ))
@@ -325,12 +477,29 @@ fn streaming_updates_and_command_inputs_are_not_dropped() {
     let output = render(streaming);
     assert_eq!(output.lifecycle[1].data["content"], "answer");
     assert_eq!(output.lifecycle[1].data.get("timestamp"), None);
+    assert!(
+        output.frames[1]
+            .cells
+            .iter()
+            .flatten()
+            .map(|cell| cell.text.as_str())
+            .collect::<String>()
+            .contains("answer")
+    );
 
     let commands: Fixture = serde_json::from_str(include_str!(
         "../../../tools/tui-parity/fixtures/commands.json"
     ))
     .unwrap();
-    assert_eq!(render(commands).inputs, ["/model\r", "/compact\r"]);
+    let output = render(commands);
+    assert_eq!(output.inputs, ["/model\r", "/compact\r"]);
+    assert!(
+        output
+            .frames
+            .iter()
+            .all(|frame| frame.cells.iter().flatten().all(|cell| cell.text != "/")),
+        "built-ins must not leak into the editor"
+    );
 }
 
 #[test]

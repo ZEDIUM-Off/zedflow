@@ -80,3 +80,31 @@ fn session_lifecycle_updates_one_stateful_interactive_tree_in_pi_order() {
     assert!(tree.find("hello").unwrap() < tree.find("1 queued message(s)").unwrap());
     assert!(tree.find("1 queued message(s)").unwrap() < tree.find("no-model").unwrap());
 }
+
+#[test]
+fn live_tree_uses_custom_editor_submission_and_rendering() {
+    let mut mode = InteractiveMode::with_terminal(ProcessTerminal::new());
+    mode.run().unwrap();
+    mode.tui_mut().dispatch_input("hello");
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.get_user_input().as_deref(), Some("hello"));
+    assert!(
+        mode.tui_mut()
+            .root
+            .render(80)
+            .iter()
+            .any(|line| line.contains('─'))
+    );
+    mode.stop().unwrap();
+}
+
+#[test]
+fn custom_editor_keeps_ctrl_d_on_the_interactive_exit_queue() {
+    let mut mode = InteractiveMode::with_terminal(ProcessTerminal::new());
+    mode.run().unwrap();
+    mode.tui_mut().dispatch_input("\x04");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert!(mode.exit_requested());
+    mode.stop().unwrap();
+}

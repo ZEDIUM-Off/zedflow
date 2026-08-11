@@ -59,7 +59,7 @@ def frozen_workspace() -> tempfile.TemporaryDirectory[str]:
 
 
 def pi_oracle(workspace: Path, fixture: bytes) -> bytes:
-    return run([require("node"), ORACLE.name], data=fixture, cwd=workspace)
+    return run([str(workspace / "node_modules/.bin/tsx"), ORACLE.name], data=fixture, cwd=workspace)
 
 
 def rust_oracle_binary() -> Path:
@@ -112,10 +112,12 @@ def compare(name: str, pi_output: bytes, rust_output: bytes) -> dict:
 
 
 def self_check() -> None:
-    result = json.loads(run([require("node"), str(ORACLE), "--self-check"]))
-    assert result == {"version": 1, "protocol": "ok"}
+    with frozen_workspace() as temporary:
+        workspace = Path(temporary) / "pi"
+        result = json.loads(run([str(workspace / "node_modules/.bin/tsx"), ORACLE.name, "--self-check"], cwd=workspace))
+    assert result == {"version": 2, "protocol": "component-oracle"}
     schema = json.loads((FIXTURES / "schema.json").read_text())
-    assert schema["properties"]["version"]["const"] == 1
+    assert schema["properties"]["version"]["const"] == 2
     print("tui parity Python/oracle protocol self-check: ok")
 
 

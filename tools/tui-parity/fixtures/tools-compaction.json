@@ -1,12 +1,1 @@
-{
-  "version": 1,
-  "dimensions": { "columns": 36, "rows": 6 },
-  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
-  "events": [
-    { "type": "lifecycle", "name": "tool_start", "data": { "tool": "read", "path": "/tmp/private" }, "render": "read" },
-    { "type": "lifecycle", "name": "tool_update", "data": { "content": "partial" }, "render": "\rread partial" },
-    { "type": "lifecycle", "name": "tool_end", "data": { "content": "complete" }, "render": "\rread complete\r\n" },
-    { "type": "lifecycle", "name": "compaction_start", "data": null, "render": "Compacting..." },
-    { "type": "lifecycle", "name": "compaction_end", "data": { "summary": "kept" }, "render": "\rCompacted   " }
-  ]
-}
+{"version":2,"dimensions":{"columns":36,"rows":6},"capabilities":{"colors":256,"unicode":true,"kittyKeyboard":true},"events":[{"type":"lifecycle","name":"tool_start","data":{"tool":"oracle","path":"/tmp/private"}},{"type":"lifecycle","name":"tool_update","data":{"content":"partial"}},{"type":"lifecycle","name":"tool_end","data":{"content":"complete"}},{"type":"lifecycle","name":"compaction_start","data":null},{"type":"lifecycle","name":"compaction_end","data":{"summary":"kept"}}]}

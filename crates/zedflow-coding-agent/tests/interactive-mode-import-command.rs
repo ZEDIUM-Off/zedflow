@@ -25,12 +25,11 @@ fn missing_import_path_is_an_interactive_error_not_a_prompt() {
 }
 
 #[test]
-fn import_path_opens_confirmation_without_prompting() {
+fn import_path_mounts_confirmation_without_prompting() {
     let mut mode = InteractiveMode::new();
     mode.queue_user_input("/import 'archive file.jsonl'");
-    assert_eq!(
-        mode.last_status(),
-        Some("Import confirmation opened for 'archive file.jsonl'")
-    );
+    mode.run().unwrap();
+    assert_eq!(mode.tui_mut().overlay_count(), 1);
     assert_eq!(mode.pending_user_input_count(), 0);
+    mode.stop().unwrap();
 }

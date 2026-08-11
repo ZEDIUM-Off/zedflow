@@ -1,11 +1,1 @@
-{
-  "version": 1,
-  "dimensions": { "columns": 32, "rows": 5 },
-  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
-  "events": [
-    { "type": "write", "data": "\u001b[?25lWorking..." },
-    { "type": "lifecycle", "name": "abort", "data": { "reason": "escape", "timestamp": 1 }, "render": "\rAborted   " },
-    { "type": "lifecycle", "name": "error", "data": { "message": "boom", "cwd": "/private" }, "render": "\r\nError: boom" },
-    { "type": "write", "data": "\u001b[?25h" }
-  ]
-}
+{"version":2,"dimensions":{"columns":32,"rows":5},"capabilities":{"colors":256,"unicode":true,"kittyKeyboard":true},"events":[{"type":"lifecycle","name":"message_start","data":{"role":"assistant"}},{"type":"lifecycle","name":"abort","data":{"reason":"escape","timestamp":1}},{"type":"lifecycle","name":"error","data":{"message":"boom","cwd":"/private"}}]}
