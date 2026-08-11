@@ -1,7 +1,7 @@
 //! Interactive-mode contracts that do not require the TUI package.
 
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     io,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     sync::{Arc, Mutex},
@@ -22,7 +22,11 @@ use crate::{
         InputEvent, ProviderConfig, SessionActionResult,
     },
     modes_interactive_components_index::{
-        assistant_message::StreamingAssistantMessage, tool_execution::ToolExecutionComponent,
+        assistant_message::{AssistantContent, StopReason, StreamingAssistantMessage},
+        compaction_summary_message::CompactionSummaryMessageComponent,
+        footer::FooterSnapshot,
+        status_indicator::{IdleStatus, WorkingStatusIndicator},
+        tool_execution::ToolExecutionComponent,
         user_message::UserMessageComponent,
     },
 };
@@ -108,6 +112,8 @@ pub struct InteractiveMode {
     runtime: Option<AgentSessionRuntime>,
     session_events: Arc<Mutex<VecDeque<AgentHarnessEvent>>>,
     rendered_events: Arc<Mutex<Vec<String>>>,
+    transcript: Arc<Mutex<TranscriptState>>,
+    footer: Arc<Mutex<FooterSnapshot>>,
     compacting: bool,
     compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
@@ -143,6 +149,11 @@ impl InteractiveMode {
             runtime: None,
             session_events: Arc::new(Mutex::new(VecDeque::new())),
             rendered_events: Arc::new(Mutex::new(Vec::new())),
+            transcript: Arc::new(Mutex::new(TranscriptState::default())),
+            footer: Arc::new(Mutex::new(FooterSnapshot {
+                cwd: current_dir(),
+                ..FooterSnapshot::default()
+            })),
             compacting: false,
             compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
@@ -192,48 +203,100 @@ impl InteractiveMode {
     fn drain_session_events(&mut self) -> io::Result<()> {
         let events = std::mem::take(&mut *self.session_events.lock().unwrap());
         for event in events {
-            self.render_session_event(event);
+            self.apply_session_event(event);
         }
         self.tui.request_render(false)
     }
 
-    fn render_session_event(&mut self, event: AgentHarnessEvent) {
+    /// Apply one session event to the transcript in arrival order.
+    pub fn apply_session_event(&mut self, event: AgentHarnessEvent) {
+        let mut transcript = self.transcript.lock().unwrap();
         let text = match event {
             AgentHarnessEvent::Agent(AgentEvent::MessageStart { message }) => {
-                format!("{}: {}", message_label(&message), message_content(&message))
+                let role = message_role(&message);
+                if role == "assistant" {
+                    transcript.start_assistant(&message);
+                } else if role == "user" {
+                    transcript
+                        .entries
+                        .push(TranscriptEntry::User(message_content(&message)));
+                } else {
+                    transcript
+                        .entries
+                        .push(TranscriptEntry::Status(message_content(&message)));
+                }
+                format!("{role}: {}", message_content(&message))
             }
-            AgentHarnessEvent::Agent(AgentEvent::MessageUpdate { .. }) => {
+            AgentHarnessEvent::Agent(AgentEvent::MessageUpdate { message, .. }) => {
+                transcript.update_assistant(&message);
                 "assistant: streaming".into()
             }
-            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionStart { tool_name, .. }) => {
+            AgentHarnessEvent::Agent(AgentEvent::MessageEnd { message }) => {
+                transcript.finish_assistant(&message);
+                "assistant: complete".into()
+            }
+            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionStart {
+                tool_call_id,
+                tool_name,
+                args,
+            }) => {
+                transcript.start_tool(tool_call_id, tool_name.clone(), args);
                 format!("tool: {tool_name}")
             }
-            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionEnd {
-                tool_name,
-                is_error,
+            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionUpdate {
+                tool_call_id,
+                partial_result,
                 ..
             }) => {
+                transcript.update_tool(&tool_call_id, partial_result, false, true);
+                "tool: streaming".into()
+            }
+            AgentHarnessEvent::Agent(AgentEvent::ToolExecutionEnd {
+                tool_call_id,
+                tool_name,
+                result,
+                is_error,
+            }) => {
+                transcript.update_tool(&tool_call_id, result, is_error, false);
                 format!(
                     "tool: {tool_name} {}",
                     if is_error { "failed" } else { "done" }
                 )
             }
-            AgentHarnessEvent::Agent(AgentEvent::AgentStart) => "assistant: working".into(),
-            AgentHarnessEvent::Agent(AgentEvent::AgentEnd { .. }) => "assistant: idle".into(),
+            AgentHarnessEvent::Agent(AgentEvent::AgentStart) => {
+                transcript.working = true;
+                "assistant: working".into()
+            }
+            AgentHarnessEvent::Agent(AgentEvent::AgentEnd { .. }) => {
+                transcript.working = false;
+                transcript.streaming_assistant = None;
+                transcript.pending_tools.clear();
+                "assistant: idle".into()
+            }
             AgentHarnessEvent::Harness(AgentHarnessOwnEvent::QueueUpdate(queue)) => {
-                format!(
-                    "queue: {}",
-                    queue.steer.len() + queue.follow_up.len() + queue.next_turn.len()
-                )
+                let count = queue.steer.len() + queue.follow_up.len() + queue.next_turn.len();
+                transcript.queued = count;
+                format!("queue: {count}")
             }
             AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionBeforeCompact(_)) => {
                 self.compacting = true;
+                transcript.compacting = true;
                 "compaction: working".into()
             }
-            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionCompact(_)) => {
+            AgentHarnessEvent::Harness(AgentHarnessOwnEvent::SessionCompact(event)) => {
                 self.compacting = false;
+                transcript.compacting = false;
+                transcript.entries.clear();
+                transcript.entries.push(TranscriptEntry::Compaction {
+                    summary: event.compaction_entry.summary,
+                    tokens_before: event.compaction_entry.tokens_before,
+                });
+                transcript.streaming_assistant = None;
+                transcript.pending_tools.clear();
                 "compaction: complete".into()
             }
+            // Harness tool events are extension lifecycle notifications. Low-level
+            // execution events own transcript components, avoiding duplicate rows.
             AgentHarnessEvent::Harness(AgentHarnessOwnEvent::ToolCall(tool)) => {
                 format!("tool: {}", tool.tool_name)
             }
@@ -246,6 +309,7 @@ impl InteractiveMode {
             }
             _ => return,
         };
+        drop(transcript);
         self.rendered_events.lock().unwrap().push(text);
     }
 
@@ -258,13 +322,27 @@ impl InteractiveMode {
         self.rendered_events.lock().unwrap().clone()
     }
 
+    /// Render the current stateful transcript for deterministic end-user tests.
+    #[must_use]
+    pub fn rendered_transcript(&self, width: usize) -> Vec<String> {
+        TranscriptView::new(Arc::clone(&self.transcript)).render(width)
+    }
+
     pub fn run(&mut self) -> io::Result<()> {
-        self.tui
-            .root
-            .add_child(EventLog::new(Arc::clone(&self.rendered_events)));
-        self.tui.root.add_child(InteractiveInput::new(Arc::clone(
-            &self.submitted_terminal_inputs,
-        )));
+        if self.tui.root.is_empty() {
+            // Pi order: transcript, pending/status row, editor, footer. Overlays are
+            // managed by Tui's native overlay stack above this root tree.
+            self.tui
+                .root
+                .add_child(TranscriptView::new(Arc::clone(&self.transcript)));
+            self.tui
+                .root
+                .add_child(ActivityView::new(Arc::clone(&self.transcript)));
+            self.tui.root.add_child(EditorFooterView::new(
+                Arc::clone(&self.submitted_terminal_inputs),
+                Arc::clone(&self.footer),
+            ));
+        }
         self.tui.start()?;
         self.state = InteractiveState::Running;
         if let Some(runner) = &mut self.extension_runner {
@@ -486,45 +564,240 @@ impl InteractiveMode {
     }
 }
 
-struct EventLog {
-    events: Arc<Mutex<Vec<String>>>,
+#[derive(Default)]
+struct TranscriptState {
+    entries: Vec<TranscriptEntry>,
+    streaming_assistant: Option<usize>,
+    pending_tools: HashMap<String, usize>,
+    queued: usize,
+    working: bool,
+    compacting: bool,
 }
 
-impl EventLog {
-    fn new(events: Arc<Mutex<Vec<String>>>) -> Self {
-        Self { events }
+struct AssistantSnapshot {
+    content: Vec<AssistantContent>,
+    stop_reason: StopReason,
+    error_message: Option<String>,
+}
+
+struct ToolSnapshot {
+    name: String,
+    arguments: String,
+    result: Option<(String, bool, bool)>,
+    started: bool,
+    args_complete: bool,
+}
+
+enum TranscriptEntry {
+    User(String),
+    Assistant(AssistantSnapshot),
+    Tool(ToolSnapshot),
+    Compaction { summary: String, tokens_before: u64 },
+    Status(String),
+}
+
+impl TranscriptState {
+    fn start_assistant(&mut self, message: &AgentMessage) {
+        self.entries
+            .push(TranscriptEntry::Assistant(assistant_snapshot(message)));
+        self.streaming_assistant = Some(self.entries.len() - 1);
+        self.sync_tool_calls(message);
     }
-}
 
-impl Component for EventLog {
-    fn render(&self, width: usize) -> Vec<String> {
-        self.events
-            .lock()
-            .unwrap()
-            .iter()
-            .flat_map(|event| {
-                if let Some(text) = event.strip_prefix("user: ") {
-                    UserMessageComponent::new(text, 1).render(width)
-                } else if let Some(text) = event.strip_prefix("assistant: ") {
-                    let mut message = StreamingAssistantMessage::default();
-                    message.update_content("", text);
-                    message.render(width)
-                } else if let Some(tool_name) = event.strip_prefix("tool: ") {
-                    ToolExecutionComponent::new(tool_name, "").render(width)
-                } else {
-                    Text::new(event, 1, 0).render(width)
+    fn update_assistant(&mut self, message: &AgentMessage) {
+        if self.streaming_assistant.is_none() {
+            self.start_assistant(message);
+            return;
+        }
+        if let Some(TranscriptEntry::Assistant(snapshot)) = self
+            .streaming_assistant
+            .and_then(|index| self.entries.get_mut(index))
+        {
+            *snapshot = assistant_snapshot(message);
+        }
+        self.sync_tool_calls(message);
+    }
+
+    fn finish_assistant(&mut self, message: &AgentMessage) {
+        self.update_assistant(message);
+        for index in self.pending_tools.values().copied() {
+            if let Some(TranscriptEntry::Tool(tool)) = self.entries.get_mut(index) {
+                tool.args_complete = true;
+            }
+        }
+        self.streaming_assistant = None;
+    }
+
+    fn sync_tool_calls(&mut self, message: &AgentMessage) {
+        let json = serde_json::to_value(message).unwrap_or_default();
+        for call in json
+            .get("content")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let Some(id) = call.get("id").and_then(Value::as_str) else {
+                continue;
+            };
+            if call.get("type").and_then(Value::as_str) != Some("toolCall") {
+                continue;
+            }
+            let name = call
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("tool")
+                .to_owned();
+            let arguments = json_text(call.get("arguments").cloned().unwrap_or(Value::Null));
+            if let Some(index) = self.pending_tools.get(id).copied() {
+                if let Some(TranscriptEntry::Tool(tool)) = self.entries.get_mut(index) {
+                    tool.arguments = arguments;
                 }
-            })
-            .collect()
+            } else {
+                self.entries.push(TranscriptEntry::Tool(ToolSnapshot {
+                    name,
+                    arguments,
+                    result: None,
+                    started: false,
+                    args_complete: false,
+                }));
+                self.pending_tools
+                    .insert(id.to_owned(), self.entries.len() - 1);
+            }
+        }
+    }
+
+    fn start_tool(&mut self, id: String, name: String, args: Value) {
+        let index = if let Some(index) = self.pending_tools.get(&id).copied() {
+            index
+        } else {
+            self.entries.push(TranscriptEntry::Tool(ToolSnapshot {
+                name: name.clone(),
+                arguments: json_text(args.clone()),
+                result: None,
+                started: false,
+                args_complete: true,
+            }));
+            let index = self.entries.len() - 1;
+            self.pending_tools.insert(id.clone(), index);
+            index
+        };
+        if let Some(TranscriptEntry::Tool(tool)) = self.entries.get_mut(index) {
+            tool.name = name;
+            tool.arguments = json_text(args);
+            tool.started = true;
+        }
+    }
+
+    fn update_tool(&mut self, id: &str, result: Value, is_error: bool, partial: bool) {
+        if let Some(index) = self.pending_tools.get(id).copied()
+            && let Some(TranscriptEntry::Tool(tool)) = self.entries.get_mut(index)
+        {
+            tool.result = Some((tool_result_text(result), is_error, partial));
+            if !partial {
+                self.pending_tools.remove(id);
+            }
+        }
     }
 }
 
-struct InteractiveInput {
+struct TranscriptView(Arc<Mutex<TranscriptState>>);
+impl TranscriptView {
+    fn new(state: Arc<Mutex<TranscriptState>>) -> Self {
+        Self(state)
+    }
+}
+impl Component for TranscriptView {
+    fn render(&self, width: usize) -> Vec<String> {
+        self.0.lock().unwrap().entries.iter().flat_map(|entry| match entry {
+            TranscriptEntry::User(text) => UserMessageComponent::new(text, 1).render(width),
+            TranscriptEntry::Assistant(snapshot) => {
+                let mut component = StreamingAssistantMessage::default();
+                component.update_snapshot(snapshot.content.clone());
+                component.set_stop(snapshot.stop_reason, snapshot.error_message.clone());
+                component.render(width)
+            }
+            TranscriptEntry::Tool(tool) => {
+                let mut component = ToolExecutionComponent::new(&tool.name, &tool.arguments);
+                if tool.started { component.mark_execution_started(); }
+                if tool.args_complete { component.set_args_complete(); }
+                if let Some((result, error, partial)) = &tool.result {
+                    component.update_result_content(
+                        vec![crate::modes_interactive_components_index::tool_execution::ToolResultContent::Text(result.clone())],
+                        *error,
+                        *partial,
+                    );
+                }
+                component.render(width)
+            }
+            TranscriptEntry::Compaction { summary, tokens_before } => {
+                CompactionSummaryMessageComponent::new(
+                    zedflow_agent::harness::messages::CompactionSummaryMessage {
+                        role: "compactionSummary".into(),
+                        summary: summary.clone(),
+                        tokens_before: *tokens_before,
+                        timestamp: 0,
+                    },
+                ).render(width)
+            }
+            TranscriptEntry::Status(text) => Text::new(text, 1, 0).render(width),
+        }).collect()
+    }
+}
+
+struct ActivityView(Arc<Mutex<TranscriptState>>);
+impl ActivityView {
+    fn new(state: Arc<Mutex<TranscriptState>>) -> Self {
+        Self(state)
+    }
+}
+impl Component for ActivityView {
+    fn render(&self, width: usize) -> Vec<String> {
+        let state = self.0.lock().unwrap();
+        let mut lines = if state.compacting {
+            WorkingStatusIndicator::new("Compacting... (escape to cancel)", None).render(width)
+        } else if state.working {
+            WorkingStatusIndicator::new("Working...", None).render(width)
+        } else {
+            IdleStatus.render(width)
+        };
+        if state.queued > 0 {
+            lines.extend(
+                Text::new(format!("{} queued message(s)", state.queued), 1, 0).render(width),
+            );
+        }
+        lines
+    }
+}
+
+struct EditorFooterView {
+    editor: TranscriptEditor,
+    footer: Arc<Mutex<FooterSnapshot>>,
+}
+impl EditorFooterView {
+    fn new(submitted: Arc<Mutex<VecDeque<String>>>, footer: Arc<Mutex<FooterSnapshot>>) -> Self {
+        Self {
+            editor: TranscriptEditor::new(submitted),
+            footer,
+        }
+    }
+}
+impl Component for EditorFooterView {
+    fn render(&self, width: usize) -> Vec<String> {
+        let mut lines = self.editor.render(width);
+        lines.extend(self.footer.lock().unwrap().render(width));
+        lines
+    }
+    fn handle_input(&mut self, data: &str) {
+        self.editor.handle_input(data);
+    }
+}
+
+struct TranscriptEditor {
     value: String,
     submitted: Arc<Mutex<VecDeque<String>>>,
 }
 
-impl InteractiveInput {
+impl TranscriptEditor {
     fn new(submitted: Arc<Mutex<VecDeque<String>>>) -> Self {
         Self {
             value: String::new(),
@@ -533,7 +806,7 @@ impl InteractiveInput {
     }
 }
 
-impl Component for InteractiveInput {
+impl Component for TranscriptEditor {
     fn render(&self, width: usize) -> Vec<String> {
         vec![self.value.chars().take(width).collect()]
     }
@@ -554,13 +827,79 @@ impl Component for InteractiveInput {
     }
 }
 
-fn message_label(message: &AgentMessage) -> String {
-    let json = serde_json::to_value(message).unwrap_or_default();
-    let role = json
+fn message_role(message: &AgentMessage) -> &str {
+    match serde_json::to_value(message)
+        .unwrap_or_default()
         .get("role")
         .and_then(Value::as_str)
-        .unwrap_or("message");
-    format!("{role}: received")
+    {
+        Some("user") => "user",
+        Some("assistant") => "assistant",
+        _ => "message",
+    }
+}
+
+fn assistant_snapshot(message: &AgentMessage) -> AssistantSnapshot {
+    let json = serde_json::to_value(message).unwrap_or_default();
+    let content = json
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|part| match part.get("type").and_then(Value::as_str) {
+            Some("text") => Some(AssistantContent::Text(
+                part.get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .into(),
+            )),
+            Some("thinking") => Some(AssistantContent::Thinking(
+                part.get("thinking")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .into(),
+            )),
+            Some("toolCall") => Some(AssistantContent::ToolCall),
+            _ => None,
+        })
+        .collect();
+    let stop_reason = match json.get("stopReason").and_then(Value::as_str) {
+        Some("length") => StopReason::Length,
+        Some("aborted") => StopReason::Aborted,
+        Some("error") => StopReason::Error,
+        _ => StopReason::Complete,
+    };
+    AssistantSnapshot {
+        content,
+        stop_reason,
+        error_message: json
+            .get("errorMessage")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    }
+}
+
+fn json_text(value: Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::String(text) => text,
+        value => serde_json::to_string(&value).unwrap_or_default(),
+    }
+}
+
+fn tool_result_text(value: Value) -> String {
+    let content = value.get("content").and_then(Value::as_array);
+    if let Some(content) = content {
+        let text = content
+            .iter()
+            .filter_map(|part| part.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !text.is_empty() {
+            return text;
+        }
+    }
+    json_text(value)
 }
 
 fn message_content(message: &AgentMessage) -> String {
