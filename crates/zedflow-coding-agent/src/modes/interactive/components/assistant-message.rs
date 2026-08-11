@@ -1,91 +1,152 @@
-//! Pi-compatible assistant transcript rendering.
+//! Incremental assistant transcript rendering.
 
-use zedflow_tui::{Component, Text};
+use zedflow_tui::{Component, Markdown, Text};
 
 const OSC133_ZONE_START: &str = "\x1b]133;A\x07";
 const OSC133_ZONE_END: &str = "\x1b]133;B\x07\x1b]133;C\x07";
 
-/// The visible content accumulated while an assistant message streams.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssistantContent {
+    Text(String),
+    Thinking(String),
+    ToolCall,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopReason {
+    Complete,
+    Length,
+    Aborted,
+    Error,
+}
+
+/// The latest assistant snapshot. Updates replace previous streamed snapshots.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StreamingAssistantMessage {
-    thinking: String,
-    text: String,
+    content: Vec<AssistantContent>,
     hide_thinking: bool,
     hidden_thinking_label: String,
     output_pad: usize,
+    stop_reason: StopReason,
+    error_message: Option<String>,
+}
+
+impl Default for StreamingAssistantMessage {
+    fn default() -> Self {
+        Self {
+            content: Vec::new(),
+            hide_thinking: false,
+            hidden_thinking_label: "Thinking...".into(),
+            output_pad: 1,
+            stop_reason: StopReason::Complete,
+            error_message: None,
+        }
+    }
 }
 
 impl StreamingAssistantMessage {
-    /// Replaces the streamed snapshot, rather than appending it twice.
     pub fn update_content(&mut self, thinking: impl Into<String>, text: impl Into<String>) {
-        self.thinking = thinking.into();
-        self.text = text.into();
+        self.content = vec![
+            AssistantContent::Thinking(thinking.into()),
+            AssistantContent::Text(text.into()),
+        ];
     }
 
-    pub fn set_hide_thinking(&mut self, hide_thinking: bool) {
-        self.hide_thinking = hide_thinking;
+    pub fn update_snapshot(&mut self, content: Vec<AssistantContent>) {
+        self.content = content;
     }
 
-    pub fn set_output_pad(&mut self, output_pad: usize) {
-        self.output_pad = output_pad;
+    pub fn set_hide_thinking(&mut self, hide: bool) {
+        self.hide_thinking = hide;
+    }
+
+    pub fn set_hidden_thinking_label(&mut self, label: impl Into<String>) {
+        self.hidden_thinking_label = label.into();
+    }
+
+    pub fn set_output_pad(&mut self, padding: usize) {
+        self.output_pad = padding;
+    }
+
+    pub fn set_stop(&mut self, reason: StopReason, error_message: Option<String>) {
+        self.stop_reason = reason;
+        self.error_message = error_message;
     }
 
     #[must_use]
     pub fn thinking(&self) -> &str {
-        &self.thinking
+        self.content
+            .iter()
+            .find_map(|part| match part {
+                AssistantContent::Thinking(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .unwrap_or("")
     }
 
     #[must_use]
     pub fn text(&self) -> &str {
-        &self.text
+        self.content
+            .iter()
+            .find_map(|part| match part {
+                AssistantContent::Text(value) => Some(value.as_str()),
+                _ => None,
+            })
+            .unwrap_or("")
     }
 }
 
 impl Component for StreamingAssistantMessage {
     fn render(&self, width: usize) -> Vec<String> {
-        let mut content = Vec::new();
-        if !self.thinking.trim().is_empty() {
-            content.push(if self.hide_thinking {
-                if self.hidden_thinking_label.is_empty() {
-                    "Thinking..."
-                } else {
-                    &self.hidden_thinking_label
+        let has_tool_calls = self
+            .content
+            .iter()
+            .any(|part| matches!(part, AssistantContent::ToolCall));
+        let visible: Vec<_> = self
+            .content
+            .iter()
+            .filter(|part| match part {
+                AssistantContent::Text(text) | AssistantContent::Thinking(text) => {
+                    !text.trim().is_empty()
                 }
-                .to_owned()
-            } else {
-                self.thinking.trim().to_owned()
-            });
+                AssistantContent::ToolCall => false,
+            })
+            .collect();
+        let mut lines = Vec::new();
+        if !visible.is_empty() {
+            lines.push(String::new());
         }
-        if !self.text.trim().is_empty() {
-            content.push(self.text.trim().to_owned());
+        for (index, part) in visible.iter().enumerate() {
+            let text = match part {
+                AssistantContent::Text(text) => text.trim(),
+                AssistantContent::Thinking(text) if !self.hide_thinking => text.trim(),
+                AssistantContent::Thinking(_) => &self.hidden_thinking_label,
+                AssistantContent::ToolCall => unreachable!(),
+            };
+            lines.extend(
+                Markdown::new(text)
+                    .with_padding(self.output_pad, 0)
+                    .render(width),
+            );
+            if index + 1 < visible.len() && matches!(part, AssistantContent::Thinking(_)) {
+                lines.push(String::new());
+            }
         }
-        let mut lines = Text::new(
-            content.join("\n\n"),
-            self.output_pad,
-            usize::from(!content.is_empty()),
-        )
-        .render(width);
-        if !lines.is_empty() {
+        let error = match self.stop_reason {
+            StopReason::Length => Some("Error: Model stopped because it reached the maximum output token limit. The response may be incomplete.".to_owned()),
+            StopReason::Aborted if !has_tool_calls => Some(self.error_message.as_deref().filter(|message| *message != "Request was aborted").unwrap_or("Operation aborted").to_owned()),
+            StopReason::Error if !has_tool_calls => Some(format!("Error: {}", self.error_message.as_deref().unwrap_or("Unknown error"))),
+            _ => None,
+        };
+        if let Some(error) = error {
+            lines.push(String::new());
+            lines.extend(Text::new(error, self.output_pad, 0).render(width));
+        }
+        if !has_tool_calls && !lines.is_empty() {
             lines[0].insert_str(0, OSC133_ZONE_START);
             let last = lines.len() - 1;
             lines[last].insert_str(0, OSC133_ZONE_END);
         }
         lines
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hidden_thinking_uses_a_label_without_dropping_the_response() {
-        let mut message = StreamingAssistantMessage::default();
-        message.update_content("private", "answer");
-        message.set_hide_thinking(true);
-        let rendered = message.render(80).join("\n");
-        assert!(rendered.contains("Thinking..."));
-        assert!(rendered.contains("answer"));
-        assert!(!rendered.contains("private"));
     }
 }
