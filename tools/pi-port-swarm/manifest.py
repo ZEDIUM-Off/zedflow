@@ -62,6 +62,22 @@ def marker_only(content: str) -> bool:
     return not code or bool(re.fullmatch(r'pub\s+const\s+MODULE_PATH\s*:\s*&str\s*=\s*"[^"]+"\s*;', code))
 
 
+def source_path_only(content: str) -> bool:
+    code = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
+    code = re.sub(r"//.*", "", code)
+    code = re.sub(r"#\s*\[[^]]*\]", "", code).strip()
+    return bool(re.fullmatch(
+        r"pub\s+const\s+fn\s+source_path\s*\(\s*\)\s*->\s*&\s*'static\s+str\s*\{\s*\"[^\"]+\"\s*\}",
+        code,
+    ))
+
+
+def tui_surface(target: str) -> bool:
+    return target.startswith("crates/zedflow-tui/src/") or target.startswith(
+        "crates/zedflow-coding-agent/src/modes/interactive/"
+    )
+
+
 def executable_test(content: str) -> bool:
     return bool(re.search(r"#\s*\[\s*(?:[A-Za-z_]\w*::)*(?:test|rstest)(?:\s*\([^]]*\))?\s*\]", content))
 
@@ -192,7 +208,12 @@ def report(root: Path, package: str | None = None, revision: str | None = None) 
                 continue
             if inventory.get(source) == "src":
                 if marker_only(content):
-                    semantic_failures.append(f"marker-only source target: {target}")
+                    if tui_surface(target):
+                        semantic_failures.append(f"marker-only TUI module: {source} -> {target}")
+                    else:
+                        semantic_failures.append(f"marker-only source target: {target}")
+                if tui_surface(target) and source_path_only(content):
+                    semantic_failures.append(f"source-path-only TUI module: {source} -> {target}")
                 if runtime_placeholder(content):
                     semantic_failures.append(f"runtime placeholder: {target}")
                 if not module_wired(target, crate_sources):
@@ -207,6 +228,19 @@ def report(root: Path, package: str | None = None, revision: str | None = None) 
                 semantic_failures.append("unwired CLI mode: --print")
             if re.search(r"Some\(Mode::Text\).*Some\(Mode::Json\).*None\s*=>\s*Ok\(\(\)\)", main, re.DOTALL):
                 semantic_failures.append("unwired CLI modes: text, json, interactive")
+            interactive_target = "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs"
+            interactive = target_text(root, interactive_target, revision) or ""
+            interactive_source = "src/modes/interactive/interactive-mode.ts"
+            if re.search(r"add_child\s*\(\s*EventLog::new", interactive) and re.search(
+                r"add_child\s*\(\s*InteractiveInput::new", interactive
+            ):
+                semantic_failures.append(
+                    f"placeholder live TUI composition: {interactive_source} -> {interactive_target} (EventLog + InteractiveInput)"
+                )
+            if re.search(r"AgentEvent::MessageUpdate\s*\{\s*\.\.\s*\}", interactive):
+                semantic_failures.append(
+                    f"ignored assistant update payload: {interactive_source} -> {interactive_target}"
+                )
         semantic_failures = sorted(set(semantic_failures))
         errors.extend(f"{value}: {failure}" for failure in semantic_failures)
 

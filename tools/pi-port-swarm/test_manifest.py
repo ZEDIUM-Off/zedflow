@@ -74,6 +74,53 @@ class ManifestTests(unittest.TestCase):
                 (root / path).write_text(content, encoding="utf-8")
                 self.assertTrue(any(expected in error for error in manifest.report(root, "zedflow-ai")["errors"]))
 
+    def test_tui_source_path_only_module_is_rejected(self) -> None:
+        root = self.fixture("tui")
+        target = root / "crates/zedflow-tui/src/a.rs"
+        target.write_text(
+            "//! frozen source marker\n#[must_use]\npub const fn source_path() -> &'static str { \"src/a.ts\" }\n",
+            encoding="utf-8",
+        )
+        value = manifest.report(root, "zedflow-tui")
+        self.assertIn(
+            "source-path-only TUI module: src/a.ts -> crates/zedflow-tui/src/a.rs",
+            value["packages"]["zedflow-tui"]["semantic_failures"],
+        )
+
+        target.write_text('pub const MODULE_PATH: &str = "src/a.ts";\n', encoding="utf-8")
+        self.assertIn(
+            "marker-only TUI module: src/a.ts -> crates/zedflow-tui/src/a.rs",
+            manifest.report(root, "zedflow-tui")["packages"]["zedflow-tui"]["semantic_failures"],
+        )
+
+        target.write_text("pub fn render() {}\n", encoding="utf-8")
+        self.assertEqual(manifest.report(root, "zedflow-tui")["status"], "valid")
+
+    def test_placeholder_live_tui_composition_is_rejected(self) -> None:
+        root = self.fixture("coding-agent")
+        target = root / "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs"
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            "fn render(event: AgentEvent) { match event { AgentEvent::MessageUpdate { .. } => {} } }\n"
+            "fn run(root: &mut Root) { root.add_child(EventLog::new()); root.add_child(InteractiveInput::new()); }\n",
+            encoding="utf-8",
+        )
+        failures = manifest.report(root, "zedflow-coding-agent")["packages"]["zedflow-coding-agent"]["semantic_failures"]
+        self.assertIn(
+            "placeholder live TUI composition: src/modes/interactive/interactive-mode.ts -> crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs (EventLog + InteractiveInput)",
+            failures,
+        )
+        self.assertIn(
+            "ignored assistant update payload: src/modes/interactive/interactive-mode.ts -> crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+            failures,
+        )
+
+        target.write_text(
+            "fn render(event: AgentEvent) { match event { AgentEvent::MessageUpdate { message } => transcript.update(message) } }\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(manifest.report(root, "zedflow-coding-agent")["status"], "valid")
+
     def test_raw_identifier_module_declaration_is_wired(self) -> None:
         root = self.fixture()
         source = root / "crates/zedflow-ai/src"
