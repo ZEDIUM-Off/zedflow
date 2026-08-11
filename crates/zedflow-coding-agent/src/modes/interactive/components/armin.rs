@@ -3,6 +3,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use zedflow_tui::Component;
 
+use crate::modes_interactive_theme_theme::Theme;
+
 const WIDTH: usize = 31;
 const HEIGHT: usize = 36;
 const BYTES_PER_ROW: usize = WIDTH.div_ceil(8);
@@ -83,6 +85,7 @@ pub struct ArminComponent {
     state: EffectState,
     rng: u64,
     running: bool,
+    accent_ansi: String,
 }
 
 impl ArminComponent {
@@ -92,6 +95,13 @@ impl ArminComponent {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos() as u64);
         Self::with_effect(EFFECTS[(seed as usize) % EFFECTS.len()], seed)
+    }
+
+    #[must_use]
+    pub fn with_theme(theme: &Theme) -> Self {
+        let mut component = Self::new();
+        component.accent_ansi = theme.fg_ansi("accent").unwrap_or("").into();
+        component
     }
 
     /// Construct a chosen effect; `seed` makes the random Pi effects testable.
@@ -105,6 +115,7 @@ impl ArminComponent {
             state: EffectState::Typewriter { pos: 0 },
             rng: seed,
             running: true,
+            accent_ansi: String::new(),
         };
         component.state = component.initial_state();
         component
@@ -314,13 +325,17 @@ impl Default for ArminComponent {
 impl Component for ArminComponent {
     fn render(&self, width: usize) -> Vec<String> {
         let available = width.saturating_sub(1);
+        let reset = (!self.accent_ansi.is_empty())
+            .then_some("\x1b[39m")
+            .unwrap_or("");
         let mut lines = self
             .current_grid
             .iter()
             .map(|row| {
                 let content: String = row.iter().take(available).collect();
                 format!(
-                    " {content}{:width$}",
+                    " {}{content}{reset}{:width$}",
+                    self.accent_ansi,
                     "",
                     width = available.saturating_sub(content.chars().count())
                 )
@@ -328,7 +343,8 @@ impl Component for ArminComponent {
             .collect::<Vec<_>>();
         let message = "ARMIN SAYS HI";
         lines.push(format!(
-            " {message}{:width$}",
+            " {}{message}{reset}{:width$}",
+            self.accent_ansi,
             "",
             width = available.saturating_sub(message.len())
         ));
