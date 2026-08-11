@@ -244,21 +244,88 @@ pub fn apply_background_to_line(line: &str, width: usize, bg: impl Fn(&str) -> S
     bg(&s)
 }
 
-fn update_active_sgr(text: &str, active: &mut String) {
-    let mut i = 0;
-    while i < text.len() {
-        if let Some(ansi) = extract_ansi_code(text, i) {
-            if ansi.code.ends_with('m') {
-                if matches!(ansi.code.as_str(), "\x1b[m" | "\x1b[0m") {
-                    active.clear();
-                } else {
-                    active.push_str(&ansi.code);
+#[derive(Default)]
+struct AnsiState {
+    sgr: String,
+    underline: bool,
+    hyperlink: Option<(String, String)>,
+}
+
+impl AnsiState {
+    fn update(&mut self, text: &str) {
+        let mut i = 0;
+        while i < text.len() {
+            if let Some(ansi) = extract_ansi_code(text, i) {
+                if let Some(body) = ansi.code.strip_prefix("\x1b]8;") {
+                    let (body, terminator) = if let Some(body) = body.strip_suffix('\x07') {
+                        (body, "\x07")
+                    } else if let Some(body) = body.strip_suffix("\x1b\\") {
+                        (body, "\x1b\\")
+                    } else {
+                        i += ansi.length;
+                        continue;
+                    };
+                    if let Some((params, url)) = body.split_once(';') {
+                        self.hyperlink = (!url.is_empty()).then(|| {
+                            (
+                                format!("\x1b]8;{params};{url}{terminator}"),
+                                terminator.into(),
+                            )
+                        });
+                    }
+                } else if ansi.code.ends_with('m') {
+                    let params = &ansi.code[2..ansi.code.len() - 1];
+                    if params.is_empty() || params.split(';').any(|param| param == "0") {
+                        self.sgr.clear();
+                        self.underline = false;
+                    } else {
+                        let params: Vec<_> = params.split(';').collect();
+                        if params.contains(&"24") {
+                            self.underline = false;
+                            self.sgr = self.sgr.replace("\x1b[4m", "");
+                        }
+                        if params.contains(&"4") {
+                            self.underline = true;
+                            self.sgr.push_str("\x1b[4m");
+                        }
+                        let other = params
+                            .into_iter()
+                            .filter(|param| !matches!(*param, "4" | "24"))
+                            .collect::<Vec<_>>()
+                            .join(";");
+                        if !other.is_empty() {
+                            self.sgr.push_str(&format!("\x1b[{other}m"));
+                        }
+                    }
                 }
+                i += ansi.length;
+            } else {
+                i += text[i..].chars().next().unwrap().len_utf8();
             }
-            i += ansi.length;
-        } else {
-            i += text[i..].chars().next().unwrap().len_utf8();
         }
+    }
+
+    fn prefix(&self) -> String {
+        format!(
+            "{}{}",
+            self.sgr,
+            self.hyperlink.as_ref().map_or("", |link| &link.0)
+        )
+    }
+
+    fn line_end(&self) -> String {
+        let mut end = if self.underline {
+            "\x1b[24m".to_string()
+        } else if !self.sgr.is_empty() {
+            "\x1b[0m".to_string()
+        } else {
+            String::new()
+        };
+        if let Some((_, terminator)) = &self.hyperlink {
+            end.push_str("\x1b]8;;");
+            end.push_str(terminator);
+        }
+        end
     }
 }
 
@@ -276,18 +343,16 @@ pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
             }
             let mut lines = Vec::new();
             let mut rest = line;
-            let mut active = String::new();
+            let mut state = AnsiState::default();
             while !rest.is_empty() {
                 let (part, columns) = take_width(rest, width);
                 if columns == 0 {
                     break;
                 }
                 let consumed = part.len();
-                let mut output = format!("{active}{}", part.trim_end_matches(' '));
-                update_active_sgr(&part, &mut active);
-                if !active.is_empty() {
-                    output.push_str("\x1b[0m");
-                }
+                let mut output = format!("{}{}", state.prefix(), part.trim_end_matches(' '));
+                state.update(&part);
+                output.push_str(&state.line_end());
                 lines.push(output);
                 rest = &rest[consumed..];
             }
