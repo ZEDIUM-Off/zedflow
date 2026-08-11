@@ -26,7 +26,44 @@ pub enum PackageScope {
 pub struct ConfiguredPackage {
     pub source: String,
     pub scope: PackageScope,
+    pub filtered: bool,
     pub installed_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceScope {
+    User,
+    Project,
+    Temporary,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PathMetadata {
+    pub source: String,
+    pub scope: SourceScope,
+    pub origin: ResourceOrigin,
+    pub base_dir: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResourceOrigin {
+    Package,
+    TopLevel,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ResolvedResource {
+    pub path: PathBuf,
+    pub enabled: bool,
+    pub metadata: PathMetadata,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ResolvedPaths {
+    pub extensions: Vec<ResolvedResource>,
+    pub skills: Vec<ResolvedResource>,
+    pub prompts: Vec<ResolvedResource>,
+    pub themes: Vec<ResolvedResource>,
 }
 
 /// Source and Cargo-produced artifact path needed for an installation.
@@ -191,10 +228,19 @@ impl DefaultPackageManager {
                     .map(move |install| ConfiguredPackage {
                         source: install.receipt.source.clone(),
                         scope,
+                        filtered: false,
                         installed_path: install.resolve().ok().map(|(path, _)| path),
                     })
             })
             .collect()
+    }
+
+    #[must_use]
+    pub fn get_installed_path(&self, source: &str, scope: PackageScope) -> Option<PathBuf> {
+        self.list_configured_packages()
+            .into_iter()
+            .find(|package| package.scope == scope && package.source == source)
+            .and_then(|package| package.installed_path)
     }
 
     /// Removes the persisted receipt and its application-managed authorization.

@@ -300,6 +300,18 @@ impl KeybindingsManager {
         self.manager.get_resolved_bindings()
     }
     #[must_use]
+    pub fn matches(&self, data: &str, keybinding: &str) -> bool {
+        self.manager.matches(data, keybinding)
+    }
+    #[must_use]
+    pub fn get_keys(&self, keybinding: &str) -> Vec<Keybinding> {
+        self.manager.get_keys(keybinding)
+    }
+    #[must_use]
+    pub fn display(&self, keybinding: &str) -> String {
+        self.get_keys(keybinding).join("/")
+    }
+    #[must_use]
     pub fn inner(&self) -> &TuiKeybindingsManager {
         &self.manager
     }
