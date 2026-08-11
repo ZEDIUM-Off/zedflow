@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://zedflow.dev/tui-parity/fixture-v1.json",
+  "title": "Zedflow TUI parity fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "dimensions", "capabilities", "events"],
+  "properties": {
+    "version": { "const": 1 },
+    "dimensions": { "$ref": "#/$defs/dimensions" },
+    "capabilities": { "$ref": "#/$defs/capabilities" },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["colors", "unicode", "kittyKeyboard"],
+      "properties": {
+        "colors": { "enum": [0, 16, 256, 16777216] },
+        "unicode": { "type": "boolean" },
+        "kittyKeyboard": { "type": "boolean" }
+      }
+    },
+    "event": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "write" },
+            "data": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "input" },
+            "data": { "type": "string" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "columns", "rows"],
+          "properties": {
+            "type": { "const": "resize" },
+            "columns": { "type": "integer", "minimum": 1, "maximum": 1000 },
+            "rows": { "type": "integer", "minimum": 1, "maximum": 1000 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "const": "lifecycle" },
+            "name": {
+              "enum": [
+                "message_start", "message_update", "message_end",
+                "tool_start", "tool_update", "tool_end", "abort", "error",
+                "queue", "compaction_start", "compaction_end", "session"
+              ]
+            },
+            "data": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+            "render": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fg": { "type": "string" },
+        "bg": { "type": "string" },
+        "bold": { "const": true },
+        "dim": { "const": true },
+        "italic": { "const": true },
+        "underline": { "const": true },
+        "inverse": { "const": true },
+        "invisible": { "const": true },
+        "strikethrough": { "const": true }
+      }
+    },
+    "cell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "width"],
+      "properties": {
+        "text": { "type": "string" },
+        "width": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "style": { "$ref": "#/$defs/style" }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cells", "cursor"],
+      "properties": {
+        "cells": {
+          "type": "array",
+          "items": { "type": "array", "items": { "$ref": "#/$defs/cell" } }
+        },
+        "cursor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "visible"],
+          "properties": {
+            "x": { "type": "integer", "minimum": 0 },
+            "y": { "type": "integer", "minimum": 0 },
+            "visible": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}
