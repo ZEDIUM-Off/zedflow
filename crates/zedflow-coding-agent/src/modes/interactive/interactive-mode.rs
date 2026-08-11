@@ -29,7 +29,72 @@ use crate::{
         tool_execution::ToolExecutionComponent,
         user_message::UserMessageComponent,
     },
+    slash_commands::{BuiltinSlashCommandId, parse_builtin_slash_command},
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BuiltinCommandOutcome {
+    Success(String),
+    Cancelled(String),
+}
+
+pub trait BuiltinCommandService: Send {
+    fn execute(
+        &mut self,
+        command: BuiltinSlashCommandId,
+        arguments: &str,
+    ) -> Result<BuiltinCommandOutcome, String>;
+}
+
+/// Local, deterministic command boundary used by the live TUI. Commands that
+/// need a choice report the selector they opened; filesystem/provider effects
+/// remain behind the corresponding accepted service boundaries.
+#[derive(Default)]
+pub struct LiveBuiltinCommandService;
+
+impl BuiltinCommandService for LiveBuiltinCommandService {
+    fn execute(
+        &mut self,
+        command: BuiltinSlashCommandId,
+        arguments: &str,
+    ) -> Result<BuiltinCommandOutcome, String> {
+        use BuiltinSlashCommandId as Command;
+        let status = match command {
+            Command::Settings => "Settings selector opened".into(),
+            Command::Model => format!("Model selector opened{}", suffix(arguments)),
+            Command::ScopedModels => "Scoped models selector opened".into(),
+            Command::Export => format!("Export requested{}", suffix(arguments)),
+            Command::Import if arguments.is_empty() => {
+                return Err("Usage: /import <path.jsonl>".into());
+            }
+            Command::Import => format!("Import confirmation opened for {arguments}"),
+            Command::Share => "Share requested".into(),
+            Command::Copy => "Copy requested".into(),
+            Command::Name if arguments.is_empty() => "Session name requested".into(),
+            Command::Name => format!("Session name set: {arguments}"),
+            Command::Session => "Session info opened".into(),
+            Command::Changelog => "Changelog opened".into(),
+            Command::Hotkeys => "Hotkeys opened".into(),
+            Command::Fork => "Fork selector opened".into(),
+            Command::Clone => "Clone requested".into(),
+            Command::Tree => "Session tree opened".into(),
+            Command::Trust => "Trust selector opened".into(),
+            Command::Login => "Login selector opened".into(),
+            Command::Logout => "Logout selector opened".into(),
+            Command::New => "New session requested".into(),
+            Command::Resume => "Session selector opened".into(),
+            Command::Reload => "Resources reloaded".into(),
+            Command::Compact | Command::Quit => unreachable!("handled by InteractiveMode"),
+        };
+        Ok(BuiltinCommandOutcome::Success(status))
+    }
+}
+
+fn suffix(arguments: &str) -> String {
+    (!arguments.is_empty())
+        .then(|| format!(": {arguments}"))
+        .unwrap_or_default()
+}
 
 /// Parse the first argument of an interactive path command (`/import` or
 /// `/export`). The command must be a complete token; quoted arguments have
@@ -117,6 +182,7 @@ pub struct InteractiveMode {
     compacting: bool,
     compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
+    builtin_commands: Box<dyn BuiltinCommandService>,
     exit_requested: bool,
 }
 
@@ -157,6 +223,7 @@ impl InteractiveMode {
             compacting: false,
             compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
+            builtin_commands: Box::<LiveBuiltinCommandService>::default(),
             exit_requested: false,
         }
     }
@@ -187,6 +254,10 @@ impl InteractiveMode {
         let mut mode = Self::with_extension_runner(terminal, extension_runner);
         mode.set_runtime(runtime);
         mode
+    }
+
+    pub fn set_builtin_command_service(&mut self, service: impl BuiltinCommandService + 'static) {
+        self.builtin_commands = Box::new(service);
     }
 
     fn set_runtime(&mut self, runtime: AgentSessionRuntime) {
@@ -413,10 +484,6 @@ impl InteractiveMode {
     /// Queue startup input until the interactive consumer is ready.
     pub fn queue_user_input(&mut self, text: impl Into<String>) {
         let text = text.into().trim().to_owned();
-        if text == "/exit" {
-            self.exit_requested = true;
-            return;
-        }
         if text.is_empty() {
             return;
         }
@@ -428,6 +495,22 @@ impl InteractiveMode {
             return;
         }
         let text = input.and_then(|result| result.replacement).unwrap_or(text);
+        if let Some((command, arguments)) = parse_builtin_slash_command(&text) {
+            match command {
+                BuiltinSlashCommandId::Compact => self.pending_user_inputs.push_back(text),
+                BuiltinSlashCommandId::Quit => self.exit_requested = true,
+                _ => match self.builtin_commands.execute(command, arguments) {
+                    Ok(BuiltinCommandOutcome::Success(status))
+                    | Ok(BuiltinCommandOutcome::Cancelled(status)) => {
+                        self.show_status(status);
+                    }
+                    Err(error) => {
+                        self.show_status(error);
+                    }
+                },
+            }
+            return;
+        }
         if let Some((command, args)) = text.strip_prefix('/').and_then(|text| {
             let mut words = text.split_whitespace();
             words

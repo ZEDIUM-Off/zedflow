@@ -325,6 +325,9 @@ fn run_interactive(args: &[String], parsed: &zedflow_coding_agent::cli::Args) ->
         runtime,
         runner,
     );
+    mode.set_builtin_command_service(
+        zedflow_coding_agent::modes::interactive::interactive_mode::LiveBuiltinCommandService,
+    );
     for message in &parsed.messages {
         mode.queue_user_input(message);
     }
