@@ -1,11 +1,10 @@
-#[derive(Default, Clone, Debug, PartialEq, Eq)]
+//! Emacs-style kill/yank ring.
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct KillRing {
     ring: Vec<String>,
 }
 impl KillRing {
-    pub fn new() -> Self {
-        Self::default()
-    }
     pub fn push(&mut self, text: &str, prepend: bool, accumulate: bool) {
         if text.is_empty() {
             return;
@@ -18,7 +17,7 @@ impl KillRing {
                 format!("{last}{text}")
             });
         } else {
-            self.ring.push(text.into());
+            self.ring.push(text.to_owned());
         }
     }
     pub fn peek(&self) -> Option<&str> {

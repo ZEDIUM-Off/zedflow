@@ -22,3 +22,16 @@ fn keybindings_match_decoded_input() {
         ["left", "ctrl+b"]
     );
 }
+
+#[test]
+fn rebinding_one_action_does_not_evict_shared_defaults() {
+    let mut user = HashMap::new();
+    user.insert(
+        "tui.input.submit".into(),
+        vec!["enter".into(), "ctrl+enter".into()],
+    );
+    user.insert("tui.select.up".into(), vec!["up".into(), "ctrl+p".into()]);
+    let manager = KeybindingsManager::new(tui_keybindings(), user);
+    assert_eq!(manager.get_keys("tui.select.confirm"), ["enter"]);
+    assert_eq!(manager.get_keys("tui.editor.cursorUp"), ["up"]);
+}
