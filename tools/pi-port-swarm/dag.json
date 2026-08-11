@@ -4,7 +4,7 @@
   "max_active_writers": 1,
   "units": [
     {
-      "id": "SEM-V1-CLOSURE-GUARD",
+      "id": "P1.T1",
       "kind": "writer",
       "depends_on": [],
       "ownership": [
@@ -14,2730 +14,421 @@
       "validation": [
         "python3 tools/pi-port-swarm/test_manifest.py"
       ],
-      "intent": "Replace mechanical-only closure with revision-aware semantic guards: reject marker-only sources, empty/non-executable tests, dead mapped modules, unexplained ignores, narrow runtime placeholders, and unwired Coding-agent CLI modes. Do not disposition existing failures away."
+      "intent": "Implement only P1.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Modify only tools/pi-port-swarm/manifest.py and test_manifest.py. Add targeted, behavior-preserving guards that reject marker-only modules and the known placeholder live TUI composition; do not broaden to unrelated packages or disposition failures. Run only the listed Python checks and return the exact pre-repair failure inventory."
     },
     {
-      "id": "SEM-TUI-V1-PORTABLE-TERMINAL",
+      "id": "P1.T2",
       "kind": "writer",
-      "depends_on": [
-        "SEM-V1-CLOSURE-GUARD"
-      ],
+      "depends_on": [],
       "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-tui/Cargo.toml",
-        "crates/zedflow-tui/src/terminal.rs",
-        "crates/zedflow-tui/src/stdin-buffer.rs",
-        "crates/zedflow-tui/src/terminal-colors.rs",
-        "crates/zedflow-tui/tests/terminal.rs",
-        "crates/zedflow-tui/tests/stdin-buffer.rs",
-        "crates/zedflow-tui/tests/terminal-colors.rs",
-        "crates/zedflow-tui/tests/tui-cell-size-input.rs"
+        "crates/zedflow-coding-agent/src/config.rs",
+        "crates/zedflow-coding-agent/src/core/auth-storage.rs",
+        "crates/zedflow-coding-agent/src/core/model-registry.rs",
+        "crates/zedflow-coding-agent/src/core/settings-manager.rs",
+        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/core/session-manager.rs",
+        "crates/zedflow-coding-agent/src/core/trust-manager.rs",
+        "crates/zedflow-coding-agent/src/core/keybindings.rs",
+        "crates/zedflow-coding-agent/src/utils/open-browser.rs",
+        "crates/zedflow-coding-agent/src/utils/paths.rs",
+        "crates/zedflow-coding-agent/tests/auth-storage.rs",
+        "crates/zedflow-coding-agent/tests/model-registry.rs",
+        "crates/zedflow-coding-agent/tests/settings-manager.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
+        "crates/zedflow-coding-agent/tests/trust-manager.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal --test stdin-buffer --test terminal-colors --test tui-cell-size-input"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test auth-storage",
+        "cargo test -p zedflow-coding-agent --test model-registry",
+        "cargo test -p zedflow-coding-agent --test settings-manager",
+        "cargo test -p zedflow-coding-agent --test session-manager",
+        "cargo test -p zedflow-coding-agent --test trust-manager"
       ],
-      "intent": "Port Pi ProcessTerminal lifecycle and stdin framing. Add exactly crossterm =0.29.0 for safe raw mode, size and restoration only; preserve Pi raw-byte/CSI/OSC/DCS/APC/bracketed-paste parsing and protocol negotiation locally."
+      "intent": "Implement only P1.T2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Own only the listed coding-agent core/config/utils files and focused tests. Reuse existing APIs first, then add the smallest typed adapters needed by frozen Pi theme/selectors. No UI, commands, global state, credentials, or network. Return a Pi-import-to-Rust-symbol contract table."
     },
     {
-      "id": "SEM-TUI-V2-RENDERER",
+      "id": "P1.T3",
       "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V1-PORTABLE-TERMINAL"
-      ],
+      "depends_on": [],
       "ownership": [
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/index.rs",
         "crates/zedflow-tui/src/tui.rs",
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs",
-        "crates/zedflow-tui/tests/tui-render.rs",
-        "crates/zedflow-tui/tests/tui-shrink.rs",
-        "crates/zedflow-tui/tests/tui-overlay-style-leak.rs",
-        "crates/zedflow-tui/tests/overlay-non-capturing.rs",
-        "crates/zedflow-tui/tests/overlay-options.rs",
-        "crates/zedflow-tui/tests/overlay-short-content.rs",
-        "crates/zedflow-tui/tests/regression-overlay-cjk-boundary.rs",
-        "crates/zedflow-tui/tests/viewport-overwrite-repro.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Port Pi TUI lifecycle, render scheduling, differential redraw, viewport overwrite, overlays, focus and logical cursor. Export the runtime from the crate root; do not replace it with Ratatui or a full-screen abstraction."
-    },
-    {
-      "id": "SEM-TUI-V3-INPUT-EDITING-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V2-RENDERER"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/index.rs",
+        "crates/zedflow-tui/src/terminal.rs",
         "crates/zedflow-tui/src/keys.rs",
         "crates/zedflow-tui/src/keybindings.rs",
-        "crates/zedflow-tui/src/autocomplete.rs",
-        "crates/zedflow-tui/src/editor-component.rs",
+        "crates/zedflow-tui/src/stdin-buffer.rs",
+        "crates/zedflow-tui/src/native-modifiers.rs",
+        "crates/zedflow-tui/src/utils.rs",
         "crates/zedflow-tui/src/fuzzy.rs",
+        "crates/zedflow-tui/src/word-navigation.rs",
         "crates/zedflow-tui/src/kill-ring.rs",
         "crates/zedflow-tui/src/undo-stack.rs",
-        "crates/zedflow-tui/src/utils.rs",
-        "crates/zedflow-tui/src/word-navigation.rs",
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/src/index.rs",
+        "crates/zedflow-tui/src/components/input.rs",
+        "crates/zedflow-tui/tests/input.rs",
         "crates/zedflow-tui/tests/keys.rs",
         "crates/zedflow-tui/tests/keybindings.rs",
-        "crates/zedflow-tui/tests/autocomplete.rs",
-        "crates/zedflow-tui/tests/editor.rs",
-        "crates/zedflow-tui/tests/fuzzy.rs",
-        "crates/zedflow-tui/tests/input.rs",
-        "crates/zedflow-tui/tests/tab-width.rs",
-        "crates/zedflow-tui/tests/truncate-to-width.rs",
+        "crates/zedflow-tui/tests/stdin-buffer.rs",
         "crates/zedflow-tui/tests/word-navigation.rs",
-        "crates/zedflow-tui/tests/wrap-ansi.rs",
-        "crates/zedflow-tui/tests/regression-regional-indicator-width.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Complete Pi key parsing/keybindings, editor semantics, history/undo/kill ring, autocomplete/fuzzy matching, ANSI wrapping and Unicode-17 composite width behavior with executable differential tests. Declare and export all owned modules from the crate roots."
-    },
-    {
-      "id": "SEM-TUI-V3-INPUT-EDITING-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-TUI-V3-INPUT-EDITING-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Freshly validate the repaired input-editing unit with its original declared gate; no source edits."
-    },
-    {
-      "id": "SEM-TUI-V4-COMPONENTS",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V3-INPUT-EDITING-VALIDATE-R1"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-tui/Cargo.toml",
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/index.rs",
-        "crates/zedflow-tui/src/components",
-        "crates/zedflow-tui/src/terminal-image.rs",
-        "crates/zedflow-tui/tests/markdown.rs",
-        "crates/zedflow-tui/tests/terminal-image.rs",
-        "crates/zedflow-tui/tests/bug-regression-isimageline-startswith-bug.rs",
-        "crates/zedflow-tui/tests/select-list.rs",
-        "crates/zedflow-tui/tests/truncated-text.rs",
-        "crates/zedflow-tui/tests/image-test.rs",
-        "crates/zedflow-tui/tests/chat-simple.rs",
-        "crates/zedflow-tui/tests/test-themes.rs",
+        "crates/zedflow-tui/tests/terminal.rs",
+        "crates/zedflow-tui/tests/tui-render.rs",
         "crates/zedflow-tui/tests/virtual-terminal.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Wire and port every Pi TUI component, local Markdown ANSI/OSC-8 renderer, image protocols and terminal-image helpers. Reuse workspace base64 0.22; retain approved exact markdown/ICU/emojis pins and xterm-headless as the frozen visual oracle."
-    },
-    {
-      "id": "SEM-TUI-V5-NATIVE-BACKENDS-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V4-COMPONENTS"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-tui/Cargo.toml",
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/native-modifiers.rs",
-        "crates/zedflow-tui/src/terminal.rs",
-        "crates/zedflow-tui/tests/terminal.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Close native parity using the approved target-specific windows-sys =0.61.2 (Win32_Foundation, Win32_System_Console) and objc2-core-graphics =0.3.2 (default-features=false; CGEventSource, CGEventTypes): validate Windows Shift-Tab/Ctrl-Space/AltGr/keypad/Unicode/repeat semantics and Apple Terminal modifier polling. Replace crate-wide forbid(unsafe_code) with deny-by-default and allow one documented unsafe boundary only in the cfg(windows) terminal code that enables ENABLE_VIRTUAL_TERMINAL_INPUT."
-    },
-    {
-      "id": "SEM-TUI-V6-MANIFEST-RAW-MOD-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V5-NATIVE-BACKENDS-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/manifest.py",
-        "tools/pi-port-swarm/test_manifest.py"
-      ],
-      "validation": [
-        "python3 tools/pi-port-swarm/test_manifest.py"
-      ],
-      "intent": "Repair the semantic module-reachability guard to recognize Rust raw-identifier declarations such as mod r#box; and add a focused regression test. Do not disposition mapped modules or weaken any other closure check."
-    },
-    {
-      "id": "SEM-TUI-V6-MAPPED-COMPONENTS-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V6-MANIFEST-RAW-MOD-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/components/mod.rs",
-        "crates/zedflow-tui/src/components/cancellable-loader.rs",
-        "crates/zedflow-tui/src/components/select-list.rs",
-        "crates/zedflow-tui/src/components/settings-list.rs",
-        "crates/zedflow-tui/src/components/truncated-text.rs"
-      ],
-      "validation": [
         "cargo fmt --package zedflow-tui --check",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+        "cargo test -p zedflow-tui --test input",
+        "cargo test -p zedflow-tui --test keys",
+        "cargo test -p zedflow-tui --test keybindings",
+        "cargo test -p zedflow-tui --test stdin-buffer",
+        "cargo test -p zedflow-tui --test word-navigation",
+        "cargo test -p zedflow-tui --test terminal",
+        "cargo test -p zedflow-tui --test tui-render",
+        "cargo test -p zedflow-tui --test virtual-terminal",
+        "cargo test -p zedflow-tui --lib"
       ],
-      "intent": "Repair the four dead mapped TUI component modules by synchronizing each mapped hyphenated source with its currently reachable underscore-named implementation and wiring the mapped file explicitly from components/mod.rs with #[path]. Preserve the reachable behavior; do not delete either filename, add dispositions, or weaken the manifest guard."
+      "intent": "Implement only P1.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the frozen Pi terminal/key/input/root-TUI foundation into exactly the listed zedflow-tui files and tests. Read the complete frozen sources/tests. Keep one terminal owner thread, add no dependency or alternate-screen design, and do not touch coding-agent. Return the public API and assertion parity ledger."
     },
     {
-      "id": "SEM-TUI-V6-VALIDATE-R3",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-TUI-V6-MAPPED-COMPONENTS-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo check -p zedflow-tui --all-targets",
-        "cargo test -p zedflow-tui --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Freshly validate the mapped TUI component wiring plus all executable TUI tests, strict semantic manifest closure, module reachability and package compilation. No source edits."
-    },
-    {
-      "id": "SEM-TUI-V7-MARKDOWN-R1",
+      "id": "P2.T1",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V6-VALIDATE-R3"
+        "P1.T3"
       ],
       "ownership": [
+        "crates/zedflow-tui/src/components/box.rs",
+        "crates/zedflow-tui/src/components/text.rs",
+        "crates/zedflow-tui/src/components/spacer.rs",
+        "crates/zedflow-tui/src/components/truncated-text.rs",
         "crates/zedflow-tui/src/components/markdown.rs",
-        "crates/zedflow-tui/tests/markdown.rs"
+        "crates/zedflow-tui/src/components/image.rs",
+        "crates/zedflow-tui/src/components/loader.rs",
+        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/terminal-image.rs",
+        "crates/zedflow-tui/src/terminal-colors.rs",
+        "crates/zedflow-tui/src/components/mod.rs",
+        "crates/zedflow-tui/tests/markdown.rs",
+        "crates/zedflow-tui/tests/terminal-image.rs",
+        "crates/zedflow-tui/tests/terminal-colors.rs",
+        "crates/zedflow-tui/tests/truncated-text.rs",
+        "crates/zedflow-tui/tests/wrap-ansi.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-tui --check",
         "cargo test -p zedflow-tui --test markdown",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+        "cargo test -p zedflow-tui --test terminal-image",
+        "cargo test -p zedflow-tui --test terminal-colors",
+        "cargo test -p zedflow-tui --test truncated-text",
+        "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Port the frozen Pi Markdown component into Rust with themed token rendering, padding, width-aware wrapping, caching and options; replace the external-dependency-only test with executable tests of the Rust component. Preserve ANSI/OSC-8 behavior and reject raw-source wrapping as implementation."
+      "intent": "Implement only P2.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete exactly the listed rich-rendering files/tests against frozen Pi, using the P1.T3 contracts. No coding-agent edits, new dependencies, renderer thread, or snapshot weakening. Return normalized example frames and test evidence."
     },
     {
-      "id": "SEM-TUI-V7-TERMINAL-EVENT-LOOP-R2",
+      "id": "P2.T2",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-MARKDOWN-R1"
+        "P1.T3"
       ],
       "ownership": [
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/index.rs",
-        "crates/zedflow-tui/src/terminal.rs",
-        "crates/zedflow-tui/src/tui.rs",
-        "crates/zedflow-tui/tests/terminal.rs",
-        "crates/zedflow-tui/tests/tui-render.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal --test tui-render"
-      ],
-      "intent": "Introduce an explicit caller-owned terminal event loop instead of mutating the live Tui from persistent Send callbacks: enqueue native raw stdin and resize events in ProcessTerminal, then drain, dispatch and render them on Tui's owning thread. Propagate the lifecycle API through the crate exports without requiring Component to be Send; preserve Pi raw-byte framing, Kitty negotiation, render scheduling and terminal restoration, with executable native-delivery coverage rather than direct feed_input or dispatch calls."
-    },
-    {
-      "id": "SEM-TUI-V7-TERMINAL-EVENTS-VALIDATE-R2",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-TUI-V7-TERMINAL-EVENT-LOOP-R2"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal --test tui-render",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Validate on the repair candidate that native stdin and resize events flow through ProcessTerminal into the live Tui via the caller-owned event loop, without direct feed_input or dispatch methods, while preserving raw framing, Kitty negotiation, render scheduling and restoration. No source edits."
-    },
-    {
-      "id": "SEM-TUI-V7-KITTY-IMAGE-LIFECYCLE-R3",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V7-TERMINAL-EVENTS-VALIDATE-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/tui.rs",
-        "crates/zedflow-tui/tests/tui-render.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test tui-render",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Port frozen Pi Kitty image lifecycle behavior through the live differential renderer: preserve image rows during reset normalization and overlay compositing, track and delete stale image IDs, and expand changed ranges across reserved image rows. Add executable runtime renderer coverage; reuse existing image protocol helpers and do not alter unrelated renderer behavior."
-    },
-    {
-      "id": "SEM-TUI-V7-TERMINAL-RESTART-LIFECYCLE-R4",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V7-KITTY-IMAGE-LIFECYCLE-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/terminal.rs",
-        "crates/zedflow-tui/tests/terminal.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Repair ProcessTerminal's cancellable, restartable native stdin lifecycle so stop() quiesces the active reader before returning, stopped terminals cannot steal external-editor input, and start-stop-start delivers real native input again without manual feed_input dispatch. Preserve frozen Pi raw framing, event-queue delivery, resize behavior, Kitty negotiation and restoration; add no dependency."
-    },
-    {
-      "id": "SEM-TUI-V7-TERMINAL-RESTART-VALIDATE-R4",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-TUI-V7-TERMINAL-RESTART-LIFECYCLE-R4"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Freshly validate real native start-stop-start input delivery through ProcessTerminal without feed_input dispatch, including that stop returns only after the old reader can no longer consume external-editor input and a later start has a live reader. Preserve raw framing, event-queue delivery, resize behavior, Kitty negotiation and restoration. No source edits."
-    },
-    {
-      "id": "SEM-TUI-V7-OWNER-EVENT-PUMP-R6",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V7-TERMINAL-RESTART-VALIDATE-R4"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/index.rs",
-        "crates/zedflow-tui/src/terminal.rs",
-        "crates/zedflow-tui/src/tui.rs",
-        "crates/zedflow-tui/tests/terminal.rs",
-        "crates/zedflow-tui/tests/tui-render.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal --test tui-render",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Make owner-cooperative event pumping the explicit safe lifecycle contract across Terminal and Tui: ProcessTerminal queues real stdin and resize events, Tui start/stop controls native activation and quiescence, and the Tui owner thread drains, dispatches and renders those events through the public API. Preserve non-Send component ownership, terminal restoration, external-editor stop/resume and start-stop-start behavior. Add executable real-ProcessTerminal coverage through the public owner pump; do not use TestTerminal-only injection, direct dispatch, detached callbacks, Send bounds, a blocking start(), or a new dependency."
-    },
-    {
-      "id": "SEM-TUI-V7-OWNER-EVENT-PUMP-VALIDATE-R6",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-TUI-V7-OWNER-EVENT-PUMP-R6"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test terminal --test tui-render",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
-      ],
-      "intent": "Freshly validate real native stdin and resize delivery from ProcessTerminal through the public owner-thread Tui event pump, including start-stop-start, external-editor pause/resume, terminal restoration and rendering. Reject TestTerminal-only injection, direct dispatch, detached readers or callbacks, cross-thread non-Send access, blocking start semantics and external-editor input theft. No source edits."
-    },
-    {
-      "id": "SEM-TUI-V7-COMPONENT-API-REPAIR-R7",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V7-OWNER-EVENT-PUMP-VALIDATE-R6"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/components/mod.rs",
-        "crates/zedflow-tui/src/components/cancellable-loader.rs",
+        "crates/zedflow-tui/src/components/editor.rs",
+        "crates/zedflow-tui/src/editor-component.rs",
+        "crates/zedflow-tui/src/autocomplete.rs",
         "crates/zedflow-tui/src/components/select-list.rs",
-        "crates/zedflow-tui/src/components/cancellable_loader.rs",
-        "crates/zedflow-tui/src/components/select_list.rs",
-        "crates/zedflow-tui/src/components/settings_list.rs",
-        "crates/zedflow-tui/src/components/truncated_text.rs",
-        "crates/zedflow-tui/tests/cancellable-loader.rs",
-        "crates/zedflow-tui/tests/select-list.rs"
+        "crates/zedflow-tui/src/components/settings-list.rs",
+        "crates/zedflow-tui/tests/editor.rs",
+        "crates/zedflow-tui/tests/autocomplete.rs",
+        "crates/zedflow-tui/tests/select-list.rs",
+        "crates/zedflow-tui/tests/fuzzy.rs"
       ],
       "validation": [
         "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test cancellable-loader --test select-list",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+        "cargo test -p zedflow-tui --test editor",
+        "cargo test -p zedflow-tui --test autocomplete",
+        "cargo test -p zedflow-tui --test select-list",
+        "cargo test -p zedflow-tui --test fuzzy"
       ],
-      "intent": "Restore frozen Pi component fidelity in the canonical hyphen-named modules: add SelectList theme/layout APIs, themed rendering, configurable primary-column bounds and truncation, and global keybinding behavior; add CancellableLoader keybinding-driven cancellation signaling, one-shot abort callback and disposal/stop behavior. Replace the vacuous SelectList test and add executable CancellableLoader coverage. Delete the four byte-identical tracked underscore-named duplicates while keeping mod.rs wired unambiguously to the canonical hyphen-named files. Do not alter the canonical settings-list or truncated-text implementations, add a dependency, or weaken tests."
+      "intent": "Implement only P2.T2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the complete frozen Pi editor/autocomplete/list behavior into exactly the listed files/tests. Read full frozen sources and assertions. A thin Input wrapper is forbidden. Return a capability-to-test matrix."
     },
     {
-      "id": "SEM-TUI-V7-CANCELLABLE-LOADER-REPAIR-R8",
+      "id": "P2.T3",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-COMPONENT-API-REPAIR-R7"
+        "P1.T3"
       ],
       "ownership": [
-        "crates/zedflow-tui/src/components/cancellable-loader.rs",
-        "crates/zedflow-tui/tests/cancellable-loader.rs"
+        "tools/tui-parity/run.py",
+        "tools/tui-parity/frozen-pi-oracle.mjs",
+        "tools/tui-parity/README.md",
+        "tools/tui-parity/fixtures/schema.json",
+        "crates/zedflow-coding-agent/tests/tui-parity-rust.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test cancellable-loader",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+        "cargo test -p zedflow-coding-agent --test tui-parity-rust"
       ],
-      "intent": "Restore frozen Pi CancellableLoader abort callback fidelity: every matching cancel input invokes on_abort, including inputs after the AbortSignal is already aborted. Keep abort signaling idempotent, correct the executable test that currently expects a single callback, and do not change unrelated component behavior or add a dependency."
+      "intent": "Implement only P2.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Create the exact oracle scaffold files using Python stdlib, a tracked .mjs frozen-Pi runner, package-lock/npm-ci reproducibility, and a Rust fixture consumer skeleton. No product edits, network, credentials, screenshots, or untracked pnpm assumptions. Run the plan-required Python/oracle self-checks in addition to the declared Rust gate."
     },
     {
-      "id": "SEM-TUI-V7-INTERACTIVE-OWNER-PUMP-REPAIR-R9",
+      "id": "P3.T1",
       "kind": "writer",
       "depends_on": [
-        "SEM-TUI-V7-CANCELLABLE-LOADER-REPAIR-R8"
+        "P1.T2",
+        "P2.T1",
+        "P2.T2"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend"
-      ],
-      "intent": "Connect the public owner-cooperative Tui event pump and terminal lifecycle to the downstream InteractiveMode owner: keep the live Tui on its owning thread, pump queued native stdin and resize events during the interactive runtime, and stop/resume the Tui around external-editor suspension with start-stop-start delivery and terminal restoration. Replace the vacuous suspend test with executable public-runtime coverage. Preserve non-Send component ownership; do not use cross-thread dispatch, TestTerminal-only delivery, detached readers, a blocking start, a line REPL, a placeholder, or a new dependency, and do not implement neighboring full interactive-mode features."
-    },
-    {
-      "id": "SEM-TUI-V7-EXECUTABLE-INTERACTIVE-WIRING-REPAIR-R10",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V7-INTERACTIVE-OWNER-PUMP-REPAIR-R9"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend"
-      ],
-      "intent": "Wire the default interactive executable route in main.rs to construct and drive InteractiveMode's live owner-thread Tui event pump instead of returning Ok(()). Stop and resume that live Tui around external-editor suspension, preserving real start-stop-start stdin and resize delivery plus terminal restoration. Extend the existing interactive-mode-suspend executable public-runtime coverage so it fails when the CLI bypasses InteractiveMode. Preserve non-Send ownership; do not implement neighboring print or other CLI modes, use a line REPL, add a placeholder or dependency, or dispatch across threads."
-    },
-    {
-      "id": "SEM-TUI-V7-FIDELITY-R10",
-      "kind": "reviewer",
-      "depends_on": [
-        "SEM-TUI-V7-EXECUTABLE-INTERACTIVE-WIRING-REPAIR-R10"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Freshly and independently compare frozen Pi TUI behavior against Rust using the safe owner-cooperative event-loop adaptation: real start-stop-start stdin and resize delivery, external-editor pause/resume, terminal restoration, raw input, Kitty image-row normalization and deletion, reserved-row redraw and overlay preservation, components, Markdown, Unicode 17, images and native-platform behavior. Verify through executable public-runtime coverage that downstream InteractiveMode owns and drives the live Tui pump and stops/resumes it around external-editor suspension; reject an unconnected helper or TestTerminal-only claim. Verify SelectList theme/layout/keybinding behavior; verify that every matching CancellableLoader cancel input invokes on_abort even after its AbortSignal is already aborted while cancellation signaling and disposal remain correct; verify executable component tests and unambiguous canonical component module reachability with no tracked dead duplicates. Reject autonomous cross-thread dispatch, detached reader leaks, dead modules, marker code, raw-source Markdown wrapping or vacuous tests. Additionally verify that the default executable route in main.rs constructs and drives InteractiveMode rather than returning without entering the interactive runtime, and that executable public-runtime coverage fails if this production wiring is removed."
-    },
-    {
-      "id": "SEM-CA-V1-CORE-TOOLS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-TUI-V7-FIDELITY-R10"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs",
-        "crates/zedflow-coding-agent/src/core/tools",
-        "crates/zedflow-coding-agent/src/core/compaction",
-        "crates/zedflow-coding-agent/src/core/messages.rs",
-        "crates/zedflow-coding-agent/src/core/event-bus.rs",
-        "crates/zedflow-coding-agent/src/core/exec.rs",
-        "crates/zedflow-coding-agent/src/core/bash-executor.rs",
-        "crates/zedflow-coding-agent/src/core/output-guard.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Replace marker-only Coding-agent core tool, exec, output, message, event and compaction modules with frozen Pi behavior. Declare and export the owned exec, bash-executor and bash-tool modules from lib.rs, and register the bash tool in rpc-entry.rs so the implementation is reachable through the RPC runtime. Preserve tool trust boundaries, truncation, cancellation and error semantics."
-    },
-    {
-      "id": "SEM-CA-V1-CORE-TOOLS-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V1-CORE-TOOLS-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Freshly validate the repaired Coding-agent core tools unit, including crate-root module reachability and RPC bash-tool registration, with its original declared gate. No source edits."
-    },
-    {
-      "id": "SEM-CA-V2-SESSION-CONFIG",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V1-CORE-TOOLS-VALIDATE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/src/migrations.rs",
-        "crates/zedflow-coding-agent/src/core/agent-session.rs",
-        "crates/zedflow-coding-agent/src/core/agent-session-runtime.rs",
-        "crates/zedflow-coding-agent/src/core/agent-session-services.rs",
-        "crates/zedflow-coding-agent/src/core/auth-guidance.rs",
-        "crates/zedflow-coding-agent/src/core/auth-storage.rs",
-        "crates/zedflow-coding-agent/src/core/defaults.rs",
-        "crates/zedflow-coding-agent/src/core/diagnostics.rs",
-        "crates/zedflow-coding-agent/src/core/model-registry.rs",
-        "crates/zedflow-coding-agent/src/core/model-resolver.rs",
-        "crates/zedflow-coding-agent/src/core/project-trust.rs",
-        "crates/zedflow-coding-agent/src/core/resolve-config-value.rs",
-        "crates/zedflow-coding-agent/src/core/session-cwd.rs",
-        "crates/zedflow-coding-agent/src/core/session-manager.rs",
-        "crates/zedflow-coding-agent/src/core/settings-manager.rs",
-        "crates/zedflow-coding-agent/src/core/trust-manager.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port Pi sessions, persistence/tree operations, migrations, settings, auth, trust, model registry/resolution and configuration errors; --no-session only disables conversation persistence."
-    },
-    {
-      "id": "SEM-CA-V3A-RUST-EXTENSION-API-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V2-SESSION-CONFIG"
-      ],
-      "ownership": [
-        "docs/porting/RUST_EXTENSION_ARCHITECTURE.md",
-        "crates/zedflow-coding-agent/src/core/extensions/types.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/wrapper.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/index.rs",
-        "crates/zedflow-coding-agent/src/core/index.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
-        "crates/zedflow-coding-agent/tests/extensions-input-event.rs",
-        "crates/zedflow-coding-agent/tests/compaction-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port Pi ExtensionAPI capabilities to native Rust in-process contracts and executable handlers: tools, commands, keybindings/flags, lifecycle/input/session events, providers/models, compaction, UI/components, session actions, stale-context invalidation, errors and shutdown. Keep all Rust types inside one compilation boundary; no dynamic loading or source installation yet."
-    },
-    {
-      "id": "SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3A-RUST-EXTENSION-API-R1"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/abi.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
-        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
-        "crates/zedflow-coding-agent/tests/extensions-abi-v1.rs",
-        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Implement approved custom C ABI v1 and in-process cdylib loader with libloading =0.9.0. Use bounded versioned JSON envelopes, validated repr(C) tables/handles, trust+SHA-256 checks, no unwind across FFI, one scoped unsafe loader module, and process-lifetime Library retention with no unload v1."
-    },
-    {
-      "id": "SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3B-RUST-EXTENSION-ABI-LOADER-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/abi.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
-        "crates/zedflow-coding-agent/tests/extensions-sdk-build.rs",
-        "crates/zedflow-coding-agent/tests/fixtures/rust-extension"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Expose an ergonomic Rust Extension trait/ExtensionApi and export_extension! macro from the existing coding-agent crate, preserving the five-crate workspace. Compile a real fixture cdylib separately, load it, and exercise Pi-equivalent registration, invocation, UI/provider/event behavior and shutdown through ABI v1."
-    },
-    {
-      "id": "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3C-RUST-EXTENSION-SDK-FIXTURE-R1"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/core/source-info.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/src/bun",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
-        "crates/zedflow-coding-agent/tests/extension-package-manager.rs",
-        ".agents/port-manifests/exceptions.tsv"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Implement the approved source-only extension installation norm: crate:<name>@<exact-version>, github:<owner>/<repo>@<resolved-commit>[#package], and path: development sources; mandatory local Cargo build, no prebuilt artifacts, locked/offline build after fetch, sanitized staging, sha2 0.10 provenance receipt, content-addressed artifact store, exact trust binding and rollback metadata."
-    },
-    {
-      "id": "SEM-CA-V3E-REMAINING-RESOURCES-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/export-html",
-        "crates/zedflow-coding-agent/src/core/footer-data-provider.rs",
-        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
-        "crates/zedflow-coding-agent/src/core/index.rs",
-        "crates/zedflow-coding-agent/src/core/keybindings.rs",
-        "crates/zedflow-coding-agent/src/core/prompt-templates.rs",
-        "crates/zedflow-coding-agent/src/core/provider-attribution.rs",
-        "crates/zedflow-coding-agent/src/core/provider-display-names.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/src/core/skills.rs",
-        "crates/zedflow-coding-agent/src/core/slash-commands.rs",
-        "crates/zedflow-coding-agent/src/core/system-prompt.rs",
-        "crates/zedflow-coding-agent/src/core/telemetry.rs",
-        "crates/zedflow-coding-agent/src/core/timings.rs",
-        "crates/zedflow-coding-agent/src/core/experimental.rs",
-        "crates/zedflow-coding-agent/src/utils",
-        "crates/zedflow-coding-agent/tests/resource-extension-runtime.rs",
-        "crates/zedflow-coding-agent/tests/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/skills.rs",
-        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
-        "crates/zedflow-coding-agent/tests/prompt-templates.rs",
-        "crates/zedflow-coding-agent/tests/footer-data-provider.rs",
-        "crates/zedflow-coding-agent/tests/export-html-skill-block.rs",
-        "crates/zedflow-coding-agent/tests/export-html-whitespace.rs",
-        "crates/zedflow-coding-agent/tests/export-html-xss.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port the remaining frozen Pi resources surface\u2014atomic extension/resource reload, skills, prompt templates, keybindings, exports, footer/provider metadata, telemetry, timing and platform utilities\u2014against the validated Rust extension runtime. Failed extension reload must preserve prior active state and surface diagnostics."
-    },
-    {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-ABI-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3E-REMAINING-RESOURCES-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/abi.rs",
-        "crates/zedflow-coding-agent/tests/extensions-abi-v1.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-abi-v1"
-      ],
-      "intent": "Repair the deterministic ABI v1 table-validation failure at crates/zedflow-coding-agent/tests/extensions-abi-v1.rs:17. Make a valid ABI_V1 table with the declared struct size and required callbacks pass validation while preserving rejection of malformed tables and invalid/oversized envelopes. Do not change ABI scope, loader behavior, dependencies, or unrelated extension surfaces."
-    },
-    {
-      "id": "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R3",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-ABI-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
-        "crates/zedflow-coding-agent/tests/extension-package-manager.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/mod.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the missing V3D source-install/provenance deliverable: add executable source-only crate, GitHub, and path installation plus provenance/trust behavior and behavior tests, including the extensions module-root exports required to wire those owned install/provenance APIs. Do not add dependencies, accept prebuilt artifacts, use TypeScript execution shortcuts, or weaken tests."
-    },
-    {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-ABI-TEST-REPAIR-R5",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3D-SOURCE-INSTALL-PROVENANCE-REPAIR-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/extensions-abi-v1.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-abi-v1"
-      ],
-      "intent": "Repair the deterministic extensions-abi-v1 behavioral failure at tests/extensions-abi-v1.rs:16 without weakening its ABI, unsafe, or separately compiled cdylib assertions. Do not edit production code, add dependencies, accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
-    },
-    {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-PACKAGE-MANAGER-TEST-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-ABI-TEST-REPAIR-R5"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/extension-package-manager.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extension-package-manager"
-      ],
-      "intent": "Repair the missing extension-package-manager integration-test target diagnosed by the extension validator. Create only crates/zedflow-coding-agent/tests/extension-package-manager.rs with executable source-only extension package-manager install/provenance/trust behavior; do not edit production code, add dependencies, use compile-only or marker tests, accept prebuilt artifacts, or weaken existing tests."
-    },
-    {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R6",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-PACKAGE-MANAGER-TEST-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test extensions-abi-v1",
-        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib",
-        "cargo test -p zedflow-coding-agent --test extensions-sdk-build",
-        "cargo test -p zedflow-coding-agent --test extensions-runner",
-        "cargo test -p zedflow-coding-agent --test extensions-input-event",
-        "cargo test -p zedflow-coding-agent --test extension-package-manager",
-        "cargo test -p zedflow-coding-agent --test resource-extension-runtime"
-      ],
-      "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the focused extension-package-manager test-target repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
-    },
-    {
-      "id": "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R3",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R6"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test extensions-abi-v1",
-        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib",
-        "cargo test -p zedflow-coding-agent --test extensions-sdk-build",
-        "cargo test -p zedflow-coding-agent --test extensions-runner",
-        "cargo test -p zedflow-coding-agent --test extensions-input-event",
-        "cargo test -p zedflow-coding-agent --test extension-package-manager",
-        "cargo test -p zedflow-coding-agent --test resource-extension-runtime"
-      ],
-      "intent": "Re-run the approved Rust extension API, ABI/unsafe invariants, separately compiled fixture, source-only local build/provenance/trust, loader lifetime, executable handlers and resource integration gates after the ABI v1 repair. Do not accept compile-only fixtures, TS execution shortcuts, prebuilt artifacts, or marker tests."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-LOADER-TOCTOU-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3F-RUST-EXTENSIONS-VALIDATE-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib"
-      ],
-      "intent": "Repair the native artifact digest/activation TOCTOU gap: activate only a verified artifact whose loaded bytes cannot be replaced between trust/digest verification and dynamic-library loading, and add an executable regression that rejects a swapped artifact. Preserve approved ABI v1, source-only install/provenance, process-lifetime no-unload, and dependencies; do not weaken trust checks."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-ABI-SAFETY-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-LOADER-TOCTOU-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs",
-        "crates/zedflow-coding-agent/tests/extensions-sdk-build.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib --test extensions-sdk-build"
-      ],
-      "intent": "Repair the diagnosed native ABI process-safety failures: serialize access to the shared extension instance across concurrent calls, contain all extension and extern-C trampoline panics with defined failure results, and preserve reentrancy/cancellation/stale-context behavior. Add executable regressions. Do not change ABI v1 scope, trust/digest activation, process-lifetime no-unload, source-only install/provenance, dependencies, or TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-RUNTIME-ACTIVATION-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-ABI-SAFETY-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
-        "crates/zedflow-coding-agent/tests/extensions-sdk-build.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
-      ],
-      "intent": "Activate each trusted loaded NativeExtension into ExtensionRuntime so its ABI registrations become executable ExtensionRunner handlers. Preserve the approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, and process-lifetime no-unload; add executable activation regressions. Do not add TypeScript compatibility, dependencies, or source-install changes."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-RUNTIME-PIPELINE-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-RUNTIME-ACTIVATION-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-runner"
-      ],
-      "intent": "Repair the missing production native-extension pipeline: route each trusted loaded NativeExtension through activation into an ExtensionRuntime consumed by ExtensionRunner, rather than exposing activation only as a manual/test API. Add an executable regression that drives this production path. Preserve approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-EVENTS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-RUNTIME-PIPELINE-REPAIR-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
-        "crates/zedflow-coding-agent/tests/extensions-sdk-build.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-runner --test extensions-sdk-build"
-      ],
-      "intent": "Repair native ExtensionAPI lifecycle-event activation: retain each trusted NativeExtension event registration from its ABI API snapshot during loader activation and dispatch it through ExtensionRuntime/ExtensionRunner emit. Add executable regressions proving a compiled native extension event handler participates in runner lifecycle dispatch. Preserve approved ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R3",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-EVENTS-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/mod.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive",
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs",
-        "crates/zedflow-coding-agent/tests/extensions-loader-cdylib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
-      ],
-      "intent": "Repair the default interactive native-extension host pipeline. Resolve only trusted native artifacts bound to source-install provenance/digest receipts through the resource configuration path, then make the real default entrypoint construct and retain the resulting ExtensionRunner and route its lifecycle, input, session, tool, command, and provider operations through that runner without duplicate mode dispatch. Add an executable default-harness regression. Include the extensions module root only to expose the existing host pipeline. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only install/provenance, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-INSTALL-PROVENANCE-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-HOST-REPAIR-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/tests/extension-package-manager.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extension-package-manager"
-      ],
-      "intent": "Repair the source-install provenance handoff before default startup: atomically persist/register each source directory, content-addressed native artifact, and digest-bound provenance receipt in the existing install/provenance location and schema so the default resource loader has a trusted receipt to consume. Add an executable installation regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-PERSIST-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-INSTALL-PROVENANCE-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/install.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/tests/extension-package-manager.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extension-package-manager"
-      ],
-      "intent": "Repair the missing persisted source-install registration at its ownership boundary: atomically record the source directory, content-addressed native artifact, and digest-bound provenance receipt in the existing install/provenance schema so a later ResourceLoader can discover it after restart. Add an executable installation persistence regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-PERSIST-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/resource-loader.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader"
-      ],
-      "intent": "Repair the persisted source-install registration consumption before default startup: make ResourceLoader discover the atomically recorded source directory, content-addressed native artifact, and digest-bound provenance receipt and expose only trusted registrations to its callers. Add an executable receipt-loading regression. Preserve source-only installation, digest/trust atomicity, ABI v1 process-safety, process-lifetime no-unload, dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-REPAIR-R2"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader"
-      ],
-      "intent": "Independently validate persisted source-install registration discovery after restart: ResourceLoader must expose only the atomically recorded source directory, content-addressed native artifact, and digest-bound trusted provenance receipt. No source edits."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R3",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-REGISTRATION-LOAD-VALIDATE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
-      ],
-      "intent": "Repair the default interactive startup provenance handoff using the persisted source-install registration: make the default ResourceLoader/main path resolve only trusted digest-bound artifacts into the real interactive ExtensionRunner, with an executable default-startup regression rather than direct runner injection. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R4",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
-      ],
-      "intent": "Diagnose and repair the deterministic native-extension startup gate failure without weakening tests: make the default ResourceLoader/main path load only persisted trusted digest-bound source-install registrations into the real interactive ExtensionRunner, and make its executable regression deterministic. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R2",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-REPAIR-R4"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib"
-      ],
-      "intent": "Independently validate the repaired default interactive startup provenance handoff: the real ResourceLoader/main path must resolve only persisted trusted digest-bound source-install registrations into the interactive ExtensionRunner, with the executable default-startup regression and cdylib loader regression passing. Preserve ABI v1 process-safety, trust/digest atomicity, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation/provenance, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-STARTUP-PROVENANCE-VALIDATE-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
-      ],
-      "intent": "Repair the default interactive native-extension runtime dispatch: make the real main/InteractiveMode event and user-input path retain the trusted startup ExtensionRunner and route lifecycle, input, session, tool, command, and provider registrations through it, rather than leaving runner dispatch test-only. Add an executable default-harness native artifact regression. Preserve trusted provenance/digest activation, ABI v1 process-safety, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
-      ],
-      "intent": "Repair the real default interactive harness dispatch: make main and InteractiveMode drive the retained trusted startup ExtensionRunner through actual event/user-input flow, dispatching lifecycle, input, session, tool, command, and provider registrations rather than exposing test-only methods. Add an executable default-harness native artifact regression. Preserve trusted provenance/digest activation, ABI v1 process-safety, reentrancy/cancellation/stale-context semantics, process-lifetime no-unload, source-only installation, dependencies, and TypeScript deferral."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RECEIPT-TRUST-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RUNTIME-DISPATCH-REPAIR-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader --test interactive-native-extensions"
-      ],
-      "intent": "Repair persisted extension receipt trust: make the managed source-install registration, not arbitrary receipt JSON or receipt-declared digests, the trust authority for ResourceLoader/default interactive startup. Reject unregistered, substituted-receipt, and artifact-path-substituted entries before NativeExtension loading; add executable regressions. Preserve source-only installation, provenance/digest atomicity, ABI v1 process-safety, process-lifetime no-unload, approved dependencies, and TypeScript deferral; do not add dependencies or accept prebuilt artifacts."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RECEIPT-TRUST-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RECEIPT-TRUST-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader --test interactive-native-extensions --test extensions-loader-cdylib"
-      ],
-      "intent": "Independently validate persisted extension receipt trust: only managed source-install registrations may resolve into the default interactive NativeExtension pipeline; arbitrary, substituted-receipt, and artifact-path-substituted entries must be rejected. No source edits."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-RECEIPT-TRUST-VALIDATE-R1"
-      ],
-      "ownership": [
-        "docs/porting/RUST_EXTENSION_ARCHITECTURE.md",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader --test interactive-native-extensions"
-      ],
-      "intent": "Repair the missing managed trust authority for persisted native extension receipts: make an application-managed trust root, not receipt-adjacent writable sidecars, the exclusive authority binding a source-install identity and artifact digest before ResourceLoader/default interactive startup loads NativeExtension. Reject forged matching receipt/registration pairs and preserve source-only installation, provenance/digest atomicity, ABI v1 process-safety, process-lifetime no-unload, approved dependencies, and TypeScript deferral; do not accept prebuilt artifacts or weaken tests."
-    },
-    {
-      "id": "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader --test interactive-native-extensions --test extensions-loader-cdylib"
-      ],
-      "intent": "Independently validate managed persisted extension receipt trust: only an application-managed trust-root binding created by source installation may resolve into the default interactive NativeExtension pipeline; forged matching receipt/registration pairs, substituted receipts, and artifact-path substitutions must be rejected. No source edits."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-SHUTDOWN-LOADER-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V4-INTERACTIVE-EXTENSIONS-MANAGED-TRUST-ROOT-VALIDATE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/runner.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-runner"
-      ],
-      "intent": "Repair native extension lifecycle shutdown by adding a non-consuming NativeExtension activation path so ExtensionRunner retains each loaded NativeExtension and explicitly destroys it after SessionShutdown. Preserve idempotence, stale-context invalidation, process-lifetime no-unload, ABI v1 safety, trust/digest activation, and TypeScript deferral. Add an executable lifecycle regression."
-    },
-    {
-      "id": "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R17",
-      "kind": "reviewer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-NATIVE-SHUTDOWN-LOADER-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions --test extensions-loader-cdylib --test extensions-runner --test extensions-sdk-build"
-      ],
-      "intent": "Independently re-review maximum Pi ExtensionAPI capability alignment through Rust extensions after the native shutdown repair. Verify only provenance-bound NativeExtension artifacts authorized by an application-managed trust root load into the real default interactive harness and their lifecycle, input, session, tool, command, and provider registrations execute through ExtensionRuntime/ExtensionRunner. Recheck lifecycle SessionShutdown followed by native destroy, trust/digest activation atomicity, C ABI soundness, panic containment, concurrent-call serialization, reentrancy/cancellation/stale handles, process-lifetime no-unload, and source-only installation receipts. TypeScript compatibility remains deferred and must not be silently claimed."
-    },
-    {
-      "id": "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3G-RUST-EXTENSIONS-FIDELITY-R17"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
-      ],
-      "intent": "Replace the manifest stubs in the package-manager and package-manager-cli counterparts with faithful executable Pi package operations and behavior tests. Preserve the approved source-only Rust extension install/provenance policy; do not add dependencies, accept prebuilt artifacts, use TypeScript execution, or weaken tests."
-    },
-    {
-      "id": "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
-      ],
-      "intent": "Diagnose and repair the two deterministic package-manager CLI fidelity test failures at crates/zedflow-coding-agent/tests/package-manager.rs:48. Change only the diagnosed package-manager implementation and focused behavior tests; preserve executable source-only Rust extension package operations and do not add dependencies, accept prebuilt artifacts, use TypeScript execution, or weaken tests."
-    },
-    {
-      "id": "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-VALIDATE-R2",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-REPAIR-R2"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
-      ],
-      "intent": "Re-run the package-manager CLI fidelity gates after the deterministic two-failure repair. Verify executable source-only package operation behavior and reject manifest stubs, marker tests, prebuilt artifacts, TypeScript execution shortcuts, or weakened tests."
-    },
-    {
-      "id": "SEM-CA-V5-CLI-MODES-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V3D-PACKAGE-MANAGER-CLI-FIDELITY-VALIDATE-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/index.rs",
-        "crates/zedflow-coding-agent/src/cli.rs",
-        "crates/zedflow-coding-agent/src/cli",
-        "crates/zedflow-coding-agent/src/modes/mod.rs",
-        "crates/zedflow-coding-agent/src/modes/index.rs",
-        "crates/zedflow-coding-agent/src/modes/print-mode.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Wire every advertised Pi CLI route: default TUI, --print, text/json, RPC, sessions, list-models, export, package operations and startup selectors. Remove every not-wired path."
-    },
-    {
-      "id": "SEM-CA-V6-TEST-BATCH-1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V5-CLI-MODES-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/agent-session-auto-compaction-queue.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-branching.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-compaction.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-concurrent.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-dynamic-provider.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-dynamic-tools.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-retry.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-runtime-events.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-stats.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-tree-navigation.rs",
-        "crates/zedflow-coding-agent/tests/ansi-utils.rs",
-        "crates/zedflow-coding-agent/tests/args.rs",
-        "crates/zedflow-coding-agent/tests/assistant-message.rs",
-        "crates/zedflow-coding-agent/tests/bash-close-hang-windows.rs",
-        "crates/zedflow-coding-agent/tests/bash-execution-width.rs",
-        "crates/zedflow-coding-agent/tests/block-images.rs",
-        "crates/zedflow-coding-agent/tests/changelog.rs",
-        "crates/zedflow-coding-agent/tests/clipboard-image-bmp-conversion.rs",
-        "crates/zedflow-coding-agent/tests/clipboard-image.rs",
-        "crates/zedflow-coding-agent/tests/clipboard-native.rs",
-        "crates/zedflow-coding-agent/tests/clipboard.rs",
-        "crates/zedflow-coding-agent/tests/compaction-extensions-example.rs",
-        "crates/zedflow-coding-agent/tests/compaction-extensions.rs",
-        "crates/zedflow-coding-agent/tests/compaction-serialization.rs",
-        "crates/zedflow-coding-agent/tests/compaction-summary-reasoning.rs",
-        "crates/zedflow-coding-agent/tests/compaction.rs",
-        "crates/zedflow-coding-agent/tests/config-value-migration.rs",
-        "crates/zedflow-coding-agent/tests/config.rs",
-        "crates/zedflow-coding-agent/tests/edit-tool-legacy-input.rs",
-        "crates/zedflow-coding-agent/tests/edit-tool-no-full-redraw.rs",
-        "crates/zedflow-coding-agent/tests/experimental.rs",
-        "crates/zedflow-coding-agent/tests/export-html-skill-block.rs",
-        "crates/zedflow-coding-agent/tests/export-html-whitespace.rs",
-        "crates/zedflow-coding-agent/tests/export-html-xss.rs",
-        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Convert frozen Pi Coding-agent test batch 1 into real executable Rust tests. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise the actual public/runtime behavior."
-    },
-    {
-      "id": "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V6-TEST-BATCH-1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/cli/initial-message.rs",
-        "crates/zedflow-coding-agent/src/core/footer-data-provider.rs",
-        "crates/zedflow-coding-agent/src/core/tools/file-mutation-queue.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/first-time-setup.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/footer.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/oauth-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/print-mode.rs",
-        "crates/zedflow-coding-agent/src/utils/frontmatter.rs",
-        "crates/zedflow-coding-agent/src/utils/git.rs",
-        "crates/zedflow-coding-agent/src/utils/image-process.rs",
-        "crates/zedflow-coding-agent/src/utils/image-resize-core.rs",
-        "crates/zedflow-coding-agent/src/utils/image-resize.rs",
-        "crates/zedflow-coding-agent/src/utils/image-resize-worker.rs",
-        "crates/zedflow-coding-agent/src/utils/paths.rs",
-        "crates/zedflow-coding-agent/src/utils/pi-user-agent.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --lib"
-      ],
-      "intent": "Implement only the diagnosed Coding-agent runtime foundations required by the blocked V7 test batch: first-time setup/footer/OAuth and interactive flows, initial/print input, file mutation, frontmatter/git/image/path/user-agent utilities. Port frozen Pi observable behavior at these existing source paths; do not edit V7 tests, extension runtime, package manager, CLI routing, dependencies, or unrelated modules."
-    },
-    {
-      "id": "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/keybindings.rs",
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --lib"
-      ],
-      "intent": "Implement only the remaining Coding-agent runtime APIs diagnosed by blocked V7 batch 2: Pi-compatible keybinding definitions/config migration, package-manager and package-command operations, and the interactive command paths they require. Port observable behavior at these existing source paths; do not edit V7 tests, extension runtime, dependencies, or unrelated modules."
-    },
-    {
-      "id": "SEM-CA-V7-TEST-BATCH-2-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/extensions-input-event.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
-        "crates/zedflow-coding-agent/tests/file-mutation-queue.rs",
-        "crates/zedflow-coding-agent/tests/first-time-setup-fork.rs",
-        "crates/zedflow-coding-agent/tests/first-time-setup.rs",
-        "crates/zedflow-coding-agent/tests/footer-data-provider.rs",
-        "crates/zedflow-coding-agent/tests/footer-width.rs",
-        "crates/zedflow-coding-agent/tests/format-resume-command.rs",
-        "crates/zedflow-coding-agent/tests/frontmatter.rs",
-        "crates/zedflow-coding-agent/tests/git-merge-and-resolve-extension.rs",
-        "crates/zedflow-coding-agent/tests/git-ssh-url.rs",
-        "crates/zedflow-coding-agent/tests/git-update.rs",
-        "crates/zedflow-coding-agent/tests/image-processing.rs",
-        "crates/zedflow-coding-agent/tests/image-resize-callers.rs",
-        "crates/zedflow-coding-agent/tests/initial-message.rs",
-        "crates/zedflow-coding-agent/tests/input-transform-streaming-example.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-anthropic-warning.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-clone-command.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-compaction.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-import-command.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-startup-input.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-status.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs",
-        "crates/zedflow-coding-agent/tests/keybindings-migration.rs",
-        "crates/zedflow-coding-agent/tests/oauth-selector.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/path-utils.rs",
-        "crates/zedflow-coding-agent/tests/paths.rs",
-        "crates/zedflow-coding-agent/tests/pi-user-agent.rs",
-        "crates/zedflow-coding-agent/tests/plan-mode-extension.rs",
-        "crates/zedflow-coding-agent/tests/plan-mode-utils.rs",
-        "crates/zedflow-coding-agent/tests/print-mode.rs",
-        "crates/zedflow-coding-agent/tests/prompt-templates.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Convert the blocked frozen Pi Coding-agent test batch 2 into real executable Rust behavior tests after SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2. TEST_PATH constants, empty test targets, blanket ignores, and source-path-only assertions do not count. Exercise actual public/runtime behavior without editing production sources."
-    },
-    {
-      "id": "SEM-CA-V7-INTERACTIVE-MODE-SUSPEND-REPAIR-R3",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V7-TEST-BATCH-2-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend"
-      ],
-      "intent": "Repair the deterministic interactive-mode suspend lifecycle failure in interactive_mode_owns_native_pump_and_restores_terminal_around_editor. Preserve native owner-pump and terminal restoration behavior; do not weaken the regression test or edit unrelated sources."
-    },
-    {
-      "id": "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R3",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V7-INTERACTIVE-MODE-SUSPEND-REPAIR-R3"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test extensions-input-event --test extensions-runner --test file-mutation-queue --test first-time-setup-fork --test first-time-setup --test footer-data-provider --test footer-width --test format-resume-command --test frontmatter --test git-merge-and-resolve-extension --test git-ssh-url --test git-update --test image-processing --test image-resize-callers --test initial-message --test input-transform-streaming-example --test interactive-mode-anthropic-warning --test interactive-mode-clone-command --test interactive-mode-compaction --test interactive-mode-import-command --test interactive-mode-startup-input --test interactive-mode-status --test interactive-mode-suspend --test keybindings-migration --test oauth-selector --test package-command-paths --test package-manager-ssh --test package-manager --test path-utils --test paths --test pi-user-agent --test plan-mode-extension --test plan-mode-utils --test print-mode --test prompt-templates"
-      ],
-      "intent": "Independently validate SEM-CA-V7-RUNTIME-FOUNDATIONS-REPAIR-R2 and fresh V7 batch 2 tests. All declared V7 test targets must execute against public/runtime behavior; reject marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
-    },
-    {
-      "id": "SEM-CA-V8-RESTORE-SANDBOX-ENV-PORT-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V7-TEST-BATCH-2-VALIDATE-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/bun/restore-sandbox-env.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port frozen Pi restoreSandboxEnv behavior from bun/restore-sandbox-env.ts into the owned Rust module: preserve no-op guards, best-effort /proc/self/environ parsing, and malformed-entry handling through a public, testable runtime API. Do not change callers or tests."
-    },
-    {
-      "id": "SEM-CA-V8-PROVIDER-ATTRIBUTION-PORT-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-RESTORE-SANDBOX-ENV-PORT-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/provider-attribution.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port frozen Pi provider-attribution behavior into the owned Rust module: exact provider/host detection, telemetry-gated default attribution, OpenCode session headers, and caller-header precedence through a public runtime API. Do not change callers or tests."
-    },
-    {
-      "id": "SEM-CA-V8-STATUS-INDICATOR-PORT-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-RESTORE-SANDBOX-ENV-PORT-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port frozen Pi status-indicator behavior into the owned Rust module: idle two-line rendering, working/retry/compaction/branch-summary indicators, retry countdown disposal, and public runtime types. Do not change callers or tests."
-    },
-    {
-      "id": "SEM-CA-V8-SESSION-SELECTOR-SEARCH-PORT-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-PROVIDER-ATTRIBUTION-PORT-R1",
-        "SEM-CA-V8-STATUS-INDICATOR-PORT-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port frozen Pi session-selector-search behavior into the owned Rust module: quoted and fuzzy token parsing, re: regex parsing/error handling, named-session filtering, relevance scoring, and recent/relevance ordering through public runtime types. Do not change callers or tests."
-    },
-    {
-      "id": "SEM-CA-V8-TEST-BATCH-3-R3",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-SESSION-SELECTOR-SEARCH-PORT-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/restore-sandbox-env.rs",
-        "crates/zedflow-coding-agent/tests/rpc-client-clone.rs",
-        "crates/zedflow-coding-agent/tests/rpc-client-process-exit.rs",
-        "crates/zedflow-coding-agent/tests/rpc-example.rs",
-        "crates/zedflow-coding-agent/tests/rpc-jsonl.rs",
-        "crates/zedflow-coding-agent/tests/rpc-prompt-response-semantics.rs",
-        "crates/zedflow-coding-agent/tests/rpc.rs",
-        "crates/zedflow-coding-agent/tests/sdk-codex-cache-probe-tool-loop.rs",
-        "crates/zedflow-coding-agent/tests/sdk-openrouter-attribution.rs",
-        "crates/zedflow-coding-agent/tests/sdk-session-manager.rs",
-        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
-        "crates/zedflow-coding-agent/tests/sdk-stream-options.rs",
-        "crates/zedflow-coding-agent/tests/session-cwd.rs",
-        "crates/zedflow-coding-agent/tests/session-file-invalid.rs",
-        "crates/zedflow-coding-agent/tests/session-id-readonly.rs",
-        "crates/zedflow-coding-agent/tests/session-info-modified-timestamp.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-path-delete.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-rename.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-search.rs",
-        "crates/zedflow-coding-agent/tests/settings-manager-bug.rs",
-        "crates/zedflow-coding-agent/tests/settings-manager.rs",
-        "crates/zedflow-coding-agent/tests/skills.rs",
-        "crates/zedflow-coding-agent/tests/startup-session-name.rs",
-        "crates/zedflow-coding-agent/tests/status-indicator.rs",
-        "crates/zedflow-coding-agent/tests/stdout-cleanliness.rs",
-        "crates/zedflow-coding-agent/tests/streaming-render-debug.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-bash-persistence.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Freshly convert frozen Pi Coding-agent test batch 3 into real executable Rust tests after the restoreSandboxEnv source port. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise actual public/runtime behavior."
-    },
-    {
-      "id": "SEM-CA-V8-PROMPT-TEMPLATES-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/prompt-templates.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --lib prompt_templates::tests::substitutes_once_and_preserves_unknown_dollars"
-      ],
-      "intent": "Repair the deterministic prompt-template slice expansion failure exposed by cargo test -p zedflow-coding-agent --lib: ${@:2:2} must consume its closing brace and preserve Pi substitution semantics. Modify only the owned runtime module and its embedded executable test."
-    },
-    {
-      "id": "SEM-CA-V8-SESSION-MANAGER-TEST-WIRING-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-PROMPT-TEMPLATES-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/tests/sdk-session-manager.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
-      ],
-      "intent": "Add the minimal Cargo integration-test wiring for the seven nested session-manager tests: aggregate them under the real sdk-session-manager target and register the existing declared target names as aliases to that executable harness. Do not alter runtime code or test semantics."
-    },
-    {
-      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-SESSION-MANAGER-TEST-WIRING-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
-      ],
-      "intent": "Replace each session-manager Cargo [[test]] alias path with its corresponding nested executable file. Update the seven nested executable tests to import SessionInfo from zedflow_coding_agent::session_manager rather than the sdk-session-manager harness-only crate module. Do not alter runtime code or test semantics."
-    },
-    {
-      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-LIB-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-REPAIR-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Remove only the seven obsolete #[cfg(test)] session-manager nested path-module declarations from src/lib.rs. The corresponding nested files execute as Cargo integration-test targets; do not alter runtime code, Cargo metadata, or test semantics."
-    },
-    {
-      "id": "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R3",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-LIB-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test sdk-session-manager --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal"
-      ],
-      "intent": "Independently validate the session-manager nested executable targets after obsolete lib.rs path modules are removed. All eight declared targets must compile and execute against public/runtime behavior. No source edits."
-    },
-    {
-      "id": "SEM-CA-V8-CODEX-CACHE-PROBE-TOOL-LOOP-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-SESSION-MANAGER-NESTED-PATHS-VALIDATE-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/agent-session.rs",
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/tests/sdk-codex-cache-probe-tool-loop.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test sdk-codex-cache-probe-tool-loop"
-      ],
-      "intent": "Replace the unrelated ExtensionApi registration marker in sdk-codex-cache-probe-tool-loop.rs with an executable, deterministic Codex cache-probe/tool-loop test against the public coding-agent SDK. Implement only the minimum session/SDK runtime behavior required for that probe; preserve Pi append-only multi-turn and deterministic custom-tool-loop semantics, capability-gating live Codex transport only with an explicit reason. Do not alter unrelated tests or runtime modules."
-    },
-    {
-      "id": "SEM-CA-V8-SDK-BEHAVIORS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-CODEX-CACHE-PROBE-TOOL-LOOP-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/sdk-openrouter-attribution.rs",
-        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
-        "crates/zedflow-coding-agent/tests/sdk-stream-options.rs",
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/src/core/agent-session.rs",
-        "crates/zedflow-coding-agent/src/core/model-registry.rs",
-        "crates/zedflow-coding-agent/src/core/provider-attribution.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/src/core/skills.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test sdk-openrouter-attribution --test sdk-skills --test sdk-stream-options"
-      ],
-      "intent": "Replace only the duplicated ExtensionApi registration markers in sdk-openrouter-attribution.rs, sdk-skills.rs, and sdk-stream-options.rs with deterministic executable tests of the corresponding frozen Pi SDK behavior. Implement only the minimal existing SDK/session, model-registry, attribution, resource-loader, and skills runtime behavior needed for those tests; preserve OpenRouter attribution/header precedence, SDK skill discovery/injection, and stream timeout option forwarding/override semantics. Do not modify sdk-session-manager.rs or unrelated SDK tests."
-    },
-    {
-      "id": "SEM-CA-V8-RPC-TEST-BEHAVIORS-REPAIR-R2",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-SDK-BEHAVIORS-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/rpc-client-clone.rs",
-        "crates/zedflow-coding-agent/tests/rpc-client-process-exit.rs",
-        "crates/zedflow-coding-agent/tests/rpc-example.rs",
-        "crates/zedflow-coding-agent/tests/rpc-jsonl.rs",
-        "crates/zedflow-coding-agent/tests/rpc-prompt-response-semantics.rs",
-        "crates/zedflow-coding-agent/tests/rpc.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/jsonl.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-client.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-types.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc"
-      ],
-      "intent": "Replace the six duplicated generic RPC marker tests with deterministic executable tests of their declared frozen Pi behaviors: client cloning, client process exit, RPC example flow, JSONL framing, prompt/response semantics, and RPC command/runtime behavior. Modify only the minimal existing RPC runtime needed for those tests; preserve request identity, JSONL framing, command error envelopes, prompt responses, clone behavior, and process-exit behavior. No marker tests, source-path assertions, blanket ignores, or unrelated source edits."
-    },
-    {
-      "id": "SEM-CA-V8-TEST-BATCH-3-DUPLICATE-BEHAVIORS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-RPC-TEST-BEHAVIORS-REPAIR-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/session-file-invalid.rs",
-        "crates/zedflow-coding-agent/tests/session-id-readonly.rs",
-        "crates/zedflow-coding-agent/tests/session-info-modified-timestamp.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-path-delete.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-rename.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-search.rs",
-        "crates/zedflow-coding-agent/tests/settings-manager-bug.rs",
-        "crates/zedflow-coding-agent/tests/settings-manager.rs",
-        "crates/zedflow-coding-agent/tests/stdout-cleanliness.rs",
-        "crates/zedflow-coding-agent/tests/streaming-render-debug.rs",
-        "crates/zedflow-coding-agent/src/core/session-manager.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs",
-        "crates/zedflow-coding-agent/src/core/settings-manager.rs",
-        "crates/zedflow-coding-agent/src/core/output-guard.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
-        "crates/zedflow-coding-agent/src/cli.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Replace the remaining duplicate marker tests with deterministic executable tests of their declared frozen Pi behavior: invalid session files, read-only session-id handling, message-derived session modification timestamps, selector path deletion, selector rename, selector search, settings-manager bug behavior, settings-manager merging, non-interactive stdout cleanliness, and streaming render debugging. Modify only the listed existing runtime roots when required by those tests; do not alter unrelated RPC tests or runtime modules."
-    },
-    {
-      "id": "SEM-CA-V8-TEST-BATCH-3-SESSION-MANAGER-BEHAVIORS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-DUPLICATE-BEHAVIORS-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Replace the seven duplicate generic SessionInfo persistence tests with deterministic executable tests of their declared session-manager behavior: build context, custom session ID, file operations, labels, migration, save entry, and tree traversal. Exercise minimal existing runtime APIs only; do not modify runtime code or unrelated tests."
-    },
-    {
-      "id": "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R12",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-SESSION-MANAGER-BEHAVIORS-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test resource-loader --test restore-sandbox-env --test rpc-client-clone --test rpc-client-process-exit --test rpc-example --test rpc-jsonl --test rpc-prompt-response-semantics --test rpc --test sdk-codex-cache-probe-tool-loop --test sdk-openrouter-attribution --test sdk-session-manager --test sdk-skills --test sdk-stream-options --test session-cwd --test session-file-invalid --test session-id-readonly --test session-info-modified-timestamp --test build-context --test custom-session-id --test file-operations --test labels --test migration --test save-entry --test tree-traversal --test session-selector-path-delete --test session-selector-rename --test session-selector-search --test settings-manager-bug --test settings-manager --test skills --test startup-session-name --test status-indicator --test stdout-cleanliness --test streaming-render-debug",
-        "cargo test -p zedflow-coding-agent --lib"
-      ],
-      "intent": "Independently revalidate SEM-CA-V8 test batch 3 after the session-manager behavior repair. All declared V8 test targets and the Coding-agent library tests must execute against public/runtime behavior; reject duplicate or marker tests, source-path assertions, blanket ignores, and out-of-scope source edits. No source edits."
-    },
-    {
-      "id": "SEM-CA-V9-TEST-BATCH-4",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V8-TEST-BATCH-3-VALIDATE-R12"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-model-extension.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-prompt.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-queue.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-retry-events.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-runtime.rs",
-        "crates/zedflow-coding-agent/tests/suite/harness.rs",
-        "crates/zedflow-coding-agent/tests/suite/lax-message-content.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/1717-2113-agent-session-event-settlement.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2023-queued-slash-command-followup.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2753-reload-stale-resource-settings.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2781-skill-collision-precedence.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2791-fswatch-error-crash.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2835-tools-allowlist-filters-extension-tools.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2860-replaced-session-context.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3217-scoped-model-order.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3302-find-path-glob.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3303-find-nested-gitignore.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3317-network-connection-lost-retry.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3592-no-builtin-tools-keeps-extension-tools.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3616-settings-inmemory-reload.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3686-session-name-event.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3688-tree-cancel-compacting.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3982-message-end-cost-override.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/4167-thinking-toggle-pending-tool-render.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5080-signal-shutdown-extension-cleanup.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5109-exclude-tools.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5208-late-bash-output.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5217-compaction-reason.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5303-bash-output-truncation.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5433-extension-oauth-prompt-input.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5596-missing-theme-export.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5661-uppercase-header-values.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5724-sigterm-signal-exit.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5868-rpc-unknown-command-id.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Convert frozen Pi Coding-agent test batch 4 into real executable Rust tests. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise the actual public/runtime behavior."
-    },
-    {
-      "id": "SEM-CA-V10-TEST-BATCH-5",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V9-TEST-BATCH-4"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/suite/regressions/5943-session-start-notify.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5996-session-name-newlines.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/6019-explicit-provider-retry-message.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/6162-extension-active-tools-next-turn.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/6260-inline-extension-naming.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/extension-factory-cache.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/pre-prompt-compaction-no-continue.rs",
-        "crates/zedflow-coding-agent/tests/syntax-highlight.rs",
-        "crates/zedflow-coding-agent/tests/system-prompt.rs",
-        "crates/zedflow-coding-agent/tests/test-harness.rs",
-        "crates/zedflow-coding-agent/tests/test-theme-colors.rs",
-        "crates/zedflow-coding-agent/tests/theme-detection.rs",
-        "crates/zedflow-coding-agent/tests/theme-export.rs",
-        "crates/zedflow-coding-agent/tests/theme-picker.rs",
-        "crates/zedflow-coding-agent/tests/tool-execution-component.rs",
-        "crates/zedflow-coding-agent/tests/tools.rs",
-        "crates/zedflow-coding-agent/tests/tree-selector.rs",
-        "crates/zedflow-coding-agent/tests/trigger-compact-extension.rs",
-        "crates/zedflow-coding-agent/tests/truncate-to-width.rs",
-        "crates/zedflow-coding-agent/tests/trust-manager.rs",
-        "crates/zedflow-coding-agent/tests/trust-selector.rs",
-        "crates/zedflow-coding-agent/tests/user-message.rs",
-        "crates/zedflow-coding-agent/tests/utilities.rs",
-        "crates/zedflow-coding-agent/tests/version-check.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Convert frozen Pi Coding-agent test batch 5 into real executable Rust tests. TEST_PATH constants, empty test targets, blanket ignores and source-path-only assertions do not count. Exercise the actual public/runtime behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-CA-V11-PROMPT-TEMPLATE-SLICE-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V10-TEST-BATCH-5"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/prompt-templates.rs",
-        "crates/zedflow-coding-agent/tests/prompt-templates.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --lib prompt_templates::tests::substitutes_once_and_preserves_unknown_dollars",
-        "cargo test -p zedflow-coding-agent --test prompt-templates"
-      ],
-      "intent": "Repair deterministic prompt-template substitution and slice expansion so frozen Pi template expressions do not emit literal :2:2. Keep the repair limited to the diagnosed runtime module and its executable regression test."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-CA-V11-ARMIN-WIRING-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-CA-V10-TEST-BATCH-5"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Reapply the scoped Armin bitmap rendering, animation, and crate-root wiring repair. Keep the repair limited to these owned files."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V11-MANIFEST-STRUCTURAL-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-CA-V11-PROMPT-TEMPLATE-SLICE-REPAIR-R1",
-        "REPLAN-REPLAN-SEM-CA-V11-ARMIN-WIRING-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/bun/cli.rs",
-        "crates/zedflow-coding-agent/src/bun/register-bedrock.rs",
-        "crates/zedflow-coding-agent/src/core/export-html/index.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/index.rs",
-        "crates/zedflow-coding-agent/src/core/index.rs",
-        "crates/zedflow-coding-agent/src/core/telemetry.rs",
-        "crates/zedflow-coding-agent/src/modes/index.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/dark.json",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/light.json",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-schema.json",
+        "crates/zedflow-coding-agent/src/modes/interactive/assets/clankolas.png",
         "crates/zedflow-coding-agent/src/modes/interactive/components/dynamic-border.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/footer.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/keybinding-hints.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs",
+        "crates/zedflow-coding-agent/tests/interactive-tui-chrome.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-tui-chrome"
+      ],
+      "intent": "Implement only P3.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port frozen themes/assets/footer/status/chrome into exactly the listed files and tests, using accepted core/TUI contracts. Assets must work from built binaries. No transcript, selector, or root-composition edits."
+    },
+    {
+      "id": "P4.T1",
+      "kind": "writer",
+      "depends_on": [
+        "P2.T1",
+        "P3.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs",
+        "crates/zedflow-coding-agent/tests/interactive-transcript.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test interactive-transcript"
+      ],
+      "intent": "Implement only P4.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port exactly the listed transcript components/tests against frozen Pi. Components must support incremental state and real content; do not wire session events or edit interactive-mode.rs."
+    },
+    {
+      "id": "P4.T2",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T2",
+        "P2.T2",
+        "P3.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/model-search.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/login-dialog.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/oauth-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/model-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/scoped-models-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/settings-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/show-images-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/thinking-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/first-time-setup.rs",
+        "crates/zedflow-coding-agent/tests/interactive-login.rs",
+        "crates/zedflow-coding-agent/tests/interactive-settings-selectors.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test interactive-login",
+        "cargo test -p zedflow-coding-agent --test interactive-settings-selectors"
+      ],
+      "intent": "Implement only P4.T2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the exact auth/model/config/settings selector files/tests using P1.T2 contracts. Do not edit core adapters, interactive-mode.rs, or call network/browser/provider services; use deterministic injected callbacks."
+    },
+    {
+      "id": "P4.T3",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T2",
+        "P2.T2",
+        "P3.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/tree-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/trust-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/user-message-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/model-search.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs"
+        "crates/zedflow-coding-agent/tests/interactive-session-selectors.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
+        "cargo test -p zedflow-coding-agent --test interactive-session-selectors"
       ],
-      "intent": "Repair the deterministic strict-manifest failures only: replace the diagnosed Coding-agent marker-only module targets with reachable implementations and wire the diagnosed dead interactive components. Do not modify unlisted files, add dependencies, weaken the manifest, or add dispositions."
+      "intent": "Implement only P4.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port exactly the session/tree/trust/message selectors and deterministic tests using P1.T2 contracts. Do not edit core files or interactive-mode.rs and never touch real user sessions."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R2",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-CA-V11-MANIFEST-STRUCTURAL-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
-      ],
-      "intent": "Repeat Coding-agent package validation after the scoped manifest structural repair. No source edits."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-CA-V12-PACKAGE-MANAGER-WIRING-R1",
+      "id": "P4.T4",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-CA-V11-VALIDATE-R2"
+        "P1.T2",
+        "P2.T2",
+        "P3.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs"
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs",
+        "crates/zedflow-coding-agent/tests/interactive-extension-dialogs.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths"
+        "cargo test -p zedflow-coding-agent --test interactive-extension-dialogs"
       ],
-      "intent": "Port Pi PackageManager resource-package resolution and persisted package settings for npm, git, and local sources; wire install/remove/update command execution in main.rs and configured extension, skill, prompt, and theme resources through the resource loader. Preserve the approved source-only Rust cdylib artifact/provenance policy; do not add dependencies, execute TypeScript, accept prebuilt artifacts, or weaken tests."
+      "intent": "Implement only P4.T4 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port exactly the custom editor and extension dialog files/tests using accepted contracts. External editor/process behavior must be injected; do not edit extension runtime, core adapters, or interactive-mode.rs."
     },
     {
-      "id": "REPLAN-REPLAN-SEM-CA-V12-PACKAGE-MANAGER-WIRING-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-CA-V12-PACKAGE-MANAGER-WIRING-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
-      ],
-      "intent": "Validate the repaired Pi package-manager resource resolution, npm/git/local source operations, persisted package settings, main CLI command execution, resource-loader wiring, and executable behavior tests. No source edits."
-    },
-    {
-      "id": "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-CA-V12-PACKAGE-MANAGER-WIRING-VALIDATE-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test package-manager --test package-manager-ssh --test package-command-paths",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
-      ],
-      "intent": "Validate the repaired Pi package-manager resource resolution, npm/git/local source operations, persisted package settings, CLI wiring, and executable behavior tests. No source edits."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-RUNTIME-WIRING-REPAIR-R1",
+      "id": "P4.T5",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-SEM-CA-V12-PACKAGE-MANAGER-VALIDATE-R1"
+        "P2.T1",
+        "P3.T1",
+        "P4.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode.rs"
+        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs",
+        "crates/zedflow-coding-agent/tests/interactive-visible-components.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-mode"
+        "cargo test -p zedflow-coding-agent --test interactive-visible-components"
       ],
-      "intent": "Wire the default interactive CLI path to an AgentSessionRuntime and make InteractiveMode drive that runtime rather than only queue submitted input. Replace the FIFO-only test with executable runtime/session behavior coverage; preserve existing print/text/json and RPC paths."
+      "intent": "Implement only P4.T5 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete exactly Armin, Daxnuts, and Earendil announcement behavior/tests using the accepted theme/assets/transcript APIs. No placeholders, root composition, or unrelated novelty."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-REPAIR-R1",
+      "id": "P5.T1",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-RUNTIME-WIRING-REPAIR-R1"
+        "P1.T1",
+        "P3.T1",
+        "P4.T1",
+        "P4.T2",
+        "P4.T3",
+        "P4.T4",
+        "P4.T5"
       ],
       "ownership": [
         "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode.rs"
+        "crates/zedflow-coding-agent/src/modes/interactive/components/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/mod.rs",
+        "crates/zedflow-coding-agent/src/modes/index.rs",
+        "crates/zedflow-coding-agent/src/modes/mod.rs",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs",
+        "crates/zedflow-coding-agent/tests/interactive-enduser-flow.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-mode"
-      ],
-      "intent": "Port Pi interactive event-driven runtime behavior: subscribe to AgentSession events, render user/assistant/tool/compaction state, handle /compact, and serialize compaction UI/queue transitions. Preserve the existing default CLI, print/text/json, and RPC wiring."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
         "cargo test -p zedflow-coding-agent --test interactive-mode",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
+        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend",
+        "cargo test -p zedflow-coding-agent --test interactive-enduser-flow",
+        "cargo test -p zedflow-coding-agent --test interactive-transcript"
       ],
-      "intent": "Validate interactive event subscription, user/assistant/tool rendering, /compact handling, compaction UI/queue behavior, and executable interactive-mode coverage. No source edits."
+      "intent": "Implement only P5.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Using all accepted component handoffs, replace the placeholder interactive EventLog/Input with a Pi-order stateful transcript/editor/footer/overlay tree and map every message/tool/queue/compaction lifecycle update in place. Modify only listed files/tests. Do not implement built-in commands beyond existing compact/exit semantics and do not add rendering concurrency."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-CLI-PRINT-RUNTIME-REPAIR-R1",
+      "id": "P6.T1",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-EVENT-RUNTIME-VALIDATE-R1"
+        "P5.T1"
       ],
       "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
         "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/print-mode.rs",
-        "crates/zedflow-coding-agent/tests/print-mode.rs"
+        "crates/zedflow-coding-agent/src/core/slash-commands.rs",
+        "crates/zedflow-coding-agent/tests/interactive-builtins.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-compaction.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-import-command.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-clone-command.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test print-mode"
+        "cargo test -p zedflow-coding-agent --test interactive-builtins",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-compaction",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-import-command",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-clone-command"
       ],
-      "intent": "Port Pi non-TTY CLI mode selection and print-mode stdin/event behavior: enter print mode when stdin or stdout is non-TTY, consume piped stdin as the initial message, and preserve Pi text/JSON print output semantics including JSON headers and streamed session events. Keep interactive and RPC paths intact."
+      "intent": "Implement only P6.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete the fixed built-in inventory in interactive-mode/main/slash-commands and exact tests. Known built-ins must never reach session.prompt; each needs success/cancel/error fixture coverage. Use accepted selectors/services, no network, no unrelated core edits, and preserve frozen precedence for extensions/prompts/skills/unknown slash text."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-CLI-PRINT-RUNTIME-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-CLI-PRINT-RUNTIME-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test print-mode",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
-      ],
-      "intent": "Validate Pi-compatible non-TTY print-mode selection, piped stdin initial-message handling, and text/JSON session-event output. No source edits."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-COMPONENTS-REPAIR-R2",
+      "id": "P7.T1",
       "kind": "writer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-CLI-PRINT-RUNTIME-VALIDATE-R1"
+        "P2.T3",
+        "P6.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/components",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs"
+        "tools/tui-parity/run.py",
+        "tools/tui-parity/frozen-pi-oracle.mjs",
+        "tools/tui-parity/README.md",
+        "tools/tui-parity/fixtures/input-editing.json",
+        "tools/tui-parity/fixtures/streaming.json",
+        "tools/tui-parity/fixtures/tools-compaction.json",
+        "tools/tui-parity/fixtures/commands.json",
+        "tools/tui-parity/fixtures/overlays.json",
+        "tools/tui-parity/fixtures/unicode-resize.json",
+        "tools/tui-parity/fixtures/abort-error.json",
+        "crates/zedflow-coding-agent/tests/tui-parity-rust.rs",
+        "crates/zedflow-coding-agent/tests/interactive-pty-parity.rs",
+        "crates/zedflow-coding-agent/tests/interactive-terminal-restoration.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --lib"
+        "cargo test -p zedflow-tui --all-targets",
+        "cargo test -p zedflow-coding-agent --test tui-parity-rust",
+        "cargo test -p zedflow-coding-agent --test interactive-pty-parity",
+        "cargo test -p zedflow-coding-agent --test interactive-terminal-restoration"
       ],
-      "intent": "Replace the diagnosed marker-only interactive component modules and wire InteractiveMode to their Pi-equivalent reachable rendering and interaction behavior. Own only the identified interactive components and interactive-mode wiring; no markers, source-path assertions, or vacuous tests."
+      "intent": "Implement only P7.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete the exact oracle/fixture/PTY test files and compare frozen Pi versus final Rust behavior. Do not edit product code, weaken normalization, bless unexplained frames, use untracked pnpm state, credentials, or network. Run every oracle fixture as required by the plan in addition to the declared cargo gates. Return equal frame artifacts and terminal restoration evidence."
     },
     {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-INTERACTIVE-COMPONENTS-REPAIR-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
-        "crates/zedflow-coding-agent/tests/resource-extension-runtime.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-discovery --test resource-extension-runtime"
-      ],
-      "intent": "Repair the default extension-discovery runtime contract: do not silently report .ts/.js files as loaded extensions. Route only approved provenance-bound Rust cdylib artifacts into the existing default interactive ExtensionRunner and return explicit diagnostics for deferred TypeScript/jiti inputs. Preserve the approved Rust cdylib ABI v1, source-only install policy, trust root, no-unload rule, and all represented ExtensionAPI capabilities; do not add a JS runtime, dependencies, compatibility shims, or weaken tests."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-FILTER-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs",
-        "crates/zedflow-coding-agent/tests/extensions-discovery.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test extensions-discovery"
-      ],
-      "intent": "Restrict extension discovery to frozen Pi-supported extension file types and packages; reject inert regular files such as README rather than registering marker modules. Add an executable regression proving unsupported files are ignored."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R8",
+      "id": "P8.T1",
       "kind": "reviewer",
       "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-EXTENSION-DISCOVERY-FILTER-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets",
-        "cargo test -p zedflow-coding-agent --test extensions-discovery --test resource-extension-runtime"
-      ],
-      "intent": "Independently re-review frozen Pi Coding-agent after the extension-discovery repair, including default TUI/session/tools/compaction, non-TTY print/text/json, RPC, extensions, themes, skills, and package management. Verify that TypeScript/jiti source execution remains the approved explicit deferral rather than a silent no-op, while Rust cdylibs preserve the approved ExtensionAPI capability substitution. Reject marker modules and vacuous tests. Re-check that extension discovery ignores unsupported regular files rather than registering marker modules."
-    },
-    {
-      "id": "SEM-ORCH-V1-RUNTIME",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-CA-V12-FIDELITY-R8"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src",
-        "crates/zedflow-orchestrator/tests",
-        "crates/zedflow-orchestrator/Cargo.toml",
-        "Cargo.lock"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check"
-      ],
-      "intent": "Port all frozen Pi Orchestrator modules and create executable one-to-one tests: protocol, IPC client/server, socket paths, handler, RPC process, storage, supervisor, config, radius and serve lifecycle. No marker constants."
-    },
-    {
-      "id": "SEM-ORCH-V2-VALIDATE",
-      "kind": "validator",
-      "depends_on": [
-        "SEM-ORCH-V1-RUNTIME"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo check -p zedflow-orchestrator --all-targets",
-        "cargo test -p zedflow-orchestrator --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-orchestrator"
-      ],
-      "intent": "Validate executable Orchestrator tests, strict manifest closure and package compilation."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR-CARGO-LOCK",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-ORCH-V2-VALIDATE"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/Cargo.toml",
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/src/serve.rs",
-        "crates/zedflow-orchestrator/src/handler.rs",
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs",
-        "Cargo.lock"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test radius",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Implement the frozen Radius HTTP registration, machine/Pi heartbeat scheduling with retry/backoff and three-404 recovery, remote disconnect, and supervisor lifecycle wiring; use the already locked reqwest transport and executable local HTTP tests only. Own Cargo.lock for the required resolved lockfile update."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-IPC-CAMELCASE-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-PROTOCOL-REPAIR-CARGO-LOCK"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/ipc/protocol.rs",
-        "crates/zedflow-orchestrator/tests/protocol.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test protocol",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Serialize and deserialize Pi IPC instanceId wire fields for stop, status, rpc, and rpc_stream requests; update executable protocol tests without changing the frozen protocol."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-STREAM-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-IPC-CAMELCASE-REPAIR"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/ipc/server.rs",
-        "crates/zedflow-orchestrator/src/handler.rs",
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/src/rpc-process.rs",
-        "crates/zedflow-orchestrator/src/serve.rs",
-        "crates/zedflow-orchestrator/tests/rpc-stream.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test rpc-stream",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Implement frozen Pi rpc_stream lifecycle fidelity only: keep the IPC socket open after rpc_ready, forward RPC responses, session events, and extension UI requests, serialize queued client JSONL commands and UI responses, and preserve non-stream RPC behavior. Add executable local stream lifecycle tests; do not change protocol fields or Radius behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-RESPONSE-CAMELCASE-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-STREAM-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/ipc/protocol.rs",
-        "crates/zedflow-orchestrator/tests/protocol.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test protocol",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Serialize StopResult.instance_id as frozen Pi IPC instanceId and add an executable response round-trip assertion; preserve all other protocol behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SUPERVISOR-LIFECYCLE-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-RESPONSE-CAMELCASE-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/src/rpc-process.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test supervisor",
-        "cargo test -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Port frozen Pi supervisor session and RPC-exit lifecycle fidelity only: synchronize sessionId/sessionFile from get_state before registering a live instance, persist changed session metadata after commands, and on RPC exit mark the record error, disconnect Radius, and remove the live instance. Add executable local lifecycle tests; do not change IPC wire fields or Radius HTTP protocol."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STREAM-SESSION-METADATA-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SUPERVISOR-LIFECYCLE-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/handler.rs",
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/rpc-stream.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test rpc-stream --test supervisor",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "After each streamed new_session, switch_session, fork, clone, set_session_name, or prompt RPC response, synchronize the live instance and persisted record sessionId/sessionFile from get_state exactly as frozen Pi supervisor.openRpcStream does. Add executable stream lifecycle coverage; preserve IPC fields, Radius behavior, and non-stream RPC behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-RECOVERY-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STREAM-SESSION-METADATA-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test supervisor"
-      ],
-      "intent": "Repair Radius machine recovery at the shared lifecycle boundary: re-register every live Pi through the coordinator and synchronize each supervisor live record with its new radiusPiId, rather than updating persisted storage alone. Add executable recovery regressions; do not change unrelated protocol behavior or weaken tests."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-EMPTY-SUCCESS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-RECOVERY-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test radius"
-      ],
-      "intent": "Repair Radius maybePost fidelity only: successful heartbeat and disconnect HTTP responses must require response.ok but no JSON body, exactly as frozen Pi. Add executable empty-2xx regressions; preserve JSON parsing for response-bearing requests and do not alter supervisor lifecycle behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SPAWN-ROLLBACK-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-EMPTY-SUCCESS-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test supervisor",
-        "cargo test -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Repair frozen Pi supervisor spawn-failure cleanup after RPC acquisition: if session metadata synchronization or Radius registration fails, clear bindings, disconnect Radius, dispose RPC, mark stopped, and remove the live instance. Add executable regressions; preserve IPC and Radius protocol behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-FIFO-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-SPAWN-ROLLBACK-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/ipc/server.rs",
-        "crates/zedflow-orchestrator/tests/rpc-stream.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test rpc-stream",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Serialize each rpc_stream JSONL command and extension UI response in received order through one per-stream FIFO queue, matching frozen Pi rpcRequestQueue behavior. Add executable order regression coverage; preserve stream forwarding, IPC fields, Radius behavior, and non-stream RPC behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-LIVE-SYNC-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-FIFO-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test radius",
-        "cargo test -p zedflow-orchestrator --test supervisor"
-      ],
-      "intent": "Repair Pi-heartbeat 404 recovery only: after re-registering a live Pi, synchronize the supervisor live record with its replacement radiusPiId as frozen Pi RadiusPresence.reRegisterPi does, rather than only upserting storage. Add a direct executable 404 recovery regression; preserve Radius HTTP protocol, IPC fields, and unrelated supervisor lifecycle behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-EXIT-CLEANUP-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-LIVE-SYNC-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test supervisor"
-      ],
-      "intent": "Repair unexpected RPC-exit Radius cleanup only: after disconnecting the live Pi, persist radius_pi_id as None as frozen Pi supervisor does so a restart cannot retain stale Radius metadata. Add a direct executable persisted-metadata regression; preserve Radius HTTP protocol, RPC FIFO, IPC fields, and unrelated supervisor lifecycle behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-INSTANCE-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RPC-EXIT-CLEANUP-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/protocol.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test protocol"
-      ],
-      "intent": "Repair stop_instance fidelity only: when an instance is persisted but not live, return None without deleting its persisted record, matching frozen Pi supervisor.ts. Add an executable protocol regression proving the RPC stop request reports Pi's unknown-instance error and preserves the record. Preserve live-stop cleanup, Radius lifecycle, RPC FIFO, IPC fields, and unrelated supervisor behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-INSTANCE-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/config.rs",
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test radius",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Repair Radius OAuth persistence fidelity only: read AuthStorage credentials from PI_CONFIG_DIR/agent/auth.json (default ~/.pi/agent/auth.json), not PI_ORCHESTRATOR_DIR/auth.json, while preserving PI_RADIUS_API_KEY fallback. Add an executable isolated credential-path regression; do not change Radius HTTP, supervisor, or IPC behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-RADIUS-AUTH-PATH-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/tests/supervisor.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test supervisor"
-      ],
-      "intent": "Repair explicit live-stop cleanup fidelity only: after stop cleanup attempts (including RPC disposal or Radius disconnect failures), always remove the persisted instance record, matching frozen Pi supervisor.ts finally behavior; preserve the cleanup error after deletion. Add an executable deterministic supervisor regression covering failure cleanup and persisted-record removal. Do not change non-live stop semantics, Radius OAuth, IPC fields, FIFO, or unrelated supervisor behavior."
-    },
-    {
-      "id": "SEM-AI-V1-RESIDUALS",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-FIDELITY-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/src/compat.rs",
-        "crates/zedflow-ai/src/api/openai-codex-responses.rs",
-        "crates/zedflow-ai/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --check"
-      ],
-      "intent": "Remove Error::PortPlaceholder and transport no-op paths; make all deterministic formerly ignored AI tests executable for cancellation, provider handoff, reasoning replay, cache and model/error behavior. Keep live credential tests explicitly capability-gated with auditable reasons."
-    },
-    {
-      "id": "SEM-AG-V1-RESIDUALS",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-FIDELITY-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src",
-        "crates/zedflow-agent/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Close the four ignored Agent behaviors with deterministic executable tests and any root-cause implementation fix: cancellation/e2e, UTF-16 truncation, compaction and persistence."
-    },
-    {
-      "id": "REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1",
-      "kind": "writer",
-      "depends_on": [
-        "SEM-AI-V1-RESIDUALS",
-        "SEM-AG-V1-RESIDUALS"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/src/api/lazy.rs",
-        "crates/zedflow-ai/src/providers/anthropic.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --check"
-      ],
-      "intent": "Revise only the diagnosed documentation and test-assertion wording so strict semantic manifest matching evaluates executable code rather than prose; do not alter runtime behavior or weaken the manifest gate."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-RESIDUALS-V2-LAZY-API-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-SEM-RESIDUALS-V2-MANIFEST-TEXT-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/src/api/lazy.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --check",
-        "cargo test -p zedflow-ai --all-targets"
-      ],
-      "intent": "Replace the diagnosed terminal-error transport facade in the lazy provider API with the frozen Pi lazy-stream semantics; preserve incremental forwarding, terminal error completion, and real provider transport wiring without weakening the semantic manifest gate."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-RESIDUALS-V2-SESSION-TEST-UTILS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-RESIDUALS-V2-LAZY-API-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/tests/harness/session-test-utils.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check",
-        "cargo test -p zedflow-agent --test harness"
-      ],
-      "intent": "Add focused executable coverage for the mapped session test utilities (message construction/roles and temporary-directory cleanup); do not weaken the semantic manifest guard or alter production code."
-    },
-    {
-      "kind": "validator",
-      "ownership": [],
-      "validation": [
-        "cargo check -p zedflow-ai --all-targets",
-        "cargo test -p zedflow-ai --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-ai",
-        "cargo check -p zedflow-agent --all-targets",
-        "cargo test -p zedflow-agent --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-agent"
-      ],
-      "intent": "Re-run AI and Agent deterministic tests, transport/streaming/cancellation behavior and strict semantic closure after the session test utility coverage repair.",
-      "id": "REPLAN-REPLAN-REPLAN-SEM-RESIDUALS-V2-VALIDATE-R3",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-RESIDUALS-V2-SESSION-TEST-UTILS-REPAIR-R1"
-      ]
-    },
-    {
-      "id": "REPLAN-SEM-FINAL-V1-WORKSPACE-MODEL-REGISTRY-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-RESIDUALS-V2-VALIDATE-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/model-registry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent"
-      ],
-      "intent": "Repair the diagnosed ModelRegistry built-in-model loading compile failure only: make compat::get_models() handling match its Vec<zedflow_ai::Model> return contract at model-registry.rs:198. Preserve model registry behavior; do not weaken types, alter unrelated model resolution, or change files outside ownership."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-EXTENSIONS-LOADER-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-SEM-FINAL-V1-WORKSPACE-MODEL-REGISTRY-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions/loader.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --lib resource_loader"
-      ],
-      "intent": "Repair only the deterministic ResourceLoader extension-discovery regression: make the shared extension loader admit the fixture representation that reaches ResourceLoader, preserving existing discovery behavior and the approved Rust extension architecture. Do not alter ResourceLoader, weaken assertions, add dependencies, or change unrelated extension behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-VALIDATE-R2",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-EXTENSIONS-LOADER-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --lib resource_loader"
-      ],
-      "intent": "Repeat the failed ResourceLoader extension-reload regression validation after the scoped shared-loader repair. No source edits."
-    },
-    {
-      "id": "REPLAN-SEM-FINAL-V2-AI-DIFFERENTIAL-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R5"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/src/compat.rs",
-        "crates/zedflow-ai/tests/empty.rs",
-        "crates/zedflow-ai/tests/stream.rs",
-        "crates/zedflow-ai/tests/frozen-oracle.rs",
-        "crates/zedflow-ai/tests/fixtures/frozen-oracle.ts"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --check",
-        "cargo test -p zedflow-ai --test empty --test stream --test frozen-oracle"
-      ],
-      "intent": "Replace only the diagnosed AI placeholder parity paths with deterministic executable differential fixtures: exercise compat::complete and the provider dispatch matrix against the frozen TypeScript oracle using local/faux transports, while retaining narrow capability gates only for genuinely live credentials. Remove panic runners and blanket ignores for deterministic behavior; do not mutate references/pi, add dependencies, weaken assertions, or alter unrelated provider semantics."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V2-AI-FROZEN-ORACLE-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-SEM-FINAL-V2-AI-DIFFERENTIAL-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/tests/frozen-oracle.rs",
-        "crates/zedflow-ai/tests/fixtures/frozen-oracle.ts"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --check",
-        "cargo test -p zedflow-ai --test frozen-oracle"
-      ],
-      "intent": "Replace only the diagnosed hand-written AI oracle duplicate with an executable oracle that imports and exercises references/pi/packages/ai/src/compat.ts at the frozen gitlink. Drive compat.complete and provider/context conversion through deterministic faux provider transport, and compare Rust behavior against those oracle results. Do not mutate references/pi, reimplement Pi registry/compat behavior, add dependencies, use constant golden responses, weaken assertions, or change files outside ownership."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-AI-PROVIDER-CONVERSION-ORACLE-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V2-AI-FROZEN-ORACLE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/tests/frozen-oracle.rs",
-        "crates/zedflow-ai/tests/fixtures/frozen-oracle.ts"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --check",
-        "cargo test -p zedflow-ai --test frozen-oracle"
-      ],
-      "intent": "Repair only the diagnosed differential-oracle bypass. Keep each builtin API provider registered and invoke frozen compat.complete with builtin models while placing deterministic faux transport beneath the provider implementation; capture and compare provider-specific context conversion, serialized requests, and normalized results for every builtin API against the Rust builtin paths. Do not override builtin API IDs with registerFauxProvider, mutate references/pi, duplicate compatibility models, use constant golden responses, add dependencies, weaken assertions, or change files outside ownership."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R3",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-AI-PROVIDER-CONVERSION-ORACLE-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo test -p zedflow-ai --test frozen-oracle"
-      ],
-      "intent": "Repeat the independent package-by-package Pi semantic fidelity review on the exact repaired candidate SHA. Require the AI differential fixture to import and execute frozen compat.complete with builtin API registrations and models intact, inject deterministic faux transport only beneath each builtin provider conversion path, and compare provider-specific converted requests and results with Rust builtin behavior. Reject builtin-ID overrides, duplicate compatibility models, constant golden responses, panic runners, or blanket ignores of deterministic behavior."
-    },
-    {
-      "id": "SEM-FINAL-V3-RUST-QUALITY",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V2-FIDELITY-R3"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Perform independent Rust safety, correctness, error-handling, cancellation, portability and maintainability review on the same exact candidate SHA."
-    },
-    {
-      "id": "SEM-FINAL-V5-DOCS",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R3"
-      ],
-      "ownership": [
-        "docs/porting/BASELINE.md",
-        ".agents/port-swarm/decisions.md",
-        ".agents/state"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record the exact accepted integration SHA and evidence from all Stage-1 gates. Do not claim completion or authorize Stage 2 unless every predecessor accepted the same SHA."
-    },
-    {
-      "id": "SEM-FINAL-V6-CHECKPOINT",
-      "kind": "checkpoint",
-      "depends_on": [
-        "SEM-FINAL-V5-DOCS"
-      ],
-      "ownership": [
-        "docs/porting/BASELINE.md",
-        ".agents/port-swarm/decisions.md"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record the terminal Stage-1 semantic checkpoint. Promotion to main remains a separate explicit human action; Stage 2 remains forbidden until promotion and repeated gates."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-STOP-CLEANUP-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/src/radius.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test supervisor --test radius",
-        "cargo test -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Repair persisted InstanceRecord and MachineRecord timestamp creation and update paths to use frozen Pi ISO-8601 strings rather than Unix-millisecond strings. Limit changes to the diagnosed persistence sources; do not alter lifecycle, protocol, or test semantics."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-TIMESTAMP-FORMAT-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/config.rs",
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/tests/radius.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo test -p zedflow-orchestrator --test radius",
-        "cargo check -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Repair Radius AuthStorage credential-location fidelity: use PI_AGENT_DIR or the default ~/.pi/agent/auth.json, never PI_CONFIG_DIR, while preserving PI_RADIUS_API_KEY fallback. Add an isolated regression for PI_CONFIG_DIR being set; do not change Radius HTTP, supervisor, or IPC behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-FIDELITY-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-REPLAN-SEM-ORCH-V3-AUTH-STORAGE-PATH-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo test -p zedflow-orchestrator --test protocol",
-        "cargo test -p zedflow-orchestrator --test rpc-stream",
-        "cargo test -p zedflow-orchestrator --test supervisor",
-        "cargo test -p zedflow-orchestrator --all-targets"
-      ],
-      "intent": "Freshly re-review every frozen Pi Orchestrator runtime module and protocol behavior after the AuthStorage credential-location repair, including PI_AGENT_DIR/default ~/.pi/agent/auth.json resolution independent of PI_CONFIG_DIR and API-key fallback, persistent stream forwarding, queued JSONL commands/UI responses, IPC camelCase request and response fields, Radius lifecycle, supervisor session synchronization, metadata persistence, RPC-exit cleanup, persisted/non-live stop semantics, and ISO-8601 persisted InstanceRecord and MachineRecord timestamps. Reject source-marker or compile-only closure."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-INTERACTIVE-CLI-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-RESOURCE-LOADER-VALIDATE-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend"
-      ],
-      "intent": "Repair only the deterministic default-CLI InteractiveMode startup regression in main.rs: preserve explicit print/text/json and RPC routing while ensuring the default CLI starts the interactive owner pump under the integration test pipe setup. Do not weaken the test, alter interactive-mode internals, or change unrelated routes."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-EXTENSION-FIXTURE-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-INTERACTIVE-CLI-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/interactive-native-extensions.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-native-extensions"
-      ],
-      "intent": "Repair only the diagnosed default-startup native-extension test fixture path: persist the built startup-marker install at the source-work directory consumed by ResourceLoader so the real default interactive lifecycle dispatch creates the marker. Do not weaken assertions, alter product code, add dependencies, or bypass provenance/trust validation."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-RECEIPTS-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-EXTENSION-FIXTURE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/provenance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resource-loader"
-      ],
-      "intent": "Repair only the deterministic persisted native-extension receipt regression: restore ResourceLoader discovery of application-persisted installs while preserving exact source/artifact/trust binding and rejection of forged or substituted receipts. Do not weaken the failing tests, bypass provenance checks, add dependencies, or alter unrelated resource loading."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-R5",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V1-WORKSPACE-NATIVE-RECEIPTS-R1"
+        "P1.T1",
+        "P7.T1"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --all --check",
         "cargo check --workspace --all-targets",
         "cargo test --workspace --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check"
+        "python3 tools/pi-port-swarm/manifest.py check",
+        "python3 tools/pi-port-swarm/controller.py validate"
       ],
-      "intent": "Run the full Stage-1 workspace gates on one immutable candidate with no unexplained ignore, marker-only target, dead mapped module, placeholder/no-op or unwired CLI mode."
+      "intent": "Execute only P8.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh read-only context on the exact candidate SHA supplied by the controller. Run every listed workspace, manifest, differential, PTY, and independent review gate. Do not edit or repair anything. On any failure, return the exact blocker and stop. On success, return immutable SHA and complete evidence bundle."
     },
     {
-      "id": "REPLAN-SEM-FINAL-V4-ORCHESTRATOR-CLI-R1",
+      "id": "P9.T1",
       "kind": "writer",
       "depends_on": [
-        "SEM-FINAL-V3-RUST-QUALITY"
+        "P8.T1"
       ],
       "ownership": [
-        "crates/zedflow-orchestrator/Cargo.toml",
-        "crates/zedflow-orchestrator/src/main.rs"
+        "docs/porting/BASELINE.md",
+        ".agents/state/stage-1-final-gate-evidence.md",
+        ".agents/port-swarm/decisions.md"
       ],
       "validation": [
-        "cargo fmt --package zedflow-orchestrator --check",
-        "cargo check -p zedflow-orchestrator --all-targets"
+        "git diff --check"
       ],
-      "intent": "Add the missing Orchestrator CLI executable and route its user-facing commands into the existing Orchestrator runtime so cargo run -p zedflow-orchestrator -- --help succeeds. Preserve the frozen Pi CLI behavior; do not alter library runtime modules, add dependencies, or weaken end-user gates."
-    },
-    {
-      "id": "REPLAN-REPLAN-SEM-FINAL-V4-INTERACTIVE-EXIT-RESTORE-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-SEM-FINAL-V4-ORCHESTRATOR-CLI-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
-        "crates/zedflow-coding-agent/tests/interactive-terminal-restoration.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test interactive-terminal-restoration"
-      ],
-      "intent": "Repair the default interactive exit and signal lifecycle at the shared owner boundary: handle /exit and Ctrl-C as local termination, ensure every normal and failure return calls InteractiveMode::stop before leaving the live TUI, and add executable PTY coverage proving process exit, termios restoration, and bracketed-paste disable output on both paths. Preserve print/text/json and RPC routing, the owner-thread event pump, extension shutdown, and frozen Pi behavior; do not add dependencies, use forced termination as cleanup, weaken restoration assertions, or alter unrelated interactive features."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-NONINTERACTIVE-CLI-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-REPLAN-SEM-FINAL-V4-INTERACTIVE-EXIT-RESTORE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test args --test print-mode"
-      ],
-      "intent": "Repair only the diagnosed non-interactive CLI failures: apply the parsed --api-key override when create_runtime_for_args/configured_model constructs the selected provider model, and make JSON mode return process failure after emitting an Error or Aborted stop result instead of returning success first. Preserve provider/model resolution, output formats, RPC and interactive routing; do not add dependencies, weaken error reporting, or alter unrelated runtime behavior."
-    },
-    {
-      "id": "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-ENDUSER-R3",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-REPLAN-REPLAN-SEM-FINAL-V4-NONINTERACTIVE-CLI-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Repeat the end-user black-box gates on the exact repaired SHA: default full-screen TUI, --print/text/json, RPC, sessions/no-session, tools, extensions, skills, themes, package management and Orchestrator; verify --api-key reaches the selected provider runtime, text/json failures return nonzero status, and terminal restoration holds on normal and failure paths."
+      "intent": "Implement only P9.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context after P8 acceptance. Modify only the three evidence/docs files. Record the exact tested product SHA and explicitly distinguish the later docs commit. Supersede prior invalid TUI/end-user evidence, keep Stage 2 forbidden, request human promotion approval, and do not run product tests or promote main."
     }
   ]
 }

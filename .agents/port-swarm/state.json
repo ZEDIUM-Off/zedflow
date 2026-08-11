@@ -2,9 +2,9 @@
   "version": 2,
   "closed": [],
   "current": {
-    "id": "SEM-V1-CLOSURE-GUARD",
-    "base": "f83a96fe7cb81578068fbc7058d7dd11b34c3b75",
-    "base_kind": "completed-mechanical-integration",
+    "id": "P1.T1",
+    "base": "6c07885e721e9f000cb7abe37d59e84dae00d68b",
+    "base_kind": "tui-parity-execution-baseline",
     "worker": null,
     "status": "ready",
     "result": null,
