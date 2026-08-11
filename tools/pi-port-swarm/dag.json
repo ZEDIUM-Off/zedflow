@@ -17,7 +17,7 @@
       "intent": "Implement only P1.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Modify only tools/pi-port-swarm/manifest.py and test_manifest.py. Add targeted, behavior-preserving guards that reject marker-only modules and the known placeholder live TUI composition; do not broaden to unrelated packages or disposition failures. Run only the listed Python checks and return the exact pre-repair failure inventory."
     },
     {
-      "id": "P1.T2",
+      "id": "P1.T2-R1",
       "kind": "writer",
       "depends_on": [],
       "ownership": [
@@ -43,10 +43,27 @@
         "cargo test -p zedflow-coding-agent --test auth-storage",
         "cargo test -p zedflow-coding-agent --test model-registry",
         "cargo test -p zedflow-coding-agent --test settings-manager",
-        "cargo test -p zedflow-coding-agent --test session-manager",
+        "cargo test -p zedflow-coding-agent --test file-operations",
         "cargo test -p zedflow-coding-agent --test trust-manager"
       ],
-      "intent": "Implement only P1.T2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Own only the listed coding-agent core/config/utils files and focused tests. Reuse existing APIs first, then add the smallest typed adapters needed by frozen Pi theme/selectors. No UI, commands, global state, credentials, or network. Return a Pi-import-to-Rust-symbol contract table."
+      "intent": "Implement only fresh replacement P1.T2-R1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Own only the listed coding-agent core/config/utils files and focused tests. Reuse existing APIs first, then add the smallest typed adapters needed by frozen Pi theme/selectors. No UI, commands, global state, credentials, or network. Return a Pi-import-to-Rust-symbol contract table. The session-manager regression is Cargo test target `file-operations`; run that exact declared target."
+    },
+    {
+      "id": "P1.T2-V1",
+      "kind": "validator",
+      "depends_on": [
+        "P1.T2-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test auth-storage",
+        "cargo test -p zedflow-coding-agent --test model-registry",
+        "cargo test -p zedflow-coding-agent --test settings-manager",
+        "cargo test -p zedflow-coding-agent --test file-operations",
+        "cargo test -p zedflow-coding-agent --test trust-manager"
+      ],
+      "intent": "Fresh read-only validation of P1.T2-R1 on its exact candidate. Run every declared focused gate, including Cargo test target `file-operations` for tests/session-manager/file-operations.rs. Do not edit source, tests, manifests, or control-plane files; return exact command evidence or a valid blocker classification."
     },
     {
       "id": "P1.T3",
@@ -172,7 +189,7 @@
       "id": "P3.T1",
       "kind": "writer",
       "depends_on": [
-        "P1.T2",
+        "P1.T2-V1",
         "P2.T1",
         "P2.T2"
       ],
@@ -227,7 +244,7 @@
       "id": "P4.T2",
       "kind": "writer",
       "depends_on": [
-        "P1.T2",
+        "P1.T2-V1",
         "P2.T2",
         "P3.T1"
       ],
@@ -256,7 +273,7 @@
       "id": "P4.T3",
       "kind": "writer",
       "depends_on": [
-        "P1.T2",
+        "P1.T2-V1",
         "P2.T2",
         "P3.T1"
       ],
@@ -277,7 +294,7 @@
       "id": "P4.T4",
       "kind": "writer",
       "depends_on": [
-        "P1.T2",
+        "P1.T2-V1",
         "P2.T2",
         "P3.T1"
       ],
