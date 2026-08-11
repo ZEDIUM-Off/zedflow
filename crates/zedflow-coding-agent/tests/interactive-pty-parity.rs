@@ -44,12 +44,9 @@ fn editor_input_is_visible_and_abort_restores_the_pty() {
         .write_all(b"parity-check")
         .unwrap();
     thread::sleep(Duration::from_millis(200));
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(b"\x03\x03")
-        .unwrap();
+    child.stdin.as_mut().unwrap().write_all(b"\x03").unwrap();
+    thread::sleep(Duration::from_millis(100));
+    child.stdin.as_mut().unwrap().write_all(b"\x03").unwrap();
     child.stdin.take();
 
     let status = child.wait().unwrap();

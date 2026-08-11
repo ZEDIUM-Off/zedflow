@@ -5,8 +5,11 @@ use std::{
     fs, io,
     panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
     path::PathBuf,
-    sync::{Arc, Mutex},
-    time::Duration,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
 };
 
 use serde_json::Value;
@@ -1518,6 +1521,9 @@ impl Component for ActivityView {
 struct EditorFooterView {
     editor: CustomEditor,
     footer: Arc<Mutex<FooterSnapshot>>,
+    submitted: Arc<Mutex<VecDeque<String>>>,
+    clear_requested: Arc<AtomicBool>,
+    last_sigint: Option<Instant>,
 }
 impl EditorFooterView {
     fn new(submitted: Arc<Mutex<VecDeque<String>>>, footer: Arc<Mutex<FooterSnapshot>>) -> Self {
@@ -1526,11 +1532,23 @@ impl EditorFooterView {
         editor.editor_mut().on_submit = Some(Box::new(move |text| {
             on_submit.lock().unwrap().push_back(text.to_owned());
         }));
+        let on_exit = Arc::clone(&submitted);
         editor.on_ctrl_d = Some(Box::new(move || {
-            submitted.lock().unwrap().push_back("/exit".into());
+            on_exit.lock().unwrap().push_back("/exit".into());
         }));
+        let clear_requested = Arc::new(AtomicBool::new(false));
+        let request_clear = Arc::clone(&clear_requested);
+        editor.on_action("app.clear", move || {
+            request_clear.store(true, Ordering::Release);
+        });
         editor.set_focused(true);
-        Self { editor, footer }
+        Self {
+            editor,
+            footer,
+            submitted,
+            clear_requested,
+            last_sigint: None,
+        }
     }
 }
 impl Component for EditorFooterView {
@@ -1541,6 +1559,19 @@ impl Component for EditorFooterView {
     }
     fn handle_input(&mut self, data: &str) {
         self.editor.handle_input(data);
+        if self.clear_requested.swap(false, Ordering::AcqRel) {
+            let now = Instant::now();
+            if self
+                .last_sigint
+                .is_some_and(|previous| now.duration_since(previous) < Duration::from_millis(500))
+            {
+                self.submitted.lock().unwrap().push_back("/exit".into());
+                self.last_sigint = None;
+            } else {
+                self.editor.editor_mut().set_text("");
+                self.last_sigint = Some(now);
+            }
+        }
     }
     fn set_focused(&mut self, focused: bool) {
         self.editor.set_focused(focused);
