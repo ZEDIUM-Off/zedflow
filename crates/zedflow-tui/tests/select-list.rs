@@ -2,7 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use zedflow_tui::{
     Component, KeybindingsManager, SelectItem, SelectList, SelectListLayoutOptions,
-    SelectListStyle, SelectListTheme, set_keybindings, tui_keybindings, visible_width,
+    SelectListStyle, SelectListTheme, SettingItem, SettingsList, set_keybindings, tui_keybindings,
+    visible_width,
 };
 
 fn style(prefix: &'static str) -> SelectListStyle {
@@ -64,6 +65,35 @@ fn select_list_applies_layout_and_normalizes_descriptions() {
         visible_index_of(&rendered[1], "second")
     );
     assert_eq!(visible_index_of(&rendered[1], "second"), 22);
+}
+
+#[test]
+fn settings_list_filters_navigates_and_cycles_values() {
+    let mut list = SettingsList::new(
+        vec![
+            SettingItem {
+                id: "theme".into(),
+                label: "Theme".into(),
+                description: Some("Color theme".into()),
+                current_value: "dark".into(),
+                values: vec!["dark".into(), "light".into()],
+            },
+            SettingItem {
+                id: "model".into(),
+                label: "Model".into(),
+                description: None,
+                current_value: "fast".into(),
+                values: vec!["fast".into(), "smart".into()],
+            },
+        ],
+        5,
+    );
+    list.handle_input("\r");
+    assert!(list.render(80).iter().any(|line| line.contains("light")));
+    list.set_filter("mdl");
+    let rendered = list.render(80).join("\n");
+    assert!(rendered.contains("Model"));
+    assert!(!rendered.contains("Theme"));
 }
 
 #[test]
