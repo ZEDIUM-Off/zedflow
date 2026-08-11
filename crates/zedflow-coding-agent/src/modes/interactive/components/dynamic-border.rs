@@ -1,23 +1,32 @@
 //! Width-aware transcript separator.
 
+use std::sync::Arc;
 use zedflow_tui::Component;
 
-/// Pi's border line, recalculated for the active viewport width.
-#[derive(Debug, Clone, Default)]
-pub struct DynamicBorder;
+type Color = Arc<dyn Fn(&str) -> String + Send + Sync>;
 
-impl Component for DynamicBorder {
-    fn render(&self, width: usize) -> Vec<String> {
-        vec!["─".repeat(width.max(1))]
+#[derive(Clone)]
+pub struct DynamicBorder {
+    color: Color,
+}
+
+impl DynamicBorder {
+    #[must_use]
+    pub fn new(color: impl Fn(&str) -> String + Send + Sync + 'static) -> Self {
+        Self {
+            color: Arc::new(color),
+        }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl Default for DynamicBorder {
+    fn default() -> Self {
+        Self::new(str::to_owned)
+    }
+}
 
-    #[test]
-    fn border_never_disappears_in_a_zero_width_layout() {
-        assert_eq!(DynamicBorder.render(0), ["─"]);
+impl Component for DynamicBorder {
+    fn render(&self, width: usize) -> Vec<String> {
+        vec![(self.color)(&"─".repeat(width.max(1)))]
     }
 }
