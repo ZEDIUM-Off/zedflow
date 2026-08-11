@@ -108,10 +108,25 @@
       "intent": "Implement only P1.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the frozen Pi terminal/key/input/root-TUI foundation into exactly the listed zedflow-tui files and tests. Read the complete frozen sources/tests. Keep one terminal owner thread, add no dependency or alternate-screen design, and do not touch coding-agent. Return the public API and assertion parity ledger."
     },
     {
-      "id": "P2.T1",
+      "id": "P1.T3-R1",
       "kind": "writer",
       "depends_on": [
         "P1.T3"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/utils.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test wrap-ansi"
+      ],
+      "intent": "Implement only fresh repair P1.T3-R1 in fresh context. Repair the P1.T3 ANSI wrapper in crates/zedflow-tui/src/utils.rs so frozen wrap-ansi assertions preserve OSC-8 continuation and BEL termination across wrapped lines and restore underline state correctly. Read the complete frozen Pi wrap-ansi implementation and tests before editing. Do not edit tests, components, dependencies, or other TUI files; do not weaken assertions. Run the declared focused gates and return exact assertion evidence."
+    },
+    {
+      "id": "P2.T1-R1",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T3-R1"
       ],
       "ownership": [
         "crates/zedflow-tui/src/components/box.rs",
@@ -139,7 +154,24 @@
         "cargo test -p zedflow-tui --test truncated-text",
         "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Implement only P2.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete exactly the listed rich-rendering files/tests against frozen Pi, using the P1.T3 contracts. No coding-agent edits, new dependencies, renderer thread, or snapshot weakening. Return normalized example frames and test evidence."
+      "intent": "Implement only fresh replacement P2.T1-R1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context after accepted P1.T3-R1. Complete exactly the listed rich-rendering files/tests against frozen Pi, using the repaired P1.T3 contracts. No coding-agent edits, new dependencies, renderer thread, or snapshot weakening. Return normalized example frames and test evidence."
+    },
+    {
+      "id": "P2.T1-V1",
+      "kind": "validator",
+      "depends_on": [
+        "P2.T1-R1"
+      ],
+      "ownership": [],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test markdown",
+        "cargo test -p zedflow-tui --test terminal-image",
+        "cargo test -p zedflow-tui --test terminal-colors",
+        "cargo test -p zedflow-tui --test truncated-text",
+        "cargo test -p zedflow-tui --test wrap-ansi"
+      ],
+      "intent": "Fresh read-only validation of P2.T1-R1 and the prerequisite ANSI-wrapper repair on the exact candidate. Run every declared P2.T1 rich-rendering gate, including frozen wrap-ansi assertions. Do not edit source, tests, manifests, dependencies, or control-plane files; return exact command evidence or a valid blocker classification."
     },
     {
       "id": "P2.T2",
@@ -190,7 +222,7 @@
       "kind": "writer",
       "depends_on": [
         "P1.T2-V1",
-        "P2.T1",
+        "P2.T1-V1",
         "P2.T2"
       ],
       "ownership": [
@@ -218,7 +250,7 @@
       "id": "P4.T1",
       "kind": "writer",
       "depends_on": [
-        "P2.T1",
+        "P2.T1-V1",
         "P3.T1"
       ],
       "ownership": [
@@ -314,7 +346,7 @@
       "id": "P4.T5",
       "kind": "writer",
       "depends_on": [
-        "P2.T1",
+        "P2.T1-V1",
         "P3.T1",
         "P4.T1"
       ],
