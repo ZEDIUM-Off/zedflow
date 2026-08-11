@@ -18,9 +18,9 @@ mod truncated_text;
 pub use r#box::Box;
 pub use cancellable_loader::{CancellableLoader, CancellationSignal};
 pub use editor::Editor;
-pub use image::{Image, ImageOptions};
+pub use image::{Image, ImageOptions, ImageTheme};
 pub use input::Input;
-pub use loader::Loader;
+pub use loader::{Loader, LoaderIndicatorOptions};
 pub use markdown::Markdown;
 pub use select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListPrimaryTruncator, SelectListStyle,

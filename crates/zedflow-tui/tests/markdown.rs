@@ -79,3 +79,35 @@ fn emits_osc8_links_when_supported_and_falls_back_when_not() {
     let fallback = markdown.render(80).join("\n");
     assert!(fallback.contains("site (https://example.com)"));
 }
+
+#[test]
+fn normalized_rich_component_frames_match_pi_contract() {
+    use zedflow_tui::{Box as TextBox, Loader, LoaderIndicatorOptions, Spacer, Text};
+
+    let mut container = TextBox::new(1, 1);
+    container.add_child(Text::new("hello world", 0, 0));
+    container.add_child(Spacer::new(1));
+    assert_eq!(plain(container.render(8)), ["", " hello", " world", "", ""]);
+
+    let mut loader = Loader::new("Working...");
+    assert_eq!(plain(loader.render(20)), ["", " ⠋ Working..."]);
+    loader.advance_frame();
+    assert_eq!(plain(loader.render(20)), ["", " ⠙ Working..."]);
+    loader.set_indicator(Some(LoaderIndicatorOptions {
+        frames: Some(vec!["ONE".into()]),
+        interval_ms: Some(0),
+    }));
+    assert_eq!(loader.interval_ms, 80);
+    assert_eq!(plain(loader.render(20)), ["", " ONE Working..."]);
+    loader.set_indicator(Some(LoaderIndicatorOptions {
+        frames: Some(Vec::new()),
+        interval_ms: None,
+    }));
+    assert_eq!(plain(loader.render(20)), ["", " Working..."]);
+}
+
+#[test]
+fn stabilizes_streamed_partial_closing_fences() {
+    let lines = plain(Markdown::new("```ts\nconst x = 1;\n``").render(40));
+    assert_eq!(lines, ["```ts", "  const x = 1;", "```"]);
+}

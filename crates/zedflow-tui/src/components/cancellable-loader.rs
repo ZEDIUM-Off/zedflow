@@ -45,7 +45,9 @@ impl CancellableLoader {
         self.signal.aborted()
     }
 
-    pub fn stop(&mut self) {}
+    pub fn stop(&mut self) {
+        self.loader.stop();
+    }
 
     pub fn dispose(&mut self) {
         self.stop();

@@ -18,6 +18,22 @@ fn parses_strict_osc11_color_forms() {
             b: 48
         })
     );
+    assert_eq!(
+        parse_osc11_background_color("\x1b]11;#ffff80000000\x07"),
+        Some(RgbColor {
+            r: 255,
+            g: 128,
+            b: 0
+        })
+    );
+    assert_eq!(
+        parse_osc11_background_color("\x1b]11;rgba:f/8/0/f\x07"),
+        Some(RgbColor {
+            r: 255,
+            g: 136,
+            b: 0
+        })
+    );
     assert!(is_osc11_background_color_response(
         "\x1b]11;not-a-color\x07"
     ));
