@@ -123,10 +123,25 @@
       "intent": "Implement only fresh repair P1.T3-R1 in fresh context. Repair the P1.T3 ANSI wrapper in crates/zedflow-tui/src/utils.rs so frozen wrap-ansi assertions preserve OSC-8 continuation and BEL termination across wrapped lines and restore underline state correctly. Read the complete frozen Pi wrap-ansi implementation and tests before editing. Do not edit tests, components, dependencies, or other TUI files; do not weaken assertions. Run the declared focused gates and return exact assertion evidence."
     },
     {
-      "id": "P2.T1-R1",
+      "id": "P1.T3-R2",
       "kind": "writer",
       "depends_on": [
         "P1.T3-R1"
+      ],
+      "ownership": [
+        "crates/zedflow-tui/src/utils.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test wrap-ansi"
+      ],
+      "intent": "Implement only fresh repair P1.T3-R2 in fresh context after accepted P1.T3-R1. Repair crates/zedflow-tui/src/utils.rs so wrap_text_with_ansi matches frozen Pi word-boundary wrapping and does not split words when a valid boundary fits. Read the complete frozen Pi implementation and wrap-ansi tests before editing. Do not edit tests, components, dependencies, or other TUI files; do not weaken assertions. Run the declared focused gates and return exact assertion evidence."
+    },
+    {
+      "id": "P2.T1-R2",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T3-R2"
       ],
       "ownership": [
         "crates/zedflow-tui/src/components/box.rs",
@@ -154,13 +169,13 @@
         "cargo test -p zedflow-tui --test truncated-text",
         "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Implement only fresh replacement P2.T1-R1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context after accepted P1.T3-R1. Complete exactly the listed rich-rendering files/tests against frozen Pi, using the repaired P1.T3 contracts. No coding-agent edits, new dependencies, renderer thread, or snapshot weakening. Return normalized example frames and test evidence."
+      "intent": "Implement only fresh replacement P2.T1-R2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context after accepted P1.T3-R2. Complete exactly the listed rich-rendering files/tests against frozen Pi, using the repaired word-boundary ANSI wrapping contract. No coding-agent edits, new dependencies, renderer thread, or snapshot weakening. Return normalized example frames and test evidence."
     },
     {
-      "id": "P2.T1-V1",
+      "id": "P2.T1-V2",
       "kind": "validator",
       "depends_on": [
-        "P2.T1-R1"
+        "P2.T1-R2"
       ],
       "ownership": [],
       "validation": [
@@ -171,7 +186,7 @@
         "cargo test -p zedflow-tui --test truncated-text",
         "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Fresh read-only validation of P2.T1-R1 and the prerequisite ANSI-wrapper repair on the exact candidate. Run every declared P2.T1 rich-rendering gate, including frozen wrap-ansi assertions. Do not edit source, tests, manifests, dependencies, or control-plane files; return exact command evidence or a valid blocker classification."
+      "intent": "Fresh read-only validation of P1.T3-R2 and P2.T1-R2 on the exact candidate. Run every declared P2.T1 rich-rendering gate, including frozen word-boundary wrap-ansi assertions. Do not edit source, tests, manifests, dependencies, or control-plane files; return exact command evidence or a valid blocker classification."
     },
     {
       "id": "P2.T2",
@@ -222,7 +237,7 @@
       "kind": "writer",
       "depends_on": [
         "P1.T2-V1",
-        "P2.T1-V1",
+        "P2.T1-V2",
         "P2.T2"
       ],
       "ownership": [
@@ -250,7 +265,7 @@
       "id": "P4.T1",
       "kind": "writer",
       "depends_on": [
-        "P2.T1-V1",
+        "P2.T1-V2",
         "P3.T1"
       ],
       "ownership": [
@@ -346,7 +361,7 @@
       "id": "P4.T5",
       "kind": "writer",
       "depends_on": [
-        "P2.T1-V1",
+        "P2.T1-V2",
         "P3.T1",
         "P4.T1"
       ],
