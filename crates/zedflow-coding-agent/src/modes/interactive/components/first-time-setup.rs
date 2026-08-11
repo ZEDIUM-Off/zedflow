@@ -13,6 +13,14 @@ pub struct FirstTimeSetupResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirstTimeSetupAction {
+    Preview(TerminalTheme),
+    Continue,
+    Submit(FirstTimeSetupResult),
+    Cancel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Step {
     Theme,
     Analytics,
@@ -41,27 +49,44 @@ impl FirstTimeSetup {
     }
 
     /// Pi clamps selection at both ends rather than wrapping it.
-    pub fn move_selection(&mut self, delta: i8) {
+    pub fn move_selection(&mut self, delta: i8) -> Option<FirstTimeSetupAction> {
         match self.step {
             Step::Theme if delta != 0 => {
+                let previous = self.theme;
                 self.theme = if delta < 0 {
                     TerminalTheme::Dark
                 } else {
                     TerminalTheme::Light
                 };
+                (self.theme != previous).then_some(FirstTimeSetupAction::Preview(self.theme))
             }
-            Step::Analytics if delta != 0 => self.share_analytics = delta < 0,
-            _ => {}
+            Step::Analytics if delta != 0 => {
+                self.share_analytics = delta < 0;
+                None
+            }
+            _ => None,
         }
+    }
+
+    #[must_use]
+    pub const fn cancel(&self) -> FirstTimeSetupAction {
+        FirstTimeSetupAction::Cancel
     }
 
     /// Advances from theme selection, then returns the finished settings.
     pub fn confirm(&mut self) -> Option<FirstTimeSetupResult> {
+        match self.action_confirm() {
+            FirstTimeSetupAction::Submit(result) => Some(result),
+            _ => None,
+        }
+    }
+
+    pub fn action_confirm(&mut self) -> FirstTimeSetupAction {
         if self.step == Step::Theme {
             self.step = Step::Analytics;
-            None
+            FirstTimeSetupAction::Continue
         } else {
-            Some(FirstTimeSetupResult {
+            FirstTimeSetupAction::Submit(FirstTimeSetupResult {
                 theme: self.theme,
                 share_analytics: self.share_analytics,
             })

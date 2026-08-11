@@ -1,5 +1,7 @@
 //! Provider-selector state independent of the terminal renderer.
 
+use crate::auth_storage::{AuthCredential, AuthSource, AuthStatus};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthSelectorMode {
     Login,
@@ -21,6 +23,7 @@ pub struct AuthSelectorProvider {
 
 #[derive(Debug, Clone)]
 pub struct OAuthSelector {
+    pub mode: AuthSelectorMode,
     providers: Vec<AuthSelectorProvider>,
     filtered: Vec<usize>,
     selected: usize,
@@ -29,8 +32,14 @@ pub struct OAuthSelector {
 impl OAuthSelector {
     #[must_use]
     pub fn new(providers: Vec<AuthSelectorProvider>) -> Self {
+        Self::with_mode(AuthSelectorMode::Login, providers)
+    }
+
+    #[must_use]
+    pub fn with_mode(mode: AuthSelectorMode, providers: Vec<AuthSelectorProvider>) -> Self {
         let filtered = (0..providers.len()).collect();
         Self {
+            mode,
             providers,
             filtered,
             selected: 0,
@@ -45,9 +54,12 @@ impl OAuthSelector {
             .iter()
             .enumerate()
             .filter_map(|(index, provider)| {
+                let auth_type = match provider.auth_type {
+                    AuthSelectorProviderType::OAuth => "oauth",
+                    AuthSelectorProviderType::ApiKey => "api_key",
+                };
                 let haystack =
-                    format!("{} {} {:?}", provider.name, provider.id, provider.auth_type)
-                        .to_ascii_lowercase();
+                    format!("{} {} {auth_type}", provider.name, provider.id).to_ascii_lowercase();
                 fuzzy_matches(&haystack, &query).then_some(index)
             })
             .collect();
@@ -71,6 +83,61 @@ impl OAuthSelector {
     #[must_use]
     pub fn filtered_count(&self) -> usize {
         self.filtered.len()
+    }
+
+    #[must_use]
+    pub fn empty_message(&self) -> &'static str {
+        if !self.providers.is_empty() {
+            return "No matching providers";
+        }
+        match self.mode {
+            AuthSelectorMode::Login => "No providers available",
+            AuthSelectorMode::Logout => "No providers logged in. Use /login first.",
+        }
+    }
+}
+
+#[must_use]
+pub fn status_indicator(
+    provider_type: AuthSelectorProviderType,
+    credential: Option<&AuthCredential>,
+    status: Option<&AuthStatus>,
+) -> String {
+    if credential.is_some_and(|credential| {
+        matches!(
+            (provider_type, credential),
+            (
+                AuthSelectorProviderType::OAuth,
+                AuthCredential::OAuth { .. }
+            ) | (
+                AuthSelectorProviderType::ApiKey,
+                AuthCredential::ApiKey { .. }
+            )
+        )
+    }) {
+        return "✓ configured".into();
+    }
+    if let Some(credential) = credential {
+        return match credential {
+            AuthCredential::OAuth { .. } => "subscription configured".into(),
+            AuthCredential::ApiKey { .. } => "API key configured".into(),
+        };
+    }
+    if provider_type == AuthSelectorProviderType::OAuth {
+        return "unconfigured".into();
+    }
+    match status.and_then(|status| status.source.as_ref()) {
+        Some(AuthSource::Environment) => format!(
+            "✓ env: {}",
+            status
+                .and_then(|status| status.label.as_deref())
+                .unwrap_or("API key")
+        ),
+        Some(AuthSource::Runtime) => "✓ runtime API key".into(),
+        Some(AuthSource::Fallback) => "✓ custom API key".into(),
+        Some(AuthSource::ModelsJsonKey) => "✓ key in models.json".into(),
+        Some(AuthSource::ModelsJsonCommand) => "✓ command in models.json".into(),
+        _ => "unconfigured".into(),
     }
 }
 
