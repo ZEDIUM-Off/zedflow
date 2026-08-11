@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Zedflow is in **Stage 1: semantic Pi TypeScript → Rust port awaiting one-SHA final-gate closure**. The terminal semantic product candidate is `a9a23c387f372ed027c5a742047f93d0689955ed`; the frozen source remains `references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd`. Stage-2 Flow/Runtime Graph/LangGraph work and promotion to `main` remain forbidden.
+Zedflow is in **Stage 1: semantic Pi TypeScript → Rust port awaiting explicit human promotion approval**. The replacement final-gate validator accepted the immutable product SHA `7ae6374063da1f60cc5767d0a4e51d907cfc61d6`; the frozen source remains `references/pi@2b00dade7cec918aefb025c8b7a4fa304a30acdd`. This later documentation commit records evidence only and was not the product SHA tested. Promotion to `main` requires explicit human approval, and Stage-2 Flow/Runtime Graph/LangGraph work remains forbidden.
 
 This is the sole current human status document. Operational facts come from the CAS integration ref, frozen gitlink, committed DAG, and external controller state:
 
@@ -15,11 +15,11 @@ python3 tools/pi-port-swarm/manifest.py status
 
 | Package | Mechanical inventory | Semantic state |
 |---|---:|---|
-| AI | 247/247 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
-| Agent | 45/45 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
-| TUI | 61/61 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
-| Coding-agent | 332 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
-| Orchestrator | 13/13 rows accounted for | reached final-gate review; immutable-SHA revalidation required |
+| AI | 247/247 rows accounted for | accepted on product SHA `7ae63740`; promoted-`main` revalidation pending |
+| Agent | 45/45 rows accounted for | accepted on product SHA `7ae63740`; promoted-`main` revalidation pending |
+| TUI | 61/61 rows accounted for | replacement acceptance on product SHA `7ae63740`; promoted-`main` revalidation pending |
+| Coding-agent | 332 rows accounted for | replacement acceptance on product SHA `7ae63740`; promoted-`main` revalidation pending |
+| Orchestrator | 13/13 rows accounted for | accepted on product SHA `7ae63740`; promoted-`main` revalidation pending |
 
 Audit evidence is retained in `.pi-subagents/artifacts/44c53eb4_pi-port-scout_{0,1,2}_output.md`. `automation/pi-port@f83a96fe` remains mechanical evidence only.
 
@@ -45,20 +45,13 @@ The controller now permits a reviewed CAS upgrade from a fully completed DAG to 
 
 ## Final-gate evidence
 
-The controller accepted the final reviews, but not on one immutable SHA:
+The controller accepted replacement final-gate unit `P8.T1-V1` on immutable product SHA `7ae6374063da1f60cc5767d0a4e51d907cfc61d6`. Its fmt, workspace check, executed workspace tests, strict manifest, and controller validation all returned 0. This one-SHA acceptance supersedes the earlier split-SHA workspace/fidelity/Rust-quality/end-user table and the invalid TUI/end-user completion evidence associated with it.
 
-| Gate | Accepted SHA | Evidence |
-|---|---|---|
-| Workspace | `0b7206444c22b9f2d3ec7beebad4529ba9709962` | fmt, workspace check, executed workspace tests, and strict manifest returned 0 |
-| Fidelity | `26fd6e77dca31fe7c3ca13c1e85dcbc7809b8894` | independent review accepted; frozen AI oracle returned 0 |
-| Rust quality | `26fd6e77dca31fe7c3ca13c1e85dcbc7809b8894` | independent review accepted |
-| End user | `a9a23c387f372ed027c5a742047f93d0689955ed` | independent review accepted |
+Stage 1 is **not complete**: the current commit is a later evidence-only documentation commit, not the tested product SHA. A human must explicitly approve promotion of the tested product SHA to `main`, after which a fresh read-only validator must repeat every final gate on promoted `main`. Exact command records and evidence limitations are retained in `.agents/state/stage-1-final-gate-evidence.md`.
 
-The workspace gate predates fidelity and end-user repairs; the fidelity and Rust-quality gates predate end-user repairs. Therefore Stage 1 is **not complete**. These gates must accept the same integration SHA before promotion can be considered, and all gates must pass again after an explicit promotion to `main`. Exact controller evidence is retained in `.agents/state/stage-1-final-gate-evidence.md`.
+## Human promotion checkpoint
 
-## Terminal semantic checkpoint
-
-The terminal checkpoint was recorded from control commit `02c532989659a1ad8a20afacd1b41ad61f08c3fc`. It closes the current semantic DAG as an evidence checkpoint, not as Stage-1 acceptance: the final gates above did not accept one immutable SHA. Promotion to `main` requires an explicit human action after one-SHA closure, and Stage 2 remains forbidden until promotion and all gates pass again on `main`.
+The tested product SHA is `7ae6374063da1f60cc5767d0a4e51d907cfc61d6`; this later documentation commit must not be substituted for it or described as product-tested. **Human approval is requested to promote that exact product SHA to `main`.** Until approval, promotion is forbidden. After promotion, all final gates must pass again on `main`; Stage 2 remains forbidden until then.
 
 ## Stage-1 exit gate
 
