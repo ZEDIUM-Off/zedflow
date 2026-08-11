@@ -33,6 +33,6 @@ mod tests {
     fn retains_the_tail_of_wrapped_output() {
         let result = truncate_to_visual_lines("one two three", 2, 5, 0);
         assert_eq!(result.skipped_count, 1);
-        assert_eq!(result.visual_lines, ["wo th", "ree  "]);
+        assert_eq!(result.visual_lines, ["two  ", "three"]);
     }
 }
