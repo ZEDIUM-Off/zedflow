@@ -39,7 +39,7 @@ fn ports_fireworks_catalog_env_and_compat() {
     assert_eq!(compat.supports_cache_control_on_tools, Some(false));
     assert_eq!(compat.supports_long_cache_retention, Some(false));
 
-    let models = get_models().unwrap();
+    let models = get_models();
     let turbo = models
         .iter()
         .find(|model| {

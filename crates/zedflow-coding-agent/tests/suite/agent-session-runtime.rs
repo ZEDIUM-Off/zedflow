@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/suite/agent-session-runtime.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::session_manager::SessionInfo;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/suite/agent-session-runtime.rs";
+#[test]
+fn persisted_session_metadata_retains_its_identity() {
+    let session = SessionInfo::persisted("/work", "/work/session.jsonl", "session-id");
+    assert!(session.is_persisted());
+    assert_eq!(session.session_id, "session-id");
+}

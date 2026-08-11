@@ -1,7 +1,13 @@
-//! Pi coding-agent test manifest entry: `tests/oauth-selector.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/oauth-selector.rs";
+use zedflow_coding_agent::oauth_selector::{
+    AuthSelectorProvider, AuthSelectorProviderType, OAuthSelector,
+};
+#[test]
+fn oauth_selector_fuzzy_filters_provider_names() {
+    let mut selector = OAuthSelector::new(vec![AuthSelectorProvider {
+        id: "github".into(),
+        name: "GitHub".into(),
+        auth_type: AuthSelectorProviderType::OAuth,
+    }]);
+    selector.filter("gh");
+    assert_eq!(selector.selected_provider().unwrap().id, "github");
+}

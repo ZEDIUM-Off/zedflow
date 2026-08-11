@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/tree-selector.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/tree-selector.rs";
+#[test]
+fn tree_picker_delete_requires_the_delete_shortcut() {
+    use zedflow_coding_agent::session_selector::{SessionSelectorKey, should_confirm_delete};
+    assert!(should_confirm_delete(SessionSelectorKey::CtrlD, "search"));
+    assert!(!should_confirm_delete(SessionSelectorKey::Other, ""));
+}

@@ -9,6 +9,6 @@ use zedflow_ai::compat;
 #[test]
 #[ignore = "live OpenCode smoke requires provider network credentials; deterministic catalog coverage is local"]
 fn opencode_models_smoke_suite_requires_live_completion_dispatch() {
-    let models = compat::get_models().expect("builtin model catalog is registered");
+    let models = compat::get_models();
     assert!(models.iter().any(|model| model.provider == "opencode"));
 }

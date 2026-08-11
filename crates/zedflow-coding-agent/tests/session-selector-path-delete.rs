@@ -1,7 +1,12 @@
-//! Pi coding-agent test manifest entry: `tests/session-selector-path-delete.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::session_selector::{SessionSelectorKey, should_confirm_delete};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/session-selector-path-delete.rs";
+#[test]
+fn delete_shortcuts_distinguish_search_editing_from_deletion() {
+    assert!(!should_confirm_delete(
+        SessionSelectorKey::CtrlBackspace,
+        "query"
+    ));
+    assert!(should_confirm_delete(SessionSelectorKey::CtrlD, "query"));
+    assert!(should_confirm_delete(SessionSelectorKey::CtrlBackspace, ""));
+    assert!(!should_confirm_delete(SessionSelectorKey::Other, ""));
+}

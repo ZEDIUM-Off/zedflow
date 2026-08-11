@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/experimental.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::experimental::are_experimental_features_enabled;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/experimental.rs";
+#[test]
+fn experimental_gate_requires_the_literal_one_value() {
+    assert_eq!(
+        are_experimental_features_enabled(),
+        std::env::var_os("PI_EXPERIMENTAL").is_some_and(|value| value == "1")
+    );
+}

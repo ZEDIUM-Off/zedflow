@@ -1,7 +1,14 @@
-//! Pi coding-agent test manifest entry: `tests/path-utils.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use std::path::PathBuf;
+use zedflow_coding_agent::path_utils::{expand_path, resolve_to_cwd};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/path-utils.rs";
+#[test]
+fn path_utils_expand_file_urls_and_relative_paths() {
+    assert_eq!(
+        expand_path("file:///root/a%20b").unwrap(),
+        PathBuf::from("/root/a b")
+    );
+    assert_eq!(
+        resolve_to_cwd("file", "/root").unwrap(),
+        PathBuf::from("/root/file")
+    );
+}

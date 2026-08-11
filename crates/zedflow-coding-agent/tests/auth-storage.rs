@@ -3,7 +3,10 @@ use std::{
     fs,
     time::{SystemTime, UNIX_EPOCH},
 };
-use zedflow_coding_agent::auth_storage::{AuthCredential, AuthStorage};
+use zedflow_coding_agent::{
+    auth_storage::{AuthCredential, AuthStorage},
+    utils::open_browser::open_browser_with,
+};
 
 fn path() -> std::path::PathBuf {
     std::env::temp_dir()
@@ -83,6 +86,23 @@ fn persist_failures_are_recorded_and_drained() {
     assert!(!storage.drain_errors().is_empty());
 
     fs::remove_dir_all(path.parent().unwrap()).unwrap();
+}
+
+#[test]
+fn browser_boundary_propagates_success_and_errors_without_spawning() {
+    let mut command_line = String::new();
+    open_browser_with("https://example.test/login", |command| {
+        command_line = format!("{command:?}");
+        Ok(())
+    })
+    .unwrap();
+    assert!(command_line.contains("https://example.test/login"));
+
+    let error = open_browser_with("https://example.test/login", |_| {
+        Err(std::io::Error::other("cancelled"))
+    })
+    .unwrap_err();
+    assert_eq!(error.to_string(), "cancelled");
 }
 
 #[tokio::test]

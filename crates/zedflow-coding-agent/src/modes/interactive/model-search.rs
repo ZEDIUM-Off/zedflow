@@ -1,8 +1,27 @@
-//! Pi coding-agent module: `modes/interactive/model-search.rs`.
-//!
-//! This manifest entry is kept explicit so the Rust crate mirrors the frozen
-//! TypeScript package layout. Host-specific behavior remains in the owning
-//! runtime modules.
+//! Search strings used by the model and scoped-model selectors.
 
-#[allow(dead_code)]
-pub const MODULE_PATH: &str = "modes/interactive/model-search.rs";
+#[derive(Debug, Clone, Copy)]
+pub struct ModelSearchItem<'a> {
+    pub id: &'a str,
+    pub provider: &'a str,
+    pub name: Option<&'a str>,
+}
+
+#[must_use]
+pub fn model_search_text(item: ModelSearchItem<'_>) -> String {
+    let name = item.name.map_or(String::new(), |name| format!(" {name}"));
+    format!(
+        "{} {} {}/{} {} {}{}",
+        item.id, item.provider, item.provider, item.id, item.provider, item.id, name
+    )
+}
+
+/// Keeps the provider first so exact `provider/model` queries outrank proxy IDs.
+#[must_use]
+pub fn model_selector_search_text(item: ModelSearchItem<'_>) -> String {
+    let name = item.name.map_or(String::new(), |name| format!(" {name}"));
+    format!(
+        "{} {}/{} {} {}{}",
+        item.provider, item.provider, item.id, item.provider, item.id, name
+    )
+}

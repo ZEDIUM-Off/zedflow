@@ -1,7 +1,14 @@
-//! Pi coding-agent test manifest entry: `tests/streaming-render-debug.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+#[path = "../src/modes/interactive/components/assistant-message.rs"]
+mod assistant_message;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/streaming-render-debug.rs";
+use assistant_message::StreamingAssistantMessage;
+
+#[test]
+fn streaming_snapshots_replace_partial_thinking_before_final_text() {
+    let mut message = StreamingAssistantMessage::default();
+    message.update_content("partial", "");
+    message.update_content("complete thinking", "final answer");
+
+    assert_eq!(message.thinking(), "complete thinking");
+    assert_eq!(message.text(), "final answer");
+}

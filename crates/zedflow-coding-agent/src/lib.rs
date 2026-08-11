@@ -1,6 +1,8 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 //! Zedflow coding-agent crate.
+
+extern crate self as zedflow_coding_agent;
 
 /// Deterministic utilities ported from Pi's coding-agent package.
 #[path = "utils/mod.rs"]
@@ -30,6 +32,8 @@ pub mod keybindings;
 #[path = "core/package-manager.rs"]
 pub mod package_manager;
 
+#[path = "modes/interactive/components/armin.rs"]
+pub mod armin;
 #[path = "modes/interactive/components/custom-entry.rs"]
 pub mod custom_entry;
 #[path = "modes/interactive/components/custom-message.rs"]
@@ -218,19 +222,152 @@ pub mod write;
 pub mod core {
     pub use crate::{
         agent_session, agent_session_runtime, agent_session_services, auth_guidance, auth_storage,
-        compaction, defaults, diagnostics, event_bus, experimental, export_html, extensions,
-        http_dispatcher, messages, model_registry, model_resolver, output_guard,
-        provider_display_names, resource_loader, session_cwd, session_manager, settings_manager,
-        skills, slash_commands, source_info, system_prompt, timings,
+        bash_executor, compaction, defaults, diagnostics, event_bus, exec, experimental,
+        export_html, extensions, http_dispatcher, messages, model_registry, model_resolver,
+        output_guard, provider_display_names, resource_loader, session_cwd, session_manager,
+        settings_manager, skills, slash_commands, source_info, system_prompt, timings,
     };
 
     pub mod tools {
         pub use crate::{
-            edit, edit_diff, file_mutation_queue, find, grep, ls, output_accumulator, path_utils,
-            read, truncate, write,
+            bash_tool as bash, edit, edit_diff, file_mutation_queue, find, grep, ls,
+            output_accumulator, path_utils, read, render_utils, tool_definition_wrapper,
+            tools_index, truncate, write,
         };
     }
 }
 
 /// Crate identity, useful while the clean workspace skeleton is being filled.
 pub const CRATE_NAME: &str = env!("CARGO_PKG_NAME");
+
+#[cfg(test)]
+#[path = "../tests/suite/regressions/1717-2113-agent-session-event-settlement.rs"]
+mod suite_1717_2113_agent_session_event_settlement;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/2023-queued-slash-command-followup.rs"]
+mod suite_2023_queued_slash_command_followup;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/2753-reload-stale-resource-settings.rs"]
+mod suite_2753_reload_stale_resource_settings;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/2781-skill-collision-precedence.rs"]
+mod suite_2781_skill_collision_precedence;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/2791-fswatch-error-crash.rs"]
+mod suite_2791_fswatch_error_crash;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/2835-tools-allowlist-filters-extension-tools.rs"]
+mod suite_2835_tools_allowlist_filters_extension_tools;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/2860-replaced-session-context.rs"]
+mod suite_2860_replaced_session_context;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3217-scoped-model-order.rs"]
+mod suite_3217_scoped_model_order;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3302-find-path-glob.rs"]
+mod suite_3302_find_path_glob;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3303-find-nested-gitignore.rs"]
+mod suite_3303_find_nested_gitignore;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3317-network-connection-lost-retry.rs"]
+mod suite_3317_network_connection_lost_retry;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3592-no-builtin-tools-keeps-extension-tools.rs"]
+mod suite_3592_no_builtin_tools_keeps_extension_tools;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3616-settings-inmemory-reload.rs"]
+mod suite_3616_settings_inmemory_reload;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3686-session-name-event.rs"]
+mod suite_3686_session_name_event;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3688-tree-cancel-compacting.rs"]
+mod suite_3688_tree_cancel_compacting;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/3982-message-end-cost-override.rs"]
+mod suite_3982_message_end_cost_override;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/4167-thinking-toggle-pending-tool-render.rs"]
+mod suite_4167_thinking_toggle_pending_tool_render;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5080-signal-shutdown-extension-cleanup.rs"]
+mod suite_5080_signal_shutdown_extension_cleanup;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5109-exclude-tools.rs"]
+mod suite_5109_exclude_tools;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5208-late-bash-output.rs"]
+mod suite_5208_late_bash_output;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5217-compaction-reason.rs"]
+mod suite_5217_compaction_reason;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5303-bash-output-truncation.rs"]
+mod suite_5303_bash_output_truncation;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5433-extension-oauth-prompt-input.rs"]
+mod suite_5433_extension_oauth_prompt_input;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5596-missing-theme-export.rs"]
+mod suite_5596_missing_theme_export;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5661-uppercase-header-values.rs"]
+mod suite_5661_uppercase_header_values;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5724-sigterm-signal-exit.rs"]
+mod suite_5724_sigterm_signal_exit;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5868-rpc-unknown-command-id.rs"]
+mod suite_5868_rpc_unknown_command_id;
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-compaction.rs"]
+mod suite_agent_session_compaction;
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-model-extension.rs"]
+mod suite_agent_session_model_extension;
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-prompt.rs"]
+mod suite_agent_session_prompt;
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-queue.rs"]
+mod suite_agent_session_queue;
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-retry-events.rs"]
+mod suite_agent_session_retry_events;
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-runtime.rs"]
+mod suite_agent_session_runtime;
+#[cfg(test)]
+#[path = "../tests/suite/harness.rs"]
+mod suite_harness;
+#[cfg(test)]
+#[path = "../tests/suite/lax-message-content.rs"]
+mod suite_lax_message_content;
+
+#[cfg(test)]
+#[path = "../tests/suite/agent-session-bash-persistence.rs"]
+mod ported_agent_session_bash_persistence;
+
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5943-session-start-notify.rs"]
+mod suite_5943_session_start_notify;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/5996-session-name-newlines.rs"]
+mod suite_5996_session_name_newlines;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/6019-explicit-provider-retry-message.rs"]
+mod suite_6019_explicit_provider_retry_message;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/6162-extension-active-tools-next-turn.rs"]
+mod suite_6162_extension_active_tools_next_turn;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/6260-inline-extension-naming.rs"]
+mod suite_6260_inline_extension_naming;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/extension-factory-cache.rs"]
+mod suite_extension_factory_cache;
+#[cfg(test)]
+#[path = "../tests/suite/regressions/pre-prompt-compaction-no-continue.rs"]
+mod suite_pre_prompt_compaction_no_continue;

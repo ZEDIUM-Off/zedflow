@@ -1,7 +1,5 @@
-//! Pi coding-agent test manifest entry: `tests/theme-detection.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/theme-detection.rs";
+#[test]
+fn known_highlight_languages_are_deterministic() {
+    assert!(zedflow_coding_agent::utils::syntax_highlight::supports_language("typescript"));
+    assert!(!zedflow_coding_agent::utils::syntax_highlight::supports_language("unknown"));
+}

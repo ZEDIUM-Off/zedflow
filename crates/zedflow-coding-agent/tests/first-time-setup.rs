@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/first-time-setup.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/first-time-setup.rs";
+use zedflow_coding_agent::first_time_setup::{FirstTimeSetup, TerminalTheme};
+#[test]
+fn setup_confirms_theme_then_analytics() {
+    let mut setup = FirstTimeSetup::new(TerminalTheme::Light);
+    setup.move_selection(-1);
+    assert_eq!(setup.confirm(), None);
+    setup.move_selection(1);
+    assert_eq!(setup.confirm().unwrap().share_analytics, false);
+}

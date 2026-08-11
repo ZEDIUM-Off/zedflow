@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "dimensions": { "columns": 24, "rows": 4 },
+  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
+  "events": [
+    { "type": "write", "data": "> hello" },
+    { "type": "input", "data": "\u001b[D\u001b[D!" },
+    { "type": "input", "data": "\u001b[200~paste\ntext\u001b[201~" },
+    { "type": "input", "data": "\u001b[A" },
+    { "type": "write", "data": "\r\nsubmitted" }
+  ]
+}

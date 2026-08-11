@@ -195,7 +195,7 @@ impl ModelRegistry {
     }
 
     fn load_models(&mut self) {
-        let mut builtins = compat::get_models().unwrap_or_default();
+        let mut builtins = compat::get_models();
         let Some(path) = self.models_json_path.clone() else {
             self.models = builtins;
             self.apply_oauth_model_modifiers();

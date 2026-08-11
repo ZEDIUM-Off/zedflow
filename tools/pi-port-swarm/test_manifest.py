@@ -19,21 +19,24 @@ SPEC.loader.exec_module(manifest)
 
 
 class ManifestTests(unittest.TestCase):
-    def fixture(self) -> Path:
+    def fixture(self, package: str = "ai") -> Path:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
-        (root / "references/pi/packages/ai/src").mkdir(parents=True)
-        (root / "references/pi/packages/ai/test").mkdir(parents=True)
-        (root / "crates/zedflow-ai/src").mkdir(parents=True)
-        (root / "crates/zedflow-ai/tests").mkdir(parents=True)
+        (root / f"references/pi/packages/{package}/src").mkdir(parents=True)
+        (root / f"references/pi/packages/{package}/test").mkdir(parents=True)
+        (root / f"crates/zedflow-{package}/src").mkdir(parents=True)
+        (root / f"crates/zedflow-{package}/tests").mkdir(parents=True)
         (root / ".agents/port-manifests").mkdir(parents=True)
-        (root / "references/pi/packages/ai/src/a.ts").write_text("export {};", encoding="utf-8")
-        (root / "references/pi/packages/ai/test/a.test.ts").write_text("export {};", encoding="utf-8")
-        (root / "crates/zedflow-ai/src/a.rs").write_text("", encoding="utf-8")
-        (root / "crates/zedflow-ai/tests/a.rs").write_text("", encoding="utf-8")
-        (root / ".agents/port-manifests/ai-src.tsv").write_text("src/a.ts\tcrates/zedflow-ai/src/a.rs\n", encoding="utf-8")
-        (root / ".agents/port-manifests/ai-tests.tsv").write_text("test/a.test.ts\tcrates/zedflow-ai/tests/a.rs\n", encoding="utf-8")
+        (root / f"references/pi/packages/{package}/src/a.ts").write_text("export {};", encoding="utf-8")
+        (root / f"references/pi/packages/{package}/test/a.test.ts").write_text("export {};", encoding="utf-8")
+        (root / f"crates/zedflow-{package}/src/a.rs").write_text("pub fn a() {}\n", encoding="utf-8")
+        (root / f"crates/zedflow-{package}/src/lib.rs").write_text("mod a;\n", encoding="utf-8")
+        (root / f"crates/zedflow-{package}/tests/a.rs").write_text("#[test]\nfn a() {}\n", encoding="utf-8")
+        (root / f".agents/port-manifests/{package}-src.tsv").write_text(f"src/a.ts\tcrates/zedflow-{package}/src/a.rs\n", encoding="utf-8")
+        (root / f".agents/port-manifests/{package}-tests.tsv").write_text(f"test/a.test.ts\tcrates/zedflow-{package}/tests/a.rs\n", encoding="utf-8")
+        if package == "coding-agent":
+            (root / f"crates/zedflow-{package}/src/main.rs").write_text("fn main() { let _ = parsed.print; run_all_modes(); }\n", encoding="utf-8")
         return root
 
     def test_closed_package_and_cli_check(self) -> None:
@@ -56,6 +59,97 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(value["packages"]["zedflow-ai"]["unlisted"], ["src/unlisted.ts"])
         self.assertTrue(any("duplicate mapping" in error for error in value["errors"]))
         self.assertTrue(any("missing target" in error for error in value["errors"]))
+
+    def test_semantic_guards_reject_inert_port_artifacts(self) -> None:
+        cases = (
+            ("crates/zedflow-ai/src/a.rs", "//! marker\n#[allow(dead_code)]\npub const MODULE_PATH: &str = \"a.rs\";\n", "marker-only source"),
+            ("crates/zedflow-ai/tests/a.rs", "// no tests\n", "non-executable test"),
+            ("crates/zedflow-ai/src/lib.rs", "", "dead mapped module"),
+            ("crates/zedflow-ai/tests/a.rs", "#[test]\n#[ignore]\nfn a() {}\n", "unexplained #[ignore]"),
+            ("crates/zedflow-ai/src/a.rs", "pub fn a() { todo!() }\n", "runtime placeholder"),
+        )
+        for path, content, expected in cases:
+            with self.subTest(expected):
+                root = self.fixture()
+                (root / path).write_text(content, encoding="utf-8")
+                self.assertTrue(any(expected in error for error in manifest.report(root, "zedflow-ai")["errors"]))
+
+    def test_tui_source_path_only_module_is_rejected(self) -> None:
+        root = self.fixture("tui")
+        target = root / "crates/zedflow-tui/src/a.rs"
+        target.write_text(
+            "//! frozen source marker\n#[must_use]\npub const fn source_path() -> &'static str { \"src/a.ts\" }\n",
+            encoding="utf-8",
+        )
+        value = manifest.report(root, "zedflow-tui")
+        self.assertIn(
+            "source-path-only TUI module: src/a.ts -> crates/zedflow-tui/src/a.rs",
+            value["packages"]["zedflow-tui"]["semantic_failures"],
+        )
+
+        target.write_text('pub const MODULE_PATH: &str = "src/a.ts";\n', encoding="utf-8")
+        self.assertIn(
+            "marker-only TUI module: src/a.ts -> crates/zedflow-tui/src/a.rs",
+            manifest.report(root, "zedflow-tui")["packages"]["zedflow-tui"]["semantic_failures"],
+        )
+
+        target.write_text("pub fn render() {}\n", encoding="utf-8")
+        self.assertEqual(manifest.report(root, "zedflow-tui")["status"], "valid")
+
+    def test_placeholder_live_tui_composition_is_rejected(self) -> None:
+        root = self.fixture("coding-agent")
+        target = root / "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs"
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            "fn render(event: AgentEvent) { match event { AgentEvent::MessageUpdate { .. } => {} } }\n"
+            "fn run(root: &mut Root) { root.add_child(EventLog::new()); root.add_child(InteractiveInput::new()); }\n",
+            encoding="utf-8",
+        )
+        failures = manifest.report(root, "zedflow-coding-agent")["packages"]["zedflow-coding-agent"]["semantic_failures"]
+        self.assertIn(
+            "placeholder live TUI composition: src/modes/interactive/interactive-mode.ts -> crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs (EventLog + InteractiveInput)",
+            failures,
+        )
+        self.assertIn(
+            "ignored assistant update payload: src/modes/interactive/interactive-mode.ts -> crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+            failures,
+        )
+
+        target.write_text(
+            "fn render(event: AgentEvent) { match event { AgentEvent::MessageUpdate { message } => transcript.update(message) } }\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(manifest.report(root, "zedflow-coding-agent")["status"], "valid")
+
+    def test_raw_identifier_module_declaration_is_wired(self) -> None:
+        root = self.fixture()
+        source = root / "crates/zedflow-ai/src"
+        (source / "a.rs").rename(source / "box.rs")
+        (source / "lib.rs").write_text("mod r#box;\n", encoding="utf-8")
+        (root / ".agents/port-manifests/ai-src.tsv").write_text(
+            "src/a.ts\tcrates/zedflow-ai/src/box.rs\n", encoding="utf-8"
+        )
+        self.assertEqual(manifest.report(root, "zedflow-ai")["status"], "valid")
+
+    def test_coding_agent_noop_cli_modes_are_rejected(self) -> None:
+        root = self.fixture("coding-agent")
+        (root / "crates/zedflow-coding-agent/src/main.rs").write_text(
+            "fn main() { let _ = parsed.print; match mode { Some(Mode::Text) | Some(Mode::Json) | None => Ok(()) } }\n",
+            encoding="utf-8",
+        )
+        value = manifest.report(root, "zedflow-coding-agent")
+        self.assertTrue(any("unwired CLI modes" in error for error in value["errors"]))
+
+    def test_revision_semantics_use_committed_target_content(self) -> None:
+        root = self.fixture()
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
+        subprocess.run(["git", "add", "."], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-qm", "fixture"], cwd=root, check=True)
+        (root / "crates/zedflow-ai/src/a.rs").write_text("", encoding="utf-8")
+        self.assertEqual(manifest.report(root, "zedflow-ai", "HEAD")["status"], "valid")
+        self.assertEqual(manifest.report(root, "zedflow-ai")["status"], "blocked")
 
     def test_coding_agent_highlight_declaration_is_type_only(self) -> None:
         value = manifest.report(ROOT, "zedflow-coding-agent")

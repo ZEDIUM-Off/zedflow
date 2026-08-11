@@ -8,7 +8,6 @@ use std::error::Error as StdError;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
-use crate::error::{Error, PortPlaceholderError};
 use crate::types::{
     Api, AssistantMessage, AssistantMessageEventStream, Context, Model, ProviderEnv, ProviderId,
     ProviderStreams, SimpleStreamOptions, StreamOptions,
@@ -127,8 +126,6 @@ pub enum CompatError {
     },
     /// A provider stream ended without a final assistant message.
     MissingStreamResult,
-    /// A documented port placeholder was reached.
-    PortPlaceholder(PortPlaceholderError),
     /// A shared porting error without a richer compat variant.
     Porting(String),
 }
@@ -141,27 +138,12 @@ impl fmt::Display for CompatError {
             }
             Self::NoApiProvider { api } => write!(f, "no API provider registered for api: {api}"),
             Self::MissingStreamResult => write!(f, "provider stream ended without a result"),
-            Self::PortPlaceholder(error) => error.fmt(f),
             Self::Porting(error) => f.write_str(error),
         }
     }
 }
 
 impl StdError for CompatError {}
-
-impl From<PortPlaceholderError> for CompatError {
-    fn from(value: PortPlaceholderError) -> Self {
-        Self::PortPlaceholder(value)
-    }
-}
-
-impl From<Error> for CompatError {
-    fn from(value: Error) -> Self {
-        match value {
-            Error::PortPlaceholder(placeholder) => Self::PortPlaceholder(placeholder),
-        }
-    }
-}
 
 #[derive(Clone)]
 struct RegisteredApiProvider {
@@ -346,25 +328,19 @@ pub fn register_faux_provider(options: RegisterFauxProviderOptions) -> FauxProvi
     }
 }
 
-/// Returns a builtin model from Pi's generated catalog.
-pub fn get_model(provider: &str, id: &str) -> crate::error::Result<Model> {
-    let Some(model) = crate::providers::all::get_builtin_model(provider, id) else {
-        return Err(crate::error::Error::port_placeholder(
-            PortPlaceholderError::new(
-                "references/pi/packages/ai/src/providers/all.ts getBuiltinModel missing row",
-                "return undefined for unknown builtin models once the compat API can represent absence",
-            ),
-        ));
-    };
-    Ok(model)
+/// Returns a builtin model from Pi's generated catalog, if present.
+#[must_use]
+pub fn get_model(provider: &str, id: &str) -> Option<Model> {
+    crate::providers::all::get_builtin_model(provider, id)
 }
 
 /// Returns all builtin models from Pi's generated catalog.
-pub fn get_models() -> crate::error::Result<Vec<Model>> {
-    Ok(crate::providers::all::get_builtin_providers()
+#[must_use]
+pub fn get_models() -> Vec<Model> {
+    crate::providers::all::get_builtin_providers()
         .into_iter()
         .flat_map(crate::providers::all::get_builtin_models)
-        .collect())
+        .collect()
 }
 
 /// Returns Pi's supported thinking levels for a model.
@@ -492,11 +468,12 @@ fn thinking_level_map(provider: &str, id: &str) -> Option<ThinkingLevelMap> {
 }
 
 /// Returns all builtin provider identifiers from Pi's generated catalog.
-pub fn get_providers() -> crate::error::Result<Vec<ProviderId>> {
-    Ok(crate::providers::all::get_builtin_providers()
+#[must_use]
+pub fn get_providers() -> Vec<ProviderId> {
+    crate::providers::all::get_builtin_providers()
         .into_iter()
         .map(str::to_owned)
-        .collect())
+        .collect()
 }
 
 /// Registers Pi's builtin lazy API providers without clobbering existing overrides.
@@ -1045,6 +1022,13 @@ mod tests {
                 Some(ThinkingLevel::High)
             ))
         );
+    }
+
+    #[test]
+    fn catalog_reads_match_typescript_absence_semantics() {
+        assert!(get_model("missing-provider", "missing-model").is_none());
+        assert!(!get_models().is_empty());
+        assert!(!get_providers().is_empty());
     }
 
     #[test]

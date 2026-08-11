@@ -13,7 +13,7 @@ fn keeps_mimo_v2_flash_on_api_billing_provider() {
 
 #[test]
 fn omits_mimo_v2_flash_from_token_plan_providers() {
-    let models = compat::get_models().expect("builtin model catalog is registered");
+    let models = compat::get_models();
 
     for provider in [
         "xiaomi-token-plan-ams",

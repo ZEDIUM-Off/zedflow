@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/edit-tool-legacy-input.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::edit_diff::{detect_line_ending, normalize_to_lf, restore_line_endings};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/edit-tool-legacy-input.rs";
+#[test]
+fn edit_normalization_round_trips_crlf() {
+    let input = "one\r\ntwo\r\n";
+    assert_eq!(detect_line_ending(input), "\r\n");
+    assert_eq!(restore_line_endings(&normalize_to_lf(input), "\r\n"), input);
+}

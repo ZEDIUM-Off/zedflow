@@ -553,10 +553,6 @@ async fn returns_summary_errors_without_live_calls() {
     assert_eq!(aborted.message, "stopped");
 }
 
-#[test]
-#[ignore = "live provider behavior is intentionally excluded from AT4; deterministic fake providers cover compaction parity without network/model calls"]
-fn live_provider_compaction_smoke_is_not_run() {}
-
 fn message_from_entry(entry: &SessionTreeEntry) -> Option<AgentMessage> {
     match entry {
         SessionTreeEntry::Message(entry) => Some(entry.message.clone()),

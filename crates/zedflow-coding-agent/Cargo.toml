@@ -13,14 +13,48 @@ base64 = "0.22"
 fs2 = "0.4"
 globset = "0.4"
 icu_collator = "2.2.1"
+libloading = "=0.9.0"
 image = { version = "0.25", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
+sha2 = "0.10"
 tokio = { version = "1", features = ["fs", "macros", "process", "rt-multi-thread", "sync", "time"] }
 unicode-normalization = "0.1"
 zedflow-agent = { path = "../zedflow-agent" }
 zedflow-ai = { path = "../zedflow-ai" }
 zedflow-tui = { path = "../zedflow-tui" }
+
+[[test]]
+name = "sdk-session-manager"
+path = "tests/sdk-session-manager.rs"
+
+[[test]]
+name = "build-context"
+path = "tests/session-manager/build-context.rs"
+
+[[test]]
+name = "custom-session-id"
+path = "tests/session-manager/custom-session-id.rs"
+
+[[test]]
+name = "file-operations"
+path = "tests/session-manager/file-operations.rs"
+
+[[test]]
+name = "labels"
+path = "tests/session-manager/labels.rs"
+
+[[test]]
+name = "migration"
+path = "tests/session-manager/migration.rs"
+
+[[test]]
+name = "save-entry"
+path = "tests/session-manager/save-entry.rs"
+
+[[test]]
+name = "tree-traversal"
+path = "tests/session-manager/tree-traversal.rs"

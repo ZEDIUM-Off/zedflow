@@ -1,7 +1,10 @@
-//! Pi coding-agent test manifest entry: `tests/block-images.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::utils::clipboard_image::extension_for_image_mime_type;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/block-images.rs";
+#[test]
+fn recognizes_supported_image_mime_types_case_insensitively() {
+    assert_eq!(
+        extension_for_image_mime_type("IMAGE/JPEG; charset=binary"),
+        Some("jpg")
+    );
+    assert_eq!(extension_for_image_mime_type("image/bmp"), None);
+}

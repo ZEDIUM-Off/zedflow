@@ -1,7 +1,7 @@
-//! Pi coding-agent test manifest entry: `tests/test-harness.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/test-harness.rs";
+#[test]
+fn all_built_in_tools_can_be_constructed() {
+    assert_eq!(
+        zedflow_coding_agent::tools_index::create_all_tools(".").len(),
+        zedflow_coding_agent::tools_index::ALL_TOOL_NAMES.len()
+    );
+}

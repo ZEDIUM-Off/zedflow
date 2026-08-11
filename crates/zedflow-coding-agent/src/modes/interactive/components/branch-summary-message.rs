@@ -1,8 +1,44 @@
-//! Pi coding-agent module: `modes/interactive/components/branch-summary-message.rs`.
-//!
-//! This manifest entry is kept explicit so the Rust crate mirrors the frozen
-//! TypeScript package layout. Host-specific behavior remains in the owning
-//! runtime modules.
+//! Collapsible branch-summary transcript entry.
 
-#[allow(dead_code)]
-pub const MODULE_PATH: &str = "modes/interactive/components/branch-summary-message.rs";
+use super::keybinding_hints::key_text;
+use zedflow_agent::harness::messages::BranchSummaryMessage;
+use zedflow_tui::{Box as TuiBox, Component, Markdown, Text};
+
+pub struct BranchSummaryMessageComponent {
+    message: BranchSummaryMessage,
+    expanded: bool,
+}
+impl BranchSummaryMessageComponent {
+    #[must_use]
+    pub fn new(message: BranchSummaryMessage) -> Self {
+        Self {
+            message,
+            expanded: false,
+        }
+    }
+    pub fn set_expanded(&mut self, expanded: bool) {
+        self.expanded = expanded;
+    }
+}
+impl Component for BranchSummaryMessageComponent {
+    fn render(&self, width: usize) -> Vec<String> {
+        let mut content = TuiBox::new(1, 1);
+        content.add_child(Text::new("[branch]", 0, 0));
+        if self.expanded {
+            content.add_child(Markdown::new(format!(
+                "**Branch Summary**\n\n{}",
+                self.message.summary
+            )));
+        } else {
+            content.add_child(Text::new(
+                format!(
+                    "Branch summary ({} to expand)",
+                    key_text("app.tools.expand")
+                ),
+                0,
+                0,
+            ));
+        }
+        content.render(width)
+    }
+}

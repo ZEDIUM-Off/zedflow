@@ -120,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn registered_api_uses_real_anthropic_transport() {
+    fn registered_api_reports_missing_authentication() {
         let provider = anthropic_provider().expect("provider");
         let model = provider.get_models().into_iter().next().expect("model");
         let mut stream = provider.stream(&model, &crate::types::Context::default(), None);
@@ -131,13 +131,6 @@ mod tests {
         assert!(error.error_message.as_deref().is_some_and(|message| {
             message.contains("No API key") || message.contains("no API key")
         }));
-        assert!(
-            !error
-                .error_message
-                .as_deref()
-                .unwrap_or_default()
-                .contains("transport is not implemented")
-        );
         assert_eq!(block_on(stream.next()), None);
     }
 }

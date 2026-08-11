@@ -1,25 +1,56 @@
-use crate::{components::Loader, Component};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
-/// A loader that stops when Escape is pressed.
+use crate::{Component, components::Loader, keybindings::get_keybindings};
+
+#[derive(Clone)]
+pub struct CancellationSignal(Arc<AtomicBool>);
+
+impl CancellationSignal {
+    pub fn aborted(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
+/// A loader that exposes cancellation through the global select-cancel binding.
 pub struct CancellableLoader {
     pub loader: Loader,
-    aborted: bool,
+    signal: CancellationSignal,
+    pub on_abort: Option<Box<dyn FnMut()>>,
 }
 
 impl CancellableLoader {
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             loader: Loader::new(message),
-            aborted: false,
+            signal: CancellationSignal(Arc::new(AtomicBool::new(false))),
+            on_abort: None,
         }
     }
 
+    pub fn signal(&self) -> CancellationSignal {
+        self.signal.clone()
+    }
+
     pub fn abort(&mut self) {
-        self.aborted = true;
+        self.signal.0.store(true, Ordering::Release);
+        if let Some(callback) = &mut self.on_abort {
+            callback();
+        }
     }
 
     pub fn aborted(&self) -> bool {
-        self.aborted
+        self.signal.aborted()
+    }
+
+    pub fn stop(&mut self) {
+        self.loader.stop();
+    }
+
+    pub fn dispose(&mut self) {
+        self.stop();
     }
 }
 
@@ -29,7 +60,11 @@ impl Component for CancellableLoader {
     }
 
     fn handle_input(&mut self, data: &str) {
-        if data == "\x1b" {
+        if get_keybindings()
+            .lock()
+            .unwrap()
+            .matches(data, "tui.select.cancel")
+        {
             self.abort();
         }
     }

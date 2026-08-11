@@ -1,7 +1,13 @@
-//! Pi coding-agent test manifest entry: `tests/compaction-summary-reasoning.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::messages::{CustomMessageContent, convert_to_llm, create_custom_message};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/compaction-summary-reasoning.rs";
+#[test]
+fn displayable_custom_messages_are_forwarded_to_the_model() {
+    let message = create_custom_message(
+        "local".into(),
+        CustomMessageContent::Text("private".into()),
+        true,
+        None,
+        "1970-01-01T00:00:00Z",
+    );
+    assert_eq!(convert_to_llm(&[message]).len(), 1);
+}

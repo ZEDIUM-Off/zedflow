@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/clipboard.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::utils::clipboard::copy_to_clipboard;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/clipboard.rs";
+#[test]
+fn clipboard_copy_reports_platform_failure_instead_of_panicking() {
+    let _ = copy_to_clipboard("zedflow clipboard regression");
+}

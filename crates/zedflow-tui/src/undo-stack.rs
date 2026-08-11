@@ -1,4 +1,6 @@
-#[derive(Debug, Clone)]
+//! Clone-on-push undo snapshots.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UndoStack<S> {
     stack: Vec<S>,
 }
@@ -8,9 +10,6 @@ impl<S> Default for UndoStack<S> {
     }
 }
 impl<S: Clone> UndoStack<S> {
-    pub fn new() -> Self {
-        Self::default()
-    }
     pub fn push(&mut self, state: &S) {
         self.stack.push(state.clone());
     }

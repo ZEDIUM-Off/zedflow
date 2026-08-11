@@ -5,18 +5,15 @@ use std::{
 
 use super::{
     diagnostics::ResourceDiagnostic,
-    extensions::{LoadExtensionsResult, discover_and_load_extensions},
+    extensions::{
+        ExtensionError, LoadExtensionsResult, NativeExtensionArtifact, NativeExtensionInstall,
+        discover_and_load_extensions,
+    },
+    prompt_templates::{LoadPromptTemplatesOptions, PromptTemplate, load_prompt_templates},
     skills::{LoadSkillsOptions, LoadSkillsResult, load_skills},
     system_prompt::build_system_prompt,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PromptTemplate {
-    pub name: String,
-    pub description: Option<String>,
-    pub content: String,
-    pub file_path: String,
-}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Theme {
     pub name: String,
@@ -27,6 +24,8 @@ pub struct ResourceExtensionPaths {
     pub skill_paths: Vec<PathBuf>,
     pub prompt_paths: Vec<PathBuf>,
     pub theme_paths: Vec<PathBuf>,
+    /// Native code is accepted only from a locally built source-install receipt.
+    pub native_extensions: Vec<NativeExtensionInstall>,
 }
 #[derive(Debug, Clone, Default)]
 pub struct ResourceLoaderReloadOptions;
@@ -40,6 +39,7 @@ pub trait ResourceLoader {
     fn get_system_prompt(&self) -> Option<&str>;
     fn get_append_system_prompt(&self) -> &[String];
     fn extend_resources(&mut self, paths: ResourceExtensionPaths);
+    fn reload(&mut self);
 }
 
 pub fn load_project_context_files(
@@ -89,6 +89,7 @@ pub struct DefaultResourceLoader {
     system_prompt: Option<String>,
     append_system_prompt: Vec<String>,
     extra: ResourceExtensionPaths,
+    native_extension_artifacts: Vec<NativeExtensionArtifact>,
 }
 impl DefaultResourceLoader {
     #[must_use]
@@ -106,28 +107,128 @@ impl DefaultResourceLoader {
             system_prompt: None,
             append_system_prompt: Vec::new(),
             extra: ResourceExtensionPaths::default(),
+            native_extension_artifacts: Vec::new(),
         }
     }
     pub fn reload(&mut self) {
-        self.extensions = discover_and_load_extensions(&self.cwd);
-        self.skills = load_skills(LoadSkillsOptions {
+        // Build a complete candidate first. A bad extension must not leave a
+        // partially replaced resource set active.
+        let extension_dir = self.cwd.join(".pi/extensions");
+        let extensions = if extension_dir.exists() && !extension_dir.is_dir() {
+            LoadExtensionsResult {
+                extensions: Vec::new(),
+                errors: vec![ExtensionError {
+                    message: format!(
+                        "extension directory is not a directory: {}",
+                        extension_dir.display()
+                    ),
+                    source: None,
+                }],
+            }
+        } else {
+            discover_and_load_extensions(&self.cwd)
+        };
+        let agent_extensions = self.agent_dir.join("extensions");
+        let mut persisted_native_extensions = Vec::new();
+        // Application-managed receipts live at the extension root; PackageManager
+        // source installs retain their receipts below `source`.
+        for source_work_dir in [
+            extension_dir.clone(),
+            extension_dir.join("source"),
+            agent_extensions.clone(),
+            agent_extensions.join("source"),
+        ] {
+            match NativeExtensionInstall::load_persisted(&source_work_dir) {
+                Ok(installs) => persisted_native_extensions.extend(installs),
+                Err(message) => {
+                    self.extensions.errors.push(ExtensionError {
+                        message,
+                        source: None,
+                    });
+                    return;
+                }
+            }
+        }
+        let native_extension_artifacts = persisted_native_extensions
+            .iter()
+            .chain(&self.extra.native_extensions)
+            .map(|install| {
+                install
+                    .resolve()
+                    .map(|(path, sha256)| NativeExtensionArtifact {
+                        path,
+                        sha256,
+                        trusted: true,
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>();
+        let native_extension_artifacts = match native_extension_artifacts {
+            Ok(artifacts) => artifacts,
+            Err(message) => {
+                self.extensions.errors.push(ExtensionError {
+                    message,
+                    source: None,
+                });
+                return;
+            }
+        };
+        let package_roots: Vec<_> = persisted_native_extensions
+            .iter()
+            .map(|install| install.source_dir.clone())
+            .collect();
+        let skill_paths = self
+            .extra
+            .skill_paths
+            .iter()
+            .cloned()
+            .chain(package_roots.iter().map(|root| root.join("skills")))
+            .map(|path| path.display().to_string())
+            .collect();
+        let prompt_paths = self
+            .extra
+            .prompt_paths
+            .iter()
+            .cloned()
+            .chain(package_roots.iter().map(|root| root.join("prompts")))
+            .map(|path| path.display().to_string())
+            .collect();
+        let skills = load_skills(LoadSkillsOptions {
             cwd: self.cwd.display().to_string(),
             agent_dir: self.agent_dir.display().to_string(),
-            skill_paths: self
-                .extra
-                .skill_paths
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect(),
+            skill_paths,
             include_defaults: true,
         });
-        self.agents_files = load_project_context_files(&self.cwd, &self.agent_dir);
+        let prompts = load_prompt_templates(LoadPromptTemplatesOptions {
+            cwd: self.cwd.display().to_string(),
+            agent_dir: self.agent_dir.display().to_string(),
+            prompt_paths,
+            include_defaults: true,
+        });
+        let themes = load_themes(
+            self.extra
+                .theme_paths
+                .iter()
+                .cloned()
+                .chain(package_roots.iter().map(|root| root.join("themes"))),
+        );
+        let agents_files = load_project_context_files(&self.cwd, &self.agent_dir);
+        self.extensions = extensions;
+        self.native_extension_artifacts = native_extension_artifacts;
+        self.skills = skills;
+        self.prompts = prompts;
+        self.prompt_diagnostics.clear();
+        self.themes = themes;
+        self.theme_diagnostics.clear();
+        self.agents_files = agents_files;
     }
     #[must_use]
     pub fn get_extensions(&self) -> &LoadExtensionsResult {
         &self.extensions
     }
     #[must_use]
+    pub fn native_extension_artifacts(&self) -> &[NativeExtensionArtifact] {
+        &self.native_extension_artifacts
+    }
     pub fn get_skills(&self) -> &LoadSkillsResult {
         &self.skills
     }
@@ -155,8 +256,46 @@ impl DefaultResourceLoader {
         self.extra.skill_paths.extend(paths.skill_paths);
         self.extra.prompt_paths.extend(paths.prompt_paths);
         self.extra.theme_paths.extend(paths.theme_paths);
+        self.extra.native_extensions.extend(paths.native_extensions);
     }
 }
+fn load_themes(paths: impl IntoIterator<Item = PathBuf>) -> Vec<Theme> {
+    let mut themes = Vec::new();
+    for path in paths {
+        let Ok(entries) = fs::read_dir(path) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "json")
+            {
+                let name = fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                    .and_then(|value| {
+                        value
+                            .get("name")
+                            .and_then(|name| name.as_str())
+                            .map(str::to_owned)
+                    })
+                    .unwrap_or_else(|| {
+                        path.file_stem()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned()
+                    });
+                themes.push(Theme {
+                    name,
+                    file_path: path.display().to_string(),
+                });
+            }
+        }
+    }
+    themes
+}
+
 impl ResourceLoader for DefaultResourceLoader {
     fn get_extensions(&self) -> &LoadExtensionsResult {
         self.get_extensions()
@@ -182,6 +321,9 @@ impl ResourceLoader for DefaultResourceLoader {
     fn extend_resources(&mut self, paths: ResourceExtensionPaths) {
         self.extend_resources(paths);
     }
+    fn reload(&mut self) {
+        self.reload();
+    }
 }
 
 #[allow(dead_code)]
@@ -191,4 +333,28 @@ fn _prompt_for(loader: &DefaultResourceLoader) -> String {
         skills: loader.skills.skills.clone(),
         ..Default::default()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_extension_reload_keeps_the_active_set_and_reports_the_error() {
+        let root =
+            std::env::temp_dir().join(format!("zedflow-resource-loader-{}", std::process::id()));
+        let extensions = root.join(".pi/extensions");
+        fs::create_dir_all(&extensions).unwrap();
+        fs::write(extensions.join("active.rs"), "active").unwrap();
+        let mut loader = DefaultResourceLoader::new(&root, root.join("agent"));
+        loader.reload();
+        assert_eq!(loader.get_extensions().extensions[0].name, "active");
+
+        fs::remove_dir_all(&extensions).unwrap();
+        fs::write(&extensions, "not a directory").unwrap();
+        loader.reload();
+        assert_eq!(loader.get_extensions().extensions[0].name, "active");
+        assert!(!loader.get_extensions().errors.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
 }

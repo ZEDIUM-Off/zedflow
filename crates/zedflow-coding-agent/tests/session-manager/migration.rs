@@ -1,7 +1,31 @@
-//! Pi coding-agent test manifest entry: `tests/session-manager/migration.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use std::{fs, sync::Arc};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/session-manager/migration.rs";
+use zedflow_agent::harness::{
+    env::nodejs::NodeExecutionEnv, session::JsonlSessionStorage, types::SessionErrorCode,
+};
+
+#[tokio::test]
+async fn rejects_unmigrated_session_file_versions() {
+    let file = std::env::temp_dir().join(format!(
+        "zedflow-legacy-session-{}.jsonl",
+        std::process::id()
+    ));
+    fs::write(
+        &file,
+        r#"{"type":"session","version":2,"id":"old","timestamp":"2025-01-01T00:00:00.000Z","cwd":"/tmp"}
+"#,
+    )
+    .unwrap();
+
+    let error = match JsonlSessionStorage::open(
+        Arc::new(NodeExecutionEnv::with_cwd("/tmp")),
+        file.to_string_lossy().into_owned(),
+    )
+    .await
+    {
+        Ok(_) => panic!("legacy session must be rejected"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code, SessionErrorCode::InvalidSession);
+    fs::remove_file(file).unwrap();
+}

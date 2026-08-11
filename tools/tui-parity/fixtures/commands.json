@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "dimensions": { "columns": 30, "rows": 5 },
+  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
+  "events": [
+    { "type": "input", "data": "/model\r" },
+    { "type": "lifecycle", "name": "session", "data": { "action": "model-selector", "query": "ignored" }, "render": "Select model\r\n" },
+    { "type": "input", "data": "/compact\r" },
+    { "type": "lifecycle", "name": "compaction_start", "data": { "source": "command" }, "render": "Compacting..." }
+  ]
+}

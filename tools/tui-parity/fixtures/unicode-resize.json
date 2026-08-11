@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "dimensions": { "columns": 12, "rows": 4 },
+  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
+  "events": [
+    { "type": "write", "data": "\u001b[31m界\u001b[0m🙂 é" },
+    { "type": "write", "data": "\u001b[2J\u001b[H" },
+    { "type": "resize", "columns": 16, "rows": 5 },
+    { "type": "write", "data": "CJK: 界\r\nemoji: 🙂" }
+  ]
+}

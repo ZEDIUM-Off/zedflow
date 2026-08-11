@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/export-html-skill-block.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::export_html::export_session_to_html;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/export-html-skill-block.rs";
+#[test]
+fn html_export_escapes_session_text() {
+    let html = export_session_to_html("<script>alert('xss')</script>");
+    assert!(html.contains("&lt;script&gt;"));
+    assert!(!html.contains("<script>"));
+}

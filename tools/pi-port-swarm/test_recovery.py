@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("recovery", ROOT / "tools/pi-port-swarm/recovery.py")
@@ -42,6 +45,15 @@ class RecoveryTests(unittest.TestCase):
         class Result: returncode = 0
         self.assertTrue(recovery.start_controller(lambda command, **kwargs: calls.append(command) or Result()))
         self.assertEqual([call[2] for call in calls], ["reset-failed", "start"] )
+
+    def test_recovery_capsule_is_passed_by_file(self) -> None:
+        capsule = {"failed": {"V1": {"blocker": "x" * 200_000}}}
+        with tempfile.TemporaryDirectory() as directory, patch.object(recovery, "RECOVERY_DIR", Path(directory)):
+            command = recovery.recovery_command("large", capsule)
+            capsule_path = Path(directory) / "large.capsule.json"
+            self.assertEqual(command[-1], f"@{capsule_path}")
+            self.assertNotIn(capsule["failed"]["V1"]["blocker"], command)
+            self.assertEqual(json.loads(capsule_path.read_text()), capsule)
 
 
 if __name__ == "__main__":

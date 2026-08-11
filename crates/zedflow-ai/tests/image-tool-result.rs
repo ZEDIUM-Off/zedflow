@@ -5,7 +5,7 @@ use zedflow_ai::compat::{complete, get_model};
 use zedflow_ai::types::StreamOptions;
 use zedflow_ai::types::{Context, Model, StopReason};
 
-const BLOCKER: &str = "live provider image tool-result probe skipped; compat::get_model, typed Context messages/tools/tool results, typed assistant tool-call/text content, StreamOptions provider extras, OAuth auth.json resolution, and provider streaming are still request-capture blockers";
+const BLOCKER: &str = "live provider image tool-result probe skipped; requires typed image tool-result context, provider credentials/OAuth, and real provider streaming";
 
 #[derive(Debug, Clone, Copy)]
 enum CredentialGate {
@@ -379,8 +379,12 @@ fn has_live_credentials(gate: CredentialGate) -> bool {
 }
 
 fn model_for(test_case: ProviderCase) -> Result<Model, String> {
-    let mut model = get_model(test_case.provider, test_case.model_id)
-        .map_err(|error| format!("{BLOCKER}: {error}"))?;
+    let mut model = get_model(test_case.provider, test_case.model_id).ok_or_else(|| {
+        format!(
+            "{BLOCKER}: unknown model {}/{}",
+            test_case.provider, test_case.model_id
+        )
+    })?;
     if let Some(api) = test_case.api_override {
         model.api = api.to_owned();
     }

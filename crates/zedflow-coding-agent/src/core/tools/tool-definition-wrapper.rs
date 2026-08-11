@@ -1,8 +1,20 @@
-//! Pi coding-agent module: `core/tools/tool-definition-wrapper.rs`.
+//! Conversion between coding-agent tool definitions and core agent tools.
 //!
-//! This manifest entry is kept explicit so the Rust crate mirrors the frozen
-//! TypeScript package layout. Host-specific behavior remains in the owning
-//! runtime modules.
+//! Rust uses the same `AgentTool` value for both contracts, so wrapping is an
+//! identity operation rather than the adapter required by TypeScript.
 
-#[allow(dead_code)]
-pub const MODULE_PATH: &str = "core/tools/tool-definition-wrapper.rs";
+use zedflow_agent::types::AgentTool;
+
+pub type ToolDefinition = AgentTool;
+
+pub fn wrap_tool_definition(definition: ToolDefinition) -> AgentTool {
+    definition
+}
+
+pub fn wrap_tool_definitions(definitions: Vec<ToolDefinition>) -> Vec<AgentTool> {
+    definitions
+}
+
+pub fn create_tool_definition_from_agent_tool(tool: AgentTool) -> ToolDefinition {
+    tool
+}

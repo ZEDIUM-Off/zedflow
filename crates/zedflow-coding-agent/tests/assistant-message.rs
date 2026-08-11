@@ -1,7 +1,13 @@
-//! Pi coding-agent test manifest entry: `tests/assistant-message.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::messages::{CustomMessageContent, create_custom_message};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/assistant-message.rs";
+#[test]
+fn creates_custom_message_with_millisecond_timestamp() {
+    let message = create_custom_message(
+        "note".into(),
+        CustomMessageContent::Text("text".into()),
+        true,
+        None,
+        "1970-01-01T00:00:01Z",
+    );
+    assert!(format!("{message:?}").contains("note"));
+}

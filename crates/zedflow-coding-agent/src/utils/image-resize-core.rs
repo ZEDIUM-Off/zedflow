@@ -11,7 +11,7 @@ impl Default for ImageResizeOptions {
         Self {
             max_width: 2000,
             max_height: 2000,
-            max_bytes: 4_500_000,
+            max_bytes: 4_718_592,
             jpeg_quality: 80,
         }
     }

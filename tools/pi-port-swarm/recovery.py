@@ -82,6 +82,12 @@ def resume(classification: str, unit: str, reason: str, runner: Callable[..., An
     return completed.returncode == 0 and starter()
 
 
+def recovery_command(fingerprint: str, capsule: dict[str, Any]) -> list[str]:
+    capsule_path = RECOVERY_DIR / f"{fingerprint}.capsule.json"
+    atomic_json(capsule_path, capsule)
+    return ["pi", "-p", "--approve", "--no-extensions", "--no-skills", "--no-prompt-templates", "--tools", "read,grep,find,ls", "--session-dir", str(RECOVERY_DIR / f"session-{int(time.time())}-{fingerprint}"), "--name", f"zedflow-port-recovery-{fingerprint}", f"@{PROMPT}", f"@{capsule_path}"]
+
+
 def main() -> int:
     RECOVERY_DIR.mkdir(parents=True, exist_ok=True)
     with (STATE_DIR / "recovery.lock").open("w") as lock:
@@ -106,7 +112,7 @@ def main() -> int:
         else:
             result = {}
         if not result:
-            completed = subprocess.run(["pi", "-p", "--approve", "--no-extensions", "--no-skills", "--no-prompt-templates", "--tools", "read,grep,find,ls", "--session-dir", str(RECOVERY_DIR / f"session-{int(time.time())}-{fingerprint}"), "--name", f"zedflow-port-recovery-{fingerprint}", f"@{PROMPT}", json.dumps(capsule, separators=(",", ":"))], cwd=SOURCE, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=900)
+            completed = subprocess.run(recovery_command(fingerprint, capsule), cwd=SOURCE, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=900)
             try: result = final_result(completed.stdout) if completed.returncode == 0 else {"classification": "TRANSIENT", "summary": completed.stderr[:300]}
             except RuntimeError as error: result = {"classification": "ARBITRATION_REQUIRED", "summary": str(error)}
         unit, classification = str(result.get("unit", "")), result["classification"]

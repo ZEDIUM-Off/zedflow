@@ -1,7 +1,13 @@
-//! Pi coding-agent test manifest entry: `tests/syntax-highlight.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/syntax-highlight.rs";
+#[test]
+fn highlighter_preserves_code_and_knows_rust() {
+    let theme = Default::default();
+    assert_eq!(
+        zedflow_coding_agent::utils::syntax_highlight::highlight(
+            "let x = 1;",
+            Some("rust"),
+            &theme
+        ),
+        "let x = 1;"
+    );
+    assert!(zedflow_coding_agent::utils::syntax_highlight::supports_language("rust"));
+}

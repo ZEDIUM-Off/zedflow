@@ -1,7 +1,14 @@
-//! Pi coding-agent test manifest entry: `tests/session-id-readonly.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::parse_args;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/session-id-readonly.rs";
+#[test]
+fn read_only_commands_keep_session_id_as_data_without_creating_a_session() {
+    for args in [
+        vec!["--session-id", "read-only-help", "--help"],
+        vec!["--no-session", "--session-id", "ephemeral-id", "--help"],
+        vec!["--session-id", "read-only-models", "--list-models"],
+    ] {
+        let parsed = parse_args(args);
+        assert!(parsed.help || parsed.list_models.is_some());
+        assert!(parsed.session_id.is_some());
+    }
+}

@@ -1,7 +1,11 @@
-//! Pi coding-agent test manifest entry: `tests/package-manager-ssh.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::extensions::ExtensionSource;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/package-manager-ssh.rs";
+#[test]
+fn only_pinned_native_sources_are_accepted() {
+    assert!(matches!(
+        ExtensionSource::parse("github:owner/repo@0123456789012345678901234567890123456789"),
+        Ok(ExtensionSource::Github { owner, repo, .. }) if owner == "owner" && repo == "repo"
+    ));
+    assert!(ExtensionSource::parse("git:git@github.com:owner/repo").is_err());
+    assert!(ExtensionSource::parse("github:owner/repo@main").is_err());
+}

@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/image-resize-callers.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::utils::image_resize_core::resize_image_in_process;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/image-resize-callers.rs";
+#[test]
+fn resize_callers_reject_invalid_image_data() {
+    assert!(resize_image_in_process(b"not an image", "image/png", None).is_none());
+}

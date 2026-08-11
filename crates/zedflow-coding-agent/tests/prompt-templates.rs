@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/prompt-templates.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/prompt-templates.rs";
+use zedflow_coding_agent::prompt_templates::{parse_command_args, substitute_args};
+#[test]
+fn templates_support_defaults_and_argument_slices() {
+    let args = parse_command_args("one 'two words' three");
+    assert_eq!(
+        substitute_args("${2:-fallback}: ${@:2:2}", &args),
+        "two words: two words three"
+    );
+}

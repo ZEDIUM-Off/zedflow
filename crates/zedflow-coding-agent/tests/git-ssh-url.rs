@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/git-ssh-url.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/git-ssh-url.rs";
+use zedflow_coding_agent::utils::git::parse_git_url;
+#[test]
+fn ssh_git_urls_are_normalized() {
+    let source = parse_git_url("ssh://git@github.com/owner/repo.git@main").unwrap();
+    assert_eq!(source.host, "github.com");
+    assert_eq!(source.repo, "ssh://git@github.com/owner/repo.git");
+    assert_eq!(source.ref_name.as_deref(), Some("main"));
+}

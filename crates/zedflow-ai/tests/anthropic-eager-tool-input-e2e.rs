@@ -22,9 +22,8 @@ struct AnthropicEagerE2ECase {
 }
 
 fn anthropic_message_model_names() -> Vec<String> {
-    let models = get_models().expect("compat::get_models should expose the generated catalog");
+    let models = get_models();
     get_providers()
-        .expect("compat::get_providers should expose generated providers")
         .into_iter()
         .flat_map(|provider| {
             models
@@ -37,9 +36,8 @@ fn anthropic_message_model_names() -> Vec<String> {
 }
 
 fn anthropic_messages_cases() -> Vec<AnthropicEagerE2ECase> {
-    let models = get_models().expect("compat::get_models should expose the generated catalog");
+    let models = get_models();
     get_providers()
-        .expect("compat::get_providers should expose generated providers")
         .into_iter()
         .flat_map(|provider| {
             models

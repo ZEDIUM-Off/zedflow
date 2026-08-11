@@ -1,7 +1,10 @@
-//! Pi coding-agent test manifest entry: `tests/rpc-client-process-exit.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use std::io::Cursor;
+use zedflow_coding_agent::run_rpc_loop;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/rpc-client-process-exit.rs";
+#[test]
+fn rpc_loop_stops_cleanly_when_its_input_process_exits() {
+    let mut output = Vec::new();
+    run_rpc_loop(Cursor::new(b""), &mut output).unwrap();
+
+    assert!(output.is_empty());
+}

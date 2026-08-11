@@ -144,10 +144,6 @@ fn drops_an_oversized_trailing_character_when_it_cannot_fit_in_tail_byte_limit()
     assert_eq!(result.output_bytes, 0);
 }
 
-#[ignore = "JS-only: Rust str cannot contain lone UTF-16 surrogate code units used by Pi Buffer edge cases"]
-#[test]
-fn matches_node_buffer_tail_truncation_for_lone_surrogate_edge_cases() {}
-
 #[test]
 fn matches_utf8_tail_truncation_semantics_across_deterministic_fuzz_cases() {
     let alphabet = [

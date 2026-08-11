@@ -1,7 +1,6 @@
-//! Pi coding-agent test manifest entry: `tests/session-selector-rename.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::session_selector::renamed_session_name;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/session-selector-rename.rs";
+#[test]
+fn rename_submits_text_at_the_picker_cursor() {
+    assert_eq!(renamed_session_name("X", "Old"), "XOld");
+}

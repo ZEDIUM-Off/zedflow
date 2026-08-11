@@ -1,7 +1,10 @@
-//! Pi coding-agent test manifest entry: `tests/rpc-client-clone.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::{RpcClient, RpcCommand};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/rpc-client-clone.rs";
+#[test]
+fn clone_command_is_framed_with_a_correlated_request_id() {
+    let mut client = RpcClient::new();
+    let line = client.encode(RpcCommand::Clone { id: None });
+    let command: serde_json::Value = serde_json::from_str(line.trim()).unwrap();
+
+    assert_eq!(command, serde_json::json!({"type":"clone","id":"req_1"}));
+}

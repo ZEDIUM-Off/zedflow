@@ -1,7 +1,9 @@
-//! Pi coding-agent test manifest entry: `tests/agent-session-runtime-events.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::agent_session_services::AgentSessionServices;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/agent-session-runtime-events.rs";
+#[test]
+fn session_services_preserve_the_bound_paths() {
+    let services = AgentSessionServices::new("session-cwd", "agent-dir");
+    assert_eq!(services.cwd, std::path::PathBuf::from("session-cwd"));
+    assert_eq!(services.agent_dir, std::path::PathBuf::from("agent-dir"));
+    assert!(services.diagnostics.is_empty());
+}

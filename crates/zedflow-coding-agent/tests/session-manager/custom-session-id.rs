@@ -1,7 +1,21 @@
-//! Pi coding-agent test manifest entry: `tests/session-manager/custom-session-id.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_agent::harness::{
+    session::{InMemorySessionStorage, InMemorySessionStorageOptions, Session},
+    types::SessionMetadata,
+};
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/session-manager/custom-session-id.rs";
+#[tokio::test]
+async fn in_memory_session_retains_the_supplied_session_id() {
+    let storage = InMemorySessionStorage::new(Some(InMemorySessionStorageOptions {
+        metadata: Some(SessionMetadata {
+            id: "custom-session-id".into(),
+            created_at: "2025-01-01T00:00:00.000Z".into(),
+        }),
+        ..Default::default()
+    }))
+    .unwrap();
+
+    assert_eq!(
+        Session::new(storage).get_metadata().await.id,
+        "custom-session-id"
+    );
+}

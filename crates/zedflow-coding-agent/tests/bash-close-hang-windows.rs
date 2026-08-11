@@ -1,7 +1,8 @@
-//! Pi coding-agent test manifest entry: `tests/bash-close-hang-windows.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
+use zedflow_coding_agent::bash_executor::BashExecutorOptions;
 
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/bash-close-hang-windows.rs";
+#[test]
+fn bash_execution_defaults_to_no_callback_or_cancellation() {
+    let options = BashExecutorOptions::default();
+    assert!(options.on_chunk.is_none());
+    assert!(options.signal.is_none());
+}

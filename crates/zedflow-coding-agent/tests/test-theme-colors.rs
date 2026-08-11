@@ -1,7 +1,10 @@
-//! Pi coding-agent test manifest entry: `tests/test-theme-colors.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/test-theme-colors.rs";
+#[test]
+fn html_highlight_rendering_strips_tags_but_keeps_text() {
+    assert_eq!(
+        zedflow_coding_agent::utils::syntax_highlight::render_highlighted_html(
+            "<span>blue</span>",
+            &Default::default()
+        ),
+        "blue"
+    );
+}

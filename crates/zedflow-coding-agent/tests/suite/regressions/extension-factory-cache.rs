@@ -1,7 +1,11 @@
-//! Pi coding-agent test manifest entry: `tests/suite/regressions/extension-factory-cache.rs`.
-//!
-//! The deterministic Rust contract is owned by the package modules; retain
-//! this integration-test target so the frozen package layout stays one-to-one.
-
-#[allow(dead_code)]
-pub const TEST_PATH: &str = "tests/suite/regressions/extension-factory-cache.rs";
+#[test]
+fn built_in_tool_construction_is_repeatable() {
+    assert_eq!(
+        zedflow_coding_agent::tools_index::create_all_tools(".").len(),
+        7
+    );
+    assert_eq!(
+        zedflow_coding_agent::tools_index::create_all_tools(".").len(),
+        7
+    );
+}

@@ -4,4400 +4,510 @@
   "max_active_writers": 1,
   "units": [
     {
-      "id": "RECONCILE-CHECKPOINT",
-      "kind": "checkpoint",
+      "id": "P1.T1",
+      "kind": "writer",
       "depends_on": [],
       "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm",
-        "docs/porting/pi-fidelity-decisions"
+        "tools/pi-port-swarm/manifest.py",
+        "tools/pi-port-swarm/test_manifest.py"
       ],
       "validation": [
-        "git diff --check"
+        "python3 tools/pi-port-swarm/test_manifest.py"
       ],
-      "intent": "Compare current code and checks with archived refs; record the proven resume point without editing Rust source."
+      "intent": "Implement only P1.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Modify only tools/pi-port-swarm/manifest.py and test_manifest.py. Add targeted, behavior-preserving guards that reject marker-only modules and the known placeholder live TUI composition; do not broaden to unrelated packages or disposition failures. Run only the listed Python checks and return the exact pre-repair failure inventory."
     },
     {
-      "id": "AG-C1",
+      "id": "P1.T2-R1",
       "kind": "writer",
-      "depends_on": [
-        "RECONCILE-CHECKPOINT"
-      ],
+      "depends_on": [],
       "ownership": [
-        "crates/zedflow-agent/src/types.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Fallible callback and stream contracts."
-    },
-    {
-      "id": "AG-C2",
-      "kind": "writer",
-      "depends_on": [
-        "AG-C1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/types.rs",
-        "crates/zedflow-agent/src/harness/session/memory-storage.rs",
-        "crates/zedflow-agent/src/harness/session/jsonl-storage.rs",
-        "crates/zedflow-agent/src/harness/session/repo-utils.rs",
-        "crates/zedflow-agent/src/harness/session/session.rs",
-        "crates/zedflow-agent/tests/harness/storage.rs",
-        "crates/zedflow-agent/tests/harness/session.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Persistence tri-state and errors."
-    },
-    {
-      "id": "AG-L1",
-      "kind": "writer",
-      "depends_on": [
-        "AG-C2"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/agent-loop.rs",
-        "crates/zedflow-agent/tests/agent-loop.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Incremental loop streaming and cancellation."
-    },
-    {
-      "id": "AG-L2",
-      "kind": "writer",
-      "depends_on": [
-        "AG-L1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/agent.rs",
-        "crates/zedflow-agent/tests/agent.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Atomic agent lifecycle."
-    },
-    {
-      "id": "AG-H1",
-      "kind": "writer",
-      "depends_on": [
-        "AG-L2"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/agent-harness.rs",
-        "crates/zedflow-agent/tests/harness/agent-harness.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Persistence ordering."
-    },
-    {
-      "id": "AG-H2",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/agent-harness.rs",
-        "crates/zedflow-agent/tests/harness/agent-harness-stream.rs",
-        "crates/zedflow-agent/tests/harness/agent-harness.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Hook and stream options."
-    },
-    {
-      "id": "AG-H3",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H2"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/agent-harness.rs",
-        "crates/zedflow-agent/src/harness/compaction",
-        "crates/zedflow-agent/tests/harness/compaction.rs",
-        "crates/zedflow-agent/tests/harness/agent-harness.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check"
-      ],
-      "intent": "Compaction provenance."
-    },
-    {
-      "id": "AG-T0",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H3"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/tests/e2e.rs",
-        "crates/zedflow-agent/tests/utils/calculate.rs",
-        "crates/zedflow-agent/tests/utils/get-current-time.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check",
-        "cargo check -p zedflow-agent --all-targets"
-      ],
-      "intent": "Mechanically propagate the accepted async/fallible AG-C1 contracts through out-of-scope fixtures without changing fidelity assertions."
-    },
-    {
-      "id": "AG-H4",
-      "kind": "writer",
-      "depends_on": [
-        "AG-T0"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/agent-harness.rs",
-        "crates/zedflow-agent/tests/harness/agent-harness.rs"
-      ],
-      "validation": [
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Abort, settlement, and staged contract integration."
-    },
-    {
-      "id": "AG-P1",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H4"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/session/uuid.rs",
-        "crates/zedflow-agent/tests/harness/session-uuid.rs"
-      ],
-      "validation": [
-        "cargo test -p zedflow-agent --test harness session_uuid::uses_rfc_9562_layout_and_preserves_monotonic_order"
-      ],
-      "intent": "Monotonic UUID."
-    },
-    {
-      "id": "AG-R1-JSONL-LEAF-ERROR",
-      "kind": "writer",
-      "depends_on": [
-        "AG-P1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/session/jsonl-storage.rs",
-        "crates/zedflow-agent/tests/harness/storage.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check",
-        "cargo test -p zedflow-agent --test harness -- --list | grep -Fqx 'storage::jsonl_set_leaf_id_reports_leaf_append_context: test' && cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context -- --exact"
-      ],
-      "intent": "Restore Pi-specific JSONL leaf append failure context found during the worktree audit; preserve general append-entry context."
-    },
-    {
-      "id": "AG-P2",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H4",
-        "AG-R1-JSONL-LEAF-ERROR"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/env/nodejs.rs",
-        "crates/zedflow-agent/tests/harness/nodejs-env.rs"
-      ],
-      "validation": [
-        "cargo test -p zedflow-agent --test nodejs-env"
-      ],
-      "intent": "Process-tree termination."
-    },
-    {
-      "id": "AG-P2-R1-PROCESS-TREE",
-      "kind": "writer",
-      "depends_on": [
-        "AG-P2"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/env/nodejs.rs",
-        "crates/zedflow-agent/tests/harness/nodejs-env.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check",
-        "cargo test -p zedflow-agent --test nodejs-env"
-      ],
-      "intent": "Repair AG-P2 review blockers: use the existing command-group facility without blocking the async executor or PATH-resolved kill; prove timeout and active-abort terminate child and grandchild processes while normal exit remains correct."
-    },
-    {
-      "id": "AG-P2-R2-CANCEL-GROUP",
-      "kind": "writer",
-      "depends_on": [
-        "AG-P2-R1-PROCESS-TREE"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/env/nodejs.rs",
-        "crates/zedflow-agent/tests/harness/nodejs-env.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check",
-        "cargo test -p zedflow-agent --test nodejs-env"
-      ],
-      "intent": "Repair independent Rust review blocker: dropping/cancelling the exec future must terminate and reap the detached command group instead of orphaning the worker thread/process tree; preserve timeout, active-abort, grandchild, and normal-exit coverage."
-    },
-    {
-      "id": "AG-P3",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H4",
-        "AG-R1-JSONL-LEAF-ERROR"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/proxy.rs",
-        "crates/zedflow-agent/src/index.rs",
-        "crates/zedflow-agent/src/node.rs",
-        "crates/zedflow-agent/tests/proxy.rs"
-      ],
-      "validation": [
-        "cargo test -p zedflow-agent --test proxy"
-      ],
-      "intent": "HTTP and SSE proxy transport."
-    },
-    {
-      "id": "AG-P4",
-      "kind": "writer",
-      "depends_on": [
-        "AG-H4",
-        "AG-R1-JSONL-LEAF-ERROR"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/tests/utils/get-current-time.rs"
-      ],
-      "validation": [
-        "cargo test -p zedflow-agent get_current_time"
-      ],
-      "intent": "After AG-T0 compilation propagation, restore exact IANA timezone semantics and assertions."
-    },
-    {
-      "id": "AG-T1",
-      "kind": "writer",
-      "depends_on": [
-        "AG-P1",
-        "AG-P2",
-        "AG-P3",
-        "AG-P4",
-        "AG-P2-R1-PROCESS-TREE",
-        "AG-P2-R2-CANCEL-GROUP"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/tests"
-      ],
-      "validation": [
-        "cargo test -p zedflow-agent --all-targets --no-run"
-      ],
-      "intent": "Close semantic parity across the explicit Agent test manifest without reopening completed production behavior."
-    },
-    {
-      "id": "V1",
-      "kind": "validator",
-      "depends_on": [
-        "AG-T1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --workspace --all-targets --no-run"
-      ],
-      "intent": "Mechanical wave acceptance."
-    },
-    {
-      "id": "AG-H2-R1-SAVE-POINT-OPTIONS",
-      "kind": "writer",
-      "depends_on": [
-        "V1"
-      ],
-      "ownership": [
-        "crates/zedflow-agent/src/harness/agent-harness.rs",
-        "crates/zedflow-agent/tests/harness/agent-harness-stream.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-agent --check",
-        "cargo test -p zedflow-agent --test harness agent_harness_stream::updated_stream_options_apply_at_save_point -- --exact"
-      ],
-      "intent": "Repair RV-FID blocker: refresh stream options at the save point so updates made during tool execution affect the next provider request in the same prompt, and cover that frozen Pi behavior directly."
-    },
-    {
-      "id": "RV-FID",
-      "kind": "reviewer",
-      "depends_on": [
-        "AG-H2-R1-SAVE-POINT-OPTIONS"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Read-only Pi fidelity review of the accepted wave SHA."
-    },
-    {
-      "id": "RV-RUST",
-      "kind": "reviewer",
-      "depends_on": [
-        "AG-H2-R1-SAVE-POINT-OPTIONS"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Read-only Rust correctness review of the accepted wave SHA."
-    },
-    {
-      "id": "NEXT-PORT-DAG",
-      "kind": "checkpoint",
-      "depends_on": [
-        "RV-FID",
-        "RV-RUST"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Extend the graph only after both wave reviews pass."
-    },
-    {
-      "id": "CA-RECONCILE-CHECKPOINT",
-      "kind": "checkpoint",
-      "depends_on": [
-        "NEXT-PORT-DAG"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Compare the frozen Pi coding-agent package with zedflow-coding-agent, record the proven resume point, and extend the DAG into bounded fidelity units without editing Rust source."
-    },
-    {
-      "id": "CA-U1-PURE-UTILS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-RECONCILE-CHECKPOINT"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/utils",
-        "crates/zedflow-coding-agent/tests/utils.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test utils"
-      ],
-      "intent": "Port deterministic dependency-light ansi, frontmatter, HTML, JSON, MIME, sleep, and Pi user-agent utilities with their frozen tests."
-    },
-    {
-      "id": "CA-T1-TOOL-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-U1-PURE-UTILS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/tools/path-utils.rs",
-        "crates/zedflow-coding-agent/src/core/tools/truncate.rs",
-        "crates/zedflow-coding-agent/src/core/tools/output-accumulator.rs",
-        "crates/zedflow-coding-agent/src/core/tools/file-mutation-queue.rs",
-        "crates/zedflow-coding-agent/tests/tool-primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test tool-primitives"
-      ],
-      "intent": "Port shared path, truncation, output accumulation, and file-mutation serialization semantics before concrete tools."
-    },
-    {
-      "id": "CA-T2-FILESYSTEM-TOOLS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T1-TOOL-PRIMITIVES"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/tools/read.rs",
-        "crates/zedflow-coding-agent/src/core/tools/write.rs",
-        "crates/zedflow-coding-agent/src/core/tools/find.rs",
-        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Port read, write, find, and list tool behavior on the accepted primitives, including deterministic truncation and path cases."
-    },
-    {
-      "id": "CA-T3-SEARCH-EDIT-TOOLS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-FILESYSTEM-TOOLS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
-        "crates/zedflow-coding-agent/src/core/tools/edit.rs",
-        "crates/zedflow-coding-agent/src/core/tools/edit-diff.rs",
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test search-edit-tools"
-      ],
-      "intent": "Port grep and exact-edit behavior, including frozen legacy-input, redraw, path, and truncation cases."
-    },
-    {
-      "id": "CA-V1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-T3-SEARCH-EDIT-TOOLS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Mechanically accept the first coding-agent utility and filesystem-tool wave."
-    },
-    {
-      "id": "CA-T2-R1-IMAGE-PROCESSING",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V1"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/core/tools/read.rs",
-        "crates/zedflow-coding-agent/src/utils",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs",
-        "crates/zedflow-coding-agent/tests/image-process.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools --test image-process"
-      ],
-      "intent": "Repair CA-RV-FID blocker: process detected images before attachment, including frozen conversion, resizing, hints, and omission-on-failure behavior; replace the invalid header-only PNG assertion with direct fidelity coverage."
-    },
-    {
-      "id": "CA-RV-FID",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-T2-R1-IMAGE-PROCESSING"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Read-only frozen Pi fidelity review of the first coding-agent wave."
-    },
-    {
-      "id": "CA-T1-R1-UNICODE-NFD",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R1-IMAGE-PROCESSING"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/core/tools/path-utils.rs",
-        "crates/zedflow-coding-agent/tests/tool-primitives.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test tool-primitives --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID blocker: replace the hard-coded Latin filename decomposition with Unicode-complete NFD normalization and cover non-Latin canonical-equivalent path resolution."
-    },
-    {
-      "id": "CA-T3-R1-UNICODE-NFKC",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T1-R1-UNICODE-NFD"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/edit-diff.rs",
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test search-edit-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R2 blocker: replace the partial fuzzy-edit compatibility mapping with Unicode-complete NFKC normalization and cover non-Latin canonical equivalence and compatibility mappings."
-    },
-    {
-      "id": "CA-T3-R2-MANAGED-SEARCH-BINARIES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R1-UNICODE-NFKC"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/core/tools/find.rs",
-        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
-        "crates/zedflow-coding-agent/src/utils",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs",
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools --test search-edit-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R3 blocker: provision the frozen Pi managed find and grep binaries through ensureTool before execution instead of requiring PATH-only commands, with deterministic coverage for both tools."
-    },
-    {
-      "id": "CA-T3-R3-STREAMING-GREP-LIMIT",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R2-MANAGED-SEARCH-BINARIES"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test search-edit-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R4 blocker: stream ripgrep JSON and terminate the child as soon as the effective match limit is reached instead of buffering the complete process output, with deterministic early-termination coverage."
-    },
-    {
-      "id": "CA-T3-R4-INJECTED-EDIT-OPERATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R3-STREAMING-GREP-LIMIT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/edit.rs",
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test search-edit-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R4 blocker: support injected edit access, read, and write operations while retaining local filesystem defaults and preserving custom backend access errors, with focused disk-independent coverage."
-    },
-    {
-      "id": "CA-T3-R5-INJECTED-FIND-OPERATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R4-INJECTED-EDIT-OPERATIONS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/find.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R4 blocker: support injected find exists and glob operations, executing the custom backend before provisioning fd, with deterministic disk-independent coverage."
-    },
-    {
-      "id": "CA-RV-FID-R4",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-T3-R5-INJECTED-FIND-OPERATIONS"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Read-only frozen Pi fidelity re-review of the first coding-agent wave after managed search binaries, streaming grep limits, injected edit operations, and injected find operations are repaired."
-    },
-    {
-      "id": "CA-T2-R2-INJECTED-READ-OPERATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R5-INJECTED-FIND-OPERATIONS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/read.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R4 blocker: support injected read access, MIME detection, and file-read operations while retaining local filesystem defaults, with focused disk-independent coverage."
-    },
-    {
-      "id": "CA-T3-R6-INJECTED-GREP-OPERATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R2-INJECTED-READ-OPERATIONS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test search-edit-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R4 blocker: support injected grep directory-status and context-file read operations while retaining local filesystem defaults, propagate options through the direct tool factory, and add focused disk-independent coverage."
-    },
-    {
-      "id": "CA-T2-R3-INJECTED-LS-OPERATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R6-INJECTED-GREP-OPERATIONS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R5 blocker: match frozen Pi LsToolOptions.operations by routing injected existence, stat, and directory-read operations through createLsToolDefinition and createLsTool while retaining local filesystem defaults and adding focused disk-independent coverage."
-    },
-    {
-      "id": "CA-T2-R4-INJECTED-WRITE-OPERATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R3-INJECTED-LS-OPERATIONS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/write.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R5 blocker: match frozen Pi WriteToolOptions.operations by routing injected directory-creation and file-write operations through createWriteToolDefinition and createWriteTool while retaining local filesystem defaults and adding focused disk-independent coverage."
-    },
-    {
-      "id": "CA-T2-R5-OPTIONS-FACTORY-API",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R4-INJECTED-WRITE-OPERATIONS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
-        "crates/zedflow-coding-agent/src/core/tools/write.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R6 blocker: expose the frozen Pi option-bearing definition and direct factory APIs for ls and write so callers can supply operations while preserving local filesystem defaults, with focused API coverage."
-    },
-    {
-      "id": "CA-T2-R6-NUMERIC-LIMIT-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R5-OPTIONS-FACTORY-API"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R7 blocker: preserve frozen Pi ls limit semantics for all Type.Number inputs, including fractional and negative values, instead of silently replacing non-u64 values with the default limit, with focused fidelity coverage."
-    },
-    {
-      "id": "CA-T2-R7-LS-COLLATION-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R6-NUMERIC-LIMIT-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/core/tools/ls.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs",
-        "Cargo.lock"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R8 blocker: match frozen Pi locale-aware, case-insensitive ls ordering for Unicode filenames by adding the required Unicode collation dependency and focused fidelity coverage."
-    },
-    {
-      "id": "CA-T2-R8-FIND-NUMERIC-LIMIT-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R7-LS-COLLATION-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/find.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R9 blocker: preserve frozen Pi find limit semantics for all Type.Number inputs, including fractional and negative values, instead of silently replacing non-u64 values with the default limit, with focused fidelity coverage."
-    },
-    {
-      "id": "CA-T3-R7-GREP-NUMERIC-LIMIT-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T2-R8-FIND-NUMERIC-LIMIT-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R10 blocker: preserve frozen Pi grep limit semantics for all Type.Number inputs, including fractional and negative values, instead of silently replacing non-u64 values with the default limit, with focused fidelity coverage."
-    },
-    {
-      "id": "CA-T3-R8-GREP-NUMERIC-CONTEXT-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-T3-R7-GREP-NUMERIC-LIMIT-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/tools/grep.rs",
-        "crates/zedflow-coding-agent/tests/filesystem-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test filesystem-tools"
-      ],
-      "intent": "Repair CA-RV-FID-R11 blocker: preserve frozen Pi grep context semantics for valid fractional Type.Number inputs instead of rejecting or coercing them before execution, with focused fidelity coverage."
-    },
-    {
-      "id": "CA-RV-FID-R12",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-T3-R8-GREP-NUMERIC-CONTEXT-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity re-review of the first coding-agent wave after grep numeric context semantics are repaired."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-R12"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record the accepted coding-agent foundation and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C1-MESSAGE-COMPACTION-UTILS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/messages.rs",
-        "crates/zedflow-coding-agent/src/core/compaction/utils.rs",
-        "crates/zedflow-coding-agent/src/core/compaction/mod.rs",
-        "crates/zedflow-coding-agent/tests/message-compaction-utils.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test message-compaction-utils"
-      ],
-      "intent": "Port frozen coding-agent custom message conversion, conversation serialization, token estimation, and cut-point utilities without starting model-driven compaction or session runtime."
-    },
-    {
-      "id": "CA-C2-CORE-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C1-MESSAGE-COMPACTION-UTILS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/event-bus.rs",
-        "crates/zedflow-coding-agent/src/core/provider-display-names.rs",
-        "crates/zedflow-coding-agent/src/core/session-cwd.rs",
-        "crates/zedflow-coding-agent/src/core/timings.rs",
-        "crates/zedflow-coding-agent/tests/core-primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test core-primitives"
-      ],
-      "intent": "Port the frozen dependency-light event bus, provider display names, session working-directory resolution, and timing helpers with focused deterministic coverage."
-    },
-    {
-      "id": "CA-FIX-SEARCH-EDIT-TOOLS-TEST-TYPES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C2-CORE-PRIMITIVES"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/search-edit-tools.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Repair the diagnosed E0308 test/API type mismatches in search-edit-tools.rs without changing product code."
-    },
-    {
-      "id": "CA-V2-REVALIDATE",
-      "kind": "validator",
-      "depends_on": [
-        "CA-FIX-SEARCH-EDIT-TOOLS-TEST-TYPES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the repaired second coding-agent message, compaction-utility, and core-primitive wave."
-    },
-    {
-      "id": "CA-TIMINGS-FIDELITY-R1",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V2-REVALIDATE"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/timings.rs",
-        "crates/zedflow-coding-agent/tests/core-primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test core-primitives"
-      ],
-      "intent": "Capture PI_TIMING once as frozen Pi does and preserve timing namespace insertion order, with focused regression coverage."
-    },
-    {
-      "id": "CA-V2-REVALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-TIMINGS-FIDELITY-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the repaired second coding-agent wave."
-    },
-    {
-      "id": "CA-RV-FID-V2-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V2-REVALIDATE-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the repaired second coding-agent wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V2",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V2-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the second coding-agent wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C3-STATIC-RUNTIME-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/defaults.rs",
-        "crates/zedflow-coding-agent/src/core/diagnostics.rs",
-        "crates/zedflow-coding-agent/src/core/experimental.rs",
-        "crates/zedflow-coding-agent/tests/static-runtime-primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test static-runtime-primitives"
-      ],
-      "intent": "Port the frozen dependency-free default thinking level, resource diagnostic contracts, and PI_EXPERIMENTAL gate with focused deterministic coverage."
-    },
-    {
-      "id": "CA-C4-OUTPUT-GUARD",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C3-STATIC-RUNTIME-PRIMITIVES"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/output-guard.rs",
-        "crates/zedflow-coding-agent/tests/output-guard.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test output-guard"
-      ],
-      "intent": "Port frozen coding-agent stdout takeover, ordered raw-output writes, backpressure waiting, restoration, and retry behavior without beginning the interactive session runtime."
-    },
-    {
-      "id": "CA-V3",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C4-OUTPUT-GUARD"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the third bounded coding-agent primitive wave."
-    },
-    {
-      "id": "CA-C4-R1-OUTPUT-GUARD-TAIL-DRAIN",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/output-guard.rs",
-        "crates/zedflow-coding-agent/tests/output-guard.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test output-guard"
-      ],
-      "intent": "Match the frozen output guard's tail-stability loop so waiting also drains barriers queued while an earlier barrier is awaited."
-    },
-    {
-      "id": "CA-V3-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C4-R1-OUTPUT-GUARD-TAIL-DRAIN"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the repaired third bounded coding-agent primitive wave."
-    },
-    {
-      "id": "CA-RV-FID-V3-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V3-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the repaired third bounded coding-agent primitive wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V3",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V3-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the third coding-agent wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C5-SOURCE-SLASH-METADATA",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/source-info.rs",
-        "crates/zedflow-coding-agent/src/core/slash-commands.rs",
-        "crates/zedflow-coding-agent/tests/source-slash-metadata.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test source-slash-metadata"
-      ],
-      "intent": "Port frozen coding-agent source provenance records, synthetic defaults, and built-in slash-command metadata without beginning package loading, extensions, or interactive command execution."
-    },
-    {
-      "id": "CA-V4",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C5-SOURCE-SLASH-METADATA"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent source and slash-command metadata wave."
-    },
-    {
-      "id": "CA-RV-FID-V4",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V4"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent source and slash-command metadata wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V4",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V4"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the source and slash-command metadata wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C6-HTTP-CONFIG-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V4"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
-        "crates/zedflow-coding-agent/tests/http-dispatcher.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test http-dispatcher"
-      ],
-      "intent": "Port frozen coding-agent HTTP idle-timeout choices, parsing and formatting, plus proxy environment defaults without beginning global dispatcher or fetch installation."
-    },
-    {
-      "id": "CA-V5",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C6-HTTP-CONFIG-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent HTTP configuration primitives wave."
-    },
-    {
-      "id": "CA-C6-R1-HTTP-TIMEOUT-NUMERIC-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V5"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
-        "crates/zedflow-coding-agent/tests/http-dispatcher.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test http-dispatcher"
-      ],
-      "intent": "Match frozen JavaScript HTTP timeout parsing for finite numeric values above u64::MAX and add focused regression coverage."
-    },
-    {
-      "id": "CA-C6-R2-HTTP-TIMEOUT-OVERFLOW-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C6-R1-HTTP-TIMEOUT-NUMERIC-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
-        "crates/zedflow-coding-agent/tests/http-dispatcher.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test http-dispatcher"
-      ],
-      "intent": "Preserve frozen JavaScript finite HTTP timeout Number values above u64::MAX instead of saturating them, with focused regression coverage."
-    },
-    {
-      "id": "CA-C6-R3-HTTP-TIMEOUT-RADIX-OVERFLOW-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C6-R2-HTTP-TIMEOUT-OVERFLOW-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
-        "crates/zedflow-coding-agent/tests/http-dispatcher.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test http-dispatcher"
-      ],
-      "intent": "Match frozen JavaScript unbounded-to-f64 parsing for overflowing hexadecimal, binary, and octal HTTP timeout strings, with focused regression coverage."
-    },
-    {
-      "id": "CA-RV-FID-V5-R3",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-C6-R3-HTTP-TIMEOUT-RADIX-OVERFLOW-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the third repaired bounded coding-agent HTTP configuration primitives wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V5",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V5-R3"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the HTTP configuration primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C7-CONFIG-VALUE-RESOLUTION",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V5"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/resolve-config-value.rs",
-        "crates/zedflow-coding-agent/tests/resolve-config-value.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resolve-config-value"
-      ],
-      "intent": "Port frozen coding-agent configuration value parsing, environment interpolation, command resolution, header resolution, and command-result caching without beginning authentication storage or model registry integration."
-    },
-    {
-      "id": "CA-V6",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C7-CONFIG-VALUE-RESOLUTION"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent configuration value resolution wave."
-    },
-    {
-      "id": "CA-C7-R1-COMMAND-OUTPUT-OVERFLOW-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V6"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/resolve-config-value.rs",
-        "crates/zedflow-coding-agent/tests/resolve-config-value.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test resolve-config-value"
-      ],
-      "intent": "Match frozen Pi command resolution by rejecting stdout that exceeds execSync's output buffer instead of returning a truncated value, with focused regression coverage."
-    },
-    {
-      "id": "CA-V6-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C7-R1-COMMAND-OUTPUT-OVERFLOW-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the repaired bounded coding-agent configuration value resolution wave."
-    },
-    {
-      "id": "CA-RV-FID-V6-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V6-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the repaired bounded coding-agent configuration value resolution wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V6",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V6-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the configuration value resolution wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C8-AUTH-STORAGE-R2",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V6"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/config.rs",
         "crates/zedflow-coding-agent/src/core/auth-storage.rs",
-        "crates/zedflow-coding-agent/tests/auth-storage.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test auth-storage"
-      ],
-      "intent": "Port frozen coding-agent credential storage, runtime API-key overrides, environment and fallback lookup, OAuth credential refresh, and locked JSON persistence, including Cargo.lock updates from only the direct crate dependencies required for that bounded port, without beginning model registry or session integration."
-    },
-    {
-      "id": "CA-V7",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C8-AUTH-STORAGE-R2"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent authentication storage wave."
-    },
-    {
-      "id": "CA-C8-R3-PERSIST-ERROR-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V7"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/auth-storage.rs",
-        "crates/zedflow-coding-agent/tests/auth-storage.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test auth-storage"
-      ],
-      "intent": "Match frozen Pi authentication storage by recording every persistProviderChange failure for drainErrors(), including parse, write, and lock failures, with focused regression coverage."
-    },
-    {
-      "id": "CA-V7-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C8-R3-PERSIST-ERROR-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the repaired bounded coding-agent authentication storage wave."
-    },
-    {
-      "id": "CA-RV-FID-V7-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V7-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the repaired bounded coding-agent authentication storage wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V7",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V7-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the authentication storage wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C9-MODEL-REGISTRY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V7"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
         "crates/zedflow-coding-agent/src/core/model-registry.rs",
-        "crates/zedflow-coding-agent/tests/model-registry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-registry"
-      ],
-      "intent": "Port frozen coding-agent built-in and custom model registration, provider configuration, validation, and authentication resolution without beginning model selection/resolution or session integration."
-    },
-    {
-      "id": "CA-V8",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C9-MODEL-REGISTRY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent model registry wave."
-    },
-    {
-      "id": "CA-C9-R1-DYNAMIC-PROVIDERS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V8"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/model-registry.rs",
-        "crates/zedflow-coding-agent/tests/model-registry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-registry"
-      ],
-      "intent": "Restore frozen Pi fidelity for dynamic provider registration by supporting custom API streams and OAuth provider configuration."
-    },
-    {
-      "id": "CA-V8-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C9-R1-DYNAMIC-PROVIDERS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the repaired coding-agent model registry wave."
-    },
-    {
-      "id": "CA-C10-R1-OAUTH-MODIFY-MODELS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V8-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/src/utils/oauth/index.rs",
-        "crates/zedflow-coding-agent/src/core/model-registry.rs",
-        "crates/zedflow-coding-agent/tests/model-registry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-registry"
-      ],
-      "intent": "Restore frozen Pi fidelity for dynamic OAuth providers by exposing and applying modifyModels to registered models when OAuth credentials already exist."
-    },
-    {
-      "id": "CA-V9-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C10-R1-OAUTH-MODIFY-MODELS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the OAuth modifyModels model registry repair."
-    },
-    {
-      "id": "CA-C11-R1-COPILOT-MODIFY-MODELS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V9-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-ai/src/utils/oauth/index.rs",
-        "crates/zedflow-coding-agent/tests/model-registry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-ai --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-registry"
-      ],
-      "intent": "Restore frozen Pi fidelity for GitHub Copilot OAuth modifyModels by rewriting Copilot base URLs and filtering unsupported model IDs."
-    },
-    {
-      "id": "CA-V10-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C11-R1-COPILOT-MODIFY-MODELS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the GitHub Copilot OAuth modifyModels repair."
-    },
-    {
-      "id": "CA-RV-FID-V10-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V10-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the GitHub Copilot OAuth modifyModels repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V8",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V10-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the model registry wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C12-MODEL-RESOLUTION-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V8"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-coding-agent/Cargo.toml",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/core/model-resolver.rs",
-        "crates/zedflow-coding-agent/tests/model-resolver.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-resolver"
-      ],
-      "intent": "Port frozen coding-agent model reference matching, pattern parsing, scoped-model resolution, and diagnostics without beginning CLI initial selection, session restoration, settings, or session integration."
-    },
-    {
-      "id": "CA-V11",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C12-MODEL-RESOLUTION-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent model resolution primitives wave."
-    },
-    {
-      "id": "CA-C12-R1-GLOB-SEPARATOR-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V11"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/model-resolver.rs",
-        "crates/zedflow-coding-agent/tests/model-resolver.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-resolver"
-      ],
-      "intent": "Repair model-scope glob matching so wildcard separator semantics match frozen minimatch behavior, with a focused regression test."
-    },
-    {
-      "id": "CA-V11-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C12-R1-GLOB-SEPARATOR-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance after the bounded model-resolution glob separator fidelity repair."
-    },
-    {
-      "id": "CA-C13-R1-GLOB-NEGATION-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V11-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/model-resolver.rs",
-        "crates/zedflow-coding-agent/tests/model-resolver.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test model-resolver"
-      ],
-      "intent": "Repair model-scope leading-! negation so glob matching matches frozen minimatch behavior, with a focused regression test."
-    },
-    {
-      "id": "CA-V11-R2",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C13-R1-GLOB-NEGATION-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance after the bounded model-resolution glob negation fidelity repair."
-    },
-    {
-      "id": "CA-RV-FID-V11-R2",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V11-R2"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent model resolution primitives wave after glob negation repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V9",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V11-R2"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the model resolution primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C14-CONFIG-AUTH-GUIDANCE-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V9"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/src/core/auth-guidance.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Port frozen coding-agent package identity, documentation and agent-directory path primitives plus provider login guidance without beginning install/update detection, settings, session runtime, or CLI selection."
-    },
-    {
-      "id": "CA-V12",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C14-CONFIG-AUTH-GUIDANCE-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent config and authentication-guidance primitives wave."
-    },
-    {
-      "id": "CA-C14-R1-EMPTY-ENV-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V12"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Treat empty PI_PACKAGE_DIR and PI_CODING_AGENT_DIR values as unset, matching frozen Pi defaults, with focused regression tests."
-    },
-    {
-      "id": "CA-V12-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C14-R1-EMPTY-ENV-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance after the bounded empty-environment config fidelity repair."
-    },
-    {
-      "id": "CA-C14-R2-PACKAGE-DIR-NORMALIZATION-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V12-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Normalize PI_PACKAGE_DIR overrides like frozen Pi, including tilde expansion and file URL conversion, with focused regression tests."
-    },
-    {
-      "id": "CA-C14-R3-WINDOWS-TILDE-NORMALIZATION-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C14-R2-PACKAGE-DIR-NORMALIZATION-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi Windows package-directory normalization by expanding tilde paths beginning with a backslash, with a focused regression test."
-    },
-    {
-      "id": "CA-C14-R4-WINDOWS-HOME-PRECEDENCE-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C14-R3-WINDOWS-TILDE-NORMALIZATION-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi Windows tilde expansion by using USERPROFILE rather than HOME when resolving the home directory, with a focused regression test."
-    },
-    {
-      "id": "CA-C14-R5-OS-HOME-FALLBACK-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C14-R4-WINDOWS-HOME-PRECEDENCE-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi home-directory lookup when environment home variables are absent by falling back to the OS account home, with a focused regression test."
-    },
-    {
-      "id": "CA-C14-R6-RELATIVE-PACKAGE-DIR-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C14-R5-OS-HOME-FALLBACK-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi resolution of package asset paths when PI_PACKAGE_DIR is relative, including lexical dot-segment normalization, with a focused regression test."
-    },
-    {
-      "id": "CA-RV-FID-V12-R7",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-C14-R6-RELATIVE-PACKAGE-DIR-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs",
-        "references/pi/packages/coding-agent/src/config.ts",
-        "references/pi/packages/coding-agent/test/config.test.ts"
-      ],
-      "validation": [
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Fresh read-only frozen Pi fidelity review of package-directory normalization after the relative package asset path repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V10",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V12-R7"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the config and authentication-guidance primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C15-CONFIG-DERIVED-PATH-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V10"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Port only the remaining frozen coding-agent package asset and agent-directory-derived path primitives plus share-viewer URL formatting, without beginning install/update detection or settings loading."
-    },
-    {
-      "id": "CA-V13",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C15-CONFIG-DERIVED-PATH-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent derived config path primitives wave."
-    },
-    {
-      "id": "CA-C15-R1-BUNDLED-BINARY-ASSET-PATH-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V13"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi bundled-binary theme, export-template, and interactive-asset paths beside the executable, with focused regression coverage."
-    },
-    {
-      "id": "CA-V13-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C15-R1-BUNDLED-BINARY-ASSET-PATH-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the derived config path primitives wave after bundled-binary asset path repair."
-    },
-    {
-      "id": "CA-RV-FID-V13-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V13-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent derived config path primitives wave after bundled-binary asset path repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V11",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V13-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the derived config path primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C16-INSTALL-METHOD-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V11"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Port only frozen coding-agent install-method detection and pure update-instruction formatting primitives, without beginning global package-manager discovery, path writability checks, command execution, or settings loading."
-    },
-    {
-      "id": "CA-V14",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C16-INSTALL-METHOD-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent install-method primitives wave."
-    },
-    {
-      "id": "CA-C16-R1-NPM-PREFIX-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V14"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi inferred Unix npm update instructions by including the package prefix argument, with focused regression coverage."
-    },
-    {
-      "id": "CA-V14-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C16-R1-NPM-PREFIX-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the install-method primitives wave after inferred Unix npm prefix repair."
-    },
-    {
-      "id": "CA-C16-R2-NPM-PREFIX-SHELL-QUOTING",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V14-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi update instructions by shell-quoting an inferred Unix npm prefix so prefixes containing whitespace remain one command argument, with focused regression coverage."
-    },
-    {
-      "id": "CA-V14-R2",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C16-R2-NPM-PREFIX-SHELL-QUOTING"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the install-method primitives wave after inferred Unix npm prefix shell-quoting repair."
-    },
-    {
-      "id": "CA-C16-R3-NPM-PREFIX-PI-QUOTING",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V14-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi update display semantics exactly by double-quoting only whitespace-containing inferred npm prefix arguments, with focused regression coverage."
-    },
-    {
-      "id": "CA-V14-R3",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C16-R3-NPM-PREFIX-PI-QUOTING"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the install-method primitives wave after exact frozen Pi npm prefix display-quoting repair."
-    },
-    {
-      "id": "CA-C16-R4-NPM-PREFIX-JS-WHITESPACE",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V14-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Match frozen Pi update display quoting exactly by using JavaScript /\\s/ whitespace semantics rather than Rust Unicode whitespace semantics, with focused regression coverage."
-    },
-    {
-      "id": "CA-V14-R4",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C16-R4-NPM-PREFIX-JS-WHITESPACE"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the install-method primitives wave after exact JavaScript whitespace display-quoting repair."
-    },
-    {
-      "id": "CA-RV-FID-V14-R4",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V14-R4"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent install-method primitives wave after exact JavaScript whitespace display-quoting repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V12",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V14-R4"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the install-method primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C17-GLOBAL-PACKAGE-ROOT-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V12"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Port only frozen coding-agent command-output reading and global package-root discovery primitives, without beginning path comparison, entrypoint discovery, writability checks, managed-install classification, or settings loading."
-    },
-    {
-      "id": "CA-V15",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C17-GLOBAL-PACKAGE-ROOT-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent global package-root discovery primitives wave."
-    },
-    {
-      "id": "CA-C17-R1-GLOBAL-PNPM-PATH-FIDELITY",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V15"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Repair global package-root discovery so /global/ is followed by exactly one path segment before /.pnpm/, matching frozen Pi, with focused regression coverage."
-    },
-    {
-      "id": "CA-V15-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C17-R1-GLOBAL-PNPM-PATH-FIDELITY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent global package-root discovery primitives wave after exact global pnpm path-shape repair."
-    },
-    {
-      "id": "CA-RV-FID-V15-R1",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V15-R1"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent global package-root discovery primitives wave after exact global pnpm path-shape repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V13",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V15-R1"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the global package-root discovery primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C18-PATH-COMPARISON-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V13"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Port only frozen coding-agent existing-path normalization and path-comparison candidate primitives, without beginning entrypoint discovery, writability checks, managed-install classification, self-update orchestration, or settings loading."
-    },
-    {
-      "id": "CA-V16",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C18-PATH-COMPARISON-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent path-comparison primitives wave."
-    },
-    {
-      "id": "CA-RV-FID-V16",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V16"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent path-comparison primitives wave."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V14",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V16"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Record acceptance of the path-comparison primitives wave and assign the next bounded package wave."
-    },
-    {
-      "id": "CA-C19-ENTRYPOINT-DISCOVERY-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V14"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/config.rs",
-        "crates/zedflow-coding-agent/tests/config-auth-guidance.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo test -p zedflow-coding-agent --test config-auth-guidance"
-      ],
-      "intent": "Port only frozen coding-agent entrypoint package-directory discovery, without beginning path writability checks, managed-install classification, self-update orchestration, or settings loading."
-    },
-    {
-      "id": "CA-V17",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C19-ENTRYPOINT-DISCOVERY-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded coding-agent entrypoint discovery primitives wave."
-    },
-    {
-      "id": "CA-RV-FID-V17",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V17"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the bounded coding-agent entrypoint discovery primitives wave."
-    },
-    {
-      "id": "TUI-C1-PURE-PRIMITIVES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-RV-FID-V17"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Begin the TUI port with dependency-light pure primitives from frozen Pi: fuzzy matching/filtering, terminal color response parsing, word navigation, kill-ring behavior, and undo-stack behavior. Do not begin terminal I/O, rendering, components, editor state, image handling, or Kitty key parsing."
-    },
-    {
-      "id": "TUI-V1",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-PURE-PRIMITIVES"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the bounded TUI pure-primitives wave."
-    },
-    {
-      "id": "TUI-C1-R1-UNICODE-WORD-NAVIGATION",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Repair word navigation to match frozen Pi Unicode segmentation semantics, with focused regression coverage."
-    },
-    {
-      "id": "TUI-V1-R1",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-R1-UNICODE-WORD-NAVIGATION"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance of the TUI pure-primitives wave after Unicode word-navigation repair."
-    },
-    {
-      "id": "TUI-C1-R2-UNICODE-COMBINING-MARKS",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V1-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Repair Unicode combining-mark handling in the TUI pure primitives with focused regression coverage; serialized after word-navigation repair to avoid concurrent ownership."
-    },
-    {
-      "id": "TUI-V1-R2",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-R2-UNICODE-COMBINING-MARKS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance preserving the failed TUI wave validation after Unicode combining-mark repair."
-    },
-    {
-      "id": "TUI-C1-R3-UNICODE-SEGMENTER-CLASSIFICATION",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V1-R2"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Repair the remaining TUI word-navigation classification divergence from frozen Pi Intl.Segmenter semantics, with focused Unicode regression coverage."
-    },
-    {
-      "id": "TUI-V1-R3",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-R3-UNICODE-SEGMENTER-CLASSIFICATION"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after Unicode segmenter classification repair."
-    },
-    {
-      "id": "TUI-C1-R4-OSC11-PARSING",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V1-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Repair Rust OSC11 terminal background-color response parsing to match frozen Pi regex acceptance and channel/error semantics, with focused regression coverage."
-    },
-    {
-      "id": "TUI-V1-R4",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-R4-OSC11-PARSING"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets"
-      ],
-      "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after OSC11 parsing repair."
-    },
-    {
-      "id": "TUI-C1-R5-OSC11-CHANNEL-SCALING",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V1-R4"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Repair OSC11 channel scaling to match frozen Pi byte-to-channel conversion semantics, with focused regression coverage."
-    },
-    {
-      "id": "TUI-V1-R5",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-R5-OSC11-CHANNEL-SCALING"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo test -p zedflow-tui"
-      ],
-      "intent": "Fresh mechanical acceptance of the TUI OSC11 channel-scaling repair."
-    },
-    {
-      "id": "TUI-C1-R6-OSC11-HEX-SAFETY",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V1-R5"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/primitives.rs",
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui --test primitives"
-      ],
-      "intent": "Repair OSC11 hex-payload validation to reject non-ASCII and malformed lengths before slicing, matching frozen Pi behavior without panics, with focused regression coverage."
-    },
-    {
-      "id": "TUI-V1-R6",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C1-R6-OSC11-HEX-SAFETY"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo test -p zedflow-tui"
-      ],
-      "intent": "Fresh mechanical acceptance preserving the failed TUI fidelity validation after OSC11 hex-payload safety repair."
-    },
-    {
-      "id": "TUI-RV-FID-V1-R6",
-      "kind": "reviewer",
-      "depends_on": [
-        "TUI-V1-R6"
-      ],
-      "ownership": [],
-      "validation": [],
-      "intent": "Fresh read-only frozen Pi fidelity review of the TUI pure-primitives wave after OSC11 hex-payload safety repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V16",
-      "kind": "checkpoint",
-      "depends_on": [
-        "TUI-RV-FID-V1-R6"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm/state.json",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Continue the incomplete global Pi port after the bounded TUI pure-primitives wave. Keep remaining coding-agent work ahead of orchestrator, and require every non-final wave to end in a successor NEXT-PORT-DAG checkpoint; do not declare completion until every manifest row is represented and final workspace validation plus fidelity and Rust reviews pass."
-    },
-    {
-      "id": "CA-C20-R2-UTILITY-SUBSTRATE-IMPLEMENTATIONS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V16"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/mod.rs",
-        "crates/zedflow-coding-agent/src/utils/paths.rs",
-        "crates/zedflow-coding-agent/src/utils/child-process.rs",
-        "crates/zedflow-coding-agent/src/utils/git.rs",
-        "crates/zedflow-coding-agent/src/utils/shell.rs",
-        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port the missing dependency-light utility-substrate implementations, register their modules, and add focused tests."
-    },
-    {
-      "id": "CA-V18-R1",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C20-R2-UTILITY-SUBSTRATE-IMPLEMENTATIONS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --test utility-substrate"
-      ],
-      "intent": "Re-run the failed utility-substrate validation after restoring the missing implementations and module registration."
-    },
-    {
-      "id": "CA-RV-FID-V18-R1-GIT-URL-VALIDATION",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V18-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/git.rs",
-        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Reject malformed percent escapes in git URL validation, matching frozen Pi decodeURIComponent behavior, and add the focused regression."
-    },
-    {
-      "id": "CA-V18-R2-GIT-URL-VALIDATION",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V18-R1-GIT-URL-VALIDATION"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-coding-agent --test utility-substrate"
-      ],
-      "intent": "Re-run utility-substrate validation after the malformed percent-escape repair."
-    },
-    {
-      "id": "CA-RV-FID-V18-R2-SSH-URL-PARSING",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V18-R2-GIT-URL-VALIDATION"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/git.rs",
-        "crates/zedflow-coding-agent/tests/utility-substrate.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair SSH git URL parsing to match frozen Pi behavior, including scp-like and ssh URL forms, and add focused regression coverage."
-    },
-    {
-      "id": "CA-RV-FID-V18-R3",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-RV-FID-V18-R2-SSH-URL-PARSING"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of utility-substrate SSH git URL parsing after the targeted repair."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V17",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V18-R3"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Continue the incomplete global Pi port after the bounded coding-agent utility-substrate wave; keep remaining coding-agent rows ahead of orchestrator, and require a successor checkpoint until every manifest row and final validation/review gate is represented."
-    },
-    {
-      "id": "CA-C21-R1-UTILITY-COMPLEMENTS-OWNERSHIP",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V17"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/utils/mod.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the utility-complements wave by removing the duplicate `pub mod utils` declaration from lib.rs and registering the worker-modified utility module tree under explicit ownership."
-    },
-    {
-      "id": "CA-C21-V1-UTILITY-COMPLEMENTS",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C21-R1-UTILITY-COMPLEMENTS-OWNERSHIP"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the repaired coding-agent utility-complements wave, preserving the failed formatting gate and focused package validation."
-    },
-    {
-      "id": "CA-C22-UTILITY-COMPLEMENTS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C21-V1-UTILITY-COMPLEMENTS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/mod.rs",
-        "crates/zedflow-coding-agent/src/utils/changelog.rs",
-        "crates/zedflow-coding-agent/src/utils/clipboard-image.rs",
-        "crates/zedflow-coding-agent/src/utils/clipboard-native.rs",
-        "crates/zedflow-coding-agent/src/utils/clipboard.rs",
-        "crates/zedflow-coding-agent/src/utils/deprecation.rs",
-        "crates/zedflow-coding-agent/src/utils/exif-orientation.rs",
-        "crates/zedflow-coding-agent/src/utils/fs-watch.rs",
-        "crates/zedflow-coding-agent/src/utils/image-convert.rs",
-        "crates/zedflow-coding-agent/src/utils/image-resize-core.rs",
-        "crates/zedflow-coding-agent/src/utils/image-resize-worker.rs",
-        "crates/zedflow-coding-agent/src/utils/image-resize.rs",
+        "crates/zedflow-coding-agent/src/core/settings-manager.rs",
+        "crates/zedflow-coding-agent/src/core/http-dispatcher.rs",
+        "crates/zedflow-coding-agent/src/core/package-manager.rs",
+        "crates/zedflow-coding-agent/src/core/session-manager.rs",
+        "crates/zedflow-coding-agent/src/core/trust-manager.rs",
+        "crates/zedflow-coding-agent/src/core/keybindings.rs",
         "crates/zedflow-coding-agent/src/utils/open-browser.rs",
-        "crates/zedflow-coding-agent/src/utils/syntax-highlight.rs",
-        "crates/zedflow-coding-agent/src/utils/version-check.rs",
-        "crates/zedflow-coding-agent/src/utils/windows-self-update.rs"
+        "crates/zedflow-coding-agent/src/utils/paths.rs",
+        "crates/zedflow-coding-agent/tests/auth-storage.rs",
+        "crates/zedflow-coding-agent/tests/model-registry.rs",
+        "crates/zedflow-coding-agent/tests/settings-manager.rs",
+        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
+        "crates/zedflow-coding-agent/tests/trust-manager.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test auth-storage",
+        "cargo test -p zedflow-coding-agent --test model-registry",
+        "cargo test -p zedflow-coding-agent --test settings-manager",
+        "cargo test -p zedflow-coding-agent --test file-operations",
+        "cargo test -p zedflow-coding-agent --test trust-manager"
       ],
-      "intent": "Port the missing Pi utility-complements modules and register them in the existing utility module tree."
+      "intent": "Implement only fresh replacement P1.T2-R1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Own only the listed coding-agent core/config/utils files and focused tests. Reuse existing APIs first, then add the smallest typed adapters needed by frozen Pi theme/selectors. No UI, commands, global state, credentials, or network. Return a Pi-import-to-Rust-symbol contract table. The session-manager regression is Cargo test target `file-operations`; run that exact declared target."
     },
     {
-      "id": "CA-C22-V1-UTILITY-COMPLEMENTS",
+      "id": "P1.T2-V1",
       "kind": "validator",
       "depends_on": [
-        "CA-C22-UTILITY-COMPLEMENTS"
+        "P1.T2-R1"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check --package zedflow-coding-agent --all-targets"
+        "cargo test -p zedflow-coding-agent --test auth-storage",
+        "cargo test -p zedflow-coding-agent --test model-registry",
+        "cargo test -p zedflow-coding-agent --test settings-manager",
+        "cargo test -p zedflow-coding-agent --test file-operations",
+        "cargo test -p zedflow-coding-agent --test trust-manager"
       ],
-      "intent": "Freshly validate the missing utility-complements port with formatting and focused package compilation."
+      "intent": "Fresh read-only validation of P1.T2-R1 on its exact candidate. Run every declared focused gate, including Cargo test target `file-operations` for tests/session-manager/file-operations.rs. Do not edit source, tests, manifests, or control-plane files; return exact command evidence or a valid blocker classification."
     },
     {
-      "id": "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION",
+      "id": "P1.T3",
       "kind": "writer",
-      "depends_on": [
-        "CA-C22-V1-UTILITY-COMPLEMENTS"
-      ],
+      "depends_on": [],
       "ownership": [
-        "crates/zedflow-coding-agent/src/utils/changelog.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the Pi-fidelity review finding that changelog link normalization is not faithful to the frozen Pi implementation."
-    },
-    {
-      "id": "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION-R1",
-      "kind": "writer",
-      "depends_on": [
-        "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/changelog.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the remaining Pi-fidelity gaps in changelog link normalization identified by the failed review, preserving frozen URL, path, encoding, and version semantics."
-    },
-    {
-      "id": "CA-RV-FID-V20-R2-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-RV-FID-V20-R1-CHANGELOG-LINK-NORMALIZATION-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/changelog.rs",
-        "crates/zedflow-coding-agent/src/utils/fs-watch.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the deterministic Pi-fidelity gaps found by the failed review: accept ChangelogEntry for changelog link normalization and add fs-watch watchWithErrorHandler behavior."
-    },
-    {
-      "id": "CA-RV-FID-V20-R2-CHANGELOG-URL-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-RV-FID-V20-R2-REPAIR"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/changelog.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the deterministic changelog URL normalization failure: strip the coding-agent package segment so version links match Pi's /packages/ URL."
-    },
-    {
-      "id": "CA-RV-FID-V20-R2-V2",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V20-R2-CHANGELOG-URL-REPAIR"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check --package zedflow-coding-agent --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the deterministic changelog URL repair and preserve the failed review diff gate and focused package checks."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V18",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V20-R2-V2"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Continue the incomplete global Pi port after the coding-agent utility-complements wave; keep remaining coding-agent rows ahead of orchestrator, and require a successor checkpoint until every manifest row and final validation/review gate is represented."
-    },
-    {
-      "id": "CA-C23-REMAINING-UTILITY-ROWS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V18"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils",
-        "crates/zedflow-coding-agent/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port the remaining dependency-light coding-agent utility manifest rows not covered by the accepted utility-complements wave, with focused tests."
-    },
-    {
-      "id": "CA-C24-R1-CORE-SESSION-RUNTIME-OWNERSHIP",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C23-REMAINING-UTILITY-ROWS"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Re-port the core agent-session, compaction, settings, and session-manager runtime rows with explicit ownership of the required lib.rs module exports."
-    },
-    {
-      "id": "CA-C24-V1-CORE-SESSION-RUNTIME",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C24-R1-CORE-SESSION-RUNTIME-OWNERSHIP"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check --package zedflow-coding-agent --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the repaired core session runtime port with formatting and focused package checks."
-    },
-    {
-      "id": "CA-C25-R1-RESOURCE-EXTENSION-RUNTIME-OWNERSHIP",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C24-V1-CORE-SESSION-RUNTIME"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/core/extensions",
-        "crates/zedflow-coding-agent/src/core/resource-loader.rs",
-        "crates/zedflow-coding-agent/src/core/skills.rs",
-        "crates/zedflow-coding-agent/src/core/system-prompt.rs",
-        "crates/zedflow-coding-agent/src/core/export-html",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Re-run the resource, skills, export, extension, and trust runtime port with explicit ownership of the required lib.rs module exports."
-    },
-    {
-      "id": "CA-C25-V1-RESOURCE-EXTENSION-RUNTIME",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C25-R1-RESOURCE-EXTENSION-RUNTIME-OWNERSHIP"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Freshly validate the repaired resource-extension runtime port while preserving the failed formatting gate."
-    },
-    {
-      "id": "CA-C26-CLI-RPC-MODES",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C25-V1-RESOURCE-EXTENSION-RUNTIME"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/cli",
-        "crates/zedflow-coding-agent/src/cli.rs",
-        "crates/zedflow-coding-agent/src/lib.rs",
-        "crates/zedflow-coding-agent/src/modes",
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/index.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs",
-        "crates/zedflow-coding-agent/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check",
-        "cargo check -p zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Port the remaining CLI, print, RPC, and non-interactive mode manifest rows."
-    },
-    {
-      "id": "CA-C27-INTERACTIVE-INTEGRATION",
-      "kind": "writer",
-      "depends_on": [
-        "CA-C26-CLI-RPC-MODES"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive",
-        "crates/zedflow-coding-agent/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port the remaining coding-agent interactive integration rows without beginning the separate TUI package wave."
-    },
-    {
-      "id": "CA-V19-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-C27-INTERACTIVE-INTEGRATION"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Validate all coding-agent source and test rows after the ordered port sequence."
-    },
-    {
-      "id": "CA-RV-FID-V21-R1-RUNTIME-DISPATCH-WIRE",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-types.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the missing coding-agent runtime mode dispatch and restore Pi-compatible RPC wire field names identified by the failed fidelity review."
-    },
-    {
-      "id": "CA-V19-R1-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R1-RUNTIME-DISPATCH-WIRE"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the runtime-dispatch and RPC-wire repair with the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R3-RUNTIME-DISPATCH-WIRE",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R1-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-types.rs",
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the remaining runtime dispatch and Pi-compatible RPC wire gaps, with explicit ownership of rpc-mode.rs where live AgentSessionRuntime dispatch is missing."
-    },
-    {
-      "id": "CA-V19-R2-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R3-RUNTIME-DISPATCH-WIRE"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the runtime-dispatch and RPC-wire repair while preserving the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R5-RPC-ENTRY-DISPATCH",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R2-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/main.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the remaining Pi-fidelity gap where the production RPC entrypoint calls the framing-only loop instead of dispatching AgentSessionRuntime commands, using the actual crate paths."
-    },
-    {
-      "id": "CA-V19-R3-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R5-RPC-ENTRY-DISPATCH"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the RPC entrypoint dispatch repair with the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R6-RPC-ENTRY-CONFIGURED-RUNTIME",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R3-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the remaining Pi-fidelity gap where the RPC entrypoint does not construct the configured Pi runtime or complete runtime dispatch."
-    },
-    {
-      "id": "CA-V19-R4-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R6-RPC-ENTRY-CONFIGURED-RUNTIME"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the configured RPC runtime repair with the review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R7-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R4-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the deterministic Pi-fidelity gaps found by the failed review: keep RPC input dispatch responsive during streaming for steer/follow_up and honor session flags instead of always using in-memory storage."
-    },
-    {
-      "id": "CA-V19-R5-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R7-REPAIR"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the asynchronous RPC dispatch and session-configuration repair, preserving the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R8-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R5-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the diagnosed RPC fidelity gaps: cover the Pi RPC command surface, acknowledge prompts after preflight while honoring streaming behavior, wire configured tools/resources, and reject missing --session paths instead of creating sessions."
-    },
-    {
-      "id": "CA-V19-R6-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R8-REPAIR"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the RPC command-surface, prompt-preflight, runtime-resource, and session-path repair while preserving the review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R9-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R6-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the diagnosed remaining RPC fidelity gaps: prompt preflight streaming, session lifecycle commands, retry and bash controls, session statistics, prompt-template/resource flags, and fork/global session selection."
-    },
-    {
-      "id": "CA-V19-R7-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R9-REPAIR"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the remaining RPC fidelity repair while preserving the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R10-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R7-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the diagnosed RPC fidelity gaps: ordered input handling, auto-compaction and retry behavior, session statistics, extension command metadata, and prompt-template loading/error semantics."
-    },
-    {
-      "id": "CA-V19-R8-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R10-REPAIR"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the RPC fidelity repair while preserving the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R11-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V19-R8-CODING-AGENT"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/modes/rpc/rpc-mode.rs",
-        "crates/zedflow-coding-agent/src/rpc-entry.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the diagnosed Pi-fidelity gaps in asynchronous preflight responses, response ordering, resource metadata and extension commands, state-based statistics, bash accounting, and prompt/skill expansion."
-    },
-    {
-      "id": "CA-V19-R9-CODING-AGENT",
-      "kind": "validator",
-      "depends_on": [
-        "CA-RV-FID-V21-R11-REPAIR"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets"
-      ],
-      "intent": "Freshly validate the RPC preflight, ordering, metadata, statistics, controls, and prompt-expansion repair while preserving the failed review diff gate and coding-agent package checks."
-    },
-    {
-      "id": "CA-RV-FID-V21-R12",
-      "kind": "reviewer",
-      "depends_on": [
-        "CA-V19-R9-CODING-AGENT"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of the repaired RPC preflight, ordering, controls, statistics, resource metadata, extension commands, and prompt/skill expansion against frozen references/pi."
-    },
-    {
-      "id": "CA-NEXT-PORT-DAG-V19",
-      "kind": "checkpoint",
-      "depends_on": [
-        "CA-RV-FID-V21-R12"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/port-swarm",
-        "docs/porting"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Continue the incomplete global Pi port after all coding-agent rows; keep TUI and orchestrator downstream and require final validation and review gates."
-    },
-    {
-      "id": "TUI-C2-REMAINING-MANIFEST-ROWS",
-      "kind": "writer",
-      "depends_on": [
-        "CA-NEXT-PORT-DAG-V19"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src",
-        "crates/zedflow-tui/tests"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Port the remaining TUI source and test manifest rows after coding-agent integration is complete."
-    },
-    {
-      "id": "TUI-V2",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-C2-REMAINING-MANIFEST-ROWS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-tui --all-targets"
-      ],
-      "intent": "Validate the complete TUI manifest wave."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V2"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Implement the diagnosed Pi-compatible printable, control, Alt, and Kitty key decoding repair in keys.rs."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PARSE-TYPE-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-REPAIR"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Fix the diagnosed E0282 by making Kitty modifier parsing explicitly u32, without changing behavior."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-TYPE-REPAIR"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Fix parse_key semantics so unsupported one-character input returns None, preserving the diagnosed TUI test contract."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Repair the diagnosed parse_key semantics failure so unsupported one-character navigation input returns None."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE-R1",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-REPAIR-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo test -p zedflow-tui --all-targets",
-        "git diff --check"
-      ],
-      "intent": "Re-run the exact blocked TUI validation after the fresh parse semantics repair."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PARSE-SEMANTICS-VALIDATE-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Implement the diagnosed Pi-compatible printable input handling in parse_key, preserving existing control, Alt, and Kitty decoding."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Repair the remaining Pi printable-key decoding divergence diagnosed by the failed fidelity review, preserving control, Alt, and Kitty decoding."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-REVIEW-R2",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh Pi-fidelity review of printable TUI key decoding after the remaining repair."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-TEST-CONTRACT-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-REPAIR-R1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/tests/primitives.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Reconcile the contradictory primitive parse_key(\"x\") expectation with Pi-compatible printable-key behavior and the keys.rs regression contract."
-    },
-    {
-      "id": "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-TEST-CONTRACT-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo test -p zedflow-tui --all-targets",
-        "git diff --check"
-      ],
-      "intent": "Re-run the exact blocked TUI printable-key validation after reconciling the contradictory primitive test contract."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R1",
-      "kind": "writer",
-      "depends_on": [
-        "REPLAN-TUI-V2-KEYS-PRINTABLE-VALIDATE-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/src/lib.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Repair the proven Kitty CSI-u Unicode/Shift key-decoding fidelity gap with focused one-to-one tests; no dependency substitution."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-V1",
-      "kind": "validator",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets",
-        "git diff --check"
-      ],
-      "intent": "Validate the focused TUI key repair on the exact candidate SHA."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-RV-FID-V1",
-      "kind": "reviewer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-V1"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review of the repaired Kitty CSI-u Unicode/Shift behavior."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-RV-RUST-V1",
-      "kind": "reviewer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-FID-V1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Fresh Rust-quality review of the accepted TUI key repair."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R2",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-FID-V1"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Repair the accepted Kitty base-layout fallback so raw Enter, Tab, Backspace, and modified CSI-u special keys remain reachable; add focused regression tests."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-V2",
-      "kind": "validator",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R2"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets",
-        "git diff --check"
-      ],
-      "intent": "Validate the second focused TUI key repair on the exact candidate SHA."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R3",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-V2"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Repair Pi-fidelity gaps for Kitty keypad/functional CSI-u codes and raw backspace decoding; add focused regression tests."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-RV-FID-V3",
-      "kind": "reviewer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R3"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review of Kitty keypad/functional CSI-u and raw backspace decoding."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R4",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R3"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Match frozen Pi raw 0x08 ambiguity: Ctrl+Backspace only for local Windows Terminal and plain Backspace otherwise, while preserving accepted Kitty keypad/special-key decoding and focused tests."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-V4",
-      "kind": "validator",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R4"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets",
-        "git diff --check"
-      ],
-      "intent": "Validate the complete fourth TUI key repair on the exact candidate SHA."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-RV-FID-V4",
-      "kind": "reviewer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-V4"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review of raw 0x08, Unicode/base-layout, keypad, and special Kitty keys."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R5",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R4"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Match frozen Pi Kitty CSI-u formatting for Escape and Space key names and the Super modifier while preserving all accepted raw/Unicode/keypad behavior and focused tests."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R6",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R5"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Serialize the process-environment-dependent raw Backspace tests so their expected local Windows Terminal state cannot race the unmodified raw Backspace assertion."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-V6",
-      "kind": "validator",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R6"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test -p zedflow-tui --all-targets",
-        "git diff --check"
-      ],
-      "intent": "Revalidate the complete fifth TUI key repair after serializing its process-environment-dependent Backspace tests on the exact candidate SHA."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R7",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-V6"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Match frozen Pi raw Ctrl+Space decoding (\\x00) while preserving accepted raw, Unicode/base-layout, keypad, Escape, Space, and modifier Kitty behavior; add a focused regression test."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-R8",
-      "kind": "writer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R7"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/keys.rs",
-        "crates/zedflow-tui/tests/keys.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check",
-        "cargo test -p zedflow-tui keys"
-      ],
-      "intent": "Match frozen Pi Kitty modifier validation while preserving accepted raw Ctrl+Space, raw, Unicode/base-layout, keypad, Escape, and Space behavior; add focused regression tests."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-RV-FID-V7",
-      "kind": "reviewer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-R8"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review of Kitty modifier validation plus all accepted raw Ctrl+Space, raw, Unicode/base-layout, keypad, Escape, and Space semantics."
-    },
-    {
-      "id": "RECOVERY-TUI-KEYS-RV-RUST-V5",
-      "kind": "reviewer",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-FID-V7"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Fresh Rust-quality review of the complete fifth TUI key repair."
-    },
-    {
-      "id": "NEXT-PORT-PLAN-V20",
-      "kind": "checkpoint",
-      "depends_on": [
-        "RECOVERY-TUI-KEYS-RV-RUST-V5"
-      ],
-      "ownership": [
-        "tools/pi-port-swarm/dag.json",
-        ".agents/plans/pi-stage-1-port-recovery.md",
-        ".agents/port-swarm/decisions.md",
-        "docs/porting/BASELINE.md",
-        "docs/porting/pi-fidelity-decisions"
-      ],
-      "validation": [
-        "python3 tools/pi-port-swarm/controller.py validate",
-        "git diff --check"
-      ],
-      "intent": "Use the approved plan-writer process and deterministic manifest gaps to replace the open tail with bounded one-to-one TUI closure, Coding-agent closure, Orchestrator, and final Stage-1 gates."
-    },
-    {
-      "id": "TUI-V21-FOUNDATION",
-      "kind": "writer",
-      "depends_on": [
-        "NEXT-PORT-PLAN-V20"
-      ],
-      "ownership": [
-        "Cargo.lock",
-        "crates/zedflow-tui/Cargo.toml",
-        "crates/zedflow-tui/src/native-modifiers.rs",
-        "crates/zedflow-tui/src/stdin-buffer.rs",
-        "crates/zedflow-tui/src/terminal-colors.rs",
-        "crates/zedflow-tui/src/terminal-image.rs",
-        "crates/zedflow-tui/src/terminal.rs",
         "crates/zedflow-tui/src/tui.rs",
-        "crates/zedflow-tui/src/undo-stack.rs",
+        "crates/zedflow-tui/src/terminal.rs",
+        "crates/zedflow-tui/src/keys.rs",
+        "crates/zedflow-tui/src/keybindings.rs",
+        "crates/zedflow-tui/src/stdin-buffer.rs",
+        "crates/zedflow-tui/src/native-modifiers.rs",
         "crates/zedflow-tui/src/utils.rs",
+        "crates/zedflow-tui/src/fuzzy.rs",
         "crates/zedflow-tui/src/word-navigation.rs",
-        "crates/zedflow-tui/src/lib.rs"
+        "crates/zedflow-tui/src/kill-ring.rs",
+        "crates/zedflow-tui/src/undo-stack.rs",
+        "crates/zedflow-tui/src/primitives.rs",
+        "crates/zedflow-tui/src/index.rs",
+        "crates/zedflow-tui/src/components/input.rs",
+        "crates/zedflow-tui/tests/input.rs",
+        "crates/zedflow-tui/tests/keys.rs",
+        "crates/zedflow-tui/tests/keybindings.rs",
+        "crates/zedflow-tui/tests/stdin-buffer.rs",
+        "crates/zedflow-tui/tests/word-navigation.rs",
+        "crates/zedflow-tui/tests/terminal.rs",
+        "crates/zedflow-tui/tests/tui-render.rs",
+        "crates/zedflow-tui/tests/virtual-terminal.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check"
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test input",
+        "cargo test -p zedflow-tui --test keys",
+        "cargo test -p zedflow-tui --test keybindings",
+        "cargo test -p zedflow-tui --test stdin-buffer",
+        "cargo test -p zedflow-tui --test word-navigation",
+        "cargo test -p zedflow-tui --test terminal",
+        "cargo test -p zedflow-tui --test tui-render",
+        "cargo test -p zedflow-tui --test virtual-terminal",
+        "cargo test -p zedflow-tui --lib"
       ],
-      "intent": "Port the approved TUI dependency-first foundation: exact markdown 1.0.0, icu_properties 2.2.0, icu_segmenter 2.2.0, and emojis 0.9.0 pins, plus frozen Pi foundation modules and composite Unicode width policy."
+      "intent": "Implement only P1.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the frozen Pi terminal/key/input/root-TUI foundation into exactly the listed zedflow-tui files and tests. Read the complete frozen sources/tests. Keep one terminal owner thread, add no dependency or alternate-screen design, and do not touch coding-agent. Return the public API and assertion parity ledger."
     },
     {
-      "id": "TUI-V21-COMPONENTS-R2-COMPONENT-FILES",
+      "id": "P1.T3-R1",
       "kind": "writer",
       "depends_on": [
-        "TUI-V21-FOUNDATION"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/components/cancellable_loader.rs",
-        "crates/zedflow-tui/src/components/select_list.rs",
-        "crates/zedflow-tui/src/components/settings_list.rs",
-        "crates/zedflow-tui/src/components/truncated_text.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Fresh equivalent repair of the four diagnosed TUI component files; preserve the frozen Pi one-to-one component port and do not modify files outside this ownership."
-    },
-    {
-      "id": "TUI-V21-COMPONENTS-R2-UTILS",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V21-COMPONENTS-R2-COMPONENT-FILES"
+        "P1.T3"
       ],
       "ownership": [
         "crates/zedflow-tui/src/utils.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check"
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Port the diagnosed TUI utils surface separately from the component writer, preserving the frozen Pi behavior."
+      "intent": "Implement only fresh repair P1.T3-R1 in fresh context. Repair the P1.T3 ANSI wrapper in crates/zedflow-tui/src/utils.rs so frozen wrap-ansi assertions preserve OSC-8 continuation and BEL termination across wrapped lines and restore underline state correctly. Read the complete frozen Pi wrap-ansi implementation and tests before editing. Do not edit tests, components, dependencies, or other TUI files; do not weaken assertions. Run the declared focused gates and return exact assertion evidence."
     },
     {
-      "id": "TUI-V21-COMPONENTS-RV",
-      "kind": "validator",
-      "depends_on": [
-        "TUI-V21-COMPONENTS-R2-UTILS"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Fresh equivalent validation after the structurally repaired component and utils writers."
-    },
-    {
-      "id": "TUI-V21-TEST-BATCH-1",
+      "id": "P1.T3-R2",
       "kind": "writer",
       "depends_on": [
-        "TUI-V21-COMPONENTS-RV"
+        "P1.T3-R1"
       ],
       "ownership": [
-        "crates/zedflow-tui/tests/autocomplete.rs",
-        "crates/zedflow-tui/tests/bug-regression-isimageline-startswith-bug.rs",
-        "crates/zedflow-tui/tests/chat-simple.rs",
-        "crates/zedflow-tui/tests/editor.rs",
-        "crates/zedflow-tui/tests/fuzzy.rs",
-        "crates/zedflow-tui/tests/image-test.rs",
-        "crates/zedflow-tui/tests/input.rs",
-        "crates/zedflow-tui/tests/key-tester.rs",
-        "crates/zedflow-tui/tests/keybindings.rs",
-        "crates/zedflow-tui/tests/markdown.rs",
-        "crates/zedflow-tui/tests/overlay-non-capturing.rs",
-        "crates/zedflow-tui/tests/overlay-options.rs",
-        "crates/zedflow-tui/tests/overlay-short-content.rs",
-        "crates/zedflow-tui/tests/regression-overlay-cjk-boundary.rs",
-        "crates/zedflow-tui/tests/regression-regional-indicator-width.rs",
-        "crates/zedflow-tui/tests/select-list.rs",
-        "crates/zedflow-tui/tests/stdin-buffer.rs",
-        "crates/zedflow-tui/tests/tab-width.rs",
-        "crates/zedflow-tui/tests/terminal-colors.rs",
-        "crates/zedflow-tui/tests/terminal-image.rs",
-        "crates/zedflow-tui/src/lib.rs"
+        "crates/zedflow-tui/src/utils.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check"
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Port the approved TUI test batch 1 one-to-one, including Markdown, Unicode-17 EAW, RGI/RI/ZWJ/VS, combining, Thai/Lao, fullwidth, ANSI, and table regressions."
+      "intent": "Implement only fresh repair P1.T3-R2 in fresh context after accepted P1.T3-R1. Repair crates/zedflow-tui/src/utils.rs so wrap_text_with_ansi matches frozen Pi word-boundary wrapping and does not split words when a valid boundary fits. Read the complete frozen Pi implementation and wrap-ansi tests before editing. Do not edit tests, components, dependencies, or other TUI files; do not weaken assertions. Run the declared focused gates and return exact assertion evidence."
     },
     {
-      "id": "TUI-V21-TEST-BATCH-2",
+      "id": "P2.T1-R2",
       "kind": "writer",
       "depends_on": [
-        "TUI-V21-TEST-BATCH-1"
+        "P1.T3-R2"
       ],
       "ownership": [
-        "crates/zedflow-tui/tests/terminal.rs",
-        "crates/zedflow-tui/tests/test-themes.rs",
-        "crates/zedflow-tui/tests/truncate-to-width.rs",
-        "crates/zedflow-tui/tests/truncated-text.rs",
-        "crates/zedflow-tui/tests/tui-cell-size-input.rs",
-        "crates/zedflow-tui/tests/tui-overlay-style-leak.rs",
-        "crates/zedflow-tui/tests/tui-render.rs",
-        "crates/zedflow-tui/tests/tui-shrink.rs",
-        "crates/zedflow-tui/tests/viewport-overwrite-repro.rs",
-        "crates/zedflow-tui/tests/virtual-terminal.rs",
-        "crates/zedflow-tui/tests/word-navigation.rs",
-        "crates/zedflow-tui/tests/wrap-ansi.rs",
-        "crates/zedflow-tui/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Port the approved TUI test batch 2 one-to-one, covering wrapping, segmentation, word navigation, terminal rendering, and ANSI regressions."
-    },
-    {
-      "id": "TUI-V21-CLOSURE-MANIFEST-SOURCES",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V21-TEST-BATCH-2"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/autocomplete.rs",
         "crates/zedflow-tui/src/components/box.rs",
-        "crates/zedflow-tui/src/components/cancellable-loader.rs",
-        "crates/zedflow-tui/src/components/editor.rs",
-        "crates/zedflow-tui/src/components/image.rs",
-        "crates/zedflow-tui/src/components/input.rs",
-        "crates/zedflow-tui/src/components/loader.rs",
-        "crates/zedflow-tui/src/components/markdown.rs",
-        "crates/zedflow-tui/src/components/select-list.rs",
-        "crates/zedflow-tui/src/components/settings-list.rs",
-        "crates/zedflow-tui/src/components/spacer.rs",
         "crates/zedflow-tui/src/components/text.rs",
+        "crates/zedflow-tui/src/components/spacer.rs",
         "crates/zedflow-tui/src/components/truncated-text.rs",
-        "crates/zedflow-tui/src/editor-component.rs",
-        "crates/zedflow-tui/src/fuzzy.rs",
-        "crates/zedflow-tui/src/index.rs",
-        "crates/zedflow-tui/src/keybindings.rs",
-        "crates/zedflow-tui/src/kill-ring.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Port the diagnosed missing TUI source targets from the frozen Pi manifest one-to-one; do not add placeholders or compatibility fixes."
-    },
-    {
-      "id": "TUI-V21-CLOSURE-MANIFEST-SOURCES-R3",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V21-CLOSURE-MANIFEST-SOURCES"
-      ],
-      "ownership": [
-        "crates/zedflow-tui/src/components/cancellable_loader.rs",
-        "crates/zedflow-tui/src/components/select_list.rs",
-        "crates/zedflow-tui/src/components/settings_list.rs",
-        "crates/zedflow-tui/src/components/truncated_text.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-tui --check"
-      ],
-      "intent": "Repair the four TUI manifest source targets with their repository filenames after the prior ownership mismatch; port the frozen Pi files one-to-one without placeholders or compatibility fixes."
-    },
-    {
-      "id": "TUI-V21-CLOSURE-MANIFEST-TARGETS-R4",
-      "kind": "writer",
-      "depends_on": [
-        "TUI-V21-CLOSURE-MANIFEST-SOURCES-R3"
-      ],
-      "ownership": [
+        "crates/zedflow-tui/src/components/markdown.rs",
+        "crates/zedflow-tui/src/components/image.rs",
+        "crates/zedflow-tui/src/components/loader.rs",
         "crates/zedflow-tui/src/components/cancellable-loader.rs",
-        "crates/zedflow-tui/src/components/select-list.rs",
-        "crates/zedflow-tui/src/components/settings-list.rs",
-        "crates/zedflow-tui/src/components/truncated-text.rs"
+        "crates/zedflow-tui/src/terminal-image.rs",
+        "crates/zedflow-tui/src/terminal-colors.rs",
+        "crates/zedflow-tui/src/components/mod.rs",
+        "crates/zedflow-tui/tests/markdown.rs",
+        "crates/zedflow-tui/tests/terminal-image.rs",
+        "crates/zedflow-tui/tests/terminal-colors.rs",
+        "crates/zedflow-tui/tests/truncated-text.rs",
+        "crates/zedflow-tui/tests/wrap-ansi.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-tui --check"
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test markdown",
+        "cargo test -p zedflow-tui --test terminal-image",
+        "cargo test -p zedflow-tui --test terminal-colors",
+        "cargo test -p zedflow-tui --test truncated-text",
+        "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Repair the four diagnosed TUI manifest targets by placing the already-ported sources at their exact frozen target paths; preserve Rust module resolution and do not add placeholders or compatibility fixes."
+      "intent": "Implement only fresh replacement P2.T1-R2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context after accepted P1.T3-R2. Complete exactly the listed rich-rendering files/tests against frozen Pi, using the repaired word-boundary ANSI wrapping contract. No coding-agent edits, new dependencies, renderer thread, or snapshot weakening. Return normalized example frames and test evidence."
     },
     {
-      "id": "TUI-V21-CLOSURE-VALIDATE-R4",
+      "id": "P2.T1-V2",
       "kind": "validator",
       "depends_on": [
-        "TUI-V21-CLOSURE-MANIFEST-TARGETS-R4"
+        "P2.T1-R2"
       ],
       "ownership": [],
       "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-tui --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-tui"
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test markdown",
+        "cargo test -p zedflow-tui --test terminal-image",
+        "cargo test -p zedflow-tui --test terminal-colors",
+        "cargo test -p zedflow-tui --test truncated-text",
+        "cargo test -p zedflow-tui --test wrap-ansi"
       ],
-      "intent": "Fresh mechanical revalidation of TUI closure after the exact manifest target paths are repaired; preserve all original acceptance gates."
+      "intent": "Fresh read-only validation of P1.T3-R2 and P2.T1-R2 on the exact candidate. Run every declared P2.T1 rich-rendering gate, including frozen word-boundary wrap-ansi assertions. Do not edit source, tests, manifests, dependencies, or control-plane files; return exact command evidence or a valid blocker classification."
     },
     {
-      "id": "TUI-V21-CLOSURE-FIDELITY",
-      "kind": "reviewer",
-      "depends_on": [
-        "TUI-V21-CLOSURE-VALIDATE-R4"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh read-only frozen Pi fidelity review of the approved TUI dependency-first closure before Coding-agent begins."
-    },
-    {
-      "id": "CA-V20-SOURCE-BATCH-1",
+      "id": "P2.T2",
       "kind": "writer",
       "depends_on": [
-        "TUI-V21-CLOSURE-FIDELITY"
+        "P1.T3"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/bun/cli.rs",
-        "crates/zedflow-coding-agent/src/bun/register-bedrock.rs",
-        "crates/zedflow-coding-agent/src/bun/restore-sandbox-env.rs",
-        "crates/zedflow-coding-agent/src/core/bash-executor.rs",
-        "crates/zedflow-coding-agent/src/core/compaction/branch-summarization.rs",
-        "crates/zedflow-coding-agent/src/core/compaction/compaction.rs",
-        "crates/zedflow-coding-agent/src/core/compaction/index.rs",
-        "crates/zedflow-coding-agent/src/core/exec.rs",
-        "crates/zedflow-coding-agent/src/core/export-html/index.rs",
-        "crates/zedflow-coding-agent/src/core/extensions/index.rs",
-        "crates/zedflow-coding-agent/src/core/footer-data-provider.rs",
-        "crates/zedflow-coding-agent/src/core/index.rs",
-        "crates/zedflow-coding-agent/src/core/keybindings.rs",
-        "crates/zedflow-coding-agent/src/core/package-manager.rs",
-        "crates/zedflow-coding-agent/src/core/project-trust.rs",
-        "crates/zedflow-coding-agent/src/core/prompt-templates.rs",
-        "crates/zedflow-coding-agent/src/core/provider-attribution.rs",
-        "crates/zedflow-coding-agent/src/core/sdk.rs",
-        "crates/zedflow-coding-agent/src/core/telemetry.rs",
-        "crates/zedflow-coding-agent/src/core/tools/bash.rs",
-        "crates/zedflow-coding-agent/src/core/tools/index.rs",
-        "crates/zedflow-coding-agent/src/core/tools/render-utils.rs",
-        "crates/zedflow-coding-agent/src/core/tools/tool-definition-wrapper.rs",
-        "crates/zedflow-coding-agent/src/core/trust-manager.rs",
-        "crates/zedflow-coding-agent/src/migrations.rs",
-        "crates/zedflow-coding-agent/src/modes/index.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
+        "crates/zedflow-tui/src/components/editor.rs",
+        "crates/zedflow-tui/src/editor-component.rs",
+        "crates/zedflow-tui/src/autocomplete.rs",
+        "crates/zedflow-tui/src/components/select-list.rs",
+        "crates/zedflow-tui/src/components/settings-list.rs",
+        "crates/zedflow-tui/tests/editor.rs",
+        "crates/zedflow-tui/tests/autocomplete.rs",
+        "crates/zedflow-tui/tests/select-list.rs",
+        "crates/zedflow-tui/tests/fuzzy.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-tui --check",
+        "cargo test -p zedflow-tui --test editor",
+        "cargo test -p zedflow-tui --test autocomplete",
+        "cargo test -p zedflow-tui --test select-list",
+        "cargo test -p zedflow-tui --test fuzzy"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+      "intent": "Implement only P2.T2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the complete frozen Pi editor/autocomplete/list behavior into exactly the listed files/tests. Read full frozen sources and assertions. A thin Input wrapper is forbidden. Return a capability-to-test matrix."
     },
     {
-      "id": "CA-V20-SOURCE-BATCH-2",
+      "id": "P2.T3",
       "kind": "writer",
       "depends_on": [
-        "CA-V20-SOURCE-BATCH-1"
+        "P1.T3"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs",
+        "tools/tui-parity/run.py",
+        "tools/tui-parity/frozen-pi-oracle.mjs",
+        "tools/tui-parity/README.md",
+        "tools/tui-parity/fixtures/schema.json",
+        "crates/zedflow-coding-agent/tests/tui-parity-rust.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test tui-parity-rust"
+      ],
+      "intent": "Implement only P2.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Create the exact oracle scaffold files using Python stdlib, a tracked .mjs frozen-Pi runner, package-lock/npm-ci reproducibility, and a Rust fixture consumer skeleton. No product edits, network, credentials, screenshots, or untracked pnpm assumptions. Run the plan-required Python/oracle self-checks in addition to the declared Rust gate."
+    },
+    {
+      "id": "P3.T1",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T2-V1",
+        "P2.T1-V2",
+        "P2.T2"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/dark.json",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/light.json",
+        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-schema.json",
+        "crates/zedflow-coding-agent/src/modes/interactive/assets/clankolas.png",
         "crates/zedflow-coding-agent/src/modes/interactive/components/dynamic-border.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/first-time-setup.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/footer.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/index.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/keybinding-hints.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bordered-loader.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/countdown-timer.rs",
+        "crates/zedflow-coding-agent/tests/interactive-tui-chrome.rs"
+      ],
+      "validation": [
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --test interactive-tui-chrome"
+      ],
+      "intent": "Implement only P3.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port frozen themes/assets/footer/status/chrome into exactly the listed files and tests, using accepted core/TUI contracts. Assets must work from built binaries. No transcript, selector, or root-composition edits."
+    },
+    {
+      "id": "P4.T1",
+      "kind": "writer",
+      "depends_on": [
+        "P2.T1-V2",
+        "P3.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/assistant-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/bash-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/diff.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-entry.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/compaction-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/branch-summary-message.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs",
+        "crates/zedflow-coding-agent/tests/interactive-transcript.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test interactive-transcript"
+      ],
+      "intent": "Implement only P4.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port exactly the listed transcript components/tests against frozen Pi. Components must support incremental state and real content; do not wire session events or edit interactive-mode.rs."
+    },
+    {
+      "id": "P4.T2",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T2-V1",
+        "P2.T2",
+        "P3.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/model-search.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/login-dialog.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/model-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/oauth-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/config-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/model-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/scoped-models-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/settings-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/show-images-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/skill-invocation-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/status-indicator.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/thinking-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/tool-execution.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/theme-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/first-time-setup.rs",
+        "crates/zedflow-coding-agent/tests/interactive-login.rs",
+        "crates/zedflow-coding-agent/tests/interactive-settings-selectors.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test interactive-login",
+        "cargo test -p zedflow-coding-agent --test interactive-settings-selectors"
+      ],
+      "intent": "Implement only P4.T2 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port the exact auth/model/config/settings selector files/tests using P1.T2 contracts. Do not edit core adapters, interactive-mode.rs, or call network/browser/provider services; use deterministic injected callbacks."
+    },
+    {
+      "id": "P4.T3",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T2-V1",
+        "P2.T2",
+        "P3.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/session-selector-search.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/tree-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/trust-selector.rs",
         "crates/zedflow-coding-agent/src/modes/interactive/components/user-message-selector.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/user-message.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/model-search.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme-controller.rs",
-        "crates/zedflow-coding-agent/src/modes/interactive/theme/theme.rs",
-        "crates/zedflow-coding-agent/src/package-manager-cli.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
+        "crates/zedflow-coding-agent/tests/interactive-session-selectors.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo test -p zedflow-coding-agent --test interactive-session-selectors"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent source manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+      "intent": "Implement only P4.T3 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port exactly the session/tree/trust/message selectors and deterministic tests using P1.T2 contracts. Do not edit core files or interactive-mode.rs and never touch real user sessions."
     },
     {
-      "id": "CA-V20-SOURCE-BATCH-3-EXISTING-VALIDATE",
-      "kind": "validator",
-      "depends_on": [
-        "CA-V20-SOURCE-BATCH-2"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Freshly validate the already-present deterministic frozen Pi coding-agent source manifest-gap batch 3 targets; no source mutation is required."
-    },
-    {
-      "id": "CA-V20-TEST-BATCH-1",
+      "id": "P4.T4",
       "kind": "writer",
       "depends_on": [
-        "CA-V20-SOURCE-BATCH-3-EXISTING-VALIDATE"
+        "P1.T2-V1",
+        "P2.T2",
+        "P3.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/tests/agent-session-auto-compaction-queue.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-branching.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-compaction.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-concurrent.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-dynamic-provider.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-dynamic-tools.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-retry.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-runtime-events.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-stats.rs",
-        "crates/zedflow-coding-agent/tests/agent-session-tree-navigation.rs",
-        "crates/zedflow-coding-agent/tests/ansi-utils.rs",
-        "crates/zedflow-coding-agent/tests/args.rs",
-        "crates/zedflow-coding-agent/tests/assistant-message.rs",
-        "crates/zedflow-coding-agent/tests/bash-close-hang-windows.rs",
-        "crates/zedflow-coding-agent/tests/bash-execution-width.rs",
-        "crates/zedflow-coding-agent/tests/block-images.rs",
-        "crates/zedflow-coding-agent/tests/changelog.rs",
-        "crates/zedflow-coding-agent/tests/clipboard-image-bmp-conversion.rs",
-        "crates/zedflow-coding-agent/tests/clipboard-image.rs",
-        "crates/zedflow-coding-agent/tests/clipboard-native.rs",
-        "crates/zedflow-coding-agent/tests/clipboard.rs",
-        "crates/zedflow-coding-agent/tests/compaction-extensions-example.rs",
-        "crates/zedflow-coding-agent/tests/compaction-extensions.rs",
-        "crates/zedflow-coding-agent/tests/compaction-serialization.rs",
-        "crates/zedflow-coding-agent/tests/compaction-summary-reasoning.rs",
-        "crates/zedflow-coding-agent/tests/compaction.rs",
-        "crates/zedflow-coding-agent/tests/config-value-migration.rs",
-        "crates/zedflow-coding-agent/tests/config.rs",
-        "crates/zedflow-coding-agent/tests/edit-tool-legacy-input.rs",
-        "crates/zedflow-coding-agent/tests/edit-tool-no-full-redraw.rs",
-        "crates/zedflow-coding-agent/tests/experimental.rs",
-        "crates/zedflow-coding-agent/tests/export-html-skill-block.rs",
-        "crates/zedflow-coding-agent/tests/export-html-whitespace.rs",
-        "crates/zedflow-coding-agent/tests/export-html-xss.rs",
-        "crates/zedflow-coding-agent/tests/extensions-discovery.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
+        "crates/zedflow-coding-agent/src/modes/interactive/components/custom-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-editor.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-input.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/extension-selector.rs",
+        "crates/zedflow-coding-agent/tests/interactive-extension-dialogs.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo test -p zedflow-coding-agent --test interactive-extension-dialogs"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 1 one-to-one; exact paths are its ownership list."
+      "intent": "Implement only P4.T4 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Port exactly the custom editor and extension dialog files/tests using accepted contracts. External editor/process behavior must be injected; do not edit extension runtime, core adapters, or interactive-mode.rs."
     },
     {
-      "id": "CA-V20-TEST-BATCH-2",
+      "id": "P4.T5",
       "kind": "writer",
       "depends_on": [
-        "CA-V20-TEST-BATCH-1"
+        "P2.T1-V2",
+        "P3.T1",
+        "P4.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/tests/extensions-input-event.rs",
-        "crates/zedflow-coding-agent/tests/extensions-runner.rs",
-        "crates/zedflow-coding-agent/tests/file-mutation-queue.rs",
-        "crates/zedflow-coding-agent/tests/first-time-setup-fork.rs",
-        "crates/zedflow-coding-agent/tests/first-time-setup.rs",
-        "crates/zedflow-coding-agent/tests/footer-data-provider.rs",
-        "crates/zedflow-coding-agent/tests/footer-width.rs",
-        "crates/zedflow-coding-agent/tests/format-resume-command.rs",
-        "crates/zedflow-coding-agent/tests/frontmatter.rs",
-        "crates/zedflow-coding-agent/tests/git-merge-and-resolve-extension.rs",
-        "crates/zedflow-coding-agent/tests/git-ssh-url.rs",
-        "crates/zedflow-coding-agent/tests/git-update.rs",
-        "crates/zedflow-coding-agent/tests/image-processing.rs",
-        "crates/zedflow-coding-agent/tests/image-resize-callers.rs",
-        "crates/zedflow-coding-agent/tests/initial-message.rs",
-        "crates/zedflow-coding-agent/tests/input-transform-streaming-example.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-anthropic-warning.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-clone-command.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/armin.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/daxnuts.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/earendil-announcement.rs",
+        "crates/zedflow-coding-agent/tests/interactive-visible-components.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test interactive-visible-components"
+      ],
+      "intent": "Implement only P4.T5 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete exactly Armin, Daxnuts, and Earendil announcement behavior/tests using the accepted theme/assets/transcript APIs. No placeholders, root composition, or unrelated novelty."
+    },
+    {
+      "id": "P5.T1",
+      "kind": "writer",
+      "depends_on": [
+        "P1.T1",
+        "P3.T1",
+        "P4.T1",
+        "P4.T2",
+        "P4.T3",
+        "P4.T4",
+        "P4.T5"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/components/index.rs",
+        "crates/zedflow-coding-agent/src/modes/interactive/mod.rs",
+        "crates/zedflow-coding-agent/src/modes/index.rs",
+        "crates/zedflow-coding-agent/src/modes/mod.rs",
+        "crates/zedflow-coding-agent/src/lib.rs",
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode.rs",
+        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs",
+        "crates/zedflow-coding-agent/tests/interactive-enduser-flow.rs"
+      ],
+      "validation": [
+        "cargo test -p zedflow-coding-agent --test interactive-mode",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-suspend",
+        "cargo test -p zedflow-coding-agent --test interactive-enduser-flow",
+        "cargo test -p zedflow-coding-agent --test interactive-transcript"
+      ],
+      "intent": "Implement only P5.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Using all accepted component handoffs, replace the placeholder interactive EventLog/Input with a Pi-order stateful transcript/editor/footer/overlay tree and map every message/tool/queue/compaction lifecycle update in place. Modify only listed files/tests. Do not implement built-in commands beyond existing compact/exit semantics and do not add rendering concurrency."
+    },
+    {
+      "id": "P6.T1",
+      "kind": "writer",
+      "depends_on": [
+        "P5.T1"
+      ],
+      "ownership": [
+        "crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs",
+        "crates/zedflow-coding-agent/src/main.rs",
+        "crates/zedflow-coding-agent/src/core/slash-commands.rs",
+        "crates/zedflow-coding-agent/tests/interactive-builtins.rs",
         "crates/zedflow-coding-agent/tests/interactive-mode-compaction.rs",
         "crates/zedflow-coding-agent/tests/interactive-mode-import-command.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-startup-input.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-status.rs",
-        "crates/zedflow-coding-agent/tests/interactive-mode-suspend.rs",
-        "crates/zedflow-coding-agent/tests/keybindings-migration.rs",
-        "crates/zedflow-coding-agent/tests/oauth-selector.rs",
-        "crates/zedflow-coding-agent/tests/package-command-paths.rs",
-        "crates/zedflow-coding-agent/tests/package-manager-ssh.rs",
-        "crates/zedflow-coding-agent/tests/package-manager.rs",
-        "crates/zedflow-coding-agent/tests/path-utils.rs",
-        "crates/zedflow-coding-agent/tests/paths.rs",
-        "crates/zedflow-coding-agent/tests/pi-user-agent.rs",
-        "crates/zedflow-coding-agent/tests/plan-mode-extension.rs",
-        "crates/zedflow-coding-agent/tests/plan-mode-utils.rs",
-        "crates/zedflow-coding-agent/tests/print-mode.rs",
-        "crates/zedflow-coding-agent/tests/prompt-templates.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
+        "crates/zedflow-coding-agent/tests/interactive-mode-clone-command.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo test -p zedflow-coding-agent --test interactive-builtins",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-compaction",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-import-command",
+        "cargo test -p zedflow-coding-agent --test interactive-mode-clone-command"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 2 one-to-one; exact paths are its ownership list."
+      "intent": "Implement only P6.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete the fixed built-in inventory in interactive-mode/main/slash-commands and exact tests. Known built-ins must never reach session.prompt; each needs success/cancel/error fixture coverage. Use accepted selectors/services, no network, no unrelated core edits, and preserve frozen precedence for extensions/prompts/skills/unknown slash text."
     },
     {
-      "id": "CA-V20-TEST-BATCH-3",
+      "id": "P7.T1",
       "kind": "writer",
       "depends_on": [
-        "CA-V20-TEST-BATCH-2"
+        "P2.T3",
+        "P6.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/tests/resource-loader.rs",
-        "crates/zedflow-coding-agent/tests/restore-sandbox-env.rs",
-        "crates/zedflow-coding-agent/tests/rpc-client-clone.rs",
-        "crates/zedflow-coding-agent/tests/rpc-client-process-exit.rs",
-        "crates/zedflow-coding-agent/tests/rpc-example.rs",
-        "crates/zedflow-coding-agent/tests/rpc-jsonl.rs",
-        "crates/zedflow-coding-agent/tests/rpc-prompt-response-semantics.rs",
-        "crates/zedflow-coding-agent/tests/rpc.rs",
-        "crates/zedflow-coding-agent/tests/sdk-codex-cache-probe-tool-loop.rs",
-        "crates/zedflow-coding-agent/tests/sdk-openrouter-attribution.rs",
-        "crates/zedflow-coding-agent/tests/sdk-session-manager.rs",
-        "crates/zedflow-coding-agent/tests/sdk-skills.rs",
-        "crates/zedflow-coding-agent/tests/sdk-stream-options.rs",
-        "crates/zedflow-coding-agent/tests/session-cwd.rs",
-        "crates/zedflow-coding-agent/tests/session-file-invalid.rs",
-        "crates/zedflow-coding-agent/tests/session-id-readonly.rs",
-        "crates/zedflow-coding-agent/tests/session-info-modified-timestamp.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/build-context.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/custom-session-id.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/file-operations.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/labels.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/migration.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/save-entry.rs",
-        "crates/zedflow-coding-agent/tests/session-manager/tree-traversal.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-path-delete.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-rename.rs",
-        "crates/zedflow-coding-agent/tests/session-selector-search.rs",
-        "crates/zedflow-coding-agent/tests/settings-manager-bug.rs",
-        "crates/zedflow-coding-agent/tests/settings-manager.rs",
-        "crates/zedflow-coding-agent/tests/skills.rs",
-        "crates/zedflow-coding-agent/tests/startup-session-name.rs",
-        "crates/zedflow-coding-agent/tests/status-indicator.rs",
-        "crates/zedflow-coding-agent/tests/stdout-cleanliness.rs",
-        "crates/zedflow-coding-agent/tests/streaming-render-debug.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-bash-persistence.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
+        "tools/tui-parity/run.py",
+        "tools/tui-parity/frozen-pi-oracle.mjs",
+        "tools/tui-parity/README.md",
+        "tools/tui-parity/fixtures/input-editing.json",
+        "tools/tui-parity/fixtures/streaming.json",
+        "tools/tui-parity/fixtures/tools-compaction.json",
+        "tools/tui-parity/fixtures/commands.json",
+        "tools/tui-parity/fixtures/overlays.json",
+        "tools/tui-parity/fixtures/unicode-resize.json",
+        "tools/tui-parity/fixtures/abort-error.json",
+        "crates/zedflow-coding-agent/tests/tui-parity-rust.rs",
+        "crates/zedflow-coding-agent/tests/interactive-pty-parity.rs",
+        "crates/zedflow-coding-agent/tests/interactive-terminal-restoration.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo test -p zedflow-tui --all-targets",
+        "cargo test -p zedflow-coding-agent --test tui-parity-rust",
+        "cargo test -p zedflow-coding-agent --test interactive-pty-parity",
+        "cargo test -p zedflow-coding-agent --test interactive-terminal-restoration"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 3 one-to-one; exact paths are its ownership list."
+      "intent": "Implement only P7.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context. Complete the exact oracle/fixture/PTY test files and compare frozen Pi versus final Rust behavior. Do not edit product code, weaken normalization, bless unexplained frames, use untracked pnpm state, credentials, or network. Run every oracle fixture as required by the plan in addition to the declared cargo gates. Return equal frame artifacts and terminal restoration evidence."
     },
     {
-      "id": "CA-V20-TEST-BATCH-4",
+      "id": "P8.T1-R1",
       "kind": "writer",
       "depends_on": [
-        "CA-V20-TEST-BATCH-3"
+        "P1.T1",
+        "P7.T1"
       ],
       "ownership": [
-        "crates/zedflow-coding-agent/tests/suite/agent-session-compaction.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-model-extension.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-prompt.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-queue.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-retry-events.rs",
-        "crates/zedflow-coding-agent/tests/suite/agent-session-runtime.rs",
-        "crates/zedflow-coding-agent/tests/suite/harness.rs",
-        "crates/zedflow-coding-agent/tests/suite/lax-message-content.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/1717-2113-agent-session-event-settlement.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2023-queued-slash-command-followup.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2753-reload-stale-resource-settings.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2781-skill-collision-precedence.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2791-fswatch-error-crash.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2835-tools-allowlist-filters-extension-tools.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/2860-replaced-session-context.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3217-scoped-model-order.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3302-find-path-glob.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3303-find-nested-gitignore.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3317-network-connection-lost-retry.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3592-no-builtin-tools-keeps-extension-tools.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3616-settings-inmemory-reload.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3686-session-name-event.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3688-tree-cancel-compacting.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/3982-message-end-cost-override.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/4167-thinking-toggle-pending-tool-render.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5080-signal-shutdown-extension-cleanup.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5109-exclude-tools.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5208-late-bash-output.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5217-compaction-reason.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5303-bash-output-truncation.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5433-extension-oauth-prompt-input.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5596-missing-theme-export.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5661-uppercase-header-values.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5724-sigterm-signal-exit.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5868-rpc-unknown-command-id.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
+        "crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs"
       ],
       "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
+        "cargo fmt --package zedflow-coding-agent --check",
+        "cargo test -p zedflow-coding-agent --lib visual_truncate::tests::retains_the_tail_of_wrapped_output"
       ],
-      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 4 one-to-one; exact paths are its ownership list."
+      "intent": "Repair only the deterministic visual_truncate tail-retention failure found by terminal P8.T1 on immutable candidate 3e46ead896aaddbd16d3ea6779f8d85539a9b01a. In fresh context, read the complete frozen Pi counterpart and all Rust callers, then modify only crates/zedflow-coding-agent/src/modes/interactive/components/visual-truncate.rs at the shared root cause so wrapped output retains the expected tail [\"two  \", \"three\"] rather than [\"wo th\", \"ree  \"]. Do not weaken the embedded regression, edit other files, add dependencies, or run workspace-wide gates. Run every declared focused validation and return exact evidence."
     },
     {
-      "id": "CA-V20-TEST-BATCH-5",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V20-TEST-BATCH-4"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/tests/suite/regressions/5943-session-start-notify.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/5996-session-name-newlines.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/6019-explicit-provider-retry-message.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/6162-extension-active-tools-next-turn.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/6260-inline-extension-naming.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/extension-factory-cache.rs",
-        "crates/zedflow-coding-agent/tests/suite/regressions/pre-prompt-compaction-no-continue.rs",
-        "crates/zedflow-coding-agent/tests/syntax-highlight.rs",
-        "crates/zedflow-coding-agent/tests/system-prompt.rs",
-        "crates/zedflow-coding-agent/tests/test-harness.rs",
-        "crates/zedflow-coding-agent/tests/test-theme-colors.rs",
-        "crates/zedflow-coding-agent/tests/theme-detection.rs",
-        "crates/zedflow-coding-agent/tests/theme-export.rs",
-        "crates/zedflow-coding-agent/tests/theme-picker.rs",
-        "crates/zedflow-coding-agent/tests/tool-execution-component.rs",
-        "crates/zedflow-coding-agent/tests/tools.rs",
-        "crates/zedflow-coding-agent/tests/tree-selector.rs",
-        "crates/zedflow-coding-agent/tests/trigger-compact-extension.rs",
-        "crates/zedflow-coding-agent/tests/truncate-to-width.rs",
-        "crates/zedflow-coding-agent/tests/trust-manager.rs",
-        "crates/zedflow-coding-agent/tests/trust-selector.rs",
-        "crates/zedflow-coding-agent/tests/user-message.rs",
-        "crates/zedflow-coding-agent/tests/utilities.rs",
-        "crates/zedflow-coding-agent/tests/version-check.rs",
-        "crates/zedflow-coding-agent/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Port deterministic frozen Pi coding-agent test manifest-gap batch 5 one-to-one; exact paths are its ownership list."
-    },
-    {
-      "id": "REPLAN-CA-V20-CLOSURE-MANIFEST-TARGETS-R3",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V20-TEST-BATCH-5"
-      ],
-      "ownership": [
-        "crates/zedflow-coding-agent/src/utils/image-process.rs",
-        "crates/zedflow-coding-agent/src/utils/pi-user-agent.rs",
-        "crates/zedflow-coding-agent/src/utils/tools-manager.rs",
-        "crates/zedflow-coding-agent/src/utils/mod.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-coding-agent --check"
-      ],
-      "intent": "Repair the deterministic coding-agent manifest closure by adding the three exact hyphenated source targets and the required utils module-root path attributes reported by the ownership failure; preserve one-to-one Pi source coverage and do not add placeholders or compatibility fixes."
-    },
-    {
-      "id": "REPLAN-CA-V20-CLOSURE-VALIDATE-R3",
+      "id": "P8.T1-V1",
       "kind": "validator",
       "depends_on": [
-        "REPLAN-CA-V20-CLOSURE-MANIFEST-TARGETS-R3"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-coding-agent --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-coding-agent"
-      ],
-      "intent": "Freshly re-run the failed coding-agent closure validation, including the exact manifest check, after the hyphenated source target and module-root repair."
-    },
-    {
-      "id": "CA-V20-CLOSURE-FIDELITY",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-CA-V20-CLOSURE-VALIDATE-R3"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review of the completed coding-agent closure."
-    },
-    {
-      "id": "ORCH-V20-SOURCE-BATCH-1",
-      "kind": "writer",
-      "depends_on": [
-        "CA-V20-CLOSURE-FIDELITY"
-      ],
-      "ownership": [
-        "crates/zedflow-orchestrator/src/cli.rs",
-        "crates/zedflow-orchestrator/src/config.rs",
-        "crates/zedflow-orchestrator/src/handler.rs",
-        "crates/zedflow-orchestrator/src/index.rs",
-        "crates/zedflow-orchestrator/src/ipc/client.rs",
-        "crates/zedflow-orchestrator/src/ipc/protocol.rs",
-        "crates/zedflow-orchestrator/src/ipc/server.rs",
-        "crates/zedflow-orchestrator/src/radius.rs",
-        "crates/zedflow-orchestrator/src/rpc-process.rs",
-        "crates/zedflow-orchestrator/src/serve.rs",
-        "crates/zedflow-orchestrator/src/storage.rs",
-        "crates/zedflow-orchestrator/src/supervisor.rs",
-        "crates/zedflow-orchestrator/src/types.rs",
-        "crates/zedflow-orchestrator/src/lib.rs"
-      ],
-      "validation": [
-        "cargo fmt --package zedflow-orchestrator --check"
-      ],
-      "intent": "Port all 13 deterministic frozen Pi orchestrator source manifest gaps one-to-one after TUI and coding-agent closure."
-    },
-    {
-      "id": "ORCH-V20-CLOSURE-VALIDATE",
-      "kind": "validator",
-      "depends_on": [
-        "ORCH-V20-SOURCE-BATCH-1"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets",
-        "cargo test --package zedflow-orchestrator --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check --package zedflow-orchestrator"
-      ],
-      "intent": "Validate deterministic orchestrator closure and executed package tests."
-    },
-    {
-      "id": "ORCH-V20-CLOSURE-FIDELITY",
-      "kind": "reviewer",
-      "depends_on": [
-        "ORCH-V20-CLOSURE-VALIDATE"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review of completed orchestrator closure."
-    },
-    {
-      "id": "FINAL-V20-WORKSPACE-VALIDATION",
-      "kind": "validator",
-      "depends_on": [
-        "ORCH-V20-CLOSURE-FIDELITY"
+        "P8.T1-R1"
       ],
       "ownership": [],
       "validation": [
         "cargo fmt --all --check",
         "cargo check --workspace --all-targets",
         "cargo test --workspace --all-targets",
-        "python3 tools/pi-port-swarm/manifest.py check"
+        "python3 tools/pi-port-swarm/manifest.py check",
+        "python3 tools/pi-port-swarm/controller.py validate"
       ],
-      "intent": "Run final deterministic manifest closure plus full executed workspace gates."
+      "intent": "Fresh read-only replacement for terminal P8.T1 on the exact P8.T1-R1 candidate SHA. Execute the complete P8 full workspace, manifest, differential, PTY, and independent review gate from .agents/plans/pi-tui-end-user-parity-repair.md. Run every listed command, do not edit or repair anything, and stop on the first failure with exact evidence. On success, return the immutable SHA and complete evidence bundle."
     },
     {
-      "id": "FINAL-V20-FIDELITY-REVIEW",
-      "kind": "reviewer",
-      "depends_on": [
-        "FINAL-V20-WORKSPACE-VALIDATION"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Independent final frozen-Pi fidelity review on the final validation SHA."
-    },
-    {
-      "id": "FINAL-V20-RUST-REVIEW",
-      "kind": "reviewer",
-      "depends_on": [
-        "FINAL-V20-FIDELITY-REVIEW"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Independent final Rust correctness review on the same final SHA."
-    },
-    {
-      "id": "REPLAN-FINAL-V20-PORT-DOCS",
+      "id": "P9.T1",
       "kind": "writer",
       "depends_on": [
-        "FINAL-V20-RUST-REVIEW"
-      ],
-      "ownership": [
-        "docs/porting/BASELINE.md"
-      ],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Update the stale Stage-1 baseline package closure facts after the accepted final workspace, fidelity, and Rust gates."
-    },
-    {
-      "id": "REPLAN-FINAL-V20-PORT-DOCS-VALIDATE",
-      "kind": "validator",
-      "depends_on": [
-        "REPLAN-FINAL-V20-PORT-DOCS"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check",
-        "python3 tools/pi-port-swarm/manifest.py check"
-      ],
-      "intent": "Validate the corrected Stage-1 baseline and deterministic manifest closure without changing product code."
-    },
-    {
-      "id": "REPLAN-FINAL-V20-FIDELITY-REVIEW",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-FINAL-V20-PORT-DOCS-VALIDATE"
-      ],
-      "ownership": [],
-      "validation": [
-        "git diff --check"
-      ],
-      "intent": "Fresh frozen-Pi fidelity review after the final baseline correction."
-    },
-    {
-      "id": "REPLAN-FINAL-V20-RUST-REVIEW",
-      "kind": "reviewer",
-      "depends_on": [
-        "REPLAN-FINAL-V20-FIDELITY-REVIEW"
-      ],
-      "ownership": [],
-      "validation": [
-        "cargo fmt --all --check",
-        "cargo check --workspace --all-targets"
-      ],
-      "intent": "Fresh Rust correctness review on the same SHA as the corrected final baseline."
-    },
-    {
-      "id": "REPLAN-FINAL-V20-PORT-CHECKPOINT",
-      "kind": "checkpoint",
-      "depends_on": [
-        "REPLAN-FINAL-V20-RUST-REVIEW"
+        "P8.T1-V1"
       ],
       "ownership": [
         "docs/porting/BASELINE.md",
-        "docs/porting/pi-fidelity-decisions"
+        ".agents/state/stage-1-final-gate-evidence.md",
+        ".agents/port-swarm/decisions.md"
       ],
       "validation": [
         "git diff --check"
       ],
-      "intent": "Record Stage-1 completion only after the corrected baseline and fresh final reviews accept one immutable SHA."
+      "intent": "Implement only P9.T1 from .agents/plans/pi-tui-end-user-parity-repair.md in fresh context after P8 acceptance. Modify only the three evidence/docs files. Record the exact tested product SHA and explicitly distinguish the later docs commit. Supersede prior invalid TUI/end-user evidence, keep Stage 2 forbidden, request human promotion approval, and do not run product tests or promote main."
     }
   ]
 }
