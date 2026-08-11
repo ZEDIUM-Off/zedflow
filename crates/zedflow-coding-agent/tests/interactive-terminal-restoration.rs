@@ -20,6 +20,32 @@ fn ctrl_c_restores_terminal() {
     assert_restores_terminal(b"\x03");
 }
 
+#[test]
+fn configuration_error_leaves_terminal_restored() {
+    let binary = env!("CARGO_BIN_EXE_zedflow-coding-agent").replace('\'', "'\\''");
+    let command = format!(
+        "before=$(stty -g); '{binary}' config; code=$?; after=$(stty -g); \
+         [ \"$before\" = \"$after\" ] && printf '{marker}\\n'; exit $code",
+        marker = String::from_utf8_lossy(RESTORED),
+    );
+    let output = Command::new("script")
+        .args(["-qfec", &command, "/dev/null"])
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success(),
+        "configuration error unexpectedly succeeded"
+    );
+    assert!(
+        output
+            .stdout
+            .windows(RESTORED.len())
+            .any(|bytes| bytes == RESTORED),
+        "termios changed on error: {:?}",
+        output.stdout
+    );
+}
+
 fn assert_restores_terminal(input: &[u8]) {
     let binary = env!("CARGO_BIN_EXE_zedflow-coding-agent").replace('\'', "'\\''");
     let command = format!(

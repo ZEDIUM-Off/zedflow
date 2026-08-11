@@ -33,6 +33,24 @@ function write(terminal, data) {
   return new Promise((resolve) => terminal.write(data, resolve));
 }
 
+// Match frozen Pi's utils.ts terminal-width policy rather than xterm's legacy
+// default, which treats otherwise full-width emoji as one cell.
+function piWcwidth(codepoint) {
+  if (codepoint < 32 || (codepoint >= 0x7f && codepoint < 0xa0)) return 0;
+  if ((codepoint >= 0x300 && codepoint <= 0x36f)
+    || (codepoint >= 0x1ab0 && codepoint <= 0x1aff)
+    || (codepoint >= 0x1dc0 && codepoint <= 0x1dff)
+    || (codepoint >= 0x20d0 && codepoint <= 0x20ff)
+    || (codepoint >= 0xfe00 && codepoint <= 0xfe0f)) return 0;
+  if ((codepoint >= 0x1100 && codepoint <= 0x115f)
+    || (codepoint >= 0x2e80 && codepoint <= 0xa4cf)
+    || (codepoint >= 0xac00 && codepoint <= 0xd7a3)
+    || (codepoint >= 0xf900 && codepoint <= 0xfaff)
+    || (codepoint >= 0x1f300 && codepoint <= 0x1faff)
+    || (codepoint >= 0x20000 && codepoint <= 0x3fffd)) return 2;
+  return 1;
+}
+
 function styleOf(cell) {
   const style = {};
   const fgMode = cell.getFgColorMode();
@@ -79,6 +97,16 @@ async function render(fixture) {
   }
   const Terminal = xterm.Terminal ?? xterm.default?.Terminal;
   const terminal = new Terminal({ cols: fixture.dimensions.columns, rows: fixture.dimensions.rows, allowProposedApi: true, disableStdin: true });
+  terminal.unicode.register({
+    version: "pi",
+    wcwidth: piWcwidth,
+    // xterm encodes width in bits 1-2 and the grapheme-join flag in bit 0.
+    charProperties(codepoint) {
+      const width = piWcwidth(codepoint);
+      return (width << 1) | (width === 0 ? 1 : 0);
+    },
+  });
+  terminal.unicode.activeVersion = "pi";
   const frames = [];
   const inputs = [];
   const lifecycle = [];

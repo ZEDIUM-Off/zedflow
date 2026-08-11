@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "dimensions": { "columns": 28, "rows": 6 },
+  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
+  "events": [
+    { "type": "write", "data": "background\r\n\u001b[?25l+ Select session +" },
+    { "type": "input", "data": "\u001b[B\r" },
+    { "type": "write", "data": "\r\u001b[Kselected: two\u001b[?25h" }
+  ]
+}

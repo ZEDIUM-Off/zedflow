@@ -1,47 +1,44 @@
-# TUI parity oracle scaffold
+# Frozen Pi / Rust TUI parity
 
-This directory defines the deterministic JSON protocol used to compare the frozen Pi TUI with Zedflow. It does not contain final parity fixtures; P7.T1 adds those.
+This directory compares the same deterministic terminal event stream in the frozen Pi terminal oracle and Zedflow's Rust terminal model. Comparison is structural JSON equality: visible cells (including wide-cell continuations), cursor position/visibility, input bytes, and lifecycle payloads. Only nondeterministic `timestamp`, `cwd`, `path`, and `query` fields are removed.
 
-## Prerequisites
+## Toolchain used for the acceptance run
 
+- Node.js `v24.16.0` (the frozen package requires `>=22.19.0`)
+- npm `11.13.0`
+- Cargo `1.96.1`
 - Python 3.11 or newer
-- Node.js satisfying `references/pi/package.json` (currently `>=22.19.0`)
-- npm
-- Cargo for the Rust consumer check
 
-No pnpm installation or local `node_modules` is used. `--prepare` copies the frozen `references/pi` tree to a temporary directory and runs `npm ci --ignore-scripts` against its tracked `package-lock.json`; npm may use its normal configured registry/cache. The temporary directory is removed afterwards.
+The runner copies `references/pi` to a temporary directory and executes `npm ci --offline --ignore-scripts` against its tracked `package-lock.json`. It never uses pnpm, repository `node_modules`, credentials, or the network. Populate npm's cache separately if the frozen packages are not already cached.
+
+## Reproduce
 
 ```bash
 python3 tools/tui-parity/run.py --self-check
 python3 tools/tui-parity/run.py --prepare
-node tools/tui-parity/frozen-pi-oracle.mjs --self-check
+python3 tools/tui-parity/run.py --all --artifacts /tmp/zedflow-tui-parity-frames
+cargo test -p zedflow-tui --all-targets
 cargo test -p zedflow-coding-agent --test tui-parity-rust
+cargo test -p zedflow-coding-agent --test interactive-pty-parity
+cargo test -p zedflow-coding-agent --test interactive-terminal-restoration
 ```
 
-Missing Node.js or npm produces an actionable error instead of falling back to pnpm or an untracked install.
-
-## Protocol
-
-Fixtures conform to [`fixtures/schema.json`](fixtures/schema.json):
-
-- `version` is `1`.
-- `dimensions` fixes terminal columns and rows.
-- `capabilities` fixes color depth, Unicode, and Kitty keyboard behavior.
-- `events` contains terminal writes, user input, resize, and message/tool/session lifecycle events.
-
-The oracle emits JSON containing a normalized frame after every event, captured inputs, and lifecycle records. Frames preserve visible cells, ANSI styles, cell widths, and cursor position/visibility. Terminal control queries are consumed by the virtual terminal; nondeterministic `timestamp`, `cwd`, `path`, and `query` metadata fields are omitted.
-
-Render a fixture with the frozen Pi oracle:
+A single fixture can be compared with:
 
 ```bash
-python3 tools/tui-parity/run.py path/to/fixture.json > pi-output.json
+python3 tools/tui-parity/run.py tools/tui-parity/fixtures/streaming.json
 ```
 
-A future Rust oracle can be compared in the same process. Its command reads the fixture from stdin and writes protocol JSON to stdout:
+Every successful comparison prints `<fixture>: equal`; `--artifacts` writes that shared normalized frame as JSON. A mismatch prints both complete frames and exits nonzero—there is no snapshot blessing or visible-frame normalization.
 
-```bash
-python3 tools/tui-parity/run.py path/to/fixture.json \
-  --rust-command cargo run -p zedflow-coding-agent --example tui-parity-oracle
-```
+## Acceptance fixtures
 
-The comparison is structural JSON equality, not screenshots. The current Rust integration test is intentionally only a fixture consumer/output skeleton.
+- `input-editing.json`: key, paste, history, and submitted editor bytes.
+- `streaming.json`: message start/update/end; update content remains observable.
+- `tools-compaction.json`: partial/final tool output and compaction lifecycle.
+- `commands.json`: slash-command bytes and their selector/action lifecycle (not prompt routing).
+- `overlays.json`: overlay cursor hiding, selection input, line clearing, and restoration.
+- `unicode-resize.json`: CJK, emoji, combining characters, ANSI clear/home, and resize.
+- `abort-error.json`: abort/error frames and cursor restoration.
+
+Fixtures conform to [`fixtures/schema.json`](fixtures/schema.json). The frozen side uses the lockfile's `@xterm/headless`, matching Pi's terminal cell semantics. The Rust side is compiled from `tui-parity-rust.rs`; the runner invokes its ignored stdin/stdout oracle entry directly. PTY tests separately prove bracketed-paste bytes and termios restoration on `/exit`, Ctrl-C, and argument-error paths.

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "dimensions": { "columns": 32, "rows": 5 },
+  "capabilities": { "colors": 256, "unicode": true, "kittyKeyboard": true },
+  "events": [
+    { "type": "lifecycle", "name": "message_start", "data": { "role": "assistant", "timestamp": 1 }, "render": "draft" },
+    { "type": "lifecycle", "name": "message_update", "data": { "content": "answer", "timestamp": 2 }, "render": "\ranswer" },
+    { "type": "lifecycle", "name": "message_end", "data": { "content": "answer", "timestamp": 3 }, "render": "\r\n" }
+  ]
+}
