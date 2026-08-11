@@ -329,6 +329,46 @@ impl AnsiState {
     }
 }
 
+fn word_wrap_boundary(part: &str, rest: &str) -> Option<usize> {
+    fn is_cjk(c: char) -> bool {
+        matches!(c as u32, 0x1100..=0x11ff | 0x3040..=0x312f | 0x3130..=0x318f | 0x31a0..=0x31bf | 0x31f0..=0x31ff | 0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xa960..=0xa97f | 0xac00..=0xd7ff | 0xf900..=0xfaff | 0x20000..=0x3134f)
+    }
+
+    let mut i = 0;
+    let mut boundary = None;
+    let mut last = None;
+    while i < part.len() {
+        if let Some(ansi) = extract_ansi_code(part, i) {
+            i += ansi.length;
+            continue;
+        }
+        let c = part[i..].chars().next().unwrap();
+        i += c.len_utf8();
+        if c == ' ' {
+            boundary = Some(i);
+        }
+        last = Some(c);
+    }
+
+    let mut i = 0;
+    let next = loop {
+        if i == rest.len() {
+            return None;
+        }
+        if let Some(ansi) = extract_ansi_code(rest, i) {
+            i += ansi.length;
+        } else {
+            break rest[i..].chars().next().unwrap();
+        }
+    };
+    boundary.filter(|&at| {
+        visible_width(part[..at].trim_end_matches(' ')) > 0
+            && last.is_some_and(|c| c != ' ' && !is_cjk(c))
+            && next != ' '
+            && !is_cjk(next)
+    })
+}
+
 pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
     if text.is_empty() {
         return vec![String::new()];
@@ -349,12 +389,13 @@ pub fn wrap_text_with_ansi(text: &str, width: usize) -> Vec<String> {
                 if columns == 0 {
                     break;
                 }
-                let consumed = part.len();
+                let consumed = word_wrap_boundary(&part, &rest[part.len()..]).unwrap_or(part.len());
+                let part = &rest[..consumed];
                 let mut output = format!("{}{}", state.prefix(), part.trim_end_matches(' '));
                 state.update(&part);
                 output.push_str(&state.line_end());
                 lines.push(output);
-                rest = &rest[consumed..];
+                rest = rest[consumed..].trim_start_matches(' ');
             }
             lines
         })
