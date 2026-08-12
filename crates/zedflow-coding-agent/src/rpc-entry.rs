@@ -2,7 +2,7 @@
 
 use crate::{
     agent_session::AgentSession,
-    agent_session_runtime::AgentSessionRuntime,
+    agent_session_runtime::{AgentSessionRuntime, PersistentSessionForkContext},
     cli::{Args, parse_args},
     config,
     core::{
@@ -95,13 +95,20 @@ pub fn create_runtime_for_args(args: &[String]) -> io::Result<AgentSessionRuntim
     create_runtime(parse_args(args.iter().cloned()), None)
 }
 
-/// Fork a persistent session at its current leaf, matching Pi's `/clone` action.
-pub fn create_runtime_for_fork(source: &str, entry_id: String) -> io::Result<AgentSessionRuntime> {
+/// Rebuild a runtime by forking its active persistent storage context.
+pub fn create_runtime_for_persistent_fork(
+    context: &PersistentSessionForkContext,
+    entry_id: String,
+    position: SessionForkPosition,
+) -> io::Result<AgentSessionRuntime> {
+    let mut args = Args::default();
+    args.fork = Some(context.source_path.clone());
+    args.session_dir = Some(context.session_root.clone());
     create_runtime(
-        parse_args(["--fork".to_owned(), source.to_owned()]),
+        args,
         Some(SessionForkOptions {
             entry_id: Some(entry_id),
-            position: Some(SessionForkPosition::At),
+            position: Some(position),
             id: None,
         }),
     )
@@ -117,18 +124,18 @@ fn create_runtime(
     let mut models = builtin_models();
     let model = configured_model(&parsed, &settings, &mut models);
     let env = Arc::new(NodeExecutionEnv::with_cwd(&cwd_string));
-    let session = tokio::runtime::Builder::new_current_thread()
+    let (session, persistent_fork) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|error| io::Error::other(error.to_string()))?
-        .block_on(create_session(
-            &parsed,
-            &cwd,
-            &cwd_string,
-            &settings,
-            &env,
-            fork_options,
-        ))
+        .block_on(async {
+            let session =
+                create_session(&parsed, &cwd, &cwd_string, &settings, &env, fork_options).await?;
+            let persistent_fork =
+                persistent_fork_context(&parsed, &cwd, &cwd_string, &settings, &env, &session)
+                    .await?;
+            Ok::<_, String>((session, persistent_fork))
+        })
         .map_err(io::Error::other)?;
     let tools = configured_tools(&parsed, &cwd);
     let active_tool_names = tools.iter().map(|tool| tool.tool.name.clone()).collect();
@@ -150,7 +157,11 @@ fn create_runtime(
         follow_up_mode: Some(queue_mode(&settings.get_follow_up_mode())),
     })
     .map_err(|error| io::Error::other(error.to_string()))?;
-    Ok(AgentSessionRuntime::new(session, cwd_string))
+    let runtime = AgentSessionRuntime::new(session, cwd_string);
+    Ok(match persistent_fork {
+        Some(context) => runtime.with_persistent_fork_context(context),
+        None => runtime,
+    })
 }
 
 fn configured_tools(args: &Args, cwd: &Path) -> Vec<zedflow_agent::types::AgentTool> {
@@ -303,6 +314,58 @@ fn load_prompt_template_path(path: &Path, templates: &mut Vec<HarnessPromptTempl
     });
 }
 
+fn session_root(args: &Args, settings: &SettingsManager) -> PathBuf {
+    args.session_dir
+        .as_deref()
+        .map(PathBuf::from)
+        .or_else(|| settings.get_session_dir())
+        .unwrap_or_else(config::get_sessions_dir)
+}
+
+async fn persistent_fork_context(
+    args: &Args,
+    cwd: &Path,
+    cwd_string: &str,
+    settings: &SettingsManager,
+    env: &Arc<NodeExecutionEnv>,
+    session: &Arc<dyn AgentSessionTrait>,
+) -> Result<Option<PersistentSessionForkContext>, String> {
+    if args.no_session {
+        return Ok(None);
+    }
+    let session_root = session_root(args, settings);
+    let source_path = if let Some(session_arg) = args.session.as_deref()
+        && (session_arg.contains('/')
+            || session_arg.contains('\\')
+            || session_arg.ends_with(".jsonl"))
+    {
+        let path = Path::new(session_arg);
+        if path.is_absolute() {
+            path.to_string_lossy().into_owned()
+        } else {
+            cwd.join(path).to_string_lossy().into_owned()
+        }
+    } else {
+        let id = session.get_metadata().await.id;
+        let repo = JsonlSessionRepo::new(
+            Arc::clone(env) as Arc<dyn FileSystem>,
+            session_root.to_string_lossy().into_owned(),
+        );
+        repo.list(JsonlSessionListOptions { cwd: None })
+            .await
+            .map_err(|error| error.to_string())?
+            .into_iter()
+            .find(|metadata| metadata.base.id == id)
+            .map(|metadata| metadata.path)
+            .ok_or_else(|| format!("Active persistent session {id} was not found"))?
+    };
+    let _ = cwd_string;
+    Ok(Some(PersistentSessionForkContext {
+        source_path,
+        session_root: session_root.to_string_lossy().into_owned(),
+    }))
+}
+
 async fn create_session(
     args: &Args,
     cwd: &Path,
@@ -327,12 +390,7 @@ async fn create_session(
         return Ok(Arc::new(to_shared_session(Arc::new(storage))) as Arc<dyn AgentSessionTrait>);
     }
 
-    let session_root = args
-        .session_dir
-        .as_deref()
-        .map(PathBuf::from)
-        .or_else(|| settings.get_session_dir())
-        .unwrap_or_else(config::get_sessions_dir);
+    let session_root = session_root(args, settings);
     let repo = JsonlSessionRepo::new(
         Arc::clone(env) as Arc<dyn FileSystem>,
         session_root.to_string_lossy().into_owned(),
@@ -602,7 +660,11 @@ mod tests {
     use super::*;
     use std::io::{Cursor, Write};
     use std::sync::{Arc, Mutex};
-    use zedflow_ai::auth::types::{AuthContext, AuthModel};
+    use zedflow_agent::types::AgentMessage;
+    use zedflow_ai::{
+        Message, UserMessage, UserMessageContent, UserMessageRole,
+        auth::types::{AuthContext, AuthModel},
+    };
 
     struct EmptyAuthContext;
 
@@ -651,6 +713,119 @@ mod tests {
         assert_eq!(response["command"], "get_state");
         assert_eq!(response["success"], true);
         assert!(response["data"].is_object());
+    }
+
+    fn user_message(text: &str) -> AgentMessage {
+        AgentMessage::Llm(Message::User(UserMessage {
+            role: UserMessageRole::User,
+            content: UserMessageContent::Text(text.into()),
+            timestamp: 1,
+        }))
+    }
+
+    #[test]
+    fn persistent_forks_preserve_active_path_and_session_root() {
+        let root = std::env::temp_dir().join(format!(
+            "zedflow-rpc-fork-{}",
+            zedflow_agent::harness::session::create_session_id()
+        ));
+        let root = root.to_string_lossy().into_owned();
+        let runtime = create_runtime_for_args(&["--session-dir".into(), root.clone()])
+            .expect("persistent runtime");
+        let entry_id = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(async {
+                runtime
+                    .session()
+                    .session()
+                    .append_message(user_message("selected"))
+                    .await
+                    .expect("append user message")
+            });
+        let source = runtime
+            .persistent_fork_context()
+            .expect("persistent context")
+            .clone();
+        let clone = runtime
+            .fork_at_entry(entry_id.clone(), SessionForkPosition::At)
+            .expect("clone at leaf");
+        let fork = runtime
+            .fork_at_entry(entry_id, SessionForkPosition::Before)
+            .expect("fork before user entry");
+        let check = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        assert_eq!(
+            check
+                .block_on(clone.session().session().get_entries())
+                .len(),
+            1,
+            "clone retains the current leaf"
+        );
+        assert!(
+            check
+                .block_on(fork.session().session().get_entries())
+                .is_empty(),
+            "fork before a root user entry is empty"
+        );
+        assert_eq!(clone.persistent_fork_context().unwrap().session_root, root);
+        assert_ne!(
+            clone.persistent_fork_context().unwrap().source_path,
+            source.source_path
+        );
+    }
+
+    #[test]
+    fn custom_session_path_forks_into_its_active_session_root() {
+        let source_root = std::env::temp_dir().join(format!(
+            "zedflow-rpc-fork-source-{}",
+            zedflow_agent::harness::session::create_session_id()
+        ));
+        let destination_root = std::env::temp_dir().join(format!(
+            "zedflow-rpc-fork-destination-{}",
+            zedflow_agent::harness::session::create_session_id()
+        ));
+        let source_root = source_root.to_string_lossy().into_owned();
+        let destination_root = destination_root.to_string_lossy().into_owned();
+        let initial = create_runtime_for_args(&["--session-dir".into(), source_root])
+            .expect("source runtime");
+        let entry_id = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(async {
+                initial
+                    .session()
+                    .session()
+                    .append_message(user_message("selected"))
+                    .await
+                    .expect("append user message")
+            });
+        let source_path = initial
+            .persistent_fork_context()
+            .expect("source context")
+            .source_path
+            .clone();
+        let active = create_runtime_for_args(&[
+            "--session".into(),
+            source_path.clone(),
+            "--session-dir".into(),
+            destination_root.clone(),
+        ])
+        .expect("custom path runtime");
+        assert_eq!(
+            active.persistent_fork_context().unwrap().source_path,
+            source_path
+        );
+        let fork = active
+            .fork_at_entry(entry_id, SessionForkPosition::At)
+            .expect("fork active custom path");
+        let context = fork.persistent_fork_context().expect("fork context");
+        assert_eq!(context.session_root, destination_root);
+        assert!(context.source_path.starts_with(&destination_root));
     }
 
     #[test]

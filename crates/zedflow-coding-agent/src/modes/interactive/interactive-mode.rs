@@ -244,6 +244,7 @@ pub struct InteractiveMode {
     compacting: bool,
     compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
+    editor_text: Arc<Mutex<Option<String>>>,
     builtin_commands: Box<dyn BuiltinCommandService>,
     selector_actions: Arc<Mutex<VecDeque<SelectorAction>>>,
     prompt_task: Option<JoinHandle<Result<(), String>>>,
@@ -287,6 +288,7 @@ impl InteractiveMode {
             compacting: false,
             compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
+            editor_text: Arc::new(Mutex::new(None)),
             builtin_commands: Box::<LiveBuiltinCommandService>::default(),
             selector_actions: Arc::new(Mutex::new(VecDeque::new())),
             prompt_task: None,
@@ -481,6 +483,7 @@ impl InteractiveMode {
             self.tui.root.add_child(EditorFooterView::new(
                 Arc::clone(&self.submitted_terminal_inputs),
                 Arc::clone(&self.footer),
+                Arc::clone(&self.editor_text),
             ));
         }
         self.tui.start()?;
@@ -953,7 +956,7 @@ impl InteractiveMode {
                     }
                 }
                 SelectorAction::Settings(SettingsAction::Cancel) => {}
-                SelectorAction::NavigateTree(entry_id) | SelectorAction::Fork(entry_id) => {
+                SelectorAction::NavigateTree(entry_id) => {
                     let runtime = self
                         .runtime
                         .clone()
@@ -965,6 +968,37 @@ impl InteractiveMode {
                         .block_on(runtime.session().session().move_to(Some(entry_id), None))
                         .map_err(io::Error::other)?;
                     self.show_status("Navigated to selected point");
+                }
+                SelectorAction::Fork(entry_id) => {
+                    let runtime = self
+                        .runtime
+                        .clone()
+                        .ok_or_else(|| io::Error::other("No active session"))?;
+                    let selected_text = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .map_err(io::Error::other)?
+                        .block_on(async {
+                            runtime
+                                .session()
+                                .session()
+                                .get_entry(&entry_id)
+                                .await
+                                .and_then(|entry| serde_json::to_value(entry).ok())
+                                .and_then(|entry| entry.get("message").cloned())
+                                .map(|message| message_json_text(&message))
+                                .ok_or_else(|| io::Error::other("Invalid entry ID for forking"))
+                        })?;
+                    self.set_runtime(
+                        runtime
+                            .fork_at_entry(
+                                entry_id,
+                                zedflow_agent::harness::types::SessionForkPosition::Before,
+                            )
+                            .map_err(io::Error::other)?,
+                    );
+                    *self.editor_text.lock().unwrap() = Some(selected_text);
+                    self.show_status("Forked to new session");
                 }
             }
             if dismiss {
@@ -980,22 +1014,24 @@ impl InteractiveMode {
 
     fn clone_active_session(&mut self) -> Result<(), String> {
         let runtime = self.runtime.clone().ok_or("No active session")?;
-        let (session_id, leaf_id) = tokio::runtime::Builder::new_current_thread()
+        let leaf_id = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .map_err(|error| error.to_string())?
-            .block_on(async {
-                let session = runtime.session().session();
-                (session.get_metadata().await.id, session.get_leaf_id().await)
-            });
+            .block_on(runtime.session().session().get_leaf_id());
         let Some(leaf_id) = leaf_id else {
             self.show_status("Nothing to clone yet");
             return Ok(());
         };
         self.set_runtime(
-            crate::rpc_entry::create_runtime_for_fork(&session_id, leaf_id)
+            runtime
+                .fork_at_entry(
+                    leaf_id,
+                    zedflow_agent::harness::types::SessionForkPosition::At,
+                )
                 .map_err(|error| error.to_string())?,
         );
+        *self.editor_text.lock().unwrap() = Some(String::new());
         self.show_status("Cloned to new session");
         Ok(())
     }
@@ -1576,14 +1612,19 @@ impl Component for ActivityView {
 }
 
 struct EditorFooterView {
-    editor: CustomEditor,
+    editor: Arc<Mutex<CustomEditor>>,
     footer: Arc<Mutex<FooterSnapshot>>,
+    editor_text: Arc<Mutex<Option<String>>>,
     submitted: Arc<Mutex<VecDeque<String>>>,
     clear_requested: Arc<AtomicBool>,
     last_sigint: Option<Instant>,
 }
 impl EditorFooterView {
-    fn new(submitted: Arc<Mutex<VecDeque<String>>>, footer: Arc<Mutex<FooterSnapshot>>) -> Self {
+    fn new(
+        submitted: Arc<Mutex<VecDeque<String>>>,
+        footer: Arc<Mutex<FooterSnapshot>>,
+        editor_text: Arc<Mutex<Option<String>>>,
+    ) -> Self {
         let mut editor = CustomEditor::new(KeybindingsManager::create(get_agent_dir()));
         let on_submit = Arc::clone(&submitted);
         editor.editor_mut().on_submit = Some(Box::new(move |text| {
@@ -1600,8 +1641,9 @@ impl EditorFooterView {
         });
         editor.set_focused(true);
         Self {
-            editor,
+            editor: Arc::new(Mutex::new(editor)),
             footer,
+            editor_text,
             submitted,
             clear_requested,
             last_sigint: None,
@@ -1610,12 +1652,19 @@ impl EditorFooterView {
 }
 impl Component for EditorFooterView {
     fn render(&self, width: usize) -> Vec<String> {
-        let mut lines = self.editor.render(width);
+        let mut editor = self.editor.lock().unwrap();
+        if let Some(text) = self.editor_text.lock().unwrap().take() {
+            editor.editor_mut().set_text(&text);
+        }
+        let mut lines = editor.render(width);
         lines.extend(self.footer.lock().unwrap().render(width));
         lines
     }
     fn handle_input(&mut self, data: &str) {
-        self.editor.handle_input(data);
+        if let Some(text) = self.editor_text.lock().unwrap().take() {
+            self.editor.lock().unwrap().editor_mut().set_text(&text);
+        }
+        self.editor.lock().unwrap().handle_input(data);
         if self.clear_requested.swap(false, Ordering::AcqRel) {
             let now = Instant::now();
             if self
@@ -1625,16 +1674,16 @@ impl Component for EditorFooterView {
                 self.submitted.lock().unwrap().push_back("/exit".into());
                 self.last_sigint = None;
             } else {
-                self.editor.editor_mut().set_text("");
+                self.editor.lock().unwrap().editor_mut().set_text("");
                 self.last_sigint = Some(now);
             }
         }
     }
     fn set_focused(&mut self, focused: bool) {
-        self.editor.set_focused(focused);
+        self.editor.lock().unwrap().set_focused(focused);
     }
     fn is_focused(&self) -> bool {
-        self.editor.is_focused()
+        self.editor.lock().unwrap().is_focused()
     }
 }
 
@@ -1734,4 +1783,24 @@ fn current_dir() -> String {
     std::env::current_dir()
         .map(|path| path.display().to_string())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn editor_footer_restores_forked_user_text_before_rendering() {
+        let text = Arc::new(Mutex::new(Some("restore this".to_owned())));
+        let footer = EditorFooterView::new(
+            Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(FooterSnapshot::default())),
+            Arc::clone(&text),
+        );
+        let _ = footer.render(80);
+        assert_eq!(
+            footer.editor.lock().unwrap().editor().get_text(),
+            "restore this"
+        );
+    }
 }
