@@ -1,4 +1,8 @@
-//! Deterministic settings-list state. Persistence remains in `SettingsManager`.
+//! Pi's settings selector, rendered by the shared TUI `SettingsList`.
+
+use std::sync::{Arc, Mutex};
+
+use zedflow_tui::{Component, SettingItem, SettingsList, SettingsListTheme};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingChoice {
@@ -15,67 +19,85 @@ pub enum SettingsAction {
     Cancel,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsSelector {
-    items: Vec<SettingChoice>,
-    filtered: Vec<usize>,
-    pub selected: usize,
+    list: SettingsList,
+    actions: Arc<Mutex<Vec<SettingsAction>>>,
 }
+
 impl SettingsSelector {
     #[must_use]
     pub fn new(items: Vec<SettingChoice>) -> Self {
-        let filtered = (0..items.len()).collect();
-        Self {
-            items,
-            filtered,
-            selected: 0,
-        }
+        let actions = Arc::new(Mutex::new(Vec::new()));
+        let mut list = SettingsList::with_options(
+            items
+                .into_iter()
+                .map(|item| SettingItem {
+                    id: item.id,
+                    label: item.label,
+                    description: Some(item.description),
+                    current_value: item.value,
+                    values: item.values,
+                })
+                .collect(),
+            10,
+            SettingsListTheme::default(),
+            true,
+        );
+        let changes = Arc::clone(&actions);
+        list.on_change = Some(Box::new(move |id, value| {
+            changes.lock().unwrap().push(SettingsAction::Change {
+                id: id.into(),
+                value: value.into(),
+            });
+        }));
+        let cancels = Arc::clone(&actions);
+        list.on_cancel = Some(Box::new(move || {
+            cancels.lock().unwrap().push(SettingsAction::Cancel);
+        }));
+        Self { list, actions }
     }
+
     pub fn filter(&mut self, query: &str) {
-        let query = query.to_lowercase();
-        self.filtered = self
-            .items
-            .iter()
-            .enumerate()
-            .filter_map(|(index, item)| {
-                let text =
-                    format!("{} {} {}", item.label, item.description, item.value).to_lowercase();
-                text.contains(&query).then_some(index)
-            })
-            .collect();
-        self.selected = self.selected.min(self.filtered.len().saturating_sub(1));
+        self.list.set_filter(query);
     }
+
     pub fn move_selection(&mut self, delta: isize) {
-        self.selected = self
-            .selected
-            .saturating_add_signed(delta)
-            .min(self.filtered.len().saturating_sub(1));
+        self.list
+            .handle_input(if delta < 0 { "\x1b[A" } else { "\x1b[B" });
     }
+
     pub fn activate(&mut self) -> Option<SettingsAction> {
-        let index = *self.filtered.get(self.selected)?;
-        let item = &mut self.items[index];
-        if item.values.is_empty() {
-            return None;
-        }
-        let current = item
-            .values
-            .iter()
-            .position(|value| value == &item.value)
-            .unwrap_or(0);
-        item.value = item.values[(current + 1) % item.values.len()].clone();
-        Some(SettingsAction::Change {
-            id: item.id.clone(),
-            value: item.value.clone(),
-        })
+        self.list.handle_input("\r");
+        self.take_action()
     }
+
     #[must_use]
     pub const fn cancel(&self) -> SettingsAction {
         SettingsAction::Cancel
     }
-    #[must_use]
-    pub fn selected_item(&self) -> Option<&SettingChoice> {
-        self.filtered
-            .get(self.selected)
-            .map(|index| &self.items[*index])
+
+    pub fn handle_input(&mut self, data: &str) {
+        self.list.handle_input(data);
+    }
+
+    fn take_action(&self) -> Option<SettingsAction> {
+        self.actions.lock().unwrap().pop()
+    }
+
+    pub fn drain_actions(&self) -> Vec<SettingsAction> {
+        std::mem::take(&mut *self.actions.lock().unwrap())
+    }
+}
+
+impl Component for SettingsSelector {
+    fn render(&self, width: usize) -> Vec<String> {
+        let mut lines = vec!["─".repeat(width.max(1))];
+        lines.extend(self.list.render(width));
+        lines.push("─".repeat(width.max(1)));
+        lines
+    }
+
+    fn handle_input(&mut self, data: &str) {
+        self.handle_input(data);
     }
 }

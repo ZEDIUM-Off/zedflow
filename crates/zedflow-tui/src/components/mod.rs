@@ -26,7 +26,7 @@ pub use select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListPrimaryTruncator, SelectListStyle,
     SelectListTheme, SelectListTruncatePrimaryContext,
 };
-pub use settings_list::{SettingItem, SettingsList};
+pub use settings_list::{SettingItem, SettingsList, SettingsListTheme};
 pub use spacer::Spacer;
 pub use text::Text;
 pub use truncated_text::TruncatedText;

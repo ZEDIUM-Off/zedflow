@@ -554,12 +554,43 @@ impl SettingsManager {
             "one-at-a-time".into()
         }
     }
+    pub fn set_steering_mode(&self, value: impl Into<String>) -> io::Result<()> {
+        let value = value.into();
+        if !matches!(value.as_str(), "all" | "one-at-a-time") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid steering mode",
+            ));
+        }
+        self.update_global(|settings| settings.steering_mode = Some(value));
+        self.flush()
+    }
     pub fn get_follow_up_mode(&self) -> String {
         if self.settings().follow_up_mode.as_deref() == Some("all") {
             "all".into()
         } else {
             "one-at-a-time".into()
         }
+    }
+    pub fn set_follow_up_mode(&self, value: impl Into<String>) -> io::Result<()> {
+        let value = value.into();
+        if !matches!(value.as_str(), "all" | "one-at-a-time") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid follow-up mode",
+            ));
+        }
+        self.update_global(|settings| settings.follow_up_mode = Some(value));
+        self.flush()
+    }
+    pub fn get_default_thinking_level(&self) -> String {
+        self.settings()
+            .default_thinking_level
+            .unwrap_or_else(|| "off".into())
+    }
+    pub fn set_default_thinking_level(&self, value: impl Into<String>) -> io::Result<()> {
+        self.update_global(|settings| settings.default_thinking_level = Some(value.into()));
+        self.flush()
     }
     pub fn get_compaction_settings(&self) -> (bool, u64, u64) {
         let c = self.settings().compaction.unwrap_or_default();

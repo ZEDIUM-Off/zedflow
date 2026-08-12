@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -33,7 +34,13 @@ def require(program: str) -> str:
     return path
 
 
-def run(command: list[str], *, data: bytes | None = None, cwd: Path | None = None) -> bytes:
+def run(
+    command: list[str],
+    *,
+    data: bytes | None = None,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> bytes:
     try:
         return subprocess.run(
             command,
@@ -42,6 +49,7 @@ def run(command: list[str], *, data: bytes | None = None, cwd: Path | None = Non
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env,
         ).stdout
     except subprocess.CalledProcessError as error:
         detail = error.stderr.decode(errors="replace").strip()
@@ -59,7 +67,14 @@ def frozen_workspace() -> tempfile.TemporaryDirectory[str]:
 
 
 def pi_oracle(workspace: Path, fixture: bytes) -> bytes:
-    return run([str(workspace / "node_modules/.bin/tsx"), ORACLE.name], data=fixture, cwd=workspace)
+    env = os.environ.copy()
+    env["ZEDFLOW_ORACLE_CWD"] = str(ROOT)
+    return run(
+        [str(workspace / "node_modules/.bin/tsx"), ORACLE.name],
+        data=fixture,
+        cwd=workspace,
+        env=env,
+    )
 
 
 def rust_oracle_binary() -> Path:

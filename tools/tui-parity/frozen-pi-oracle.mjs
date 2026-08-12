@@ -2,9 +2,14 @@
 import assert from "node:assert/strict";
 import process from "node:process";
 import xterm from "@xterm/headless";
-import { Editor, SelectList, Text, TUI } from "./packages/tui/src/index.ts";
+import { Text, TUI } from "./packages/tui/src/index.ts";
 import { AssistantMessageComponent } from "./packages/coding-agent/src/modes/interactive/components/assistant-message.ts";
+import { CustomEditor } from "./packages/coding-agent/src/modes/interactive/components/custom-editor.ts";
+import { FooterComponent } from "./packages/coding-agent/src/modes/interactive/components/footer.ts";
+import { SettingsSelectorComponent } from "./packages/coding-agent/src/modes/interactive/components/settings-selector.ts";
+import { IdleStatus } from "./packages/coding-agent/src/modes/interactive/components/status-indicator.ts";
 import { ToolExecutionComponent } from "./packages/coding-agent/src/modes/interactive/components/tool-execution.ts";
+import { InteractiveMode } from "./packages/coding-agent/src/modes/interactive/interactive-mode.ts";
 import { Theme, initTheme, setRegisteredThemes } from "./packages/coding-agent/src/modes/interactive/theme/theme.ts";
 
 const SELF_CHECK_FIXTURE = {
@@ -15,7 +20,15 @@ const SELF_CHECK_FIXTURE = {
 };
 const plain = (text) => text;
 const plainTheme = new Theme(
-  { toolTitle: "", toolOutput: "", error: "" },
+  Object.fromEntries([
+    "accent", "border", "borderAccent", "borderMuted", "success", "error", "warning",
+    "muted", "dim", "text", "thinkingText", "userMessageText", "customMessageText",
+    "customMessageLabel", "toolTitle", "toolOutput", "mdHeading", "mdLink", "mdLinkUrl",
+    "mdCode", "mdCodeBlock", "mdCodeBlockBorder", "mdQuote", "mdQuoteBorder", "mdHr",
+    "mdListBullet", "toolDiffAdded", "toolDiffRemoved", "toolDiffContext", "thinkingOff",
+    "thinkingMinimal", "thinkingLow", "thinkingMedium", "thinkingHigh", "thinkingXhigh",
+    "bashMode",
+  ].map(key => [key, ""])),
   { toolPendingBg: "", toolSuccessBg: "", toolErrorBg: "" },
   "256color",
   { name: "oracle-plain" },
@@ -35,7 +48,18 @@ const markdownTheme = {
   quote: plain, quoteBorder: plain, hr: plain, listBullet: plain, bold: plain, italic: plain,
   strikethrough: plain, underline: plain,
 };
-const selectTheme = editorTheme.selectList;
+const settingsConfig = {
+  autoCompact: true, showImages: false, imageWidthCells: 80, autoResizeImages: true,
+  blockImages: false, enableSkillCommands: true, steeringMode: "one-at-a-time",
+  followUpMode: "one-at-a-time", transport: "auto", httpIdleTimeoutMs: 300000,
+  thinkingLevel: "off", availableThinkingLevels: ["off"], currentTheme: "oracle-plain",
+  terminalTheme: "dark", availableThemes: ["oracle-plain"], hideThinkingBlock: false,
+  collapseChangelog: false, enableInstallTelemetry: false, doubleEscapeAction: "none",
+  treeFilterMode: "default", showHardwareCursor: false, editorPaddingX: 0, outputPad: 1,
+  autocompleteMaxVisible: 5, quietStartup: true, defaultProjectTrust: "ask",
+  clearOnShrink: false, showTerminalProgress: false, warnings: {},
+};
+const noop = () => {};
 
 function validateFixture(value) {
   assert.equal(value?.version, 2, "fixture.version must be 2");
@@ -87,7 +111,7 @@ function frame(terminal, cursorVisible) {
       if (Object.keys(style).length) normalized.style = style;
       row.push(normalized);
     }
-    while (row.length && row.at(-1).text === "" && row.at(-1).width === 1 && !row.at(-1).style) row.pop();
+    while (row.length && (row.at(-1).text === "" || row.at(-1).text === " ") && row.at(-1).width === 1 && !row.at(-1).style) row.pop();
     cells.push(row);
   }
   return { cells, cursor: { x: buffer.cursorX, y: buffer.cursorY, visible: cursorVisible } };
@@ -114,14 +138,51 @@ async function render(fixture) {
     clearLine() {}, clearFromCursor() {}, clearScreen() {}, setTitle() {}, setProgress() {},
   };
   const tui = new TUI(terminalPort); // The component TUI owns composition; xterm owns terminal cells.
-  const editor = new Editor(tui, editorTheme);
+  const editor = new CustomEditor(tui, editorTheme, { matches: () => false });
   const assistant = new AssistantMessageComponent(undefined, false, markdownTheme);
-  const selector = new SelectList([{ value: "model", label: "model" }, { value: "session", label: "session" }], 5, selectTheme);
+  const idle = new IdleStatus();
+  const footer = new FooterComponent(
+    {
+      state: { model: undefined, thinkingLevel: "off" },
+      sessionManager: {
+        getEntries: () => [],
+        getCwd: () => process.env.ZEDFLOW_ORACLE_CWD ?? process.cwd(),
+        getSessionName: () => undefined,
+      },
+      getContextUsage: () => undefined,
+      modelRegistry: { isUsingOAuth: () => false },
+    },
+    {
+      getGitBranch: () => undefined,
+      getAvailableProviderCount: () => 0,
+      getExtensionStatuses: () => new Map(),
+    },
+  );
+  let selector;
   let message = { role: "assistant", content: [], stopReason: "complete" };
   let showAssistant = false;
   let tool;
   let overlay = false;
   let compacting = false;
+  // Invoke frozen InteractiveMode's own submit switch without constructing its
+  // concrete ProcessTerminal/runtime graph. Command methods mount real frozen
+  // components on this deterministic TUI seam.
+  const dispatcher = Object.create(InteractiveMode.prototype);
+  dispatcher.defaultEditor = editor;
+  dispatcher.editor = editor;
+  dispatcher.showSettingsSelector = () => {
+    const callbacks = new Proxy(
+      { onCancel: () => { overlay = false; tui.setFocus(editor); } },
+      { get: (target, key) => target[key] ?? noop },
+    );
+    selector = new SettingsSelectorComponent(settingsConfig, callbacks);
+    overlay = true;
+    tui.setFocus(selector.settingsList);
+  };
+  dispatcher.handleCompactCommand = async () => { compacting = true; };
+  dispatcher.showModelSelector = noop;
+  dispatcher.handleModelCommand = noop;
+  InteractiveMode.prototype.setupEditorSubmitHandler.call(dispatcher);
   const frames = [];
   const inputs = [];
   const lifecycle = [];
@@ -131,8 +192,10 @@ async function render(fixture) {
     if (showAssistant) tui.addChild(assistant);
     if (tool) tui.addChild(tool);
     if (compacting) tui.addChild(new Text("Compacting...", 1, 0));
+    tui.addChild(idle);
     tui.addChild(editor);
-    if (overlay) tui.addChild(selector);
+    tui.addChild(footer);
+    if (overlay && selector) tui.addChild(selector);
     return tui.render(columns);
   };
   const redraw = async () => {
@@ -144,11 +207,8 @@ async function render(fixture) {
     if (event.type === "input") {
       inputs.push(event.data);
       if (overlay) {
-        selector.handleInput(event.data);
-        if (event.data === "\x1b" || event.data === "\r") overlay = false;
-      } else if (event.data === "/model\r" || event.data === "/session\r") {
-        overlay = true;
-      } else if (event.data !== "/compact\r") {
+        tui.focusedComponent?.handleInput?.(event.data);
+      } else {
         editor.handleInput(event.data);
       }
     } else if (event.type === "resize") {

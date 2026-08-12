@@ -20,6 +20,8 @@ use zedflow_agent::{
 };
 use zedflow_tui::{Component, ProcessTerminal, Terminal, Text, Tui};
 
+use crate::core::{http_dispatcher, settings_manager::DefaultProjectTrust};
+
 use crate::{
     agent_session_runtime::AgentSessionRuntime,
     auth_storage::AuthStorage,
@@ -33,7 +35,7 @@ use crate::{
         assistant_message::{AssistantContent, StopReason, StreamingAssistantMessage},
         compaction_summary_message::CompactionSummaryMessageComponent,
         custom_editor::CustomEditor,
-        footer::FooterSnapshot,
+        footer::{FooterSnapshot, format_cwd_for_footer},
         status_indicator::{IdleStatus, WorkingStatusIndicator},
         tool_execution::ToolExecutionComponent,
         user_message::UserMessageComponent,
@@ -282,7 +284,13 @@ impl InteractiveMode {
             rendered_events: Arc::new(Mutex::new(Vec::new())),
             transcript: Arc::new(Mutex::new(TranscriptState::default())),
             footer: Arc::new(Mutex::new(FooterSnapshot {
-                cwd: current_dir(),
+                cwd: format_cwd_for_footer(
+                    std::path::Path::new(&current_dir()),
+                    std::env::var_os("HOME")
+                        .as_deref()
+                        .map(std::path::Path::new),
+                ),
+                stats: vec!["0.0%/0 (auto)".into()],
                 ..FooterSnapshot::default()
             })),
             compacting: false,
@@ -470,7 +478,13 @@ impl InteractiveMode {
         TranscriptView::new(Arc::clone(&self.transcript)).render(width)
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    /// Render the mounted interactive tree and native overlay stack without writing a terminal.
+    #[must_use]
+    pub fn render_current_frame(&self, width: usize, height: usize) -> Vec<String> {
+        self.tui.render_frame(width, height)
+    }
+
+    fn mount_root(&mut self) {
         if self.tui.root.is_empty() {
             // Pi order: transcript, pending/status row, editor, footer. Overlays are
             // managed by Tui's native overlay stack above this root tree.
@@ -486,6 +500,10 @@ impl InteractiveMode {
                 Arc::clone(&self.editor_text),
             ));
         }
+    }
+
+    pub fn run(&mut self) -> io::Result<()> {
+        self.mount_root();
         self.tui.start()?;
         self.state = InteractiveState::Running;
         if let Some(runner) = &mut self.extension_runner {
@@ -748,17 +766,10 @@ impl InteractiveMode {
         use BuiltinCommandAction as Action;
         match action {
             Action::Settings => {
-                self.mount_selector(LiveSelector::Settings(SettingsSelector::new(vec![
-                    SettingChoice {
-                        id: "theme".into(),
-                        label: "Theme".into(),
-                        description: "Terminal theme".into(),
-                        value: SettingsManager::create(current_dir(), get_agent_dir())
-                            .get_theme()
-                            .unwrap_or_else(|| "dark".into()),
-                        values: vec!["dark".into(), "light".into()],
-                    },
-                ])))
+                let settings = SettingsManager::create(current_dir(), get_agent_dir());
+                self.mount_selector(LiveSelector::Settings(SettingsSelector::new(
+                    settings_choices(&settings),
+                )))
             }
             Action::Model(search) => {
                 let current =
@@ -918,7 +929,7 @@ impl InteractiveMode {
     fn drain_selector_actions(&mut self) -> io::Result<()> {
         let actions = std::mem::take(&mut *self.selector_actions.lock().unwrap());
         for action in actions {
-            let dismiss = true;
+            let mut dismiss = true;
             match action {
                 SelectorAction::Cancelled => {
                     self.show_status("Selection cancelled");
@@ -950,10 +961,10 @@ impl InteractiveMode {
                     self.show_status("Model selection saved to settings");
                 }
                 SelectorAction::Settings(SettingsAction::Change { id, value }) => {
-                    if id == "theme" {
-                        SettingsManager::create(current_dir(), get_agent_dir()).set_theme(value)?;
-                        self.show_status("Theme saved to settings");
-                    }
+                    dismiss = false;
+                    let settings = SettingsManager::create(current_dir(), get_agent_dir());
+                    persist_setting(&settings, &id, &value)?;
+                    self.show_status(format!("{id} saved to settings"));
                 }
                 SelectorAction::Settings(SettingsAction::Cancel) => {}
                 SelectorAction::NavigateTree(entry_id) => {
@@ -1135,6 +1146,93 @@ impl InteractiveMode {
         crate::utils::clipboard::copy_to_clipboard(&text).map_err(|error| error.to_string())?;
         self.show_status("Copied last agent message to clipboard");
         Ok(())
+    }
+}
+
+fn settings_choices(settings: &SettingsManager) -> Vec<SettingChoice> {
+    let bool_choice = |id: &str, label: &str, description: &str, value: bool| SettingChoice {
+        id: id.into(),
+        label: label.into(),
+        description: description.into(),
+        value: value.to_string(),
+        values: vec!["true".into(), "false".into()],
+    };
+    let default_trust = match settings.get_default_project_trust() {
+        DefaultProjectTrust::Ask => "Ask",
+        DefaultProjectTrust::Always => "Always trust",
+        DefaultProjectTrust::Never => "Never trust",
+    };
+    vec![
+        bool_choice("autocompact", "Auto-compact", "Automatically compact context when it gets too large", settings.get_compaction_settings().0),
+        bool_choice("auto-resize-images", "Auto-resize images", "Resize large images to 2000x2000 max for better model compatibility", settings.get_image_auto_resize()),
+        bool_choice("block-images", "Block images", "Prevent images from being sent to LLM providers", settings.get_block_images()),
+        bool_choice("skill-commands", "Skill commands", "Register skills as /skill:name commands", settings.get_enable_skill_commands()),
+        bool_choice("show-hardware-cursor", "Show hardware cursor", "Show the terminal cursor while still positioning it for IME support", settings.get_show_hardware_cursor()),
+        SettingChoice { id: "editor-padding".into(), label: "Editor padding".into(), description: "Horizontal padding for input editor (0-3)".into(), value: settings.get_editor_padding_x().to_string(), values: vec!["0".into(), "1".into(), "2".into(), "3".into()] },
+        SettingChoice { id: "output-padding".into(), label: "Output padding".into(), description: "Horizontal padding for user messages, assistant messages, and thinking".into(), value: settings.get_output_pad().to_string(), values: vec!["0".into(), "1".into()] },
+        SettingChoice { id: "autocomplete-max-visible".into(), label: "Autocomplete max items".into(), description: "Max visible items in autocomplete dropdown (3-20)".into(), value: settings.get_autocomplete_max_visible().to_string(), values: vec!["3".into(), "5".into(), "7".into(), "10".into(), "15".into(), "20".into()] },
+        bool_choice("clear-on-shrink", "Clear on shrink", "Clear empty rows when content shrinks (may cause flicker)", settings.get_clear_on_shrink()),
+        bool_choice("terminal-progress", "Terminal progress", "Show OSC 9;4 progress indicators in the terminal tab bar", settings.get_show_terminal_progress()),
+        SettingChoice { id: "steering-mode".into(), label: "Steering mode".into(), description: "Enter while streaming queues steering messages. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.".into(), value: settings.get_steering_mode(), values: vec!["one-at-a-time".into(), "all".into()] },
+        SettingChoice { id: "follow-up-mode".into(), label: "Follow-up mode".into(), description: "Follow-up queues messages until agent stops. 'one-at-a-time': deliver one, wait for response. 'all': deliver all at once.".into(), value: settings.get_follow_up_mode(), values: vec!["one-at-a-time".into(), "all".into()] },
+        SettingChoice { id: "transport".into(), label: "Transport".into(), description: "Preferred transport for providers that support multiple transports".into(), value: match settings.get_transport() { zedflow_ai::Transport::Sse => "sse", zedflow_ai::Transport::Websocket => "websocket", zedflow_ai::Transport::WebsocketCached => "websocket-cached", zedflow_ai::Transport::Auto => "auto" }.into(), values: vec!["sse".into(), "websocket".into(), "websocket-cached".into(), "auto".into()] },
+        SettingChoice { id: "http-idle-timeout".into(), label: "HTTP idle timeout".into(), description: "Maximum idle gap while waiting for HTTP headers or body chunks. Disable for local models that pause longer than five minutes.".into(), value: http_dispatcher::format_http_idle_timeout_ms(settings.get_http_idle_timeout_ms()), values: http_dispatcher::HTTP_IDLE_TIMEOUT_CHOICES.iter().map(|choice| choice.label.into()).collect() },
+        bool_choice("hide-thinking", "Hide thinking", "Hide thinking blocks in assistant responses", settings.get_hide_thinking_block()),
+        bool_choice("collapse-changelog", "Collapse changelog", "Show condensed changelog after updates", settings.get_collapse_changelog()),
+        bool_choice("quiet-startup", "Quiet startup", "Disable verbose printing at startup", settings.get_quiet_startup()),
+        bool_choice("install-telemetry", "Install telemetry", "Send an anonymous version/update ping after changelog-detected updates", settings.get_enable_install_telemetry()),
+        SettingChoice { id: "default-project-trust".into(), label: "Default project trust".into(), description: "Fallback behavior when no extension or saved trust decision decides project trust".into(), value: default_trust.into(), values: vec!["Ask".into(), "Always trust".into(), "Never trust".into()] },
+        SettingChoice { id: "double-escape-action".into(), label: "Double-escape action".into(), description: "Action when pressing Escape twice with empty editor".into(), value: settings.get_double_escape_action(), values: vec!["tree".into(), "fork".into(), "none".into()] },
+        SettingChoice { id: "tree-filter-mode".into(), label: "Tree filter mode".into(), description: "Default filter when opening /tree".into(), value: settings.get_tree_filter_mode(), values: vec!["default".into(), "no-tools".into(), "user-only".into(), "labeled-only".into(), "all".into()] },
+        SettingChoice { id: "warnings".into(), label: "Warnings".into(), description: "Enable or disable individual warnings".into(), value: "configure".into(), values: vec![] },
+        SettingChoice { id: "thinking".into(), label: "Thinking level".into(), description: "Reasoning depth for thinking-capable models".into(), value: settings.get_default_thinking_level(), values: vec!["off".into()] },
+        SettingChoice { id: "theme".into(), label: "Theme".into(), description: "Color theme for the interface".into(), value: settings.get_theme_setting().unwrap_or_else(|| "dark".into()), values: vec!["dark".into(), "light".into()] },
+    ]
+}
+
+fn persist_setting(settings: &SettingsManager, id: &str, value: &str) -> io::Result<()> {
+    let enabled = || value == "true";
+    match id {
+        "autocompact" => settings.set_compaction_enabled(enabled()),
+        "auto-resize-images" => settings.set_image_auto_resize(enabled()),
+        "block-images" => settings.set_block_images(enabled()),
+        "skill-commands" => settings.set_enable_skill_commands(enabled()),
+        "show-hardware-cursor" => settings.set_show_hardware_cursor(enabled()),
+        "editor-padding" => settings.set_editor_padding_x(value.parse().map_err(io::Error::other)?),
+        "output-padding" => settings.set_output_pad(value.parse().map_err(io::Error::other)?),
+        "autocomplete-max-visible" => {
+            settings.set_autocomplete_max_visible(value.parse().map_err(io::Error::other)?)
+        }
+        "clear-on-shrink" => settings.set_clear_on_shrink(enabled()),
+        "terminal-progress" => settings.set_show_terminal_progress(enabled()),
+        "steering-mode" => settings.set_steering_mode(value),
+        "follow-up-mode" => settings.set_follow_up_mode(value),
+        "thinking" => settings.set_default_thinking_level(value),
+        "transport" => settings.set_transport(match value {
+            "sse" => zedflow_ai::Transport::Sse,
+            "websocket" => zedflow_ai::Transport::Websocket,
+            "websocket-cached" => zedflow_ai::Transport::WebsocketCached,
+            _ => zedflow_ai::Transport::Auto,
+        }),
+        "http-idle-timeout" => http_dispatcher::HTTP_IDLE_TIMEOUT_CHOICES
+            .iter()
+            .find(|choice| choice.label == value)
+            .map_or(Ok(()), |choice| {
+                settings.set_http_idle_timeout_ms(choice.timeout_ms)
+            }),
+        "hide-thinking" => settings.set_hide_thinking_block(enabled()),
+        "collapse-changelog" => settings.set_collapse_changelog(enabled()),
+        "quiet-startup" => settings.set_quiet_startup(enabled()),
+        "install-telemetry" => settings.set_enable_install_telemetry(enabled()),
+        "default-project-trust" => settings.set_default_project_trust(match value {
+            "Always trust" => DefaultProjectTrust::Always,
+            "Never trust" => DefaultProjectTrust::Never,
+            _ => DefaultProjectTrust::Ask,
+        }),
+        "double-escape-action" => settings.set_double_escape_action(value),
+        "tree-filter-mode" => settings.set_tree_filter_mode(value),
+        "theme" => settings.set_theme(value),
+        _ => Ok(()),
     }
 }
 
@@ -1321,10 +1419,21 @@ impl SelectorOverlay {
         if let Some(action) = action {
             self.actions.lock().unwrap().push_back(action);
         }
+        if let LiveSelector::Settings(selector) = &self.selector {
+            self.actions.lock().unwrap().extend(
+                selector
+                    .drain_actions()
+                    .into_iter()
+                    .map(SelectorAction::Settings),
+            );
+        }
     }
 }
 impl Component for SelectorOverlay {
     fn render(&self, width: usize) -> Vec<String> {
+        if let LiveSelector::Settings(selector) = &self.selector {
+            return selector.render(width);
+        }
         let mut lines = vec![format!("{}", self.title())];
         match &self.selector {
             LiveSelector::Session(selector) => {
@@ -1392,6 +1501,16 @@ impl Component for SelectorOverlay {
             .collect()
     }
     fn handle_input(&mut self, data: &str) {
+        if let LiveSelector::Settings(selector) = &mut self.selector {
+            selector.handle_input(data);
+            self.actions.lock().unwrap().extend(
+                selector
+                    .drain_actions()
+                    .into_iter()
+                    .map(SelectorAction::Settings),
+            );
+            return;
+        }
         match data {
             "\x1b" => self
                 .actions
@@ -1802,5 +1921,49 @@ mod tests {
             footer.editor.lock().unwrap().editor().get_text(),
             "restore this"
         );
+    }
+
+    #[test]
+    fn settings_selector_has_frozen_main_list_order_and_persists_changes() {
+        let settings =
+            SettingsManager::in_memory(crate::core::settings_manager::Settings::default());
+        assert_eq!(
+            settings_choices(&settings)
+                .into_iter()
+                .map(|item| item.id)
+                .collect::<Vec<_>>(),
+            [
+                "autocompact",
+                "auto-resize-images",
+                "block-images",
+                "skill-commands",
+                "show-hardware-cursor",
+                "editor-padding",
+                "output-padding",
+                "autocomplete-max-visible",
+                "clear-on-shrink",
+                "terminal-progress",
+                "steering-mode",
+                "follow-up-mode",
+                "transport",
+                "http-idle-timeout",
+                "hide-thinking",
+                "collapse-changelog",
+                "quiet-startup",
+                "install-telemetry",
+                "default-project-trust",
+                "double-escape-action",
+                "tree-filter-mode",
+                "warnings",
+                "thinking",
+                "theme",
+            ]
+        );
+        persist_setting(&settings, "steering-mode", "all").unwrap();
+        persist_setting(&settings, "follow-up-mode", "all").unwrap();
+        persist_setting(&settings, "thinking", "off").unwrap();
+        assert_eq!(settings.get_steering_mode(), "all");
+        assert_eq!(settings.get_follow_up_mode(), "all");
+        assert_eq!(settings.get_default_thinking_level(), "off");
     }
 }

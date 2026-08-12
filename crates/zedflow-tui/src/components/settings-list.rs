@@ -120,7 +120,7 @@ impl Component for SettingsList {
             lines.push(truncate_to_width(
                 &format!("> {}", self.search),
                 width,
-                "",
+                "...",
                 false,
             ));
             lines.push(String::new());
@@ -163,7 +163,7 @@ impl Component for SettingsList {
                 &truncate_to_width(
                     &item.current_value,
                     width.saturating_sub(used + 2),
-                    "",
+                    "...",
                     false,
                 ),
                 selected,
@@ -171,7 +171,7 @@ impl Component for SettingsList {
             lines.push(truncate_to_width(
                 &format!("{prefix}{label}  {value}"),
                 width,
-                "",
+                "...",
                 false,
             ));
         }
@@ -179,7 +179,7 @@ impl Component for SettingsList {
             lines.push((self.theme.hint)(&truncate_to_width(
                 &format!("  ({}/{})", self.selected + 1, self.filtered_items.len()),
                 width.saturating_sub(2),
-                "",
+                "...",
                 false,
             )));
         }
@@ -197,7 +197,7 @@ impl Component for SettingsList {
         lines.push(truncate_to_width(
             &(self.theme.hint)(self.hint()),
             width,
-            "",
+            "...",
             false,
         ));
         lines

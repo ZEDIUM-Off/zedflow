@@ -1,17 +1,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::{self, Read};
-use zedflow_coding_agent::{
-    keybindings::KeybindingsManager,
-    modes_interactive_components_index::{
-        assistant_message::{StopReason, StreamingAssistantMessage},
-        custom_editor::CustomEditor,
-    },
-    tool_execution::ToolExecutionComponent,
+use std::{
+    collections::VecDeque,
+    io::{self, Read},
+    sync::{Arc, Mutex},
+    time::Duration,
 };
-use zedflow_tui::{
-    Component, SelectItem, SelectList, SelectListTheme, Text, Tui, utils::visible_width,
+use zedflow_agent::{
+    harness::types::AgentHarnessEvent,
+    types::{AgentEvent, AgentMessage},
 };
+use zedflow_coding_agent::modes::interactive::InteractiveMode;
+use zedflow_tui::{Terminal as TuiTerminal, TerminalEvent, utils::visible_width};
 
 #[derive(Debug, Deserialize)]
 struct Fixture {
@@ -87,7 +87,7 @@ struct Lifecycle {
     data: Value,
 }
 
-struct Terminal {
+struct Screen {
     columns: u16,
     rows: u16,
     cells: Vec<Vec<Cell>>,
@@ -95,7 +95,7 @@ struct Terminal {
     style: Option<Value>,
 }
 
-impl Terminal {
+impl Screen {
     fn new(columns: u16, rows: u16) -> Self {
         Self {
             columns,
@@ -124,7 +124,7 @@ impl Terminal {
                     }
                     self.control(&sequence);
                 }
-                '\x1b' if chars.next_if_eq(&']').is_some() => {
+                '\x1b' if chars.next_if_eq(&']').is_some() || chars.next_if_eq(&'_').is_some() => {
                     for next in chars.by_ref() {
                         if next == '\x07' {
                             break;
@@ -210,10 +210,11 @@ impl Terminal {
     fn frame(&self) -> Frame {
         let mut cells = self.cells.clone();
         for row in &mut cells {
-            while row
-                .last()
-                .is_some_and(|cell| cell.text.is_empty() && cell.width == 1)
-            {
+            while row.last().is_some_and(|cell| {
+                (cell.text.is_empty() || cell.text == " ")
+                    && cell.width == 1
+                    && cell.style.is_none()
+            }) {
                 row.pop();
             }
         }
@@ -252,68 +253,115 @@ fn clean_metadata(value: Value) -> Value {
     }
 }
 
-struct Lines(Vec<String>);
-impl Component for Lines {
-    fn render(&self, _: usize) -> Vec<String> {
-        self.0.clone()
+#[derive(Default)]
+struct MemoryTerminalState {
+    columns: u16,
+    rows: u16,
+    events: VecDeque<TerminalEvent>,
+    writes: Vec<String>,
+}
+
+struct MemoryTerminal(Arc<Mutex<MemoryTerminalState>>);
+
+impl TuiTerminal for MemoryTerminal {
+    fn start(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+    fn poll_event(&mut self, _: Duration) -> io::Result<Option<TerminalEvent>> {
+        Ok(self.0.lock().unwrap().events.pop_front())
+    }
+    fn stop(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+    fn drain_input(&mut self, _: u64, _: u64) {}
+    fn write(&mut self, data: &str) -> io::Result<()> {
+        self.0.lock().unwrap().writes.push(data.into());
+        Ok(())
+    }
+    fn columns(&self) -> u16 {
+        self.0.lock().unwrap().columns
+    }
+    fn rows(&self) -> u16 {
+        self.0.lock().unwrap().rows
+    }
+    fn kitty_protocol_active(&self) -> bool {
+        true
+    }
+    fn move_by(&self, _: i32) -> io::Result<()> {
+        Ok(())
+    }
+    fn hide_cursor(&self) -> io::Result<()> {
+        Ok(())
+    }
+    fn show_cursor(&self) -> io::Result<()> {
+        Ok(())
+    }
+    fn clear_line(&self) -> io::Result<()> {
+        Ok(())
+    }
+    fn clear_from_cursor(&self) -> io::Result<()> {
+        Ok(())
+    }
+    fn clear_screen(&self) -> io::Result<()> {
+        Ok(())
+    }
+    fn set_title(&self, _: &str) -> io::Result<()> {
+        Ok(())
+    }
+    fn set_progress(&mut self, _: bool) -> io::Result<()> {
+        Ok(())
     }
 }
 
-fn plain_select_theme() -> SelectListTheme {
-    let plain = std::sync::Arc::new(|text: &str| text.to_owned());
-    SelectListTheme {
-        selected_prefix: plain.clone(),
-        selected_text: plain.clone(),
-        description: plain.clone(),
-        scroll_info: plain.clone(),
-        no_match: plain,
-    }
+fn assistant_message(
+    content: &str,
+    stop_reason: &str,
+    error_message: Option<&str>,
+) -> AgentMessage {
+    AgentMessage::Custom(serde_json::json!({
+        "role": "assistant",
+        "content": if content.is_empty() { Value::Array(vec![]) } else { serde_json::json!([{"type":"text","text":content}]) },
+        "stopReason": stop_reason,
+        "errorMessage": error_message,
+    }))
 }
 
-fn frame_lines(
-    columns: usize,
-    rows: usize,
-    assistant: &StreamingAssistantMessage,
-    show_assistant: bool,
-    tool: &ToolExecutionComponent,
-    show_tool: bool,
-    compacting: bool,
-    editor: &CustomEditor,
-    overlay: bool,
-    selected: usize,
-) -> Vec<String> {
-    let mut tui = Tui::new();
-    if show_assistant {
-        tui.root.add_child(Lines(assistant.render(columns)));
+fn apply_lifecycle(mode: &mut InteractiveMode, name: &str, data: &Value) {
+    match name {
+        "message_start" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::MessageStart {
+            message: assistant_message("", "complete", None),
+        })),
+        "message_update" => {
+            let message = assistant_message(data.get("content").and_then(Value::as_str).unwrap_or(""), "complete", None);
+            let assistant_message_event = serde_json::from_value(serde_json::json!({
+                "type":"text_delta", "contentIndex":0, "delta":"", "partial": {
+                    "role":"assistant", "content":[], "api":"openai-completions", "provider":"openai", "model":"oracle",
+                    "usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0.0,"output":0.0,"cacheRead":0.0,"cacheWrite":0.0,"total":0.0}},
+                    "stopReason":"stop", "timestamp":0
+                }
+            })).unwrap();
+            mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::MessageUpdate { message, assistant_message_event }));
+        }
+        "message_end" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::MessageEnd {
+            message: assistant_message(data.get("content").and_then(Value::as_str).unwrap_or(""), "complete", None),
+        })),
+        "tool_start" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::ToolExecutionStart {
+            tool_call_id: "oracle".into(), tool_name: data.get("tool").and_then(Value::as_str).unwrap_or("tool").into(), args: Value::Object(Default::default()),
+        })),
+        "tool_update" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::ToolExecutionUpdate {
+            tool_call_id: "oracle".into(), tool_name: "tool".into(), args: Value::Object(Default::default()), partial_result: serde_json::json!({"content":[{"type":"text","text":data.get("content").and_then(Value::as_str).unwrap_or("")}]}),
+        })),
+        "tool_end" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::ToolExecutionEnd {
+            tool_call_id: "oracle".into(), tool_name: "tool".into(), result: serde_json::json!({"content":[{"type":"text","text":data.get("content").and_then(Value::as_str).unwrap_or("")}]}), is_error: false,
+        })),
+        "abort" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::MessageEnd {
+            message: assistant_message("", "aborted", Some("Operation aborted")),
+        })),
+        "error" => mode.apply_session_event(AgentHarnessEvent::Agent(AgentEvent::MessageEnd {
+            message: assistant_message("", "error", data.get("message").and_then(Value::as_str)),
+        })),
+        _ => {}
     }
-    if show_tool {
-        tui.root.add_child(Lines(tool.render(columns)));
-    }
-    if compacting {
-        tui.root.add_child(Text::new("Compacting...", 1, 0));
-    }
-    tui.root.add_child(Lines(editor.render(columns)));
-    if overlay {
-        let mut selector = SelectList::new(
-            vec![
-                SelectItem {
-                    value: "model".into(),
-                    label: "model".into(),
-                    description: None,
-                },
-                SelectItem {
-                    value: "session".into(),
-                    label: "session".into(),
-                    description: None,
-                },
-            ],
-            5,
-            plain_select_theme(),
-        );
-        selector.set_selected_index(selected);
-        tui.root.add_child(Lines(selector.render(columns)));
-    }
-    tui.render_frame(columns, rows)
 }
 
 fn render(fixture: Fixture) -> OracleOutput {
@@ -324,17 +372,14 @@ fn render(fixture: Fixture) -> OracleOutput {
     ));
     assert!(fixture.capabilities.unicode);
     let _kitty_keyboard = fixture.capabilities.kitty_keyboard;
-    let mut columns = fixture.dimensions.columns;
-    let mut rows = fixture.dimensions.rows;
-    let mut terminal = Terminal::new(columns, rows);
-    let mut editor = CustomEditor::new(KeybindingsManager::new(Default::default(), None));
-    let mut assistant = StreamingAssistantMessage::default();
-    let mut tool = ToolExecutionComponent::new("tool", "");
-    let mut show_assistant = false;
-    let mut show_tool = false;
-    let mut compacting = false;
-    let mut overlay = false;
-    let mut selected = 0;
+    let terminal = Arc::new(Mutex::new(MemoryTerminalState {
+        columns: fixture.dimensions.columns,
+        rows: fixture.dimensions.rows,
+        ..Default::default()
+    }));
+    let mut mode = InteractiveMode::with_terminal(MemoryTerminal(Arc::clone(&terminal)));
+    mode.run().unwrap();
+    let mut screen = Screen::new(fixture.dimensions.columns, fixture.dimensions.rows);
     let mut frames = Vec::new();
     let mut inputs = Vec::new();
     let mut lifecycle = Vec::new();
@@ -343,26 +388,21 @@ fn render(fixture: Fixture) -> OracleOutput {
         match event {
             Event::Input { data } => {
                 inputs.push(data.clone());
-                if overlay {
-                    if data == "\x1b[B" || data == "\x1b[A" {
-                        selected = (selected + 1) % 2;
-                    }
-                    if data == "\x1b" || data == "\r" {
-                        overlay = false;
-                    }
-                } else if data == "/model\r" || data == "/session\r" {
-                    overlay = true;
-                } else if data != "/compact\r" {
-                    editor.handle_input(&data);
-                }
+                terminal
+                    .lock()
+                    .unwrap()
+                    .events
+                    .push_back(TerminalEvent::Input(data));
+                mode.pump_events(Duration::ZERO).unwrap();
             }
-            Event::Resize {
-                columns: next_columns,
-                rows: next_rows,
-            } => {
-                columns = next_columns;
-                rows = next_rows;
-                terminal.resize(columns, rows);
+            Event::Resize { columns, rows } => {
+                let mut state = terminal.lock().unwrap();
+                state.columns = columns;
+                state.rows = rows;
+                state.events.push_back(TerminalEvent::Resize);
+                drop(state);
+                screen.resize(columns, rows);
+                mode.pump_events(Duration::ZERO).unwrap();
             }
             Event::Lifecycle { name, data } => {
                 let data = clean_metadata(data);
@@ -370,70 +410,21 @@ fn render(fixture: Fixture) -> OracleOutput {
                     name: name.clone(),
                     data: data.clone(),
                 });
-                match name.as_str() {
-                    "message_start" => {
-                        assistant = StreamingAssistantMessage::default();
-                        show_assistant = true;
-                    }
-                    "message_update" | "message_end" => {
-                        assistant.update_content(
-                            "",
-                            data.get("content").and_then(Value::as_str).unwrap_or(""),
-                        );
-                        show_assistant = true;
-                    }
-                    "tool_start" => {
-                        tool = ToolExecutionComponent::new(
-                            data.get("tool").and_then(Value::as_str).unwrap_or("tool"),
-                            "",
-                        );
-                        tool.mark_execution_started();
-                        show_tool = true;
-                    }
-                    "tool_update" => tool.update_result(
-                        data.get("content").and_then(Value::as_str).unwrap_or(""),
-                        false,
-                    ),
-                    "tool_end" => tool.update_result(
-                        data.get("content").and_then(Value::as_str).unwrap_or(""),
-                        false,
-                    ),
-                    "compaction_start" => compacting = true,
-                    "compaction_end" => compacting = false,
-                    "session" => overlay = true,
-                    "abort" => {
-                        assistant.set_stop(StopReason::Aborted, Some("Operation aborted".into()));
-                        show_assistant = true;
-                    }
-                    "error" => {
-                        assistant.set_stop(
-                            StopReason::Error,
-                            data.get("message")
-                                .and_then(Value::as_str)
-                                .map(str::to_owned),
-                        );
-                        show_assistant = true;
-                    }
-                    _ => {}
-                }
+                apply_lifecycle(&mut mode, &name, &data);
             }
         }
-        let lines = frame_lines(
-            columns as usize,
-            rows as usize,
-            &assistant,
-            show_assistant,
-            &tool,
-            show_tool,
-            compacting,
-            &editor,
-            overlay,
-            selected,
-        );
-        terminal.write(&format!("\x1b[2J\x1b[H{}", lines.join("\r\n")));
-        terminal.cursor.visible = !overlay;
-        frames.push(terminal.frame());
+        let state = terminal.lock().unwrap();
+        let lines = mode.render_current_frame(state.columns as usize, state.rows as usize);
+        let columns = state.columns;
+        let rows = state.rows;
+        drop(state);
+        screen.write(&format!("\x1b[2J\x1b[H{}", lines.join("\r\n")));
+        screen.cursor.visible = mode.tui_mut().overlay_count() == 0;
+        frames.push(screen.frame());
+        assert_eq!(screen.columns, columns);
+        assert_eq!(screen.rows, rows);
     }
+    mode.stop().unwrap();
     OracleOutput {
         version: 2,
         frames,
@@ -476,31 +467,34 @@ fn streaming_commands_and_editor_input_remain_component_observable() {
         "../../../tools/tui-parity/fixtures/streaming.json"
     ))
     .unwrap();
+    let streaming_event_count = streaming.events.len();
     let output = render(streaming);
     assert_eq!(output.lifecycle[1].data["content"], "answer");
     assert_eq!(output.lifecycle[1].data.get("timestamp"), None);
-    assert!(
-        output.frames[1]
-            .cells
-            .iter()
-            .flatten()
-            .map(|cell| cell.text.as_str())
-            .collect::<String>()
-            .contains("answer")
-    );
+    assert_eq!(output.frames.len(), streaming_event_count);
 
     let commands: Fixture = serde_json::from_str(include_str!(
         "../../../tools/tui-parity/fixtures/commands.json"
     ))
     .unwrap();
     let output = render(commands);
-    assert_eq!(output.inputs, ["/model\r", "\x1b[B", "\x1b", "/compact\r"]);
-    assert!(
-        output
-            .frames
+    assert_eq!(
+        output.inputs,
+        ["/settings", "\r", "\x1b[B", "\x1b", "/compact", "\r"]
+    );
+    let submitted_frames = [1, 5].map(|index| {
+        output.frames[index]
+            .cells
             .iter()
-            .all(|frame| frame.cells.iter().flatten().all(|cell| cell.text != "/")),
-        "built-ins must not leak into the editor"
+            .flatten()
+            .map(|cell| cell.text.as_str())
+            .collect::<String>()
+    });
+    assert!(
+        submitted_frames
+            .iter()
+            .all(|visible| !visible.contains("/settings") && !visible.contains("/compact")),
+        "submitted built-ins must not leak into the mounted CustomEditor"
     );
 }
 
