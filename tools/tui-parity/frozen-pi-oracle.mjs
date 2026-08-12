@@ -143,8 +143,14 @@ async function render(fixture) {
   for (const event of fixture.events) {
     if (event.type === "input") {
       inputs.push(event.data);
-      if (overlay) selector.handleInput(event.data);
-      else if (!/^\/[\w-]+\r$/.test(event.data)) editor.handleInput(event.data);
+      if (overlay) {
+        selector.handleInput(event.data);
+        if (event.data === "\x1b" || event.data === "\r") overlay = false;
+      } else if (event.data === "/model\r" || event.data === "/session\r") {
+        overlay = true;
+      } else if (event.data !== "/compact\r") {
+        editor.handleInput(event.data);
+      }
     } else if (event.type === "resize") {
       columns = event.columns;
       rows = event.rows;

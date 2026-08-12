@@ -210,7 +210,7 @@ pub trait Terminal {
 pub struct ProcessTerminal {
     writer: Writer,
     reader: Option<Box<dyn Read + Send>>,
-    reader_thread: Option<JoinHandle<Box<dyn Read + Send>>>,
+    reader_thread: Option<JoinHandle<()>>,
     use_native_stdin: bool,
     native_reader: Option<NativeReader>,
     native_events: Option<mpsc::Receiver<Vec<u8>>>,
@@ -434,11 +434,11 @@ impl ProcessTerminal {
             reader.stop.store(true, Ordering::Release);
             let _ = reader.handle.join();
         }
-        if let Some(handle) = self.reader_thread.take() {
-            if let Ok(reader) = handle.join() {
-                self.reader = Some(reader);
-            }
-        }
+        // An injected `Read` has no cancellation contract. Never join it here:
+        // a blocked read must not keep terminal restoration from completing. The
+        // detached reader loses its receiver, and is deliberately not reused on
+        // restart so it cannot consume input for the new terminal lifecycle.
+        let _ = self.reader_thread.take();
     }
 
     fn detect_resize(&mut self) {
@@ -578,7 +578,6 @@ impl Terminal for ProcessTerminal {
                         break;
                     }
                 }
-                reader
             }));
         }
         self.native_events = Some(receiver);

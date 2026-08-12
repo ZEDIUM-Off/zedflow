@@ -9,6 +9,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
+    thread::JoinHandle,
     time::{Duration, Instant},
 };
 
@@ -43,7 +44,7 @@ use crate::{
             AuthSelectorMode, AuthSelectorProvider, AuthSelectorProviderType, OAuthSelector,
         },
         scoped_models_selector::{ScopedModel, ScopedModelsSelector},
-        settings_selector::{SettingChoice, SettingsSelector},
+        settings_selector::{SettingChoice, SettingsAction, SettingsSelector},
         trust_selector::TrustSelectorState,
     },
     session_manager,
@@ -245,6 +246,7 @@ pub struct InteractiveMode {
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
     builtin_commands: Box<dyn BuiltinCommandService>,
     selector_actions: Arc<Mutex<VecDeque<SelectorAction>>>,
+    prompt_task: Option<JoinHandle<Result<(), String>>>,
     exit_requested: bool,
 }
 
@@ -287,6 +289,7 @@ impl InteractiveMode {
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
             builtin_commands: Box::<LiveBuiltinCommandService>::default(),
             selector_actions: Arc::new(Mutex::new(VecDeque::new())),
+            prompt_task: None,
             exit_requested: false,
         }
     }
@@ -366,6 +369,9 @@ impl InteractiveMode {
                 "assistant: streaming".into()
             }
             AgentHarnessEvent::Agent(AgentEvent::MessageEnd { message }) => {
+                if message_role(&message) != "assistant" {
+                    return;
+                }
                 transcript.finish_assistant(&message);
                 "assistant: complete".into()
             }
@@ -611,6 +617,30 @@ impl InteractiveMode {
     /// status area so the interactive loop remains usable after a failed turn.
     pub fn process_next_user_input(&mut self) -> io::Result<bool> {
         self.drain_session_events()?;
+        if self
+            .prompt_task
+            .as_ref()
+            .is_some_and(JoinHandle::is_finished)
+        {
+            let result = self
+                .prompt_task
+                .take()
+                .expect("finished prompt task")
+                .join()
+                .map_err(|_| io::Error::other("prompt task panicked"))?;
+            if let Err(error) = result {
+                self.show_status(error);
+            }
+            while !self.compacting {
+                let Some(input) = self.compaction_queue.pop_front() else {
+                    break;
+                };
+                self.pending_user_inputs.push_back(input);
+            }
+        }
+        if self.prompt_task.is_some() {
+            return Ok(false);
+        }
         let Some(input) = self.get_user_input() else {
             return Ok(false);
         };
@@ -627,31 +657,25 @@ impl InteractiveMode {
             (rest.is_empty() || rest.starts_with(char::is_whitespace))
                 .then(|| rest.trim().to_owned())
         });
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| io::Error::other(error.to_string()))?
-            .block_on(async move {
-                if let Some(instructions) = compact_instructions {
-                    runtime
-                        .session()
-                        .compact((!instructions.is_empty()).then_some(instructions.as_str()))
-                        .await
-                        .map(|_| ())
-                } else {
-                    runtime.session().prompt(input, None).await.map(|_| ())
-                }
-            });
-        self.drain_session_events()?;
-        if let Err(error) = result {
-            self.show_status(error.to_string());
-        }
-        while !self.compacting {
-            let Some(input) = self.compaction_queue.pop_front() else {
-                break;
-            };
-            self.pending_user_inputs.push_back(input);
-        }
+        self.prompt_task = Some(std::thread::spawn(move || {
+            let executor = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())?;
+            executor
+                .block_on(async move {
+                    if let Some(instructions) = compact_instructions {
+                        runtime
+                            .session()
+                            .compact((!instructions.is_empty()).then_some(instructions.as_str()))
+                            .await
+                            .map(|_| ())
+                    } else {
+                        runtime.session().prompt(input, None).await.map(|_| ())
+                    }
+                })
+                .map_err(|error| error.to_string())
+        }));
         Ok(true)
     }
 
@@ -785,9 +809,7 @@ impl InteractiveMode {
             Action::Fork => {
                 self.mount_selector(LiveSelector::Message(self.user_message_selector()?))
             }
-            Action::Clone => {
-                self.show_status("Clone requires selecting a session tree entry");
-            }
+            Action::Clone => self.clone_active_session()?,
             Action::Tree => self.mount_selector(LiveSelector::Tree(self.tree_selector()?)),
             Action::Trust => {
                 let store = ProjectTrustStore::new(get_agent_dir());
@@ -893,6 +915,7 @@ impl InteractiveMode {
     fn drain_selector_actions(&mut self) -> io::Result<()> {
         let actions = std::mem::take(&mut *self.selector_actions.lock().unwrap());
         for action in actions {
+            let dismiss = true;
             match action {
                 SelectorAction::Cancelled => {
                     self.show_status("Selection cancelled");
@@ -923,6 +946,13 @@ impl InteractiveMode {
                         .set_enabled_models(ids)?;
                     self.show_status("Model selection saved to settings");
                 }
+                SelectorAction::Settings(SettingsAction::Change { id, value }) => {
+                    if id == "theme" {
+                        SettingsManager::create(current_dir(), get_agent_dir()).set_theme(value)?;
+                        self.show_status("Theme saved to settings");
+                    }
+                }
+                SelectorAction::Settings(SettingsAction::Cancel) => {}
                 SelectorAction::NavigateTree(entry_id) | SelectorAction::Fork(entry_id) => {
                     let runtime = self
                         .runtime
@@ -937,7 +967,33 @@ impl InteractiveMode {
                     self.show_status("Navigated to selected point");
                 }
             }
+            if dismiss {
+                let count = self.tui.overlay_count();
+                let _ = count
+                    .checked_sub(1)
+                    .and_then(|index| self.tui.hide_overlay(index));
+                self.tui.request_render(false)?;
+            }
         }
+        Ok(())
+    }
+
+    fn clone_active_session(&mut self) -> Result<(), String> {
+        let runtime = self.runtime.clone().ok_or("No active session")?;
+        let (session_id, leaf_id) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())?
+            .block_on(async {
+                let session = runtime.session().session();
+                (session.get_metadata().await.id, session.get_leaf_id().await)
+            });
+        let Some(leaf_id) = leaf_id else {
+            self.show_status("Nothing to clone yet");
+            return Ok(());
+        };
+        self.replace_runtime(&["--fork".into(), session_id])?;
+        self.show_status(format!("Cloned to new session at {leaf_id}"));
         Ok(())
     }
 
@@ -1087,6 +1143,7 @@ enum SelectorAction {
     },
     Model(ModelItem),
     Scoped(Option<Vec<String>>),
+    Settings(SettingsAction),
     NavigateTree(String),
     Fork(String),
 }
@@ -1207,10 +1264,7 @@ impl SelectorOverlay {
                     })
             }
             LiveSelector::ConfirmImport(path) => Some(SelectorAction::Import(path.clone())),
-            LiveSelector::Settings(selector) => {
-                let _ = selector.activate();
-                None
-            }
+            LiveSelector::Settings(selector) => selector.activate().map(SelectorAction::Settings),
             LiveSelector::Message(selector) => match selector.select() {
                 crate::user_message_selector::UserMessageSelectorAction::Select(id) => {
                     Some(SelectorAction::Fork(id))

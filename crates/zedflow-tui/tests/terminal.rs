@@ -1,6 +1,6 @@
 use std::io::{self, Cursor, Read, Write};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 use zedflow_tui::terminal::{
     KeyboardProtocolNegotiationSequence, ProcessTerminal, Terminal, TerminalEvent,
     normalize_apple_terminal_input, parse_keyboard_protocol_negotiation_sequence,
@@ -47,6 +47,19 @@ fn inputs(terminal: &mut ProcessTerminal) -> Vec<String> {
 
 fn output(bytes: &Arc<Mutex<Vec<u8>>>) -> String {
     String::from_utf8(bytes.lock().unwrap().clone()).unwrap()
+}
+
+struct BlockingReader(Arc<(Mutex<bool>, Condvar)>);
+
+impl Read for BlockingReader {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+        let (locked, wake) = &*self.0;
+        let mut released = locked.lock().unwrap();
+        while !*released {
+            released = wake.wait(released).unwrap();
+        }
+        Ok(0)
+    }
 }
 
 #[test]
@@ -103,6 +116,25 @@ fn split_negotiation_and_paste_are_not_forwarded_as_plain_fragments() {
     assert_eq!(inputs(&mut terminal), ["\x1b[200~hello world\x1b[201~"]);
     assert!(terminal.kitty_protocol_active());
     terminal.stop().unwrap();
+}
+
+#[test]
+fn stop_restores_terminal_without_waiting_for_a_blocking_injected_reader() {
+    let blocked = Arc::new((Mutex::new(false), Condvar::new()));
+    let (mut terminal, bytes) = harness_reader(BlockingReader(Arc::clone(&blocked)));
+    terminal.start().unwrap();
+
+    let started = Instant::now();
+    terminal.stop().unwrap();
+    assert!(started.elapsed() < Duration::from_millis(100));
+    assert!(output(&bytes).ends_with("\x1b[?2004l\x1b[<u"));
+    terminal.start().unwrap();
+    assert_eq!(terminal.poll_event(Duration::ZERO).unwrap(), None);
+    terminal.stop().unwrap();
+
+    let (locked, wake) = &*blocked;
+    *locked.lock().unwrap() = true;
+    wake.notify_all();
 }
 
 #[test]

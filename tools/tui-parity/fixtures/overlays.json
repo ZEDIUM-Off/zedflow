@@ -1,1 +1,1 @@
-{"version":2,"dimensions":{"columns":28,"rows":6},"capabilities":{"colors":256,"unicode":true,"kittyKeyboard":true},"events":[{"type":"lifecycle","name":"session","data":{"action":"session-selector"}},{"type":"input","data":"\u001b[B"},{"type":"input","data":"\r"}]}
+{"version":2,"dimensions":{"columns":28,"rows":6},"capabilities":{"colors":256,"unicode":true,"kittyKeyboard":true},"events":[{"type":"input","data":"/session\r"},{"type":"input","data":"\u001b[B"},{"type":"input","data":"\r"}]}

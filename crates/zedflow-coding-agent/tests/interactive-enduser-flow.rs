@@ -100,6 +100,35 @@ fn live_tree_uses_custom_editor_submission_and_rendering() {
 }
 
 #[test]
+fn settings_selector_enter_and_escape_restore_editor_dispatch() {
+    let mut mode = InteractiveMode::with_terminal(ProcessTerminal::new());
+    mode.run().unwrap();
+
+    mode.tui_mut().dispatch_input("/settings");
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.tui_mut().overlay_count(), 1);
+
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.tui_mut().overlay_count(), 0);
+    assert_eq!(mode.last_status(), Some("Theme saved to settings"));
+
+    mode.tui_mut().dispatch_input("/settings");
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.tui_mut().overlay_count(), 1);
+    mode.tui_mut().dispatch_input("\x1b");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.tui_mut().overlay_count(), 0);
+    mode.tui_mut().dispatch_input("editor restored");
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.get_user_input().as_deref(), Some("editor restored"));
+    mode.stop().unwrap();
+}
+
+#[test]
 fn custom_editor_keeps_ctrl_d_on_the_interactive_exit_queue() {
     let mut mode = InteractiveMode::with_terminal(ProcessTerminal::new());
     mode.run().unwrap();

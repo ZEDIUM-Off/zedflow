@@ -344,13 +344,15 @@ fn render(fixture: Fixture) -> OracleOutput {
             Event::Input { data } => {
                 inputs.push(data.clone());
                 if overlay {
-                    if data == "\x1b[B" {
+                    if data == "\x1b[B" || data == "\x1b[A" {
                         selected = (selected + 1) % 2;
                     }
-                    if data == "\x1b[A" {
-                        selected = (selected + 1) % 2;
+                    if data == "\x1b" || data == "\r" {
+                        overlay = false;
                     }
-                } else if !(data.starts_with('/') && data.ends_with('\r')) {
+                } else if data == "/model\r" || data == "/session\r" {
+                    overlay = true;
+                } else if data != "/compact\r" {
                     editor.handle_input(&data);
                 }
             }
@@ -492,7 +494,7 @@ fn streaming_commands_and_editor_input_remain_component_observable() {
     ))
     .unwrap();
     let output = render(commands);
-    assert_eq!(output.inputs, ["/model\r", "/compact\r"]);
+    assert_eq!(output.inputs, ["/model\r", "\x1b[B", "\x1b", "/compact\r"]);
     assert!(
         output
             .frames

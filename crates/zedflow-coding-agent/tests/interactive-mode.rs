@@ -1,11 +1,22 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use zedflow_agent::harness::{
     env::nodejs::NodeExecutionEnv,
     session::{InMemorySessionStorage, Session},
     types::{AgentHarnessOptions, Session as SessionTrait},
 };
-use zedflow_ai::{Model, Models};
+use zedflow_ai::{
+    Model, Models,
+    providers::faux::{
+        FauxResponseStep, FauxTokenSize, RegisterFauxProviderOptions, faux_assistant_message,
+        faux_provider,
+    },
+};
 use zedflow_coding_agent::{
     agent_session::AgentSession,
     agent_session_runtime::AgentSessionRuntime,
@@ -58,6 +69,17 @@ fn submitted_input_is_driven_through_the_session_runtime() {
     mode.queue_user_input("  prompt  ");
 
     assert!(mode.process_next_user_input().unwrap());
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while tokio::runtime::Runtime::new()
+        .unwrap()
+        .block_on(session_store.get_entries())
+        .is_empty()
+        && Instant::now() < deadline
+    {
+        mode.pump_events(Duration::ZERO).unwrap();
+        let _ = mode.process_next_user_input().unwrap();
+        thread::yield_now();
+    }
     assert_eq!(mode.pending_user_input_count(), 0);
     assert!(
         !tokio::runtime::Runtime::new()
@@ -66,6 +88,67 @@ fn submitted_input_is_driven_through_the_session_runtime() {
             .is_empty()
     );
     assert!(!mode.process_next_user_input().unwrap());
+}
+
+#[test]
+fn owner_pumps_streaming_fake_provider_updates_before_prompt_completion() {
+    let cwd = std::env::current_dir()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let faux = faux_provider(RegisterFauxProviderOptions {
+        tokens_per_second: Some(1.0),
+        token_size: FauxTokenSize {
+            min: Some(1),
+            max: Some(1),
+        },
+        ..RegisterFauxProviderOptions::default()
+    });
+    faux.set_responses(vec![FauxResponseStep::Message(faux_assistant_message("x"))]);
+    let model = faux.get_model(None).unwrap();
+    let mut models = Models::default();
+    models.set_provider(faux.provider);
+    let session = AgentSession::new(AgentHarnessOptions {
+        env: Arc::new(NodeExecutionEnv::with_cwd(&cwd)),
+        session: Arc::new(Session::new(InMemorySessionStorage::default())) as Arc<dyn SessionTrait>,
+        models,
+        tools: None,
+        resources: None,
+        system_prompt: None,
+        stream_options: None,
+        model,
+        thinking_level: None,
+        active_tool_names: None,
+        steering_mode: None,
+        follow_up_mode: None,
+    })
+    .unwrap();
+    let mut mode = InteractiveMode::with_runtime(
+        zedflow_tui::ProcessTerminal::new(),
+        AgentSessionRuntime::new(session, cwd),
+    );
+    mode.queue_user_input("prompt");
+    assert!(mode.process_next_user_input().unwrap());
+
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !mode
+        .rendered_events()
+        .iter()
+        .any(|event| event == "assistant: complete")
+        && Instant::now() < deadline
+    {
+        mode.pump_events(Duration::from_millis(10)).unwrap();
+    }
+    let events = mode.rendered_events();
+    let update = events
+        .iter()
+        .position(|event| event == "assistant: streaming")
+        .expect("owner rendered a streaming update");
+    let completion = events
+        .iter()
+        .position(|event| event == "assistant: complete")
+        .expect("provider completed");
+    assert!(update < completion, "events: {events:?}");
 }
 
 #[test]
@@ -131,6 +214,12 @@ fn compact_command_is_dispatched_without_becoming_a_prompt() {
     mode.queue_user_input("/compact preserve decisions");
 
     assert!(mode.process_next_user_input().unwrap());
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while mode.last_status().is_none() && Instant::now() < deadline {
+        mode.pump_events(Duration::ZERO).unwrap();
+        let _ = mode.process_next_user_input().unwrap();
+        thread::yield_now();
+    }
     assert_eq!(mode.pending_user_input_count(), 0);
     assert_eq!(mode.last_status(), Some("Nothing to compact"));
 }
