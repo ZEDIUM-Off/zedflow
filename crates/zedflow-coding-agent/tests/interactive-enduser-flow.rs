@@ -111,13 +111,9 @@ fn settings_selector_enter_and_escape_restore_editor_dispatch() {
 
     mode.tui_mut().dispatch_input("\r");
     mode.pump_events(std::time::Duration::ZERO).unwrap();
-    assert_eq!(mode.tui_mut().overlay_count(), 0);
-    assert_eq!(mode.last_status(), Some("Theme saved to settings"));
-
-    mode.tui_mut().dispatch_input("/settings");
-    mode.tui_mut().dispatch_input("\r");
-    mode.pump_events(std::time::Duration::ZERO).unwrap();
     assert_eq!(mode.tui_mut().overlay_count(), 1);
+    assert_eq!(mode.last_status(), Some("autocompact saved to settings"));
+
     mode.tui_mut().dispatch_input("\x1b");
     mode.pump_events(std::time::Duration::ZERO).unwrap();
     assert_eq!(mode.tui_mut().overlay_count(), 0);

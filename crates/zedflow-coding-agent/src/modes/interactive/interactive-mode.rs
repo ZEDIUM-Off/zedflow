@@ -529,12 +529,27 @@ impl InteractiveMode {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
+        let terminal_result = self.tui.stop();
+        if let Some(runtime) = &self.runtime
+            && self.prompt_task.is_some()
+        {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(io::Error::other)?
+                .block_on(runtime.session().abort())
+                .map_err(|error| io::Error::other(error.to_string()))?;
+        }
+        if let Some(task) = self.prompt_task.take() {
+            task.join()
+                .map_err(|_| io::Error::other("prompt task panicked"))?
+                .map_err(io::Error::other)?;
+        }
         if let Some(runner) = &mut self.extension_runner {
             runner.shutdown("interactive mode stopped");
         }
-        let result = self.tui.stop();
         self.state = InteractiveState::Stopped;
-        result
+        terminal_result
     }
 
     /// Restore the terminal while an external editor owns it, then resume the TUI.

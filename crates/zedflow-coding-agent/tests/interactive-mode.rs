@@ -149,6 +149,7 @@ fn owner_pumps_streaming_fake_provider_updates_before_prompt_completion() {
         .position(|event| event == "assistant: complete")
         .expect("provider completed");
     assert!(update < completion, "events: {events:?}");
+    mode.stop().unwrap();
 }
 
 #[test]
