@@ -125,6 +125,23 @@ fn settings_selector_enter_and_escape_restore_editor_dispatch() {
 }
 
 #[test]
+fn live_custom_editor_recalls_submitted_history() {
+    let mut mode = InteractiveMode::with_terminal(ProcessTerminal::new());
+    mode.run().unwrap();
+    mode.tui_mut().dispatch_input("remember me");
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.get_user_input().as_deref(), Some("remember me"));
+
+    mode.tui_mut().dispatch_input("\x1b[A");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    mode.tui_mut().dispatch_input("\r");
+    mode.pump_events(std::time::Duration::ZERO).unwrap();
+    assert_eq!(mode.get_user_input().as_deref(), Some("remember me"));
+    mode.stop().unwrap();
+}
+
+#[test]
 fn custom_editor_keeps_ctrl_d_on_the_interactive_exit_queue() {
     let mut mode = InteractiveMode::with_terminal(ProcessTerminal::new());
     mode.run().unwrap();

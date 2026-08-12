@@ -247,6 +247,7 @@ pub struct InteractiveMode {
     compaction_queue: VecDeque<String>,
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
     editor_text: Arc<Mutex<Option<String>>>,
+    editor_history: Arc<Mutex<VecDeque<String>>>,
     builtin_commands: Box<dyn BuiltinCommandService>,
     selector_actions: Arc<Mutex<VecDeque<SelectorAction>>>,
     prompt_task: Option<JoinHandle<Result<(), String>>>,
@@ -297,6 +298,7 @@ impl InteractiveMode {
             compaction_queue: VecDeque::new(),
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
             editor_text: Arc::new(Mutex::new(None)),
+            editor_history: Arc::new(Mutex::new(VecDeque::new())),
             builtin_commands: Box::<LiveBuiltinCommandService>::default(),
             selector_actions: Arc::new(Mutex::new(VecDeque::new())),
             prompt_task: None,
@@ -498,6 +500,7 @@ impl InteractiveMode {
                 Arc::clone(&self.submitted_terminal_inputs),
                 Arc::clone(&self.footer),
                 Arc::clone(&self.editor_text),
+                Arc::clone(&self.editor_history),
             ));
         }
     }
@@ -530,7 +533,7 @@ impl InteractiveMode {
 
     pub fn stop(&mut self) -> io::Result<()> {
         let terminal_result = self.tui.stop();
-        if let Some(runtime) = &self.runtime
+        let abort_result = if let Some(runtime) = &self.runtime
             && self.prompt_task.is_some()
         {
             tokio::runtime::Builder::new_current_thread()
@@ -538,13 +541,18 @@ impl InteractiveMode {
                 .build()
                 .map_err(io::Error::other)?
                 .block_on(runtime.session().abort())
-                .map_err(|error| io::Error::other(error.to_string()))?;
-        }
-        if let Some(task) = self.prompt_task.take() {
+                .map(|_| ())
+                .map_err(|error| io::Error::other(error.to_string()))
+        } else {
+            Ok(())
+        };
+        let join_result = self.prompt_task.take().map_or(Ok(()), |task| {
             task.join()
                 .map_err(|_| io::Error::other("prompt task panicked"))?
-                .map_err(io::Error::other)?;
-        }
+                .map_err(io::Error::other)
+        });
+        abort_result?;
+        join_result?;
         if let Some(runner) = &mut self.extension_runner {
             runner.shutdown("interactive mode stopped");
         }
@@ -639,6 +647,7 @@ impl InteractiveMode {
             }
             return;
         }
+        self.editor_history.lock().unwrap().push_back(text.clone());
         self.pending_user_inputs.push_back(text);
     }
 
@@ -1749,6 +1758,7 @@ struct EditorFooterView {
     editor: Arc<Mutex<CustomEditor>>,
     footer: Arc<Mutex<FooterSnapshot>>,
     editor_text: Arc<Mutex<Option<String>>>,
+    editor_history: Arc<Mutex<VecDeque<String>>>,
     submitted: Arc<Mutex<VecDeque<String>>>,
     clear_requested: Arc<AtomicBool>,
     last_sigint: Option<Instant>,
@@ -1758,6 +1768,7 @@ impl EditorFooterView {
         submitted: Arc<Mutex<VecDeque<String>>>,
         footer: Arc<Mutex<FooterSnapshot>>,
         editor_text: Arc<Mutex<Option<String>>>,
+        editor_history: Arc<Mutex<VecDeque<String>>>,
     ) -> Self {
         let mut editor = CustomEditor::new(KeybindingsManager::create(get_agent_dir()));
         let on_submit = Arc::clone(&submitted);
@@ -1778,6 +1789,7 @@ impl EditorFooterView {
             editor: Arc::new(Mutex::new(editor)),
             footer,
             editor_text,
+            editor_history,
             submitted,
             clear_requested,
             last_sigint: None,
@@ -1795,6 +1807,13 @@ impl Component for EditorFooterView {
         lines
     }
     fn handle_input(&mut self, data: &str) {
+        for text in std::mem::take(&mut *self.editor_history.lock().unwrap()) {
+            self.editor
+                .lock()
+                .unwrap()
+                .editor_mut()
+                .add_to_history(&text);
+        }
         if let Some(text) = self.editor_text.lock().unwrap().take() {
             self.editor.lock().unwrap().editor_mut().set_text(&text);
         }
@@ -1930,6 +1949,7 @@ mod tests {
             Arc::new(Mutex::new(VecDeque::new())),
             Arc::new(Mutex::new(FooterSnapshot::default())),
             Arc::clone(&text),
+            Arc::new(Mutex::new(VecDeque::new())),
         );
         let _ = footer.render(80);
         assert_eq!(
