@@ -40,6 +40,12 @@ fn compact_is_dispatched_without_becoming_a_prompt() {
 
     mode.queue_user_input("/compact preserve decisions");
     assert!(mode.process_next_user_input().unwrap());
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    while mode.last_status().is_none() && std::time::Instant::now() < deadline {
+        mode.pump_events(std::time::Duration::from_millis(10))
+            .unwrap();
+        mode.process_next_user_input().unwrap();
+    }
     assert_eq!(mode.last_status(), Some("Nothing to compact"));
     assert!(
         tokio::runtime::Runtime::new()
