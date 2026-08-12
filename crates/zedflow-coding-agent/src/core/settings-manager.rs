@@ -18,38 +18,51 @@ use zedflow_ai::Transport;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CompactionSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reserve_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub keep_recent_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct RetrySettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_retries: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub base_delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TerminalSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub show_images: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub image_width_cells: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub clear_on_shrink: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub show_terminal_progress: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ImageSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_resize: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub block_images: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct WarningSettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub anthropic_extra_usage: Option<bool>,
 }
 
@@ -95,38 +108,71 @@ impl<'de> Deserialize<'de> for DefaultProjectTrust {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_changelog_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_thinking_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub transport: Option<Transport>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub steering_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub follow_up_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub session_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub compaction: Option<CompactionSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub retry: Option<RetrySettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub hide_thinking_block: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub quiet_startup: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_project_trust: Option<DefaultProjectTrust>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub http_idle_timeout_ms: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub collapse_changelog: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_install_telemetry: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_skill_commands: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub packages: Option<Vec<PackageSource>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub extensions: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub skills: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prompts: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub themes: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal: Option<TerminalSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub images: Option<ImageSettings>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled_models: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub double_escape_action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tree_filter_mode: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_padding_x: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub output_pad: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub autocomplete_max_visible: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub show_hardware_cursor: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub warnings: Option<WarningSettings>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -963,12 +1009,18 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         fs::write(&global, r#"{"theme":"old"}"#).unwrap();
         let manager = SettingsManager::from_paths(&global, root.join("project.json"));
-        fs::write(&global, r#"{"theme":"new","custom":{"enabled":true}}"#).unwrap();
+        fs::write(
+            &global,
+            r#"{"theme":"new","custom":{"enabled":true,"value":null}}"#,
+        )
+        .unwrap();
         manager.set_retry_enabled(false).unwrap();
         let saved: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&global).unwrap()).unwrap();
         assert_eq!(saved["theme"], "new");
         assert_eq!(saved["custom"]["enabled"], true);
+        assert!(saved["custom"]["value"].is_null());
+        assert!(saved.get("httpIdleTimeoutMs").is_none());
         fs::remove_dir_all(root).unwrap();
     }
 
