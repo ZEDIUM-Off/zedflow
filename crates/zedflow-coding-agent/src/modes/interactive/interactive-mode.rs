@@ -992,8 +992,11 @@ impl InteractiveMode {
             self.show_status("Nothing to clone yet");
             return Ok(());
         };
-        self.replace_runtime(&["--fork".into(), session_id])?;
-        self.show_status(format!("Cloned to new session at {leaf_id}"));
+        self.set_runtime(
+            crate::rpc_entry::create_runtime_for_fork(&session_id, leaf_id)
+                .map_err(|error| error.to_string())?,
+        );
+        self.show_status("Cloned to new session");
         Ok(())
     }
 

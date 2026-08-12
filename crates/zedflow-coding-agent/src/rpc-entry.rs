@@ -30,7 +30,8 @@ use zedflow_agent::harness::{
     types::{
         AgentHarnessOptions, AgentHarnessResources, FileSystem, JsonlSessionCreateOptions,
         JsonlSessionListOptions, JsonlSessionMetadata, PromptTemplate as HarnessPromptTemplate,
-        Session as AgentSessionTrait, SessionForkOptions, SessionMetadata, Skill as HarnessSkill,
+        Session as AgentSessionTrait, SessionForkOptions, SessionForkPosition, SessionMetadata,
+        Skill as HarnessSkill,
     },
 };
 use zedflow_ai::{
@@ -91,9 +92,27 @@ fn run_with_args<R: BufRead, W: Write + Send + 'static>(
 
 /// Build the session runtime shared by RPC and single-shot print modes.
 pub fn create_runtime_for_args(args: &[String]) -> io::Result<AgentSessionRuntime> {
+    create_runtime(parse_args(args.iter().cloned()), None)
+}
+
+/// Fork a persistent session at its current leaf, matching Pi's `/clone` action.
+pub fn create_runtime_for_fork(source: &str, entry_id: String) -> io::Result<AgentSessionRuntime> {
+    create_runtime(
+        parse_args(["--fork".to_owned(), source.to_owned()]),
+        Some(SessionForkOptions {
+            entry_id: Some(entry_id),
+            position: Some(SessionForkPosition::At),
+            id: None,
+        }),
+    )
+}
+
+fn create_runtime(
+    parsed: Args,
+    fork_options: Option<SessionForkOptions>,
+) -> io::Result<AgentSessionRuntime> {
     let cwd = std::env::current_dir()?;
     let cwd_string = cwd.to_string_lossy().into_owned();
-    let parsed = parse_args(args.iter().cloned());
     let settings = SettingsManager::create(&cwd, config::get_agent_dir());
     let mut models = builtin_models();
     let model = configured_model(&parsed, &settings, &mut models);
@@ -102,7 +121,14 @@ pub fn create_runtime_for_args(args: &[String]) -> io::Result<AgentSessionRuntim
         .enable_all()
         .build()
         .map_err(|error| io::Error::other(error.to_string()))?
-        .block_on(create_session(&parsed, &cwd, &cwd_string, &settings, &env))
+        .block_on(create_session(
+            &parsed,
+            &cwd,
+            &cwd_string,
+            &settings,
+            &env,
+            fork_options,
+        ))
         .map_err(io::Error::other)?;
     let tools = configured_tools(&parsed, &cwd);
     let active_tool_names = tools.iter().map(|tool| tool.tool.name.clone()).collect();
@@ -283,6 +309,7 @@ async fn create_session(
     cwd_string: &str,
     settings: &SettingsManager,
     env: &Arc<NodeExecutionEnv>,
+    fork_options: Option<SessionForkOptions>,
 ) -> Result<Arc<dyn AgentSessionTrait>, String> {
     if args.no_session {
         let storage = if let Some(id) = args.session_id.clone() {
@@ -321,7 +348,7 @@ async fn create_session(
                     cwd: cwd_string.to_owned(),
                     parent_session_path: None,
                 },
-                SessionForkOptions::default(),
+                fork_options.unwrap_or_default(),
             )
             .await
             .map(|session| Arc::new(session) as Arc<dyn AgentSessionTrait>)
@@ -644,7 +671,14 @@ mod tests {
             .enable_all()
             .build()
             .expect("runtime")
-            .block_on(create_session(&args, &cwd, &cwd_string, &settings, &env))
+            .block_on(create_session(
+                &args,
+                &cwd,
+                &cwd_string,
+                &settings,
+                &env,
+                None,
+            ))
             .expect("persistent session");
 
         assert!(
@@ -673,7 +707,14 @@ mod tests {
             .enable_all()
             .build()
             .expect("runtime")
-            .block_on(create_session(&args, &cwd, &cwd_string, &settings, &env));
+            .block_on(create_session(
+                &args,
+                &cwd,
+                &cwd_string,
+                &settings,
+                &env,
+                None,
+            ));
         let error = match result {
             Ok(_) => panic!("missing path must fail"),
             Err(error) => error,
