@@ -1,0 +1,9 @@
+{
+  "columns": 100,
+  "rows": 30,
+  "events": [
+    {"type": "input", "data": "/login\r", "wait": 3},
+    {"type": "input", "data": "\r", "wait": 1},
+    {"type": "checkpoint", "settle": 1}
+  ]
+}
