@@ -86,6 +86,30 @@ impl OAuthSelector {
     }
 
     #[must_use]
+    pub fn visible_providers(
+        &self,
+        max_visible: usize,
+    ) -> impl Iterator<Item = &AuthSelectorProvider> {
+        let start = self
+            .selected
+            .saturating_sub(max_visible / 2)
+            .min(self.filtered.len().saturating_sub(max_visible));
+        self.filtered[start..(start + max_visible).min(self.filtered.len())]
+            .iter()
+            .map(|&index| &self.providers[index])
+    }
+
+    #[must_use]
+    pub fn selected_index(&self) -> usize {
+        self.selected
+    }
+
+    #[must_use]
+    pub fn needs_scroll_info(&self, max_visible: usize) -> bool {
+        self.filtered.len() > max_visible
+    }
+
+    #[must_use]
     pub fn empty_message(&self) -> &'static str {
         if !self.providers.is_empty() {
             return "No matching providers";

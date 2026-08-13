@@ -49,6 +49,7 @@ use crate::{
         settings_selector::{SettingChoice, SettingsAction, SettingsSelector},
         trust_selector::TrustSelectorState,
     },
+    modes_interactive_theme_theme::{ColorMode, Theme},
     session_manager,
     session_selector::SessionSelectorState,
     settings_manager::SettingsManager,
@@ -248,6 +249,7 @@ pub struct InteractiveMode {
     submitted_terminal_inputs: Arc<Mutex<VecDeque<String>>>,
     editor_text: Arc<Mutex<Option<String>>>,
     editor_history: Arc<Mutex<VecDeque<String>>>,
+    theme: Arc<Mutex<Theme>>,
     builtin_commands: Box<dyn BuiltinCommandService>,
     selector_actions: Arc<Mutex<VecDeque<SelectorAction>>>,
     prompt_task: Option<JoinHandle<Result<(), String>>>,
@@ -299,6 +301,9 @@ impl InteractiveMode {
             submitted_terminal_inputs: Arc::new(Mutex::new(VecDeque::new())),
             editor_text: Arc::new(Mutex::new(None)),
             editor_history: Arc::new(Mutex::new(VecDeque::new())),
+            theme: Arc::new(Mutex::new(
+                Theme::builtin("dark", ColorMode::Color256).expect("embedded dark theme is valid"),
+            )),
             builtin_commands: Box::<LiveBuiltinCommandService>::default(),
             selector_actions: Arc::new(Mutex::new(VecDeque::new())),
             prompt_task: None,
@@ -490,22 +495,26 @@ impl InteractiveMode {
         if self.tui.root.is_empty() {
             // Pi order: transcript, pending/status row, editor, footer. Overlays are
             // managed by Tui's native overlay stack above this root tree.
-            self.tui
-                .root
-                .add_child(TranscriptView::new(Arc::clone(&self.transcript)));
-            self.tui
-                .root
-                .add_child(ActivityView::new(Arc::clone(&self.transcript)));
+            self.tui.root.add_child(ThemedTranscriptView(
+                Arc::clone(&self.transcript),
+                Arc::clone(&self.theme),
+            ));
+            self.tui.root.add_child(ActivityView::new(
+                Arc::clone(&self.transcript),
+                Arc::clone(&self.theme),
+            ));
             self.tui.root.add_child(EditorFooterView::new(
                 Arc::clone(&self.submitted_terminal_inputs),
                 Arc::clone(&self.footer),
                 Arc::clone(&self.editor_text),
                 Arc::clone(&self.editor_history),
+                Arc::clone(&self.theme),
             ));
         }
     }
 
     pub fn run(&mut self) -> io::Result<()> {
+        self.set_theme(&SettingsManager::create(current_dir(), get_agent_dir()));
         self.mount_root();
         self.tui.start()?;
         self.state = InteractiveState::Running;
@@ -791,8 +800,10 @@ impl InteractiveMode {
         match action {
             Action::Settings => {
                 let settings = SettingsManager::create(current_dir(), get_agent_dir());
-                self.mount_selector(LiveSelector::Settings(SettingsSelector::new(
+                self.set_theme(&settings);
+                self.mount_selector(LiveSelector::Settings(SettingsSelector::with_theme(
                     settings_choices(&settings),
+                    SettingsSelector::theme(Arc::clone(&self.theme)),
                 )))
             }
             Action::Model(search) => {
@@ -859,10 +870,8 @@ impl InteractiveMode {
                         .map_err(|error| error.to_string())?,
                 ));
             }
-            Action::Login => self.mount_selector(LiveSelector::Auth {
-                selector: OAuthSelector::with_mode(AuthSelectorMode::Login, login_providers()),
-                auth: AuthStorage::create(get_auth_path()),
-            }),
+            // Pi presents authentication method before provider selection.
+            Action::Login => self.mount_selector(LiveSelector::LoginMethod { api_key: false }),
             Action::Logout => {
                 let mut auth = AuthStorage::create(get_auth_path());
                 let providers = auth
@@ -942,6 +951,15 @@ impl InteractiveMode {
         ))
     }
 
+    fn set_theme(&mut self, settings: &SettingsManager) {
+        let name = settings
+            .get_theme_setting()
+            .unwrap_or_else(|| "dark".into());
+        if let Ok(theme) = Theme::builtin(&name, ColorMode::Color256) {
+            *self.theme.lock().unwrap() = theme;
+        }
+    }
+
     fn mount_selector(&mut self, selector: LiveSelector) {
         self.tui.show_overlay(SelectorOverlay {
             selector,
@@ -988,9 +1006,26 @@ impl InteractiveMode {
                     dismiss = false;
                     let settings = SettingsManager::create(current_dir(), get_agent_dir());
                     persist_setting(&settings, &id, &value)?;
+                    if id == "theme" {
+                        self.set_theme(&settings);
+                    }
                     self.show_status(format!("{id} saved to settings"));
                 }
                 SelectorAction::Settings(SettingsAction::Cancel) => {}
+                SelectorAction::LoginMethod(auth_type) => {
+                    self.mount_selector(LiveSelector::Auth {
+                        selector: OAuthSelector::with_mode(
+                            AuthSelectorMode::Login,
+                            login_providers(auth_type),
+                        ),
+                        auth: AuthStorage::create(get_auth_path()),
+                    });
+                    dismiss = false;
+                }
+                SelectorAction::LoginProviderCancelled => {
+                    self.mount_selector(LiveSelector::LoginMethod { api_key: false });
+                    dismiss = false;
+                }
                 SelectorAction::NavigateTree(entry_id) => {
                     let runtime = self
                         .runtime
@@ -1260,22 +1295,26 @@ fn persist_setting(settings: &SettingsManager, id: &str, value: &str) -> io::Res
     }
 }
 
-fn login_providers() -> Vec<AuthSelectorProvider> {
+fn login_providers(auth_type: AuthSelectorProviderType) -> Vec<AuthSelectorProvider> {
     let mut providers = zedflow_ai::providers::all::builtin_models()
-        .get_models(None)
+        .get_providers()
         .into_iter()
-        .map(|model| model.provider.to_string())
-        .collect::<Vec<_>>();
-    providers.sort();
-    providers.dedup();
-    providers
-        .into_iter()
-        .map(|id| AuthSelectorProvider {
-            name: id.clone(),
-            id,
-            auth_type: AuthSelectorProviderType::ApiKey,
+        .filter_map(|provider| {
+            let is_oauth = provider.auth.oauth.is_some();
+            let wanted = matches!(auth_type, AuthSelectorProviderType::OAuth) == is_oauth;
+            wanted.then_some(AuthSelectorProvider {
+                id: provider.id,
+                name: provider.name,
+                auth_type: if is_oauth {
+                    AuthSelectorProviderType::OAuth
+                } else {
+                    AuthSelectorProviderType::ApiKey
+                },
+            })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    providers.sort_by(|left, right| left.name.cmp(&right.name));
+    providers
 }
 
 fn message_json_text(message: &Value) -> String {
@@ -1305,6 +1344,8 @@ enum SelectorAction {
     Model(ModelItem),
     Scoped(Option<Vec<String>>),
     Settings(SettingsAction),
+    LoginMethod(AuthSelectorProviderType),
+    LoginProviderCancelled,
     NavigateTree(String),
     Fork(String),
 }
@@ -1318,6 +1359,9 @@ enum LiveSelector {
     Auth {
         selector: OAuthSelector,
         auth: AuthStorage,
+    },
+    LoginMethod {
+        api_key: bool,
     },
     ConfirmImport(PathBuf),
     Message(UserMessageSelectorState),
@@ -1343,6 +1387,7 @@ impl SelectorOverlay {
                     "Logout"
                 }
             }
+            LiveSelector::LoginMethod { .. } => "Select authentication method:",
             LiveSelector::ConfirmImport(_) => "Import session",
             LiveSelector::Message(_) => "Fork from message",
             LiveSelector::Tree(_) => "Session tree",
@@ -1376,6 +1421,7 @@ impl SelectorOverlay {
                 selector.move_selection(if down { 1 } else { -1 })
             }
             LiveSelector::Settings(value) => value.move_selection(if down { 1 } else { -1 }),
+            LiveSelector::LoginMethod { api_key } => *api_key = down,
             LiveSelector::Message(value) => {
                 if down {
                     value.move_down()
@@ -1413,6 +1459,13 @@ impl SelectorOverlay {
                     updates: selection.updates,
                     trusted: selection.trusted,
                 })
+            }
+            LiveSelector::LoginMethod { api_key } => {
+                Some(SelectorAction::LoginMethod(if *api_key {
+                    AuthSelectorProviderType::ApiKey
+                } else {
+                    AuthSelectorProviderType::OAuth
+                }))
             }
             LiveSelector::Auth { selector, auth } if selector.mode == AuthSelectorMode::Logout => {
                 selector
@@ -1486,10 +1539,42 @@ impl Component for SelectorOverlay {
                     }),
             ),
             LiveSelector::Auth { selector, .. } => {
-                lines.push(selector.selected_provider().map_or_else(
-                    || selector.empty_message().into(),
-                    |provider| format!("→ {}", provider.name),
-                ))
+                lines.push("".into());
+                lines.push(if selector.mode == AuthSelectorMode::Login {
+                    "Select provider to configure:".into()
+                } else {
+                    "Select provider to logout:".into()
+                });
+                lines.push("".into());
+                let selected = selector
+                    .selected_provider()
+                    .map(|provider| provider.id.as_str());
+                for provider in selector.visible_providers(8) {
+                    lines.push(format!(
+                        "{}{}{}",
+                        if selected == Some(provider.id.as_str()) {
+                            "→ "
+                        } else {
+                            "  "
+                        },
+                        provider.name,
+                        " • unconfigured"
+                    ));
+                }
+                if selector.needs_scroll_info(8) {
+                    lines.push(format!(
+                        "  ({}/{})",
+                        selector.selected_index() + 1,
+                        selector.filtered_count()
+                    ));
+                }
+            }
+            LiveSelector::LoginMethod { api_key } => {
+                lines.extend([
+                    "".into(),
+                    format!("{}Use a subscription", if *api_key { "  " } else { "→ " }),
+                    format!("{}Use an API key", if *api_key { "→ " } else { "  " }),
+                ]);
             }
             LiveSelector::Model(selector) => lines.push(selector.selected_model().map_or_else(
                 || "No models available".into(),
@@ -1525,6 +1610,27 @@ impl Component for SelectorOverlay {
             .collect()
     }
     fn handle_input(&mut self, data: &str) {
+        if let LiveSelector::LoginMethod { api_key } = &mut self.selector {
+            match data {
+                "\x1b" => self
+                    .actions
+                    .lock()
+                    .unwrap()
+                    .push_back(SelectorAction::Cancelled),
+                "\x1b[A" | "\x1b[B" => *api_key = !*api_key,
+                "\r" | "\n" => self
+                    .actions
+                    .lock()
+                    .unwrap()
+                    .push_back(SelectorAction::LoginMethod(if *api_key {
+                        AuthSelectorProviderType::ApiKey
+                    } else {
+                        AuthSelectorProviderType::OAuth
+                    })),
+                _ => {}
+            }
+            return;
+        }
         if let LiveSelector::Settings(selector) = &mut self.selector {
             selector.handle_input(data);
             self.actions.lock().unwrap().extend(
@@ -1536,11 +1642,28 @@ impl Component for SelectorOverlay {
             return;
         }
         match data {
-            "\x1b" => self
-                .actions
-                .lock()
-                .unwrap()
-                .push_back(SelectorAction::Cancelled),
+            "\x1b" => {
+                if matches!(
+                    self.selector,
+                    LiveSelector::Auth {
+                        selector: OAuthSelector {
+                            mode: AuthSelectorMode::Login,
+                            ..
+                        },
+                        ..
+                    }
+                ) {
+                    self.actions
+                        .lock()
+                        .unwrap()
+                        .push_back(SelectorAction::LoginProviderCancelled);
+                } else {
+                    self.actions
+                        .lock()
+                        .unwrap()
+                        .push_back(SelectorAction::Cancelled);
+                }
+            }
             "\x1b[A" => self.move_selection(false),
             "\x1b[B" => self.move_selection(true),
             "\r" | "\n" => self.select(),
@@ -1729,10 +1852,22 @@ impl Component for TranscriptView {
     }
 }
 
-struct ActivityView(Arc<Mutex<TranscriptState>>);
+struct ThemedTranscriptView(Arc<Mutex<TranscriptState>>, Arc<Mutex<Theme>>);
+impl Component for ThemedTranscriptView {
+    fn render(&self, width: usize) -> Vec<String> {
+        let theme = self.1.lock().unwrap();
+        TranscriptView::new(Arc::clone(&self.0))
+            .render(width)
+            .into_iter()
+            .map(|line| theme.fg("text", &line).unwrap_or(line))
+            .collect()
+    }
+}
+
+struct ActivityView(Arc<Mutex<TranscriptState>>, Arc<Mutex<Theme>>);
 impl ActivityView {
-    fn new(state: Arc<Mutex<TranscriptState>>) -> Self {
-        Self(state)
+    fn new(state: Arc<Mutex<TranscriptState>>, theme: Arc<Mutex<Theme>>) -> Self {
+        Self(state, theme)
     }
 }
 impl Component for ActivityView {
@@ -1750,7 +1885,11 @@ impl Component for ActivityView {
                 Text::new(format!("{} queued message(s)", state.queued), 1, 0).render(width),
             );
         }
+        let theme = self.1.lock().unwrap();
         lines
+            .into_iter()
+            .map(|line| theme.fg("muted", &line).unwrap_or(line))
+            .collect()
     }
 }
 
@@ -1760,6 +1899,7 @@ struct EditorFooterView {
     editor_text: Arc<Mutex<Option<String>>>,
     editor_history: Arc<Mutex<VecDeque<String>>>,
     submitted: Arc<Mutex<VecDeque<String>>>,
+    theme: Arc<Mutex<Theme>>,
     clear_requested: Arc<AtomicBool>,
     last_sigint: Option<Instant>,
 }
@@ -1769,6 +1909,7 @@ impl EditorFooterView {
         footer: Arc<Mutex<FooterSnapshot>>,
         editor_text: Arc<Mutex<Option<String>>>,
         editor_history: Arc<Mutex<VecDeque<String>>>,
+        theme: Arc<Mutex<Theme>>,
     ) -> Self {
         let mut editor = CustomEditor::new(KeybindingsManager::create(get_agent_dir()));
         let on_submit = Arc::clone(&submitted);
@@ -1791,6 +1932,7 @@ impl EditorFooterView {
             editor_text,
             editor_history,
             submitted,
+            theme,
             clear_requested,
             last_sigint: None,
         }
@@ -1802,8 +1944,20 @@ impl Component for EditorFooterView {
         if let Some(text) = self.editor_text.lock().unwrap().take() {
             editor.editor_mut().set_text(&text);
         }
-        let mut lines = editor.render(width);
-        lines.extend(self.footer.lock().unwrap().render(width));
+        let theme = self.theme.lock().unwrap();
+        let mut lines = editor
+            .render(width)
+            .into_iter()
+            .map(|line| theme.fg("text", &line).unwrap_or(line))
+            .collect::<Vec<_>>();
+        lines.extend(
+            self.footer
+                .lock()
+                .unwrap()
+                .render(width)
+                .into_iter()
+                .map(|line| theme.fg("dim", &line).unwrap_or(line)),
+        );
         lines
     }
     fn handle_input(&mut self, data: &str) {
@@ -1950,12 +2104,51 @@ mod tests {
             Arc::new(Mutex::new(FooterSnapshot::default())),
             Arc::clone(&text),
             Arc::new(Mutex::new(VecDeque::new())),
+            Arc::new(Mutex::new(
+                Theme::builtin("dark", ColorMode::Color256).unwrap(),
+            )),
         );
         let _ = footer.render(80);
         assert_eq!(
             footer.editor.lock().unwrap().editor().get_text(),
             "restore this"
         );
+    }
+
+    #[test]
+    fn login_provider_lists_are_sorted_and_split_by_auth_method() {
+        let oauth = login_providers(AuthSelectorProviderType::OAuth);
+        let api_keys = login_providers(AuthSelectorProviderType::ApiKey);
+        assert!(oauth.len() >= 3, "built-in OAuth providers must be listed");
+        assert!(oauth.windows(2).all(|pair| pair[0].name <= pair[1].name));
+        assert!(
+            oauth
+                .iter()
+                .all(|provider| provider.auth_type == AuthSelectorProviderType::OAuth)
+        );
+        assert!(
+            api_keys
+                .iter()
+                .all(|provider| provider.auth_type == AuthSelectorProviderType::ApiKey)
+        );
+    }
+
+    #[test]
+    fn settings_selector_uses_active_theme_ansi_styles() {
+        let theme = Arc::new(Mutex::new(
+            Theme::builtin("dark", ColorMode::Color256).unwrap(),
+        ));
+        let selector = SettingsSelector::with_theme(
+            vec![SettingChoice {
+                id: "setting".into(),
+                label: "Setting".into(),
+                description: "Description".into(),
+                value: "true".into(),
+                values: vec!["true".into(), "false".into()],
+            }],
+            SettingsSelector::theme(theme),
+        );
+        assert!(selector.render(80).join("\n").contains("\x1b[38;5;"));
     }
 
     #[test]

@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 
 use zedflow_tui::{Component, SettingItem, SettingsList, SettingsListTheme};
 
+use crate::modes_interactive_theme_theme::Theme;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingChoice {
     pub id: String,
@@ -27,6 +29,11 @@ pub struct SettingsSelector {
 impl SettingsSelector {
     #[must_use]
     pub fn new(items: Vec<SettingChoice>) -> Self {
+        Self::with_theme(items, SettingsListTheme::default())
+    }
+
+    #[must_use]
+    pub fn with_theme(items: Vec<SettingChoice>, theme: SettingsListTheme) -> Self {
         let actions = Arc::new(Mutex::new(Vec::new()));
         let mut list = SettingsList::with_options(
             items
@@ -40,7 +47,7 @@ impl SettingsSelector {
                 })
                 .collect(),
             10,
-            SettingsListTheme::default(),
+            theme,
             true,
         );
         let changes = Arc::clone(&actions);
@@ -55,6 +62,55 @@ impl SettingsSelector {
             cancels.lock().unwrap().push(SettingsAction::Cancel);
         }));
         Self { list, actions }
+    }
+
+    #[must_use]
+    pub fn theme(theme: Arc<Mutex<Theme>>) -> SettingsListTheme {
+        let paint = |token: &'static str, text: &str| {
+            let theme = theme.lock().unwrap();
+            theme.fg(token, text).unwrap_or_else(|_| text.to_owned())
+        };
+        let label_theme = Arc::clone(&theme);
+        let value_theme = Arc::clone(&theme);
+        let description_theme = Arc::clone(&theme);
+        let hint_theme = Arc::clone(&theme);
+        let cursor = paint("accent", "→ ");
+        SettingsListTheme {
+            label: Arc::new(move |text, selected| {
+                if selected {
+                    label_theme
+                        .lock()
+                        .unwrap()
+                        .fg("accent", text)
+                        .unwrap_or_else(|_| text.to_owned())
+                } else {
+                    text.to_owned()
+                }
+            }),
+            value: Arc::new(move |text, selected| {
+                let token = if selected { "accent" } else { "muted" };
+                value_theme
+                    .lock()
+                    .unwrap()
+                    .fg(token, text)
+                    .unwrap_or_else(|_| text.to_owned())
+            }),
+            description: Arc::new(move |text| {
+                description_theme
+                    .lock()
+                    .unwrap()
+                    .fg("dim", text)
+                    .unwrap_or_else(|_| text.to_owned())
+            }),
+            cursor,
+            hint: Arc::new(move |text| {
+                hint_theme
+                    .lock()
+                    .unwrap()
+                    .fg("dim", text)
+                    .unwrap_or_else(|_| text.to_owned())
+            }),
+        }
     }
 
     pub fn filter(&mut self, query: &str) {
