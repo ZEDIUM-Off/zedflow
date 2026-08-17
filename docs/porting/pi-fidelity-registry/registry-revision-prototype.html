@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>PROTOTYPE — révision du registre Pi↔Zedflow</title>
+<style>
+  body { font: 16px/1.45 system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #18212b; }
+  h1 { margin-bottom: .2rem; } .throwaway { color: #9b1c1c; font-weight: 700; }
+  button { margin: .25rem; padding: .45rem .7rem; } pre { background: #f4f6f8; padding: 1rem; overflow: auto; }
+  .bad { color: #a00; } .good { color: #075; } table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  td, th { border: 1px solid #ccd; padding: .35rem; text-align: left; vertical-align: top; }
+</style>
+<body>
+<p class="throwaway">PROTOTYPE JETABLE — pas un registre canonique, pas du code produit.</p>
+<h1>Révision opérationnelle du registre Pi↔Zedflow</h1>
+<p>Question testée : le registre peut-il progresser d’une preuve rouge vers une preuve verte tout en restant traçable au Pi figé et à un SHA Rust unique ?</p>
+
+<h2>Révision proposée</h2>
+<ol>
+  <li>Conserver les quatre TSV, mais faire du générateur un <strong>inventaire de couverture</strong> et du validateur un contrôle des TSV éditables ; ne plus exiger l’égalité avec un instantané généré.</li>
+  <li>Dans <code>behaviors.tsv</code>, ne conserver que des <strong>comportements observables atomiques</strong>. Chaque source Pi normative doit être reliée par <code>pi_source</code>, ou couverte par une disposition <code>source</code> approuvée ; un fichier, une rubrique de documentation ou une déclaration de test n’est pas automatiquement un comportement.</li>
+  <li>Dans <code>links.tsv</code>, refuser une relation verte/présente sans cible immuable existante et révision ; refuser <code>planned://</code> dès que le résultat est vert. Une <code>run_evidence</code> verte doit citer le même SHA Rust que l’implémentation testée.</li>
+  <li>Dans <code>dependencies.tsv</code>, restreindre <code>unlock_state</code> à <code>pending|satisfied</code>, vérifier les cibles et calculer le DAG. Dans <code>dispositions.tsv</code>, vérifier réellement la portée et la relation remplacée, et laisser une disposition approuvée remplacer seulement cette exigence.</li>
+  <li>Calculer <code>inventoried → red → implemented → differential_green → reviewed → human_validated → complete</code> depuis les liens, dispositions et dépendances ; ne jamais accepter un statut saisi.</li>
+</ol>
+<p>La baseline Rust proposée est <code>e91b44be9c897aef63c84c34b4e14b387a8141a7</code> et le Pi reste <code>2b00dade7cec918aefb025c8b7a4fa304a30acdd</code>.</p>
+
+<table>
+  <thead><tr><th>TSV</th><th>Exemple minimal de donnée opérationnelle</th><th>Invariance validée</th></tr></thead>
+  <tbody>
+    <tr><td>behaviors</td><td><code>cli-print-json</code>, comportement atomique</td><td>au moins une source Pi exacte</td></tr>
+    <tr><td>links</td><td><code>differential_case → tests/…/print-json.json@e91b44be → red|green</code></td><td>vert ⇒ cible immuable, existante et non <code>planned://</code></td></tr>
+    <tr><td>dependencies</td><td><code>cli-print-json → requires_fixture → fixture/print-json → pending|satisfied</code></td><td>DAG et prérequis satisfaits avant <code>complete</code></td></tr>
+    <tr><td>dispositions</td><td><code>relation:cli-print-json:persistence_check</code></td><td>exception approuvée, ciblée et effective seulement ici</td></tr>
+  </tbody>
+</table>
+
+<h2>Essayer les cas limites</h2>
+<p>Chaque bouton rend l’état intégral du comportement et le verdict du validateur proposé.</p>
+<div id="buttons"></div>
+<p id="verdict"></p>
+<pre id="state"></pre>
+
+<h2>Décision humaine attendue</h2>
+<p>Ce prototype recommande d’approuver la révision opérationnelle ci-dessus, puis de créer un ticket AFK séparé pour régénérer l’inventaire de sources et saisir les comportements atomiques. Il ne modifie ni les TSV canoniques ni le validateur existant.</p>
+<script>
+const PI = "2b00dade7cec918aefb025c8b7a4fa304a30acdd";
+const RUST = "e91b44be9c897aef63c84c34b4e14b387a8141a7";
+const cases = {
+  "Rouge planifié (admis)": { differential: ["planned://differential-case/cli-print-json", "", "red"], implementation: ["crates/zedflow-coding-agent/src/cli.rs", RUST, "present"], run: ["planned://run/cli-print-json", "", "red"], fixture: "pending", disposition: null },
+  "Vert avec planned:// (rejeté)": { differential: ["planned://differential-case/cli-print-json", RUST, "green"], implementation: ["crates/zedflow-coding-agent/src/cli.rs", RUST, "present"], run: ["evidence/print-json.json", RUST, "green"], fixture: "satisfied", disposition: null },
+  "Preuve sur SHA différent (rejeté)": { differential: ["tests/differential/print-json.json", RUST, "green"], implementation: ["crates/zedflow-coding-agent/src/cli.rs", RUST, "present"], run: ["evidence/print-json.json", "deadbeef", "green"], fixture: "satisfied", disposition: null },
+  "Exception ciblée approuvée (admis, pas complet)": { differential: ["tests/differential/print-json.json", RUST, "green"], implementation: ["crates/zedflow-coding-agent/src/cli.rs", RUST, "present"], run: ["evidence/print-json.json", RUST, "green"], fixture: "satisfied", disposition: "approved: relation/cli-print-json/persistence_check" }
+};
+function validate(c) {
+  const errors = [];
+  for (const [name, [target, revision, result]] of Object.entries({differential_case: c.differential, rust_implementation: c.implementation, run_evidence: c.run})) {
+    if (result === "green" && (target.startsWith("planned://") || !revision)) errors.push(`${name}: une preuve verte doit avoir une cible immuable et une révision`);
+  }
+  if (c.run[2] === "green" && c.run[1] !== c.implementation[1]) errors.push("run_evidence: le SHA exécuté doit être celui de l’implémentation");
+  if (!['pending', 'satisfied'].includes(c.fixture)) errors.push("fixture: état inconnu");
+  const state = c.differential[2] === "green" && c.run[2] === "green" && c.fixture === "satisfied"
+    ? "differential_green (revue et parcours humain encore requis)"
+    : "red ou en cours";
+  return { errors, state: errors.length ? "invalid" : state };
+}
+function render(name) {
+  const c = cases[name], result = validate(c);
+  document.querySelector('#verdict').className = result.errors.length ? 'bad' : 'good';
+  document.querySelector('#verdict').textContent = result.errors.length ? `REJETÉ — ${result.errors.join('; ')}` : `ADMIS — état calculé : ${result.state}`;
+  document.querySelector('#state').textContent = JSON.stringify({ behavior: "cli-print-json", pi_source: ["references/pi/packages/coding-agent/src/cli.ts", PI, "source"], ...c, validator: result }, null, 2);
+}
+for (const name of Object.keys(cases)) { const b = document.createElement('button'); b.textContent = name; b.onclick = () => render(name); document.querySelector('#buttons').append(b); }
+console.assert(validate(cases['Vert avec planned:// (rejeté)']).errors.length === 1, 'un vert planned:// doit être refusé');
+console.assert(validate(cases['Preuve sur SHA différent (rejeté)']).errors.length === 1, 'un SHA de preuve différent doit être refusé');
+render('Rouge planifié (admis)');
+</script>
+</body>
+</html>
