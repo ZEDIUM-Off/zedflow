@@ -32,14 +32,20 @@ def atomic_json(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def evidence(scenario: str, pi_sha: str, zedflow_sha: str, artifacts: list[Path]) -> dict[str, Any]:
+def evidence(scenario: str, boundary: str, pi_sha: str, zedflow_sha: str, commands: list[dict[str, Any]], artifacts: list[Path]) -> dict[str, Any]:
     """Bind an actual run's declared artifacts; comparison stays outside this contract."""
+    if boundary not in {"batch", "rpc", "tui"}:
+        raise ValueError("evidence needs an observable boundary")
     if not all(len(sha) == 40 and set(sha) <= set("0123456789abcdef") for sha in (pi_sha, zedflow_sha)):
         raise ValueError("evidence requires full lowercase Pi and Zedflow SHAs")
+    if any(not isinstance(command.get("returncode"), int) for command in commands):
+        raise ValueError("evidence requires each exact command result")
     return {
         "scenario": scenario,
+        "boundary": boundary,
         "pi_sha": pi_sha,
         "zedflow_sha": zedflow_sha,
+        "commands": commands,
         "artifacts": {path.name: sha256(path) for path in artifacts},
     }
 
@@ -125,8 +131,8 @@ def self_check() -> None:
         pi_raw, zedflow_raw = directory / "pi.raw", directory / "zedflow.raw"
         pi_raw.write_bytes(b"pi terminal state")
         zedflow_raw.write_bytes(b"zedflow terminal state")
-        record = evidence("real-tui", "a" * 40, "b" * 40, [pi_raw, zedflow_raw])
-        assert record["artifacts"]["pi.raw"] == sha256(pi_raw)
+        record = evidence("tui-contract", "tui", "a" * 40, "b" * 40, [{"argv": ["pi"], "returncode": 0}], [pi_raw, zedflow_raw])
+        assert record["artifacts"]["pi.raw"] == sha256(pi_raw) and record["commands"][0]["returncode"] == 0
 
         registry = LeaseRegistry(directory)
         context = multiprocessing.get_context("fork")
