@@ -1,1 +1,15 @@
 id	package	surface	capability	parent	description
+ai-environment-api-key-resolution	ai	provider-auth	environment-key		Resolves the configured API key for a provider from its supported environment variable names.
+agent-prompt-template-argument-parsing	agent	prompt-template	argument-parsing		Parses quoted command-template arguments into invocation values.
+tui-ansi-text-wrapping	tui	terminal-text	ansi-wrapping		Wraps terminal text to a column width without splitting ANSI escape sequences.
+coding-agent-interactive-user-update-ignored	coding-agent	interactive-transcript	message-update		Only applies assistant message updates to an active assistant transcript entry.
+coding-agent-cli-pi-command	coding-agent	cli	command-name		Installs the coding-agent command as pi.
+coding-agent-cli-package-version	coding-agent	cli	version		Reports the package version at the command boundary.
+orchestrator-rpc-bundled-entry	orchestrator	rpc-process	child-selection		Launches the bundled coding-agent RPC entry rather than resolving a PATH command.
+orchestrator-serve-signal-cleanup	orchestrator	serve	signal-shutdown		On SIGINT or SIGTERM, stops Radius presence and removes the Unix socket before exit.
+orchestrator-ipc-untyped-json	orchestrator	ipc-protocol	request-parsing		Parses a JSON request without rejecting it solely for missing runtime shape fields.
+orchestrator-ipc-client-socket-path	orchestrator	ipc-client	closed-socket-error		Includes the Unix socket path when a peer closes before responding.
+orchestrator-ipc-stale-socket-errors	orchestrator	ipc-server	stale-socket-cleanup		Preserves a socket when the liveness probe fails unexpectedly instead of deleting it.
+orchestrator-radius-retry-jitter	orchestrator	radius	heartbeat-retry		Adds bounded random jitter to a failed heartbeat retry delay.
+orchestrator-radius-url-resolution	orchestrator	radius	orchestrator-url		Resolves the default orchestrator path as a URL relative to the configured Radius URL.
+orchestrator-supervisor-stop-removal	orchestrator	supervisor	stop-persistence		Removes the persisted instance record even when remote stop cleanup fails.

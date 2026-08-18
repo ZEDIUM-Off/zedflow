@@ -1,1 +1,113 @@
 behavior_id	relation	target	revision	result
+ai-environment-api-key-resolution	pi_source	references/pi/packages/ai/src/env-api-keys.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+ai-environment-api-key-resolution	rust_implementation	planned://rust/ai-environment-api-key-resolution		red
+ai-environment-api-key-resolution	differential_case	planned://differential-case/ai-environment-api-key-resolution		red
+ai-environment-api-key-resolution	unit_test	planned://unit-test/ai-environment-api-key-resolution		red
+ai-environment-api-key-resolution	human_journey	planned://human-journey/ai-environment-api-key-resolution		red
+ai-environment-api-key-resolution	persistence_check	planned://persistence-check/ai-environment-api-key-resolution		red
+ai-environment-api-key-resolution	review	planned://review/ai-environment-api-key-resolution		red
+ai-environment-api-key-resolution	run_evidence	planned://run-evidence/ai-environment-api-key-resolution		red
+agent-prompt-template-argument-parsing	pi_source	references/pi/packages/agent/src/harness/prompt-templates.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+agent-prompt-template-argument-parsing	rust_implementation	planned://rust/agent-prompt-template-argument-parsing		red
+agent-prompt-template-argument-parsing	differential_case	planned://differential-case/agent-prompt-template-argument-parsing		red
+agent-prompt-template-argument-parsing	unit_test	planned://unit-test/agent-prompt-template-argument-parsing		red
+agent-prompt-template-argument-parsing	human_journey	planned://human-journey/agent-prompt-template-argument-parsing		red
+agent-prompt-template-argument-parsing	persistence_check	planned://persistence-check/agent-prompt-template-argument-parsing		red
+agent-prompt-template-argument-parsing	review	planned://review/agent-prompt-template-argument-parsing		red
+agent-prompt-template-argument-parsing	run_evidence	planned://run-evidence/agent-prompt-template-argument-parsing		red
+tui-ansi-text-wrapping	pi_source	references/pi/packages/tui/src/utils.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+tui-ansi-text-wrapping	rust_implementation	planned://rust/tui-ansi-text-wrapping		red
+tui-ansi-text-wrapping	differential_case	planned://differential-case/tui-ansi-text-wrapping		red
+tui-ansi-text-wrapping	unit_test	planned://unit-test/tui-ansi-text-wrapping		red
+tui-ansi-text-wrapping	human_journey	planned://human-journey/tui-ansi-text-wrapping		red
+tui-ansi-text-wrapping	persistence_check	planned://persistence-check/tui-ansi-text-wrapping		red
+tui-ansi-text-wrapping	review	planned://review/tui-ansi-text-wrapping		red
+tui-ansi-text-wrapping	run_evidence	planned://run-evidence/tui-ansi-text-wrapping		red
+coding-agent-interactive-user-update-ignored	pi_source	references/pi/packages/coding-agent/src/modes/interactive/interactive-mode.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+coding-agent-interactive-user-update-ignored	rust_implementation	crates/zedflow-coding-agent/src/modes/interactive/interactive-mode.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+coding-agent-interactive-user-update-ignored	differential_case	tools/differential-harness/confirmed_divergences.py		red
+coding-agent-interactive-user-update-ignored	unit_test	planned://unit-test/coding-agent-interactive-user-update-ignored		red
+coding-agent-interactive-user-update-ignored	human_journey	planned://human-journey/coding-agent-interactive-user-update-ignored		red
+coding-agent-interactive-user-update-ignored	persistence_check	planned://persistence-check/coding-agent-interactive-user-update-ignored		red
+coding-agent-interactive-user-update-ignored	review	planned://review/coding-agent-interactive-user-update-ignored		red
+coding-agent-interactive-user-update-ignored	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+coding-agent-cli-pi-command	pi_source	references/pi/packages/coding-agent/package.json	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+coding-agent-cli-pi-command	rust_implementation	crates/zedflow-coding-agent/Cargo.toml	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+coding-agent-cli-pi-command	differential_case	tools/differential-harness/confirmed_divergences.py		red
+coding-agent-cli-pi-command	unit_test	planned://unit-test/coding-agent-cli-pi-command		red
+coding-agent-cli-pi-command	human_journey	planned://human-journey/coding-agent-cli-pi-command		red
+coding-agent-cli-pi-command	persistence_check	planned://persistence-check/coding-agent-cli-pi-command		red
+coding-agent-cli-pi-command	review	planned://review/coding-agent-cli-pi-command		red
+coding-agent-cli-pi-command	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+coding-agent-cli-package-version	pi_source	references/pi/packages/coding-agent/package.json	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+coding-agent-cli-package-version	rust_implementation	crates/zedflow-coding-agent/Cargo.toml	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+coding-agent-cli-package-version	differential_case	tools/differential-harness/confirmed_divergences.py		red
+coding-agent-cli-package-version	unit_test	planned://unit-test/coding-agent-cli-package-version		red
+coding-agent-cli-package-version	human_journey	planned://human-journey/coding-agent-cli-package-version		red
+coding-agent-cli-package-version	persistence_check	planned://persistence-check/coding-agent-cli-package-version		red
+coding-agent-cli-package-version	review	planned://review/coding-agent-cli-package-version		red
+coding-agent-cli-package-version	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-rpc-bundled-entry	pi_source	references/pi/packages/orchestrator/src/rpc-process.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-rpc-bundled-entry	rust_implementation	crates/zedflow-orchestrator/src/rpc-process.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-rpc-bundled-entry	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-rpc-bundled-entry	unit_test	planned://unit-test/orchestrator-rpc-bundled-entry		red
+orchestrator-rpc-bundled-entry	human_journey	planned://human-journey/orchestrator-rpc-bundled-entry		red
+orchestrator-rpc-bundled-entry	persistence_check	planned://persistence-check/orchestrator-rpc-bundled-entry		red
+orchestrator-rpc-bundled-entry	review	planned://review/orchestrator-rpc-bundled-entry		red
+orchestrator-rpc-bundled-entry	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-serve-signal-cleanup	pi_source	references/pi/packages/orchestrator/src/serve.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-serve-signal-cleanup	rust_implementation	crates/zedflow-orchestrator/src/serve.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-serve-signal-cleanup	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-serve-signal-cleanup	unit_test	planned://unit-test/orchestrator-serve-signal-cleanup		red
+orchestrator-serve-signal-cleanup	human_journey	planned://human-journey/orchestrator-serve-signal-cleanup		red
+orchestrator-serve-signal-cleanup	persistence_check	planned://persistence-check/orchestrator-serve-signal-cleanup		red
+orchestrator-serve-signal-cleanup	review	planned://review/orchestrator-serve-signal-cleanup		red
+orchestrator-serve-signal-cleanup	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-ipc-untyped-json	pi_source	references/pi/packages/orchestrator/src/ipc/protocol.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-ipc-untyped-json	rust_implementation	crates/zedflow-orchestrator/src/ipc/protocol.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-ipc-untyped-json	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-ipc-untyped-json	unit_test	planned://unit-test/orchestrator-ipc-untyped-json		red
+orchestrator-ipc-untyped-json	human_journey	planned://human-journey/orchestrator-ipc-untyped-json		red
+orchestrator-ipc-untyped-json	persistence_check	planned://persistence-check/orchestrator-ipc-untyped-json		red
+orchestrator-ipc-untyped-json	review	planned://review/orchestrator-ipc-untyped-json		red
+orchestrator-ipc-untyped-json	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-ipc-client-socket-path	pi_source	references/pi/packages/orchestrator/src/ipc/client.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-ipc-client-socket-path	rust_implementation	crates/zedflow-orchestrator/src/ipc/client.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-ipc-client-socket-path	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-ipc-client-socket-path	unit_test	planned://unit-test/orchestrator-ipc-client-socket-path		red
+orchestrator-ipc-client-socket-path	human_journey	planned://human-journey/orchestrator-ipc-client-socket-path		red
+orchestrator-ipc-client-socket-path	persistence_check	planned://persistence-check/orchestrator-ipc-client-socket-path		red
+orchestrator-ipc-client-socket-path	review	planned://review/orchestrator-ipc-client-socket-path		red
+orchestrator-ipc-client-socket-path	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-ipc-stale-socket-errors	pi_source	references/pi/packages/orchestrator/src/ipc/server.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-ipc-stale-socket-errors	rust_implementation	crates/zedflow-orchestrator/src/ipc/server.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-ipc-stale-socket-errors	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-ipc-stale-socket-errors	unit_test	planned://unit-test/orchestrator-ipc-stale-socket-errors		red
+orchestrator-ipc-stale-socket-errors	human_journey	planned://human-journey/orchestrator-ipc-stale-socket-errors		red
+orchestrator-ipc-stale-socket-errors	persistence_check	planned://persistence-check/orchestrator-ipc-stale-socket-errors		red
+orchestrator-ipc-stale-socket-errors	review	planned://review/orchestrator-ipc-stale-socket-errors		red
+orchestrator-ipc-stale-socket-errors	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-radius-retry-jitter	pi_source	references/pi/packages/orchestrator/src/radius.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-radius-retry-jitter	rust_implementation	crates/zedflow-orchestrator/src/radius.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-radius-retry-jitter	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-radius-retry-jitter	unit_test	planned://unit-test/orchestrator-radius-retry-jitter		red
+orchestrator-radius-retry-jitter	human_journey	planned://human-journey/orchestrator-radius-retry-jitter		red
+orchestrator-radius-retry-jitter	persistence_check	planned://persistence-check/orchestrator-radius-retry-jitter		red
+orchestrator-radius-retry-jitter	review	planned://review/orchestrator-radius-retry-jitter		red
+orchestrator-radius-retry-jitter	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-radius-url-resolution	pi_source	references/pi/packages/orchestrator/src/radius.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-radius-url-resolution	rust_implementation	crates/zedflow-orchestrator/src/radius.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-radius-url-resolution	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-radius-url-resolution	unit_test	planned://unit-test/orchestrator-radius-url-resolution		red
+orchestrator-radius-url-resolution	human_journey	planned://human-journey/orchestrator-radius-url-resolution		red
+orchestrator-radius-url-resolution	persistence_check	planned://persistence-check/orchestrator-radius-url-resolution		red
+orchestrator-radius-url-resolution	review	planned://review/orchestrator-radius-url-resolution		red
+orchestrator-radius-url-resolution	run_evidence	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-supervisor-stop-removal	pi_source	references/pi/packages/orchestrator/src/supervisor.ts	2b00dade7cec918aefb025c8b7a4fa304a30acdd	source
+orchestrator-supervisor-stop-removal	rust_implementation	crates/zedflow-orchestrator/src/supervisor.rs	e91b44be9c897aef63c84c34b4e14b387a8141a7	present
+orchestrator-supervisor-stop-removal	differential_case	tools/differential-harness/confirmed_divergences.py		red
+orchestrator-supervisor-stop-removal	unit_test	planned://unit-test/orchestrator-supervisor-stop-removal		red
+orchestrator-supervisor-stop-removal	human_journey	planned://human-journey/orchestrator-supervisor-stop-removal		red
+orchestrator-supervisor-stop-removal	persistence_check	planned://persistence-check/orchestrator-supervisor-stop-removal		red
+orchestrator-supervisor-stop-removal	review	planned://review/orchestrator-supervisor-stop-removal		red
+orchestrator-supervisor-stop-removal	run_evidence	tools/differential-harness/confirmed_divergences.py		red
