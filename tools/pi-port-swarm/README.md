@@ -13,6 +13,9 @@ python3 tools/pi-port-swarm/controller.py replan --unit ID --reason 'evidence' #
 python3 tools/pi-port-swarm/controller.py cleanup [--dry-run] # default, read-only preview
 python3 tools/pi-port-swarm/controller.py cleanup --accepted  # remove reviewed accepted attempts only
 python3 tools/pi-port-swarm/controller.py upgrade --candidate <sha> --supersede <failed-id> --reason <text> # reviewed control recovery only
+python3 tools/pi-port-swarm/controller.py leases
+python3 tools/pi-port-swarm/controller.py scope-request --unit ID --token TOKEN --path FILE --evidence evidence.json
+python3 tools/pi-port-swarm/controller.py scope-approve --request ID --approval-url https://api.github.com/repos/OWNER/REPO/pulls/N/reviews/ID
 ```
 
 Runtime state, logs, sessions, and worktrees live under `$XDG_STATE_HOME/zedflow-pi-port`; the repository retains only the DAG and its audit seed state. The seed base is an immutable SHA used only to initialize runtime state. Runtime state version 4 records `controller_sha`, `integration_sha`, `dag_sha`, `plan_sha`, and `pi_gitlink`; it also retains terminal IDs and bounded validation summaries with paths to durable stdout/stderr logs. The integration head is always `refs/heads/automation/pi-port`, never the checked-out `main` ref; it is created by null-OID CAS and never selected by a CLI option. Unit refs use the sibling `automation/pi-port-unit/` namespace. `run` accepts one ready unit by default. A `REPAIRABLE` writer blocker gets at most two attempts in `--continuous` without changing the DAG; structural and arbitration classifications stop safely for a fresh coordinator/human decision.
@@ -28,3 +31,11 @@ A newly accepted unit is cleaned automatically after its state and logs are dura
 `upgrade` is a one-shot reviewed recovery checkpoint, not a normal dispatch path. It requires the clean checked-out candidate HEAD to descend from integration, preserve the Pi gitlink, and contain the approved recovery plan. With `--supersede`, it must name exactly the active failed blockers and leave a reachable DAG frontier. Without `--supersede`, it may preserve an active DAG for a control-only update, or replace a fully completed DAG with fresh, non-reused IDs and a ready/reachable frontier. It never replaces an incomplete active DAG. It persists `ACCEPTING` before CAS so startup reconciliation can finish an interrupted upgrade without losing runtime history.
 
 Monitoring remains read-only. Recovery performs one ledger-bounded action: `repair` + service resume for REPAIRABLE, `retry` + resume for TRANSIENT, and `replan` + resume for PLAN_CHANGE_REQUIRED. ARBITRATION_REQUIRED only notifies and pauses. Every unit still gets a fresh Pi session and worktree.
+
+## Parallel planning contracts
+
+DAG version 2 remains the legacy single-writer format. Version 3 requires `max_active_writers >= 2`, an exact `shared_files` list, and one `integration_lot` owner for every shared path. Producer units cannot own those paths; the integration lot depends on at least two producer writers, owns only exact declared shared paths, runs its own validation, and has exactly one direct validator followed by exactly one direct reviewer.
+
+Every mutating dispatch acquires its complete ownership set atomically in `$XDG_STATE_HOME/zedflow-pi-port/leases.json`. Prefix overlap is a conflict. Leases expire, can be renewed, and are released on every normal/error path; acquisition, conflicts, expiry recovery, renewal, and release remain in the external audit ledger. `leases` also performs and reports expiry recovery.
+
+A running unit may request an exact scope extension against an evidence file. The request does not grant ownership. `scope-approve` accepts only an `APPROVED` GitHub pull-request review bound to a full commit SHA whose complete JSON body exactly names `request_id`, `unit`, `evidence_sha256`, and sorted `paths`. The immutable review identity and payload hash are retained. An expired originating lease or conflicting path prevents the grant; declared shared files remain exclusive to `integration_lot`.

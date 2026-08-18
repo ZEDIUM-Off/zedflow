@@ -63,6 +63,24 @@ class ControllerTests(unittest.TestCase):
         with self.assertRaises(controller.ControllerError):
             controller.validate_dag(nested)
 
+    def test_parallel_dag_reserves_shared_files_for_integration_lot(self) -> None:
+        value = dag()
+        value.update(version=3, max_active_writers=2, shared_files=["Cargo.toml"])
+        value["units"].extend([
+            {"id": "LOT", "kind": "integration_lot", "depends_on": ["B", "C"], "ownership": ["Cargo.toml"], "validation": ["git diff --check"], "intent": "integrate"},
+            {"id": "LOT-V", "kind": "validator", "depends_on": ["LOT"], "ownership": [], "validation": ["git diff --check"], "intent": "validate lot"},
+            {"id": "LOT-RV", "kind": "reviewer", "depends_on": ["LOT-V"], "ownership": [], "validation": [], "intent": "review lot"},
+        ])
+        self.assertEqual(next(unit for unit in controller.validate_dag(value) if unit["id"] == "LOT")["kind"], "integration_lot")
+        stolen = copy.deepcopy(value)
+        stolen["units"][0]["ownership"].append("Cargo.toml")
+        with self.assertRaisesRegex(controller.ControllerError, "shared file"):
+            controller.validate_dag(stolen)
+        missing_lot = copy.deepcopy(value)
+        next(unit for unit in missing_lot["units"] if unit["id"] == "LOT")["kind"] = "writer"
+        with self.assertRaisesRegex(controller.ControllerError, "shared file"):
+            controller.validate_dag(missing_lot)
+
     def test_readiness_is_dependency_and_file_order_deterministic(self) -> None:
         value = dag()
         state = {"units": {"A": {"status": "ACCEPTED"}}}

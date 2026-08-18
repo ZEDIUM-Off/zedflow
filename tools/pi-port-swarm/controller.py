@@ -16,15 +16,17 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
 from manifest import report as manifest_report
+from controller_contracts import LeaseRegistry, fetch_github_review, overlaps
 
-KINDS = {"writer", "checkpoint", "validator", "reviewer"}
-MUTATING_KINDS = {"writer", "checkpoint"}
+KINDS = {"writer", "checkpoint", "validator", "reviewer", "integration_lot"}
+MUTATING_KINDS = {"writer", "checkpoint", "integration_lot"}
 INTEGRATION_REF = "refs/heads/automation/pi-port"
 UNIT_REF_PREFIX = "refs/heads/automation/pi-port-unit/"
 NULL_OID = "0" * 40
@@ -42,6 +44,7 @@ PROMPTS = {
     "checkpoint": "pi-port-checkpoint.md",
     "validator": "pi-port-validator.md",
     "reviewer": "pi-port-reviewer.md",
+    "integration_lot": "pi-port-worker-session.md",
 }
 
 
@@ -137,8 +140,15 @@ def owns(ownership: list[str], path: str) -> bool:
 
 
 def validate_dag(dag: dict[str, Any]) -> list[dict[str, Any]]:
-    if dag.get("version") != 2 or dag.get("max_active_writers") != 1:
-        raise ControllerError("DAG must be version 2 with max_active_writers equal to 1")
+    version, max_active = dag.get("version"), dag.get("max_active_writers")
+    if version == 2:
+        if max_active != 1:
+            raise ControllerError("DAG version 2 requires max_active_writers equal to 1")
+    elif version == 3:
+        if not isinstance(max_active, int) or isinstance(max_active, bool) or max_active < 2:
+            raise ControllerError("parallel DAG version 3 requires max_active_writers of at least 2")
+    else:
+        raise ControllerError("DAG version must be 2 or 3")
     pinned_gitlink(dag)
     units = dag.get("units")
     if not isinstance(units, list) or not units:
@@ -158,6 +168,10 @@ def validate_dag(dag: dict[str, Any]) -> list[dict[str, Any]]:
         validate_commands(unit["validation"])
         if unit["kind"] in MUTATING_KINDS and not unit["ownership"]:
             raise ControllerError(f"{identifier}: mutating unit requires ownership")
+        if unit["kind"] == "integration_lot" and version != 3:
+            raise ControllerError(f"{identifier}: integration_lot requires parallel DAG version 3")
+        if unit["kind"] == "integration_lot" and len(unit["depends_on"]) < 2:
+            raise ControllerError(f"{identifier}: integration_lot requires at least two producers")
         for prefix in unit["ownership"]:
             if not prefix or Path(prefix).is_absolute() or ".." in Path(prefix).parts:
                 raise ControllerError(f"{identifier}: unsafe ownership prefix {prefix!r}")
@@ -179,6 +193,28 @@ def validate_dag(dag: dict[str, Any]) -> list[dict[str, Any]]:
             visited.add(identifier)
     for identifier in by_id:
         walk(identifier)
+    if version == 3:
+        shared_files = dag.get("shared_files")
+        if not isinstance(shared_files, list) or not shared_files or not all(isinstance(path, str) for path in shared_files) or len(set(shared_files)) != len(shared_files):
+            raise ControllerError("parallel DAG requires a non-empty, duplicate-free shared_files list")
+        if safe_shared := [path for path in shared_files if not path or Path(path).is_absolute() or ".." in Path(path).parts]:
+            raise ControllerError(f"unsafe shared file: {safe_shared[0]!r}")
+        for path in shared_files:
+            owners = [unit for unit in units if owns(unit["ownership"], path)]
+            if len(owners) != 1 or owners[0]["kind"] != "integration_lot":
+                raise ControllerError(f"shared file must be owned only by one integration_lot: {path}")
+        for unit in units:
+            if unit["kind"] == "integration_lot":
+                if any(path not in shared_files for path in unit["ownership"]):
+                    raise ControllerError(f"{unit['id']}: integration_lot may own only exact declared shared files")
+                if any(by_id[dependency]["kind"] != "writer" for dependency in unit["depends_on"]):
+                    raise ControllerError(f"{unit['id']}: integration_lot dependencies must be producer writers")
+                validators = [candidate for candidate in units if candidate["kind"] == "validator" and unit["id"] in candidate["depends_on"]]
+                if not unit["validation"] or len(validators) != 1:
+                    raise ControllerError(f"{unit['id']}: integration_lot requires its own validation and one direct validator")
+                if len([candidate for candidate in units if candidate["kind"] == "reviewer" and validators[0]["id"] in candidate["depends_on"]]) != 1:
+                    raise ControllerError(f"{unit['id']}: integration_lot validator requires one direct reviewer")
+
     # Same files may be reused only when a dependency serializes the writers.
     def depends(left: str, right: str) -> bool:
         return left == right or any(depends(child, right) for child in by_id[left]["depends_on"])
@@ -476,7 +512,7 @@ def validation_argv(command: str) -> list[str]:
         raise ControllerError(f"invalid validation command: {error}") from error
     legacy_harness_listing = "cargo test -p zedflow-agent --test harness -- --list | grep -Fqx 'storage::jsonl_set_leaf_id_reports_leaf_append_context: test' && cargo test -p zedflow-agent --test harness storage::jsonl_set_leaf_id_reports_leaf_append_context -- --exact"
     manifest_commands = {"python3 tools/pi-port-swarm/manifest.py check"} | {f"python3 tools/pi-port-swarm/manifest.py check --package {package}" for package in KNOWN_PACKAGES}
-    control_tests = {f"python3 tools/pi-port-swarm/{name}" for name in ("test_controller.py", "test_manifest.py", "test_recovery.py")}
+    control_tests = {f"python3 tools/pi-port-swarm/{name}" for name in ("test_controller.py", "test_controller_contracts.py", "test_manifest.py", "test_recovery.py")}
     if command == legacy_harness_listing:
         return ["__legacy_harness_listing__"]
     if command == "python3 tools/pi-port-swarm/controller.py validate" or command in manifest_commands or command in control_tests:
@@ -690,7 +726,7 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
     return candidate, False
 
 
-def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
+def _run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
     require_integration_ref(integration_ref)
     units = validate_dag(dag)
     ready = ready_units(units, state)
@@ -783,6 +819,39 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
         record.update(status="FAILED", blocker=str(error))
         atomic_json(state_path, state)
         raise
+
+
+def renew_lease(registry: LeaseRegistry, token: str, stop: threading.Event) -> None:
+    while not stop.wait(30):
+        if not registry.renew(token, ttl=90):
+            return
+
+
+def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
+    """Run one unit while an external all-path lease protects every mutation path."""
+    ready = ready_units(validate_dag(dag), state)
+    if not ready:
+        return "complete" if graph_complete(validate_dag(dag), state) else "blocked"
+    unit = ready[0]
+    if requested and requested != unit["id"]:
+        raise ControllerError(f"requested {requested} is not the next ready unit ({unit['id']})")
+    if unit["kind"] not in MUTATING_KINDS:
+        return _run_one(source, dag, state, state_path, integration_ref, state_dir, requested)
+    registry = LeaseRegistry(state_dir)
+    token = registry.acquire(unit["id"], unit["ownership"], ttl=90)
+    if token is None:
+        return "leased"
+    stop = threading.Event()
+    heartbeat = threading.Thread(target=renew_lease, args=(registry, token, stop), daemon=True)
+    heartbeat.start()
+    outcome = "interrupted"
+    try:
+        outcome = _run_one(source, dag, state, state_path, integration_ref, state_dir, requested)
+        return outcome
+    finally:
+        stop.set()
+        heartbeat.join()
+        registry.release(token, outcome=outcome)
 
 
 def progress(units: list[dict[str, Any]], state: dict[str, Any]) -> dict[str, Any]:
@@ -986,6 +1055,15 @@ def main() -> int:
     recover_parser.add_argument("--unit", required=True)
     recover_parser.add_argument("--classification", required=True, choices=sorted(OUTCOME_CLASSES))
     recover_parser.add_argument("--reason", required=True)
+    scope_request = sub.add_parser("scope-request")
+    scope_request.add_argument("--unit", required=True)
+    scope_request.add_argument("--token", required=True)
+    scope_request.add_argument("--path", action="append", required=True)
+    scope_request.add_argument("--evidence", type=Path, required=True)
+    scope_approve = sub.add_parser("scope-approve")
+    scope_approve.add_argument("--request", required=True)
+    scope_approve.add_argument("--approval-url", required=True)
+    sub.add_parser("leases")
     args = parser.parse_args()
     try:
         source, dag_path, state_dir, state_path = paths(args)
@@ -1002,6 +1080,23 @@ def main() -> int:
         if args.command in {"status", "monitor"}:
             print(json.dumps(snapshot(source, dag, state, INTEGRATION_REF), sort_keys=True))
             return 0
+        if args.command == "leases":
+            print(json.dumps(LeaseRegistry(state_dir).snapshot(), sort_keys=True))
+            return 0
+        if args.command == "scope-request":
+            unit = next((unit for unit in units if unit["id"] == args.unit), None)
+            if not unit:
+                raise ControllerError("scope request names an unknown unit")
+            shared = dag.get("shared_files", [])
+            if unit["kind"] != "integration_lot" and any(overlaps(path, declared) for path in args.path for declared in shared):
+                raise ControllerError("only integration_lot may own a declared shared file")
+            request_id = LeaseRegistry(state_dir).request_extension(args.token, args.unit, args.path, args.evidence)
+            print(json.dumps({"status": "pending-github-approval", "request_id": request_id}, sort_keys=True))
+            return 0
+        if args.command == "scope-approve":
+            approved = LeaseRegistry(state_dir).approve_extension(args.request, fetch_github_review(args.approval_url))
+            print(json.dumps({"status": "approved" if approved else "not-approved", "request_id": args.request}, sort_keys=True))
+            return 0 if approved else 1
         if args.command == "cleanup" and not args.accepted:
             eligible, retained = cleanup_candidates(source, state_dir, state_path, state)
             print(json.dumps({"status": "dry-run", "eligible": eligible, "retained": retained}, sort_keys=True))
