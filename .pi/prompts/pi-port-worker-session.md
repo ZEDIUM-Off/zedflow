@@ -4,10 +4,10 @@ The controller gives you one JSON capsule containing the unit, immutable base SH
 
 Keep context bounded: read only assigned Pi/Rust paths, direct callers, and focused tests; do not read broad history or unrelated package inventories. Return `PLAN_CHANGE` or `BLOCKED` before context becomes insufficient. Pi compaction is a fallback, not a reason to continue a broad investigation.
 
-1. Verify `HEAD` equals `base`, the worktree is clean, and `references/pi` remains frozen.
+1. Verify the worktree is clean and `references/pi` remains frozen. A writer starts at `base`; an `integration_lot` starts at its capsule's `producer_integration` descendant.
 2. Read only the frozen Pi source/tests, current Rust code, direct callers, and tests needed for the assigned unit.
-3. Modify only `ownership`; preserve Pi behavior and add the smallest deterministic regression test for non-trivial behavior.
-4. Run the declared commands and the focused regression check. Commit one nonempty owned result.
+3. Modify only leased paths; preserve Pi behavior and add the smallest deterministic regression test for non-trivial behavior. If evidence proves one exact extra path is required, write the evidence outside the worktree, run `controller.py scope-request` with the capsule's `lease_token`, then `controller.py scope-wait` on its request ID. Continue only after the immutable GitHub approval grants that path.
+4. Run the declared commands and the focused regression check. Commit one nonempty leased result.
 5. Print exactly one final JSON line and nothing JSON-shaped afterwards:
 
 ```json

@@ -74,6 +74,7 @@ class ControllerContractTests(unittest.TestCase):
             state = json.loads(registry.path.read_text())
             self.assertEqual(state["extensions"][request_id]["status"], "APPROVED")
             self.assertIn("crates/extra.rs", state["leases"][token]["paths"])
+            self.assertEqual(registry.paths(token, "U1"), ["crates/extra.rs", "crates/u1.rs"])
 
     def test_scope_rejects_mutated_evidence_binding(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

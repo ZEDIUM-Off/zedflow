@@ -8,6 +8,7 @@ is installed or invoked by this program.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import fcntl
 import hashlib
 import json
@@ -203,17 +204,22 @@ def validate_dag(dag: dict[str, Any]) -> list[dict[str, Any]]:
             owners = [unit for unit in units if owns(unit["ownership"], path)]
             if len(owners) != 1 or owners[0]["kind"] != "integration_lot":
                 raise ControllerError(f"shared file must be owned only by one integration_lot: {path}")
-        for unit in units:
-            if unit["kind"] == "integration_lot":
-                if any(path not in shared_files for path in unit["ownership"]):
-                    raise ControllerError(f"{unit['id']}: integration_lot may own only exact declared shared files")
-                if any(by_id[dependency]["kind"] != "writer" for dependency in unit["depends_on"]):
-                    raise ControllerError(f"{unit['id']}: integration_lot dependencies must be producer writers")
-                validators = [candidate for candidate in units if candidate["kind"] == "validator" and unit["id"] in candidate["depends_on"]]
-                if not unit["validation"] or len(validators) != 1:
-                    raise ControllerError(f"{unit['id']}: integration_lot requires its own validation and one direct validator")
-                if len([candidate for candidate in units if candidate["kind"] == "reviewer" and validators[0]["id"] in candidate["depends_on"]]) != 1:
-                    raise ControllerError(f"{unit['id']}: integration_lot validator requires one direct reviewer")
+        lots = [unit for unit in units if unit["kind"] == "integration_lot"]
+        for unit in lots:
+            if any(path not in shared_files for path in unit["ownership"]):
+                raise ControllerError(f"{unit['id']}: integration_lot may own only exact declared shared files")
+            if any(by_id[dependency]["kind"] != "writer" for dependency in unit["depends_on"]):
+                raise ControllerError(f"{unit['id']}: integration_lot dependencies must be producer writers")
+            validators = [candidate for candidate in units if candidate["kind"] == "validator" and unit["id"] in candidate["depends_on"]]
+            if not unit["validation"] or len(validators) != 1:
+                raise ControllerError(f"{unit['id']}: integration_lot requires its own validation and one direct validator")
+            if len([candidate for candidate in units if candidate["kind"] == "reviewer" and validators[0]["id"] in candidate["depends_on"]]) != 1:
+                raise ControllerError(f"{unit['id']}: integration_lot validator requires one direct reviewer")
+        for writer in (unit for unit in units if unit["kind"] == "writer"):
+            if any(by_id[dependency]["kind"] == "writer" for dependency in writer["depends_on"]):
+                raise ControllerError(f"{writer['id']}: parallel producer writers must be independent")
+            if len([lot for lot in lots if writer["id"] in lot["depends_on"]]) != 1:
+                raise ControllerError(f"{writer['id']}: parallel producer writer must feed exactly one integration_lot")
 
     # Same files may be reused only when a dependency serializes the writers.
     def depends(left: str, right: str) -> bool:
@@ -600,6 +606,28 @@ def create_worktree(source: Path, state_dir: Path, base: str, unit: dict[str, An
     return worktree, state_dir / "sessions" / f"{unit['id'].lower()}-{attempt}-{nonce}"
 
 
+def integrate_producer_candidates(source: Path, worktree: Path, base: str, unit: dict[str, Any], state: dict[str, Any]) -> tuple[str, list[str]]:
+    """Apply accepted producer diffs without granting the lot ownership of producer files."""
+    ownership = list(unit["ownership"])
+    for dependency in unit["depends_on"]:
+        record = state.get("units", {}).get(dependency, {})
+        candidate, producer_base = record.get("candidate"), record.get("base")
+        if record.get("status") != "ACCEPTED" or not is_full_sha(candidate) or producer_base != base:
+            raise ControllerError(f"{unit['id']}: producer {dependency} lacks an accepted candidate at the lot base")
+        producer = next(value for value in validate_dag(load_json_at_revision(source, base, DAG_FILE)) if value["id"] == dependency)
+        ownership.extend(record.get("leased_ownership", producer["ownership"]))
+        patch = subprocess.run(["git", "diff", "--binary", f"{producer_base}..{candidate}"], cwd=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if patch.returncode:
+            raise ControllerError(f"{unit['id']}: cannot read producer {dependency} diff: {patch.stderr.decode(errors='replace').strip()}")
+        if not patch.stdout:
+            raise ControllerError(f"{unit['id']}: producer {dependency} has an empty diff")
+        completed = subprocess.run(["git", "apply", "--index", "--3way", "-"], cwd=worktree, input=patch.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if completed.returncode:
+            raise ControllerError(f"{unit['id']}: producer {dependency} does not integrate cleanly: {completed.stderr.decode(errors='replace').strip()}")
+    git(worktree, "commit", "-m", f"integrate producers for {unit['id']}")
+    return git(worktree, "rev-parse", "HEAD"), ownership
+
+
 def authoritative_result(unit: dict[str, Any], result: dict[str, Any], worktree: Path) -> dict[str, Any]:
     if result.get("status") != "DONE" or unit["kind"] not in MUTATING_KINDS:
         return result
@@ -726,7 +754,7 @@ def accept_plan_change(source: Path, state_dir: Path, base: str, unit: dict[str,
     return candidate, False
 
 
-def _run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
+def _run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None, lease: tuple[LeaseRegistry, str] | None = None) -> str:
     require_integration_ref(integration_ref)
     units = validate_dag(dag)
     ready = ready_units(units, state)
@@ -741,9 +769,15 @@ def _run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_pat
     ensure_integration_ref(source, integration_ref, base)
     previous = state.get("units", {}).get(unit["id"], {})
     attempt = previous.get("attempt", 0) + 1
-    dispatch_unit = {**unit, "repair_context": previous.get("repair_context")}
+    dispatch_unit = {**unit, "repair_context": previous.get("repair_context"), **({"lease_token": lease[1]} if lease else {})}
     worktree, session = create_worktree(source, state_dir, base, dispatch_unit, attempt, pin)
+    lot_input, candidate_ownership = None, unit["ownership"]
+    if unit["kind"] == "integration_lot":
+        lot_input, candidate_ownership = integrate_producer_candidates(source, worktree, base, unit, state)
+        dispatch_unit["producer_integration"] = lot_input
     record = {"status": "RUNNING", "attempt": attempt, "base": base, "dag_sha256": dag_hash(dag), "worktree": str(worktree), "session": str(session), "candidate": None, "blocker": None, "repair_context": previous.get("repair_context")}
+    if lot_input:
+        record["producer_integration"] = lot_input
     state.setdefault("units", {})[unit["id"]] = record
     atomic_json(state_path, state)
     try:
@@ -770,7 +804,12 @@ def _run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_pat
         else:
             candidate = result.get("candidate")
             if unit["kind"] in MUTATING_KINDS:
-                record["validation_outcomes"] = validate_candidate(source, worktree, base, candidate, unit, pin, session / "validation")
+                leased_ownership = lease[0].paths(lease[1], unit["id"]) if lease else list(unit["ownership"])
+                record["leased_ownership"] = leased_ownership
+                if lot_input:
+                    allowed_changes(source, lot_input, candidate, leased_ownership)
+                validation_unit = {**unit, "ownership": sorted(set(candidate_ownership + leased_ownership))}
+                record["validation_outcomes"] = validate_candidate(source, worktree, base, candidate, validation_unit, pin, session / "validation")
                 revised_hash = None
                 if unit["kind"] == "checkpoint" and not git_ok(source, "diff", "--quiet", f"{base}..{candidate}", "--", DAG_FILE):
                     revised = load_json(worktree / DAG_FILE)
@@ -827,6 +866,92 @@ def renew_lease(registry: LeaseRegistry, token: str, stop: threading.Event) -> N
             return
 
 
+def execute_parallel_writer(source: Path, unit: dict[str, Any], base: str, pin: str, worktree: Path, session: Path, registry: LeaseRegistry, token: str) -> dict[str, Any]:
+    stop = threading.Event()
+    heartbeat = threading.Thread(target=renew_lease, args=(registry, token, stop), daemon=True)
+    heartbeat.start()
+    outcome = "interrupted"
+    try:
+        result = launch(source, worktree, session, unit, base)
+        validate_result(unit, result, base)
+        if result["status"] == "DONE":
+            candidate = result["candidate"]
+            leased_ownership = registry.paths(token, unit["id"])
+            validation_unit = {**unit, "ownership": leased_ownership}
+            validations = validate_candidate(source, worktree, base, candidate, validation_unit, pin, session / "validation")
+            outcome = "accepted"
+            return {"result": result, "candidate": candidate, "leased_ownership": leased_ownership, "validation_outcomes": validations}
+        outcome = result["status"].lower()
+        return {"result": result}
+    except ControllerError as error:
+        outcome = "failed"
+        return {"error": str(error)}
+    finally:
+        stop.set()
+        heartbeat.join()
+        registry.release(token, outcome=outcome)
+
+
+def run_parallel_writers(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
+    units = validate_dag(dag)
+    ready = [unit for unit in ready_units(units, state) if unit["kind"] == "writer"]
+    if requested:
+        ready = [unit for unit in ready if unit["id"] == requested]
+        if not ready:
+            raise ControllerError(f"requested {requested} is not a ready producer writer")
+    ready = ready[:dag["max_active_writers"]]
+    if not ready:
+        return run_one(source, dag, state, state_path, integration_ref, state_dir, requested)
+    clean_worktree(source)
+    base, pin = integration_sha(source, integration_ref), pinned_gitlink(dag)
+    ensure_integration_ref(source, integration_ref, base)
+    registry = LeaseRegistry(state_dir)
+    jobs: list[tuple[dict[str, Any], dict[str, Any], Path, Path, str]] = []
+    for unit in ready:
+        token = registry.acquire(unit["id"], unit["ownership"], ttl=90)
+        if token is None:
+            continue
+        previous = state.get("units", {}).get(unit["id"], {})
+        attempt = previous.get("attempt", 0) + 1
+        dispatch = {**unit, "repair_context": previous.get("repair_context"), "lease_token": token}
+        try:
+            worktree, session = create_worktree(source, state_dir, base, dispatch, attempt, pin)
+        except ControllerError:
+            registry.release(token, outcome="setup-failed")
+            raise
+        record = {"status": "RUNNING", "attempt": attempt, "base": base, "dag_sha256": dag_hash(dag), "worktree": str(worktree), "session": str(session), "candidate": None, "blocker": None, "repair_context": previous.get("repair_context")}
+        state.setdefault("units", {})[unit["id"]] = record
+        jobs.append((dispatch, record, worktree, session, token))
+    if not jobs:
+        return "leased"
+    atomic_json(state_path, state)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+        futures = [executor.submit(execute_parallel_writer, source, unit, base, pin, worktree, session, registry, token) for unit, _record, worktree, session, token in jobs]
+        outcomes = [future.result() for future in futures]
+    if integration_sha(source, integration_ref) != base:
+        outcomes = [{"error": "integration ref changed during parallel producer wave"} for _outcome in outcomes]
+    statuses = []
+    for (unit, record, _worktree, _session, _token), outcome in zip(jobs, outcomes):
+        result = outcome.get("result")
+        if outcome.get("error"):
+            record.update(status="FAILED", blocker=outcome["error"])
+        elif result["status"] == "DONE":
+            record.update(status="ACCEPTED", candidate=outcome["candidate"], leased_ownership=outcome["leased_ownership"], validation_outcomes=outcome["validation_outcomes"])
+            if unit["id"] not in state.setdefault("terminal_ids", []):
+                state["terminal_ids"].append(unit["id"])
+        else:
+            classification = outcome_class(result)
+            record.update(classification=classification, blocker=blocked_reason(result))
+            if result["status"] == "BLOCKED" and classification == "REPAIRABLE" and record["attempt"] < MAX_REPAIR_ATTEMPTS:
+                record.update(status="RETRY", repair_context=blocked_reason(result))
+            else:
+                record.update(status="BLOCKED", plan_change_result=result if result["status"] == "PLAN_CHANGE" else None)
+        statuses.append(record["status"])
+        append_history(state, {"unit": unit["id"], "status": record["status"], "classification": record.get("classification"), "base": base, "candidate": record.get("candidate"), "at": int(time.time())})
+    atomic_json(state_path, state)
+    return "accepted" if all(status == "ACCEPTED" for status in statuses) else ("repairing" if all(status in {"ACCEPTED", "RETRY"} for status in statuses) else "blocked")
+
+
 def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path: Path, integration_ref: str, state_dir: Path, requested: str | None) -> str:
     """Run one unit while an external all-path lease protects every mutation path."""
     ready = ready_units(validate_dag(dag), state)
@@ -846,7 +971,7 @@ def run_one(source: Path, dag: dict[str, Any], state: dict[str, Any], state_path
     heartbeat.start()
     outcome = "interrupted"
     try:
-        outcome = _run_one(source, dag, state, state_path, integration_ref, state_dir, requested)
+        outcome = _run_one(source, dag, state, state_path, integration_ref, state_dir, requested, (registry, token))
         return outcome
     finally:
         stop.set()
@@ -1063,6 +1188,9 @@ def main() -> int:
     scope_approve = sub.add_parser("scope-approve")
     scope_approve.add_argument("--request", required=True)
     scope_approve.add_argument("--approval-url", required=True)
+    scope_wait = sub.add_parser("scope-wait")
+    scope_wait.add_argument("--request", required=True)
+    scope_wait.add_argument("--timeout", type=int, default=3600)
     sub.add_parser("leases")
     args = parser.parse_args()
     try:
@@ -1090,6 +1218,8 @@ def main() -> int:
             shared = dag.get("shared_files", [])
             if unit["kind"] != "integration_lot" and any(overlaps(path, declared) for path in args.path for declared in shared):
                 raise ControllerError("only integration_lot may own a declared shared file")
+            if any(other["id"] != unit["id"] and other["kind"] in MUTATING_KINDS and any(overlaps(path, owned) for path in args.path for owned in other["ownership"]) for other in units):
+                raise ControllerError("scope extension overlaps another mutating unit's ownership")
             request_id = LeaseRegistry(state_dir).request_extension(args.token, args.unit, args.path, args.evidence)
             print(json.dumps({"status": "pending-github-approval", "request_id": request_id}, sort_keys=True))
             return 0
@@ -1097,6 +1227,20 @@ def main() -> int:
             approved = LeaseRegistry(state_dir).approve_extension(args.request, fetch_github_review(args.approval_url))
             print(json.dumps({"status": "approved" if approved else "not-approved", "request_id": args.request}, sort_keys=True))
             return 0 if approved else 1
+        if args.command == "scope-wait":
+            if args.timeout <= 0:
+                raise ControllerError("scope wait timeout must be positive")
+            registry, deadline = LeaseRegistry(state_dir), time.monotonic() + args.timeout
+            while time.monotonic() < deadline:
+                request = registry.extension(args.request)
+                if not request:
+                    raise ControllerError("scope request does not exist")
+                if request["status"] == "APPROVED":
+                    print(json.dumps({"status": "approved", "request_id": args.request, "paths": request["paths"]}, sort_keys=True))
+                    return 0
+                time.sleep(min(2, max(0, deadline - time.monotonic())))
+            print(json.dumps({"status": "timeout", "request_id": args.request}, sort_keys=True))
+            return 75
         if args.command == "cleanup" and not args.accepted:
             eligible, retained = cleanup_candidates(source, state_dir, state_path, state)
             print(json.dumps({"status": "dry-run", "eligible": eligible, "retained": retained}, sort_keys=True))
@@ -1180,7 +1324,8 @@ def main() -> int:
                 print(json.dumps({"status": "replanned", **snapshot(source, revised, state, INTEGRATION_REF)}, sort_keys=True))
                 return 0
             while True:
-                outcome = run_one(source, dag, state, state_path, INTEGRATION_REF, state_dir, args.unit)
+                runner = run_parallel_writers if dag.get("version") == 3 else run_one
+                outcome = runner(source, dag, state, state_path, INTEGRATION_REF, state_dir, args.unit)
                 if not should_continue(outcome, args.continuous):
                     print(json.dumps({"status": outcome, **snapshot(source, dag, state, INTEGRATION_REF)}, sort_keys=True))
                     return 0 if outcome in {"accepted", "replanned", "complete"} else 1

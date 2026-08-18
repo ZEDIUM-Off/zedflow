@@ -77,6 +77,17 @@ class LeaseRegistry:
     def snapshot(self) -> dict[str, Any]:
         return self._update(lambda state, _now: json.loads(json.dumps(state)))
 
+    def extension(self, request_id: str) -> dict[str, Any] | None:
+        return self._update(lambda state, _now: json.loads(json.dumps(state["extensions"].get(request_id))))
+
+    def paths(self, token: str, unit: str) -> list[str]:
+        def operation(state: dict[str, Any], _now: int) -> list[str]:
+            lease = state["leases"].get(token)
+            if not lease or lease["unit"] != unit:
+                raise ValueError("unit lease is absent or expired")
+            return list(lease["paths"])
+        return self._update(operation)
+
     def acquire(self, unit: str, paths: list[str], *, ttl: int = 3600) -> str | None:
         paths = safe_paths(paths)
         if ttl <= 0:

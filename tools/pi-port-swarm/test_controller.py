@@ -8,6 +8,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -66,8 +67,10 @@ class ControllerTests(unittest.TestCase):
     def test_parallel_dag_reserves_shared_files_for_integration_lot(self) -> None:
         value = dag()
         value.update(version=3, max_active_writers=2, shared_files=["Cargo.toml"])
+        value["units"][1].update(depends_on=[], ownership=["crates/b"])
+        value["units"][2].update(depends_on=[])
         value["units"].extend([
-            {"id": "LOT", "kind": "integration_lot", "depends_on": ["B", "C"], "ownership": ["Cargo.toml"], "validation": ["git diff --check"], "intent": "integrate"},
+            {"id": "LOT", "kind": "integration_lot", "depends_on": ["A", "B", "C"], "ownership": ["Cargo.toml"], "validation": ["git diff --check"], "intent": "integrate"},
             {"id": "LOT-V", "kind": "validator", "depends_on": ["LOT"], "ownership": [], "validation": ["git diff --check"], "intent": "validate lot"},
             {"id": "LOT-RV", "kind": "reviewer", "depends_on": ["LOT-V"], "ownership": [], "validation": [], "intent": "review lot"},
         ])
@@ -80,6 +83,39 @@ class ControllerTests(unittest.TestCase):
         next(unit for unit in missing_lot["units"] if unit["id"] == "LOT")["kind"] = "writer"
         with self.assertRaisesRegex(controller.ControllerError, "shared file"):
             controller.validate_dag(missing_lot)
+
+    def test_parallel_writer_wave_runs_ready_producers_concurrently(self) -> None:
+        value = dag()
+        value.update(version=3, max_active_writers=2, shared_files=["Cargo.toml"])
+        value["units"] = [
+            {"id": "A", "kind": "writer", "depends_on": [], "ownership": ["a"], "validation": [], "intent": "a"},
+            {"id": "B", "kind": "writer", "depends_on": [], "ownership": ["b"], "validation": [], "intent": "b"},
+            {"id": "LOT", "kind": "integration_lot", "depends_on": ["A", "B"], "ownership": ["Cargo.toml"], "validation": ["git diff --check"], "intent": "lot"},
+            {"id": "LOT-V", "kind": "validator", "depends_on": ["LOT"], "ownership": [], "validation": [], "intent": "validate"},
+            {"id": "LOT-RV", "kind": "reviewer", "depends_on": ["LOT-V"], "ownership": [], "validation": [], "intent": "review"},
+        ]
+        barrier = threading.Barrier(2)
+        candidates = {"A": "c" * 40, "B": "d" * 40}
+        def launch(_source, _worktree, _session, unit, base):
+            barrier.wait(timeout=2)
+            return {"status": "DONE", "unit": unit["id"], "base": base, "candidate": candidates[unit["id"]]}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            worktrees = [(root / identifier, root / f"session-{identifier}") for identifier in ("A", "B")]
+            for worktree, session in worktrees:
+                worktree.mkdir(); session.mkdir()
+            state, state_path = {"units": {}, "terminal_ids": [], "history": []}, root / "state.json"
+            with (
+                patch.object(controller, "clean_worktree"),
+                patch.object(controller, "integration_sha", return_value="b" * 40),
+                patch.object(controller, "ensure_integration_ref"),
+                patch.object(controller, "create_worktree", side_effect=worktrees),
+                patch.object(controller, "launch", side_effect=launch),
+                patch.object(controller, "validate_candidate", return_value=[]),
+            ):
+                outcome = controller.run_parallel_writers(ROOT, value, state, state_path, controller.INTEGRATION_REF, root / "runtime", None)
+            self.assertEqual(outcome, "accepted")
+            self.assertEqual({identifier: state["units"][identifier]["status"] for identifier in ("A", "B")}, {"A": "ACCEPTED", "B": "ACCEPTED"})
 
     def test_readiness_is_dependency_and_file_order_deterministic(self) -> None:
         value = dag()
@@ -271,6 +307,49 @@ class ControllerTests(unittest.TestCase):
         git("add", "owned/one")
         git("commit", "-qm", "candidate")
         return repo, base, git("rev-parse", "HEAD")
+
+    def test_integration_lot_materializes_disjoint_producer_candidates(self) -> None:
+        repo, _initial, _candidate = self.port_repo()
+        worktree_temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(worktree_temporary.cleanup)
+        worktree_root = Path(worktree_temporary.name)
+        pin = controller.git(repo, "ls-tree", "HEAD", "references/pi").split()[2]
+        (repo / "a").write_text("base-a")
+        (repo / "b").write_bytes(b"\x00base-b")
+        (repo / "Cargo.toml").write_text("base-shared")
+        value = {"version": 3, "source_gitlink": f"references/pi@{pin}", "max_active_writers": 2, "shared_files": ["Cargo.toml"], "units": [
+            {"id": "A", "kind": "writer", "depends_on": [], "ownership": ["a"], "validation": [], "intent": "a"},
+            {"id": "B", "kind": "writer", "depends_on": [], "ownership": ["b"], "validation": [], "intent": "b"},
+            {"id": "LOT", "kind": "integration_lot", "depends_on": ["A", "B"], "ownership": ["Cargo.toml"], "validation": ["git diff --check"], "intent": "lot"},
+            {"id": "LOT-V", "kind": "validator", "depends_on": ["LOT"], "ownership": [], "validation": [], "intent": "validate"},
+            {"id": "LOT-RV", "kind": "reviewer", "depends_on": ["LOT-V"], "ownership": [], "validation": [], "intent": "review"},
+        ]}
+        dag_path = repo / controller.DAG_FILE
+        dag_path.parent.mkdir(parents=True)
+        dag_path.write_text(json.dumps(value))
+        controller.git(repo, "add", "a", "b", "Cargo.toml", controller.DAG_FILE)
+        controller.git(repo, "commit", "-qm", "parallel base")
+        base = controller.git(repo, "rev-parse", "HEAD")
+        producer_paths = []
+        for identifier, path in (("A", "a"), ("B", "b")):
+            worktree = worktree_root / f"producer-{identifier.lower()}"
+            controller.git(repo, "worktree", "add", "-b", f"producer-{identifier.lower()}", str(worktree), base)
+            if identifier == "B":
+                (worktree / path).write_bytes(b"\x00from-B")
+            else:
+                (worktree / path).write_text(f"from-{identifier}")
+            controller.git(worktree, "add", path)
+            controller.git(worktree, "commit", "-qm", identifier)
+            producer_paths.append((worktree, controller.git(worktree, "rev-parse", "HEAD")))
+        lot = worktree_root / "lot"
+        controller.git(repo, "worktree", "add", "-b", "lot", str(lot), base)
+        state = {"units": {identifier: {"status": "ACCEPTED", "base": base, "candidate": candidate} for identifier, (_path, candidate) in zip(("A", "B"), producer_paths)}}
+        state["units"]["A"]["leased_ownership"] = ["a", "extra"]
+        integrated, ownership = controller.integrate_producer_candidates(repo, lot, base, value["units"][2], state)
+        self.assertEqual((lot / "a").read_text(), "from-A")
+        self.assertEqual((lot / "b").read_bytes(), b"\x00from-B")
+        self.assertEqual(set(ownership), {"a", "extra", "b", "Cargo.toml"})
+        self.assertEqual(controller.git(lot, "rev-parse", "HEAD"), integrated)
 
     def test_upgrade_control_preserves_history_and_supersedes_active_failed_frontier(self) -> None:
         repo, _initial, _candidate = self.port_repo()
