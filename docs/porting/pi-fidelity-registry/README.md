@@ -1,19 +1,25 @@
-# Frozen Pi fidelity registry
+# Operational Pi fidelity registry
 
-These four TSVs are the canonical Stage-1 coverage registry decided in [Define the blocking Pi↔Zedflow coverage registry](https://github.com/ZEDIUM-Off/zedflow/issues/3):
+These four editable TSVs are the canonical Stage-1 evidence ledger decided in [Define the blocking Pi↔Zedflow coverage registry](https://github.com/ZEDIUM-Off/zedflow/issues/3) and revised in [Audit and revise the Pi↔Zedflow consolidation registry](https://github.com/ZEDIUM-Off/zedflow/issues/16):
 
-- `behaviors.tsv` — frozen observable contracts and test declarations;
+- `behaviors.tsv` — hand-authored atomic observable behaviors only;
 - `links.tsv` — one artifact or proof relation per row;
 - `dependencies.tsv` — the fixture/environment/behavior DAG;
-- `dispositions.tsv` — narrowly approved exceptions (currently none).
+- `dispositions.tsv` — narrowly approved exceptions.
 
-The registry is anchored to Zedflow baseline `9564b26e2afd66d1c28258487c6bc290bc3d7c6f` and Pi gitlink `2b00dade7cec918aefb025c8b7a4fa304a30acdd`. Red `planned://` targets are exact work still required; they are inventory entries, not passing evidence. Existing whole-boundary JSON fixtures are named by repository path and remain red. A behavior cannot become complete until those planned targets are replaced by real artifacts, including a GitHub `human-validation` issue.
+The ledger starts empty for the fresh Linux campaign. The former generated rows treated files, headings, exports, and test declarations as behaviors; Git history retains that mechanical snapshot, but it is not fidelity evidence. The validator now inventories those frozen Pi anchors independently and reports how many are linked to a behavior or covered by an approved `source` disposition.
 
-The inventory is reproducible from immutable Git objects, so the known dirty Pi worktree cannot affect it. It includes every frozen package source/test artifact, package manifest, package README and package documentation file; every test declaration and documentation heading is recorded separately. Dynamic/parameterized tests are identified by stable declaration site rather than guessed runtime expansion.
+The campaign is anchored to Zedflow `e91b44be9c897aef63c84c34b4e14b387a8141a7` and Pi `2b00dade7cec918aefb025c8b7a4fa304a30acdd`. Red `planned://` targets are allowed work items. Passing relations must point to an existing repository object at the exact Zedflow SHA; a passing `run_evidence` therefore cannot drift from the implementation it tested. Dependency states are only `pending` or `satisfied`.
+
+Status is calculated, never stored:
+
+`inventoried → red → implemented → differential_green → reviewed → human_validated → complete`
 
 ```bash
-python3 tools/pi-fidelity-registry/registry.py          # validate
-python3 tools/pi-fidelity-registry/registry.py --write  # deterministic refresh
+python3 tools/pi-fidelity-registry/registry.py                  # validate an incremental ledger
+python3 tools/pi-fidelity-registry/registry.py --uncovered      # list unlinked Pi anchors
+python3 tools/pi-fidelity-registry/registry.py --require-complete # final blocking gate
+python3 tools/pi-fidelity-registry/registry.py --self-check
 ```
 
-Validation fails on stale TSVs, unknown relations or dependency types, missing references, duplicate IDs/links, cycles, revision drift, missing proof relations, or any frozen Pi artifact covered in only one direction.
+`--require-complete` fails until every behavior is complete and all 777 frozen Pi anchors are covered. This is intentional: the next fresh matrix campaign populates evidence without any generator overwriting reviewed TSV edits.
