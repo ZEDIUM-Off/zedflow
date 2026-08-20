@@ -1,0 +1,130 @@
+{
+  "edges": [
+    {
+      "from": "@earendil-works/pi-agent-core",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-ai"
+    },
+    {
+      "from": "@earendil-works/pi-agent-core",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-telemetry"
+    },
+    {
+      "from": "@earendil-works/pi-ai",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-telemetry"
+    },
+    {
+      "from": "@earendil-works/pi-client",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-protocol"
+    },
+    {
+      "from": "@earendil-works/pi-coding-agent",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-agent-core"
+    },
+    {
+      "from": "@earendil-works/pi-coding-agent",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-ai"
+    },
+    {
+      "from": "@earendil-works/pi-coding-agent",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-client"
+    },
+    {
+      "from": "@earendil-works/pi-coding-agent",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-protocol"
+    },
+    {
+      "from": "@earendil-works/pi-coding-agent",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-tui"
+    },
+    {
+      "from": "@earendil-works/pi-server",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-ai"
+    },
+    {
+      "from": "@earendil-works/pi-server",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-protocol"
+    },
+    {
+      "from": "@earendil-works/pi-session-backend-sqlite-node",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-agent-core"
+    },
+    {
+      "from": "@earendil-works/pi-session-backend-sqlite-node",
+      "kind": "dependencies",
+      "requirement": "^0.84.2",
+      "to": "@earendil-works/pi-ai"
+    }
+  ],
+  "nodes": [
+    {
+      "name": "@earendil-works/pi-agent-core",
+      "path": "packages/agent",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-ai",
+      "path": "packages/ai",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-client",
+      "path": "packages/client",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-coding-agent",
+      "path": "packages/coding-agent",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-protocol",
+      "path": "packages/protocol",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-server",
+      "path": "packages/server",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-session-backend-sqlite-node",
+      "path": "packages/session-backends/sqlite-node",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-telemetry",
+      "path": "packages/telemetry",
+      "version": "0.84.2"
+    },
+    {
+      "name": "@earendil-works/pi-tui",
+      "path": "packages/tui",
+      "version": "0.84.2"
+    }
+  ],
+  "pi_revision": "914cf1472e715297caa30db4b9535d534a9eb718"
+}
