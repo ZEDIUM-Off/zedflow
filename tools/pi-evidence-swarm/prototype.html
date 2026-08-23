@@ -18,33 +18,39 @@ button:hover { border-color:var(--accent); background:var(--soft) } button:disab
 .step { display:flex; align-items:center; gap:10px; margin:8px 0 } .step span { min-width:24px; color:var(--muted) }
 .step button { flex:1 } .step.done button { text-decoration:line-through; opacity:.55 }
 ul { padding-left:20px } code { background:#eef2ff; padding:1px 4px; border-radius:4px } .event { border-left:3px solid var(--line); padding-left:10px; margin:8px 0 }
+details { margin-top:16px } summary { cursor:pointer; font-weight:650 } .guide { font-size:17px }
 </style>
 </head>
 <body><main>
-<h1>PROTOTYPE JETABLE — contrats de pi-evidence-swarm</h1>
-<p class="intro"><strong>Question :</strong> une unité peut-elle traverser découverte, revue d’oracle, scellement Pi, verrou produit, exécution Zedflow, revue et routage sans mélanger les rôles, réécrire les preuves, dériver de SHA, reprendre une décision GitHub incomplète ou laisser pi-evidence-swarm piloter pi-port-swarm ? Cliquez les cas difficiles pour sentir où le contrat est trop strict ou trop flou.</p>
+<h1>Comparer Pi et Zedflow sans fausser le résultat</h1>
+<div class="intro guide">
+  <p><strong>Ce n’est pas le futur outil.</strong> C’est une maquette cliquable pour vérifier les règles de la future chaîne automatique avant de la construire.</p>
+  <p>Alice prépare une expérience. Benoît vérifie qu’elle est honnête. Chloé rejoue <strong>les mêmes interactions</strong> d’abord avec Pi, puis avec une version verrouillée de Zedflow. Daria compare les résultats.</p>
+  <p><strong>Mode d’emploi :</strong> choisissez une histoire ci-dessous, puis cliquez ses étapes dans l’ordre. Regardez surtout si une action dangereuse est refusée au bon moment.</p>
+</div>
 
 <section class="panel">
-<h2>État courant</h2>
-<p id="change" class="muted"></p>
-<div id="state"></div>
-</section>
-
-<section class="panel">
-<h2>Jeu libre</h2>
-<p class="muted">Toutes les commandes restent visibles. Une commande illégale ne modifie rien et explique le refus.</p>
-<div id="free" class="actions"></div>
-</section>
-
-<section class="panel">
-<h2>Parcours guidés</h2>
+<h2>1. Choisir une histoire</h2>
 <div id="tabs" class="tabs" role="tablist"></div>
 <div id="walkthrough"></div>
 </section>
 
 <section class="panel">
-<h2>Journal append-only</h2>
+<h2>2. Voir ce que la chaîne sait</h2>
+<p id="change" class="muted"></p>
+<div id="state"></div>
+</section>
+
+<section class="panel">
+<details>
+<summary>Bac à sable technique — essayer les actions dans n’importe quel ordre</summary>
+<p class="muted">Une action interdite ne modifie aucune preuve et explique son refus.</p>
+<div id="free" class="actions"></div>
+</details>
+<details>
+<summary>Journal technique des preuves scellées</summary>
 <div id="events"></div>
+</details>
 </section>
 
 <script>
@@ -53,7 +59,7 @@ ul { padding-left:20px } code { background:#eef2ff; padding:1px 4px; border-radi
   const PI_SHA = "914cf1472e715297caa30db4b9535d534a9eb718";
   const HARNESS_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const PRODUCT_SHA = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-  const MAX_RETRIES = 2; // Hypothèse de prototype à valider, pas une décision.
+  const MAX_RETRIES = 1; // Décision HITL : une exécution initiale et un seul retry automatique.
 
   const initialState = () => ({
     unit: "behavior-demo-01",
@@ -194,32 +200,32 @@ ul { padding-left:20px } code { background:#eef2ff; padding:1px 4px; border-radi
   }
 
   const actions = [
-    ["Réinitialiser", () => ({ type:"RESET" })],
-    ["Découvrir (Alice)", () => ({ type:"DISCOVER", actor:"Alice" })],
-    ["Concevoir l’oracle (Alice)", () => ({ type:"DESIGN_ORACLE", actor:"Alice" })],
-    ["Revoir l’oracle (Benoît)", () => ({ type:"REVIEW_ORACLE", actor:"Benoît" })],
-    ["Revoir l’oracle avec Alice — illégal", () => ({ type:"REVIEW_ORACLE", actor:"Alice" })],
-    ["Sceller Pi (Chloé)", () => ({ type:"SEAL_PI", actor:"Chloé", piSha:PI_SHA })],
-    ["Sceller un autre Pi — illégal", () => ({ type:"SEAL_PI", actor:"Chloé", piSha:"cccccccccccccccccccccccccccccccccccccccc" })],
-    ["Importer port_complete", () => ({ type:"IMPORT_PRODUCT_LOCK", portComplete:true, piSha:PI_SHA, productSha:PRODUCT_SHA })],
-    ["Exécuter Zedflow au SHA verrouillé", () => ({ type:"RUN_ZEDFLOW", productSha:PRODUCT_SHA })],
-    ["Exécuter Zedflow à un autre SHA — illégal", () => ({ type:"RUN_ZEDFLOW", productSha:"dddddddddddddddddddddddddddddddddddddddd" })],
-    ["Simuler un échec transitoire Zedflow", () => ({ type:"FAIL_ZEDFLOW" })],
-    ["Revoir vert (Daria)", () => ({ type:"REVIEW_RESULT", actor:"Daria", verdict:"green", route:"accepted" })],
-    ["Revoir rouge (Daria)", () => ({ type:"REVIEW_RESULT", actor:"Daria", verdict:"red", route:"port_correction" })],
-    ["Router", () => ({ type:"ROUTE" })],
-    ["Suspendre pour décision", () => ({ type:"SUSPEND_DECISION" })],
-    ["Résolution GitHub incomplète", () => ({ type:"RESOLVE_GITHUB", closed:true, label:"decision_required", approver:"", structured:false })],
-    ["Résolution GitHub valide", () => ({ type:"RESOLVE_GITHUB", closed:true, label:"decision_required", approver:"maintainer", structured:true })],
-    ["Publier le handoff vers pi-port-swarm", () => ({ type:"HANDOFF_PORT" })]
+    ["Recommencer cette histoire", () => ({ type:"RESET" })],
+    ["Alice décrit le comportement à vérifier", () => ({ type:"DISCOVER", actor:"Alice" })],
+    ["Alice prépare les interactions identiques pour Pi et Zedflow", () => ({ type:"DESIGN_ORACLE", actor:"Alice" })],
+    ["Benoît vérifie l’expérience sans regarder Rust", () => ({ type:"REVIEW_ORACLE", actor:"Benoît" })],
+    ["Alice approuve sa propre expérience — interdit", () => ({ type:"REVIEW_ORACLE", actor:"Alice" })],
+    ["Chloé exécute Pi et scelle son résultat", () => ({ type:"SEAL_PI", actor:"Chloé", piSha:PI_SHA })],
+    ["Chloé utilise une autre version de Pi — interdit", () => ({ type:"SEAL_PI", actor:"Chloé", piSha:"cccccccccccccccccccccccccccccccccccccccc" })],
+    ["Verrouiller la version de Zedflow à comparer", () => ({ type:"IMPORT_PRODUCT_LOCK", portComplete:true, piSha:PI_SHA, productSha:PRODUCT_SHA })],
+    ["Chloé rejoue les mêmes interactions avec Zedflow", () => ({ type:"RUN_ZEDFLOW", productSha:PRODUCT_SHA })],
+    ["Chloé utilise une autre version de Zedflow — interdit", () => ({ type:"RUN_ZEDFLOW", productSha:"dddddddddddddddddddddddddddddddddddddddd" })],
+    ["Simuler une panne de machine temporaire", () => ({ type:"FAIL_ZEDFLOW" })],
+    ["Daria confirme que les résultats correspondent", () => ({ type:"REVIEW_RESULT", actor:"Daria", verdict:"green", route:"accepted" })],
+    ["Daria confirme une différence Pi/Zedflow", () => ({ type:"REVIEW_RESULT", actor:"Daria", verdict:"red", route:"port_correction" })],
+    ["Enregistrer la destination du résultat", () => ({ type:"ROUTE" })],
+    ["Demander une décision humaine sur GitHub", () => ({ type:"SUSPEND_DECISION" })],
+    ["Fermer l’issue sans réponse complète — insuffisant", () => ({ type:"RESOLVE_GITHUB", closed:true, label:"decision_required", approver:"", structured:false })],
+    ["Valider fermeture, label, approbateur et réponse", () => ({ type:"RESOLVE_GITHUB", closed:true, label:"decision_required", approver:"maintainer", structured:true })],
+    ["Transmettre le dossier rouge à pi-port-swarm", () => ({ type:"HANDOFF_PORT" })]
   ];
 
   const scenarios = [
-    { name:"Vert accepté", note:"Le chemin heureux vérifie l’ordre Pi avant Rust et la séparation des quatre rôles.", steps:[0,1,2,3,5,7,8,11,13] },
-    { name:"Barrières SHA", note:"Essayez Rust trop tôt, un reviewer non frais, puis des SHAs qui dérivent. Chaque refus laisse les manifests intacts.", steps:[0,8,1,2,4,3,6,5,9,7,8] },
-    { name:"Retry borné", note:`Après ${MAX_RETRIES} échecs transitoires, l’unité s’arrête en INFRA_BLOCKED au lieu de boucler.`, steps:[0,1,2,3,5,7,10,10,10] },
-    { name:"Reprise GitHub", note:"Une fermeture seule ne suffit pas : label, approbateur et commentaire structuré doivent tous correspondre.", steps:[0,1,2,14,15,16,3] },
-    { name:"Rouge et handoff", note:"Un rouge revu produit un unique manifest sortant. Le second envoi est refusé et pi-port-swarm reste autonome.", steps:[0,1,2,3,5,7,8,12,13,17,17] }
+    { name:"Tout correspond", note:"But : observer la comparaison normale. Chloé utilise la même expérience sur Pi puis Zedflow; Daria accepte le résultat.", steps:[0,1,2,3,5,7,8,11,13] },
+    { name:"Empêcher une comparaison faussée", note:"But : vérifier que la chaîne refuse Rust trop tôt, l’auto-approbation et tout changement de version en cours de route. Un refus ne modifie aucune preuve.", steps:[0,8,1,2,4,3,6,5,9,7,8] },
+    { name:"Une panne temporaire", note:"But : autoriser un seul nouvel essai après une panne extérieure. Une seconde panne arrête la chaîne pour diagnostic au lieu de boucler.", steps:[0,1,2,3,5,7,10,10] },
+    { name:"Une décision humaine", note:"But : empêcher une reprise sur une issue simplement fermée. La réponse doit aussi avoir le bon label, un approbateur et les informations demandées.", steps:[0,1,2,14,15,16,3] },
+    { name:"Une vraie différence", note:"But : transmettre une seule fois un dossier immuable. pi-port-swarm reçoit ce dossier mais reste entièrement autonome.", steps:[0,1,2,3,5,7,8,12,13,17,17] }
   ];
 
   let state = initialState();
@@ -227,6 +233,13 @@ ul { padding-left:20px } code { background:#eef2ff; padding:1px 4px; border-radi
   let step = 0;
   const el = id => document.getElementById(id);
   const short = sha => sha ? sha.slice(0,8) : "—";
+  const phaseNames = {
+    pending:"Rien n’a encore commencé", inventoried:"Le comportement est décrit",
+    oracle_designed:"L’expérience est prête", oracle_reviewed:"L’expérience est approuvée",
+    pi_evidence_sealed:"Le résultat Pi est scellé", product_locked:"La version Zedflow est verrouillée",
+    zedflow_executed:"Pi et Zedflow ont été exécutés", result_reviewed:"La comparaison est approuvée",
+    routed:"Le résultat a sa destination"
+  };
   const dispatch = action => { state = transition(state, action); render(); };
 
   function renderState() {
@@ -234,13 +247,13 @@ ul { padding-left:20px } code { background:#eef2ff; padding:1px 4px; border-radi
     el("change").className = state.lastChange?.startsWith("REFUS") ? "error" : "ok";
     el("change").textContent = state.lastChange || "Aucune action effectuée.";
     el("state").innerHTML = `<div class="grid">
-      <dl><dt>Unité</dt><dd>${state.unit}</dd><dt>Phase calculée</dt><dd><code>${state.phase}</code></dd><dt>Suspension</dt><dd>${state.suspension ? `<code>${state.suspension.route}</code> — ${state.suspension.reason}` : "aucune"}</dd></dl>
-      <dl><dt>Pi figé</dt><dd>${short(state.campaign.piSha)}</dd><dt>Harness</dt><dd>${short(state.campaign.harnessSha)}</dd><dt>Produit testé</dt><dd>${short(state.campaign.productSha)}</dd></dl>
-      <dl><dt>Discoverer</dt><dd>${state.actors.discoverer || "—"}</dd><dt>Oracle reviewer</dt><dd>${state.actors.oracleReviewer || "—"}</dd><dt>Runner</dt><dd>${state.actors.runner || "—"}</dd><dt>Result reviewer</dt><dd>${state.actors.resultReviewer || "—"}</dd></dl>
-      <dl><dt>Tentatives Zedflow</dt><dd>${state.zedflowAttempts} / ${MAX_RETRIES} retries</dd><dt>Preuve Pi</dt><dd>${latest("pi_execution")}</dd><dt>Verdict</dt><dd>${latest("verdict")}</dd><dt>Handoffs sortants</dt><dd>${state.handoffs.length}</dd></dl>
+      <dl><dt>Où en sommes-nous ?</dt><dd><strong>${phaseNames[state.phase] || state.phase}</strong></dd><dt>La chaîne est-elle arrêtée ?</dt><dd>${state.suspension ? `Oui — ${state.suspension.reason}` : "Non"}</dd></dl>
+      <dl><dt>Versions garanties identiques</dt><dd>Pi ${short(state.campaign.piSha)}<br>Expérience ${short(state.campaign.harnessSha)}<br>Zedflow ${short(state.campaign.productSha)}</dd></dl>
+      <dl><dt>Qui fait quoi ?</dt><dd>Préparation : ${state.actors.discoverer || "—"}<br>Vérification : ${state.actors.oracleReviewer || "—"}<br>Exécutions Pi puis Zedflow : ${state.actors.runner || "—"}<br>Comparaison finale : ${state.actors.resultReviewer || "—"}</dd></dl>
+      <dl><dt>Exécutions de Zedflow</dt><dd>${state.zedflowAttempts} tentative(s); au plus 1 nouvel essai après panne</dd><dt>Résultat Pi scellé</dt><dd>${latest("pi_execution") === "—" ? "Non" : "Oui"}</dd><dt>Comparaison scellée</dt><dd>${latest("verdict") === "—" ? "Non" : "Oui"}</dd><dt>Dossiers transmis au port</dt><dd>${state.handoffs.length}</dd></dl>
     </div>
-    <h3>Manifests immuables (${state.manifests.length})</h3>
-    <ul>${state.manifests.map(m => `<li><code>${m.id}</code> ${m.hash} ← ${m.previous || "origine"}</li>`).join("") || "<li>aucun</li>"}</ul>`;
+    <details><summary>Voir les reçus techniques immuables (${state.manifests.length})</summary>
+    <ul>${state.manifests.map(m => `<li><code>${m.id}</code> ${m.hash} ← ${m.previous || "origine"}</li>`).join("") || "<li>aucun</li>"}</ul></details>`;
   }
 
   function renderFree() {
