@@ -1,1 +1,0 @@
-{"version":2,"dimensions":{"columns":32,"rows":5},"capabilities":{"colors":256,"unicode":true,"kittyKeyboard":true},"events":[{"type":"lifecycle","name":"message_start","data":{"role":"assistant"}},{"type":"lifecycle","name":"abort","data":{"reason":"escape","timestamp":1}},{"type":"lifecycle","name":"error","data":{"message":"boom","cwd":"/private"}}]}

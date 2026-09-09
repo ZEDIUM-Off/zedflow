@@ -1,7 +1,8 @@
 /target/
-/.pi-subagents/
-/.pi/git/
-/.pi/npm/
-/tools/zedflow-index/.venv/
-/tools/zedflow-index/cocoindex.db/
-**/__pycache__/
+/.lab/
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal

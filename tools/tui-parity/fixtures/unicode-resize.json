@@ -1,1 +1,0 @@
-{"version":2,"dimensions":{"columns":12,"rows":4},"capabilities":{"colors":256,"unicode":true,"kittyKeyboard":true},"events":[{"type":"lifecycle","name":"message_update","data":{"content":"CJK: 界\nemoji: 🙂 é"}},{"type":"resize","columns":16,"rows":5},{"type":"input","data":"界🙂"}]}

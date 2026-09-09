@@ -1,77 +1,36 @@
-# AGENTS.md — Zedflow
+# Zedflow — ADK lab
 
-Guidelines for AI coding agents working in this repository.
+This branch reboots Zedflow as an ADK-Rust playground. It has no Pi port stage,
+Pi fidelity gate, LangGraph runtime, sidecar, or compatibility requirement.
 
-## Product identity and development order
+Read `CONTEXT.md` for product intent, `docs/composition.md` for composition concepts,
+`docs/resources.md` for state/store scope, and `flows/README.md` before adding experiments.
+These documents distinguish future Zedflow concepts from implemented ADK experiments.
 
-Zedflow is a standalone, graph-native coding-agent harness developed in two strict stages:
+- Use ADK-Rust primitives directly. Do not introduce Zedflow contracts, a registry,
+  a DSL, a custom executor, or an optimizer unless the task explicitly calls for them.
+- Put each workflow in one focused `flows/*.rs` file. Reuse a flow through ADK
+  composition when useful; keep its responsibility, inputs, outputs, and effects clear.
+- Keep fixture experiments usable without credentials or network calls. Live model
+  runs must be explicit. Never commit credentials or runtime databases.
+- Keep all ADK library crates in the dependency catalog. See `docs/adk.md` for
+  feature groups, the companion CLI, dependency pins, and platform constraints.
+- Before Rust changes, load the global `rust-skills` skill and relevant rule files.
+  Use Cargo for the Rust workflow. Prefer direct, small implementations.
+- Default branch is `main`. Preserve unrelated working changes. Do not run destructive
+  Git commands or remove unrelated files without explicit user authorization.
 
-1. **Current — Pi fidelity port:** port `references/pi/packages/` completely and faithfully into the matching `crates/zedflow-*` Rust crates.
-2. **Deferred — Zedflow product:** only after the Pi port is complete and validated, implement Flow/Runtime Graph composition and LangGraph integration.
+Use an external target directory for builds, for example
+`CARGO_TARGET_DIR=/tmp/zedflow-adk-target`. Validate changes with:
 
-During stage 1, preserve Pi TypeScript runtime semantics. Do not introduce stage-2 behavior into ported crates.
-
-Canonical references:
-
-- Pi TypeScript reference submodule: `references/pi`
-- LangGraph reference submodule: `references/langgraph`
-- Product context: `CONTEXT.md`
-- Current planning docs: `docs/planning/ZEDFLOW_MIGRATION_INTENT.md`, `docs/planning/ZEDFLOW_MVP_PRD.md`
-- Current Stage-1 status and exit gate: `docs/porting/BASELINE.md`
-
-## Ground rules
-
-- Distinguish the current Pi-to-Rust implementation stage from the final Zedflow product identity.
-- Prefer small, verified changes.
-- Do not delete files unless the user explicitly approves deletion.
-- Never run destructive git commands such as `git reset --hard`, `git clean -fd`, or broad filesystem removal unless the user gives exact, explicit approval.
-- Default branch is `main`; never use `master` in code or docs.
-
-## Rust workflow
-
-Use Cargo only.
-
-After substantive code changes, run the smallest useful gate first, then widen:
-
-```bash
+```sh
 cargo fmt --all --check
-cargo check --workspace --all-targets
-cargo test --workspace --all-targets --no-run
+cargo check --locked --workspace --all-targets
+cargo test --locked --workspace --all-targets
+cargo clippy --locked --workspace --all-targets -- -D warnings
 ```
 
-For expensive builds, prefer an external/offloaded builder when available. If local, set a temporary target dir to avoid polluting the repo:
-
-```bash
-export CARGO_TARGET_DIR="/tmp/zedflow-target"
-export TMPDIR="/tmp/zedflow-tmp"
-mkdir -p "$CARGO_TARGET_DIR" "$TMPDIR"
-```
-
-## Pi port coordination
-
-`tools/pi-port-swarm/controller.py` is the stage-1 controller. Each unit runs in a fresh `pi -p` session and short-lived worktree; runtime state lives under `$XDG_STATE_HOME/zedflow-pi-port`. The controller alone selects units, verifies ownership/ancestry/gitlink/validations, and advances `refs/heads/automation/pi-port` by compare-and-swap. Workers never edit plan state. Ordinary technical blockers enter the bounded repair loop; a structural `PLAN_CHANGE` launches a fresh coordinator that must follow the global `plan-writer` skill. Dependency substitutions return `ARBITRATION_REQUIRED` and pause for human approval.
-
-There is no scheduled port execution. `controller.py monitor` is deterministic and read-only; a separately managed timer may invoke it, but it must never dispatch work.
-
-Stage 1 is one-to-one: each Pi package maps to exactly one Rust crate, and files/tests map one-to-one unless an explicit disposition records why that is impossible:
-
-- `packages/ai` → `zedflow-ai`
-- `packages/agent` → `zedflow-agent`
-- `packages/tui` → `zedflow-tui`
-- `packages/coding-agent` → `zedflow-coding-agent`
-- `packages/orchestrator` → `zedflow-orchestrator`
-
-No Flow, LangGraph, shared-core, tools, or session crate belongs to Stage 1.
-
-## CocoIndex
-
-A local CocoIndex inventory utility lives under `tools/zedflow-index/`.
-
-Run:
-
-```bash
-cd tools/zedflow-index
-uv run cocoindex update main.py
-```
-
-Generated local DBs/venvs are ignored. The checked-in inventory output is `tools/zedflow-index/out/inventory.md`.
+When dependencies/features change, also run
+`cargo check --locked --workspace --all-targets --all-features`.
+The full catalog includes a CPU local-inference build and is more expensive than the
+default graph/agent lab. Add tests for actual behavioral boundaries, not for declarations.
