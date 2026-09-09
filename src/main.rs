@@ -21,6 +21,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Inspect compiled graphs and replay fixture runs in a browser.
+    #[cfg(feature = "web")]
+    Web {
+        #[arg(long, default_value = "127.0.0.1:3141")]
+        listen: std::net::SocketAddr,
+        #[arg(long, default_value = "sqlite://.lab/viewer.db?mode=rwc")]
+        database: String,
+    },
     /// List experiments and their responsibility.
     List,
     /// Run local fixture research (no web requests).
@@ -62,6 +70,11 @@ enum CheckpointAction {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
+        #[cfg(feature = "web")]
+        Command::Web { listen, database } => {
+            std::fs::create_dir_all(".lab").context("create local lab directory")?;
+            zedflow_lab::web::serve(listen, database).await?;
+        }
         Command::List => {
             println!(
                 "research   validate → retrieve fixtures → prepare evidence\nagent      decide → research subgraph → decide (fixture or Gemini)\nmemory     remember → recall, shared service and project isolation\ncheckpoint prepare → pause → resume deliver, SQLite persistence"

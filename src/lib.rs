@@ -2,3 +2,6 @@
 
 #[path = "../flows/mod.rs"]
 pub mod flows;
+
+#[cfg(feature = "web")]
+pub mod web;

@@ -21,6 +21,18 @@ après recherche avec isolation des canaux privés, mémoire partagée entre gra
 avec isolation du projet, reprise SQLite, puis les chemins CLI mémoire et reprise
 dans de nouveaux processus.
 
+## Inspecteur web
+
+Ajout validé le 9 septembre 2026 : 10 tests réussis avec `--features web`
+(les 6 existants et 4 tests HTTP). Les contrôles formatage, compilation de toutes
+les features et Clippy passent. Les 6 tests et Clippy sans feature web passent aussi.
+
+Vérification dans Chromium via CDP : affichage du graphe compilé, exécution de la
+boucle agentique, sélection du nœud de recherche avec surlignage de sa source,
+lecture de la chronologie sans déplacer la page, mémoire isolée entre deux
+périmètres, pause puis reprise SQLite avec `preparations: 1`. Le [guide web](web.md) précise
+la provenance des événements et les limites de la visualisation.
+
 ## Observations utiles
 
 La compilation complète a nécessité le pin `get-size2` et D-Bus embarqué décrits

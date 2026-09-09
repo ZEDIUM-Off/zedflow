@@ -16,4 +16,6 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo check --locked --workspace --all-targets --all-features
       - run: cargo test --locked --workspace --all-targets
+      - run: cargo test --locked --workspace --all-targets --features web
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo clippy --locked --workspace --all-targets --features web -- -D warnings

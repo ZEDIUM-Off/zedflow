@@ -51,6 +51,18 @@ reste sur les fixtures ; cette commande teste l'intégration du modèle à la co
 
 ## Explorer
 
+Pour visualiser et tester ces mêmes flows dans le navigateur :
+
+```sh
+cargo run --locked --features web -- web
+```
+
+Ouvrir ensuite [le lab web local](http://127.0.0.1:3141). La vue affiche les nœuds
+et connexions exportés par ADK depuis le graphe compilé. Un run produit une trace
+que l'on peut parcourir événement par événement, avec inspection de l'état et de
+la source Rust. Les quatre expériences sont disponibles, dont la mémoire par
+projet et la pause/reprise SQLite. Voir [le guide de visualisation](docs/web.md).
+
 | Fichier | Responsabilité |
 |---|---|
 | `flows/research.rs` | Valider une requête, récupérer les fixtures, retourner des éléments de réponse |

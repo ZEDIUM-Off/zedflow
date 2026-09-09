@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zedflow · Graph lab</title><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header><a class="brand" href="/">zedflow<span> / graph lab</span></a><div class="badges"><span class="dot"></span> ADK 2.2 · exécution locale</div></header>
+<div class="workspace">
+<aside class="sidebar"><div class="eyebrow">EXPLORER</div><h2>Les flows</h2><nav id="flows" aria-label="Expériences"></nav><div class="aside-note">Une définition en Rust.<br>Un graphe à comprendre.<p>Les nœuds et connexions viennent du graphe compilé.</p></div></aside>
+<main>
+<section class="heading"><div><div class="eyebrow">LABORATOIRE DE COMPOSITION</div><h1 id="title">Chargement…</h1><p id="description"></p></div><span id="status" role="status">Prêt</span></section>
+<div id="error" role="alert" hidden></div>
+<div class="panels">
+<section class="canvas-panel"><div class="panel-top"><span>Structure du flow</span><span id="node-count" class="muted"></span></div><div class="canvas"><svg id="graph" role="img" aria-label="Graphe compilé du flow"></svg></div><div class="legend"><span><i></i>Disponible</span><span><i class="visited"></i>Parcouru</span><span><i class="selected"></i>Sélectionné</span></div><p id="limitations" class="footnote"></p><button id="subgraph" class="link-button" hidden>Explorer le flow de recherche →</button></section>
+<section class="inspector"><div class="panel-top">Lancer une expérience <span class="tag">FIXTURES</span></div>
+<form id="run-form"><label for="input">État d’entrée <span class="muted">JSON</span></label><textarea id="input" rows="6" spellcheck="false"></textarea><div id="project-field" hidden><label for="project">Périmètre mémoire</label><input id="project" value="rust-workspace"><p class="footnote">Même périmètre : notes partagées entre runs. Un autre nom isole ses notes. La mémoire dure jusqu’à l’arrêt du serveur.</p></div><div class="run-buttons"><button id="run" type="submit" class="primary">Exécuter le flow</button><button id="resume" type="button" hidden>Reprendre</button></div></form>
+<div class="tabs" role="tablist" aria-label="Inspecteur"><button role="tab" aria-selected="true" data-tab="state">État</button><button role="tab" aria-selected="false" data-tab="event">Événement</button><button role="tab" aria-selected="false" data-tab="source">Source Rust</button></div>
+<div class="inspector-caption" id="inspect-caption">État initial</div><pre id="inspect" tabindex="0" aria-label="Contenu de l’inspecteur"></pre><div id="channels" class="footnote"></div></section>
+</div>
+<section class="trace-panel"><div class="panel-top"><span>Parcours d’exécution <span id="trace-count" class="muted">Aucun run</span></span><button id="download" disabled class="link-button">Exporter la trace</button></div><div class="playback"><button id="prev" disabled aria-label="Événement précédent">←</button><button id="play" disabled>Lire le parcours</button><button id="next" disabled aria-label="Événement suivant">→</button><input id="position" type="range" min="0" max="0" value="0" disabled aria-label="Position dans la trace"><span id="counter">—</span></div><div id="events" class="events"><p class="empty">Exécute le flow, puis parcours ses événements pour voir les nœuds traversés et l’évolution de l’état.</p></div><p class="footnote">Lecture d’une exécution enregistrée. Les instantanés d’état ADK sont confirmés après chaque étape ; ils ne détaillent pas les écritures internes à un nœud.</p></section>
+</main></div><script src="/app.js" defer></script>
+</body></html>

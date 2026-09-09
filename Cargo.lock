@@ -10288,13 +10288,17 @@ dependencies = [
  "anyhow",
  "async-trait",
  "awp-types",
+ "axum",
  "clap",
  "futures",
  "get-size2",
  "libdbus-sys",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
+ "tower 0.5.3",
+ "uuid 1.26.0",
 ]
 
 [[package]]
