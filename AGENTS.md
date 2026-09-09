@@ -31,6 +31,10 @@ Canonical references:
 
 Use Cargo only.
 
+Before writing, reviewing, or refactoring Rust, load the global `rust-skills` skill and read the
+linked rule files for every affected category. The repository-local skill entry delegates to that
+global source of truth.
+
 After substantive code changes, run the smallest useful gate first, then widen:
 
 ```bash
