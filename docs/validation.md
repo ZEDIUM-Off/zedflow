@@ -35,6 +35,23 @@ la provenance des événements et les limites de la visualisation.
 
 ## Observations utiles
 
+### Passage à ADK Studio — 10 septembre 2026
+
+Studio upstream 1.0.1 est installé, son UI embarquée est servie sur le réseau privé
+et le projet natif `Zedflow Studio Recherche` est chargé depuis le dépôt.
+Vérification dans Chromium : canvas et propriétés, Build Successful, lancement
+manuel, événements `cadrer → sources → reponse`, résultat interpolé avec la question
+fournie et timeline de trois étapes réussies. Modification d'une description dans
+les propriétés du canvas, puis vérification de sa sauvegarde dans le JSON du dépôt.
+Aucune erreur JavaScript observée.
+Le binaire généré a également été exécuté directement avec une autre question ;
+il termine avec le résultat attendu et un code de sortie 0.
+
+La procédure et les trois particularités upstream rencontrées (entrée `START`,
+clé d'état `message`, configuration fournisseur exigée pour des actions seules)
+sont documentées dans [studio.md](studio.md). Le launcher passe `sh -n` ; aucune
+crate du workspace Rust n'a été modifiée. Le prototype web précédent est arrêté.
+
 La compilation complète a nécessité le pin `get-size2` et D-Bus embarqué décrits
 dans [adk.md](adk.md). Aucun fork du code upstream n'a été introduit.
 

@@ -6,3 +6,9 @@
 *.db
 *.db-shm
 *.db-wal
+/.adk-studio/projects/build/
+/.adk-studio/projects/deploy/
+/.adk-studio/projects/*/target/
+/.adk-studio/projects/*/build/
+/.adk-studio/projects/*.keys
+/.adk-studio/projects/*.json.tmp

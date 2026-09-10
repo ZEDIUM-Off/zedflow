@@ -87,6 +87,7 @@ La bibliothèque `adk-cli` est compilée avec le catalogue et permet notamment
 d'explorer son `Launcher`. Son binaire upstream `adk-rust` n'est pas installé par
 le manifeste du lab. Le launcher de ce dépôt reste `zedflow-lab`.
 
-Les interfaces Studio/Playground ne sont pas des membres de ce catalogue Rust
-2.2.0. Ce reboot prépare un lab de code et de commandes ; une intégration de ces
-interfaces pourra constituer une expérience distincte.
+ADK Studio est installé séparément et sert d'interface visuelle au lab. Le paquet
+publié 1.0.1 dépend d'ADK 1.x ; il ne modifie pas le catalogue Rust 2.2.0 du dépôt.
+Les projets natifs de Studio sont versionnés dans `.adk-studio/projects/`.
+Voir [studio.md](studio.md) pour la procédure et la frontière entre ces expériences.

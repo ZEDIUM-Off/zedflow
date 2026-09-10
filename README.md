@@ -51,17 +51,20 @@ reste sur les fixtures ; cette commande teste l'intégration du modèle à la co
 
 ## Explorer
 
-Pour visualiser et tester ces mêmes flows dans le navigateur :
+L'interface visuelle du lab est **ADK Studio**, installé séparément :
 
 ```sh
-cargo run --locked --features web -- web
+./scripts/studio.sh
 ```
 
-Ouvrir ensuite [le lab web local](http://127.0.0.1:3141). La vue affiche les nœuds
-et connexions exportés par ADK depuis le graphe compilé. Un run produit une trace
-que l'on peut parcourir événement par événement, avec inspection de l'état et de
-la source Rust. Les quatre expériences sont disponibles, dont la mémoire par
-projet et la pause/reprise SQLite. Voir [le guide de visualisation](docs/web.md).
+Ouvrir [Studio local](http://127.0.0.1:3000), puis **Zedflow Studio Recherche**.
+Cette expérience native permet de modifier les nœuds, compiler le graphe, tester
+une entrée et examiner les traces depuis le canvas upstream. Sa définition JSON
+est versionnée dans `.adk-studio/projects/`.
+
+Studio 1.0.1 génère des projets ADK 1.x ; les expériences Rust ci-dessous restent
+en ADK 2.2.0. Studio ne les importe pas automatiquement. Voir le
+[guide Studio](docs/studio.md) pour l'installation, l'accès depuis Zed et les limites.
 
 | Fichier | Responsabilité |
 |---|---|

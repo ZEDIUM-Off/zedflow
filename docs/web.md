@@ -1,5 +1,9 @@
 # Comprendre les flows avec la vue web
 
+**Prototype remplacé par [ADK Studio](studio.md) comme interface du lab.**
+Ce document décrit l'ancien inspecteur et reste conservé pour référence.
+Son service est arrêté ; utiliser `scripts/studio.sh` pour le travail visuel.
+
 L'inspecteur du lab affiche les graphes compilés et permet de relire leurs
 exécutions. Le code des flows reste leur unique définition. Cette interface est
 un petit outil du laboratoire ; elle n'est pas ADK Studio et ne convertit pas les
