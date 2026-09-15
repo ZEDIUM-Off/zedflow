@@ -1,0 +1,10 @@
+{
+  "name": "zedflow-web-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build"
+  }
+}
