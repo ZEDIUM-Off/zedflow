@@ -5,6 +5,9 @@
   "scripts": {
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "dev": "pnpm --filter @zedflow/client dev",
+    "test:vue": "pnpm --filter @zedflow/vue test",
+    "test:sdk": "pnpm --filter @zedflow/sdk test"
   }
 }

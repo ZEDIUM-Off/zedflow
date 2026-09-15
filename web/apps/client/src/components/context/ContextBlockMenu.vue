@@ -1,0 +1,13 @@
+<script setup lang="ts">
+import { DropdownMenuRoot, DropdownMenuTrigger, DropdownMenuPortal, DropdownMenuContent, DropdownMenuItem } from 'reka-ui'
+import { Plus, Folder, Text, GitBranch, Repeat2 } from 'lucide-vue-next'
+import type { ContextBlock } from '@zedflow/sdk'
+withDefaults(defineProps<{ label?: string; version?: number; compact?: boolean }>(), { label: 'Ajouter un bloc', version: 2, compact: false })
+const emit = defineEmits<{ add: [kind: ContextBlock['kind']]; exchange: [] }>()
+</script>
+<template>
+  <DropdownMenuRoot><DropdownMenuTrigger class="ctx-add-block" :class="{'is-compact':compact}"><Plus :size="14"/>{{label}}</DropdownMenuTrigger><DropdownMenuPortal><DropdownMenuContent class="compact-menu ctx-block-menu" :side-offset="4" align="start"><DropdownMenuItem @select="emit('add','emit')"><Text :size="14"/><span>Ajouter au contexte<small>Composer une instruction, une donnée, un échange ou un média</small></span></DropdownMenuItem><DropdownMenuItem @select="emit('add','if')"><GitBranch :size="14"/><span>Si… Alors… Sinon…<small>Choisir les blocs à ajouter selon une condition</small></span></DropdownMenuItem><DropdownMenuItem v-if="version>=2" @select="emit('add','forEach')"><Repeat2 :size="14"/><span>Pour chaque élément<small>Composer des fragments pour chaque élément d’une liste</small></span></DropdownMenuItem><DropdownMenuItem v-if="version>=2" @select="emit('exchange')"><Text :size="14"/><span>Échange d’outil<small>Associer un appel enregistré et son résultat</small></span></DropdownMenuItem><DropdownMenuItem @select="emit('add','group')"><Folder :size="14"/><span>Groupe<small>Rassembler des blocs sous un nom, dans leur ordre d’apparition</small></span></DropdownMenuItem></DropdownMenuContent></DropdownMenuPortal></DropdownMenuRoot>
+</template>
+<style scoped>
+.ctx-add-block{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:11px;background:transparent;border:1px dashed #424248;border-radius:5px;color:#b9b9c0;padding:7px 9px;min-height:31px}.ctx-add-block:hover{background:#262629;border-color:#62626a}.ctx-add-block.is-compact{border-color:transparent;background:transparent;padding:3px 5px;min-height:21px;font-size:10px;color:#96969f}.ctx-add-block.is-compact:hover{border-color:#414148;background:#242427;color:#c1c1c8}.ctx-block-menu{max-width:min(360px,90vw)}.ctx-block-menu [role=menuitem]{padding:9px;display:flex;align-items:flex-start;gap:9px}.ctx-block-menu [role=menuitem]>svg{margin-top:2px;flex:none;color:#b6b6bd}.ctx-block-menu [role=menuitem]>span{display:flex;flex-direction:column;gap:4px;font-size:12px}.ctx-block-menu small{font-size:11px;color:#a4a4ac;line-height:1.45}
+</style>
