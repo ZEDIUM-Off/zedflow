@@ -1,0 +1,94 @@
+[workspace]
+resolver = "3"
+members = ["crates/zf-core"]
+
+[workspace.package]
+version = "0.2.0-dev"
+edition = "2024"
+rust-version = "1.96.1"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+correctness = { level = "deny", priority = -1 }
+
+[workspace.dependencies]
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1", features = ["v4"] }
+get-size2 = { version = "=0.10.1" }
+libdbus-sys = { version = "0.2", features = ["vendored"] }
+adk-acp = { version = "=2.2.0", default-features = false }
+adk-action = { version = "=2.2.0", default-features = false }
+adk-agent = { version = "=2.2.0", default-features = false }
+adk-anthropic = { version = "=2.2.0", default-features = false }
+adk-artifact = { version = "=2.2.0", default-features = false }
+adk-audio = { version = "=2.2.0", default-features = false }
+adk-auth = { version = "=2.2.0", default-features = false }
+adk-awp = { version = "=2.2.0", default-features = false }
+adk-bench = { version = "=2.2.0", default-features = false }
+adk-browser = { version = "=2.2.0", default-features = false }
+adk-cli = { version = "=2.2.0", default-features = false }
+adk-code = { version = "=2.2.0", default-features = false }
+adk-codeact-monty = { version = "=2.2.0", default-features = false }
+adk-computer-use = { version = "=2.2.0", default-features = false }
+adk-core = { version = "=2.2.0", default-features = false }
+adk-deploy = { version = "=2.2.0", default-features = false }
+adk-devtools = { version = "=2.2.0", default-features = false }
+adk-enterprise = { version = "=2.2.0", default-features = false }
+adk-eval = { version = "=2.2.0", default-features = false }
+adk-gcp = { version = "=2.2.0", default-features = false }
+adk-gemini = { version = "=2.2.0", default-features = false }
+adk-graph = { version = "=2.2.0", default-features = false, features = ["sqlite", "functional", "node-cache", "delta-checkpoint", "time-travel"] }
+adk-guardrail = { version = "=2.2.0", default-features = false }
+adk-managed = { version = "=2.2.0", default-features = false }
+adk-memory = { version = "=2.2.0", default-features = false }
+adk-mistralrs = { version = "=2.2.0", default-features = false }
+adk-model = { version = "=2.2.0", default-features = false, features = ["gemini"] }
+adk-payments = { version = "=2.2.0", default-features = false }
+adk-plugin = { version = "=2.2.0", default-features = false }
+adk-rag = { version = "=2.2.0", default-features = false }
+adk-realtime = { version = "=2.2.0", default-features = false }
+adk-retry-reflect = { version = "=2.2.0", default-features = false }
+adk-runner = { version = "=2.2.0", default-features = false }
+adk-rust = { version = "=2.2.0", default-features = false }
+adk-rust-macros = { version = "=2.2.0", default-features = false }
+adk-sandbox = { version = "=2.2.0", default-features = false }
+adk-server = { version = "=2.2.0", default-features = false }
+adk-session = { version = "=2.2.0", default-features = false }
+adk-skill = { version = "=2.2.0", default-features = false }
+adk-telemetry = { version = "=2.2.0", default-features = false }
+adk-tool = { version = "=2.2.0", default-features = false }
+awp-types = { version = "=2.2.0", default-features = false }
+anyhow = "1"
+async-trait = "0.1"
+clap = { version = "4", features = ["derive"] }
+futures = "0.3"
+serde_json = { version = "1", features = ["unbounded_depth"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "process", "fs", "time", "sync", "io-util"] }
+webrtc = "=0.20.0"
+if-addrs = "0.15"
+tokio-util = { version = "0.7", features = ["rt"] }
+nix = { version = "0.30", features = ["signal", "process"] }
+sha2 = "0.10"
+serde_yaml = "0.9"
+ignore = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+base64 = "0.22"
+syn = { version = "2", features = ["full", "visit", "visit-mut"] }
+quote = "1"
+proc-macro2 = { version = "1", features = ["span-locations"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite"] }
+tower-http = { version = "0.6", features = ["fs"] }
+zip = { version = "=7.2.0", default-features = false, features = ["deflate"] }
+same-file = "=1.0.6"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
