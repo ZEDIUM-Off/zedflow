@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/zf-core", "crates/zf-context", "crates/zf-flows"]
+members = ["crates/zf-core", "crates/zf-context", "crates/zf-flows", "crates/zf-compiler"]
 
 [workspace.package]
 version = "0.2.0-dev"

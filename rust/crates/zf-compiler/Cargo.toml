@@ -1,0 +1,18 @@
+[package]
+name = "zf-compiler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+zf-core = { path = "../zf-core" }
+zf-context = { path = "../zf-context" }
+zf-flows = { path = "../zf-flows" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+sha2.workspace = true

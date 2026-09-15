@@ -395,6 +395,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zf-compiler"
+version = "0.2.0-dev"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "sha2",
+ "zf-context",
+ "zf-core",
+ "zf-flows",
+]
+
+[[package]]
 name = "zf-context"
 version = "0.2.0-dev"
 dependencies = [
