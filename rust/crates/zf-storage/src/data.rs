@@ -581,3 +581,151 @@ mod tests {
         assert!(live_identity.upgrade().is_none());
     }
 }
+
+use zf_context::window::{PreparedWindow, WindowError, WindowPatch, decode, patched, validate};
+use zf_core::diagnostics::Diagnostic;
+
+/// Window validation failures remain distinct from permission, revision and storage errors.
+#[derive(Debug)]
+pub enum WindowStoreError {
+    Data(DataError),
+    Invalid(Vec<Diagnostic>),
+}
+impl fmt::Display for WindowStoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Data(error) => error.fmt(f),
+            Self::Invalid(diagnostics) => write!(f, "invalid prepared window: {diagnostics:?}"),
+        }
+    }
+}
+impl std::error::Error for WindowStoreError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Data(error) => Some(error),
+            Self::Invalid(_) => None,
+        }
+    }
+}
+impl From<DataError> for WindowStoreError {
+    fn from(error: DataError) -> Self {
+        Self::Data(error)
+    }
+}
+impl From<WindowError> for WindowStoreError {
+    fn from(error: WindowError) -> Self {
+        match error {
+            WindowError::Invalid(diagnostics) => Self::Invalid(diagnostics),
+        }
+    }
+}
+fn invalid_window(code: &str, path: &str, message: &str) -> WindowStoreError {
+    WindowStoreError::Invalid(vec![Diagnostic::new(code, path, message)])
+}
+
+/// Scoped prepared windows with immutable revisions and atomic patch publication.
+#[derive(Clone)]
+pub struct WindowRegistry {
+    data: DataRegistry,
+}
+impl WindowRegistry {
+    pub fn new(data: DataRegistry) -> Self {
+        Self { data }
+    }
+    pub async fn create(
+        &self,
+        scope: &Scope,
+        alias: &str,
+        window: &PreparedWindow,
+    ) -> std::result::Result<Snapshot, WindowStoreError> {
+        validate(window)?;
+        Ok(self
+            .data
+            .create(
+                scope,
+                alias,
+                &serde_json::to_value(window)
+                    .map_err(|_| invalid_window("window_value", "window", "Invalid window JSON"))?,
+            )
+            .await?)
+    }
+    pub async fn read(
+        &self,
+        scope: &Scope,
+        alias: &str,
+    ) -> std::result::Result<Snapshot, WindowStoreError> {
+        let snapshot = self.data.snapshot(scope, alias).await?;
+        decode(snapshot.value.as_ref())?;
+        Ok(snapshot)
+    }
+    pub async fn revision(
+        &self,
+        scope: &Scope,
+        alias: &str,
+        revision: &Revision,
+    ) -> std::result::Result<Snapshot, WindowStoreError> {
+        let snapshot = self.data.revision(scope, alias, revision).await?;
+        decode(snapshot.value.as_ref())?;
+        Ok(snapshot)
+    }
+    pub async fn patch(
+        &self,
+        scope: &Scope,
+        alias: &str,
+        expected: &Revision,
+        patches: &[WindowPatch],
+    ) -> std::result::Result<Snapshot, WindowStoreError> {
+        if patches.is_empty() || patches.len() > 4096 {
+            return Err(invalid_window(
+                "window_patch",
+                "patches",
+                "Submit 1–4096 explicit window edits",
+            ));
+        }
+        let snapshot = self.data.snapshot(scope, alias).await?;
+        if snapshot.revision != *expected {
+            return Err(DataError::Conflict {
+                expected: expected.clone(),
+                actual: snapshot.revision,
+            }
+            .into());
+        }
+        let window = patched(&decode(snapshot.value.as_ref())?, patches)?;
+        // This second expected-revision check protects against another writer
+        // publishing after the read above. No patch prefix was committed.
+        Ok(self
+            .data
+            .publish(
+                scope,
+                alias,
+                expected,
+                &serde_json::to_value(&window)
+                    .map_err(|_| invalid_window("window_value", "window", "Invalid window JSON"))?,
+            )
+            .await?)
+    }
+    /// Durable retry of an explicit patch. The original revision remains the
+    /// input even if the entity head advanced after a successful publication.
+    pub async fn patch_unique(
+        &self,
+        scope: &Scope,
+        alias: &str,
+        expected: &Revision,
+        patches: &[WindowPatch],
+        publication_id: &str,
+    ) -> std::result::Result<Snapshot, WindowStoreError> {
+        let base = self.data.revision(scope, alias, expected).await?;
+        let window = patched(&decode(base.value.as_ref())?, patches)?;
+        Ok(self
+            .data
+            .publish_unique(
+                scope,
+                alias,
+                Some(expected),
+                &serde_json::to_value(&window)
+                    .map_err(|_| invalid_window("window_value", "window", "Invalid window JSON"))?,
+                publication_id,
+            )
+            .await?)
+    }
+}

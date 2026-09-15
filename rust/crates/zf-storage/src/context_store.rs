@@ -1198,3 +1198,105 @@ mod import_tests {
         );
     }
 }
+
+/// Portable definition packages using checked source installation and domain validators.
+pub mod packages {
+    use super::{SourceFile, SourceInstall};
+    use crate::context_store;
+    use anyhow::{Result, ensure};
+    use serde::Serialize;
+    use std::path::PathBuf;
+    use zf_context::context_package::{
+        ArtifactKind, ArtifactSelection, ContextPackage, PACKAGE_VERSION, PackagePrerequisite,
+        SourceArtifact, validate_package,
+    };
+    use zf_flows::bridge_source::PackageBridgeValidator;
+
+    #[derive(Clone, Debug, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct PackageImport {
+        pub files: Vec<SourceFile>,
+        pub prerequisites: Vec<PackagePrerequisite>,
+    }
+    pub async fn export_selection(
+        workspace: PathBuf,
+        selection: &[ArtifactSelection],
+    ) -> Result<ContextPackage> {
+        ensure!(
+            !selection.is_empty() && selection.len() <= 256,
+            "Select 1–256 source artifacts"
+        );
+        let mut selection = selection.to_vec();
+        selection.sort();
+        ensure!(
+            selection.windows(2).all(|p| p[0] != p[1]),
+            "Duplicate source selection"
+        );
+        let requests = selection
+            .iter()
+            .map(|s| (s.kind.segments(), s.key.clone()))
+            .collect();
+        let files = context_store::read_sources(workspace, requests).await?;
+        let mut artifacts = vec![];
+        for (selection, file) in selection.into_iter().zip(files) {
+            ensure!(
+                file.diagnostics.is_empty(),
+                "Source {} is invalid: {:?}",
+                file.key,
+                file.diagnostics
+            );
+            artifacts.push(SourceArtifact {
+                kind: selection.kind,
+                key: file.key,
+                hash: file.hash,
+                source: file
+                    .source
+                    .ok_or_else(|| anyhow::anyhow!("Source contents absent"))?,
+            });
+        }
+        let package = ContextPackage {
+            version: if artifacts
+                .iter()
+                .any(|artifact| artifact.kind == ArtifactKind::Example)
+            {
+                2
+            } else {
+                PACKAGE_VERSION
+            },
+            artifacts,
+        };
+        let validated = validate_package(&package, &PackageBridgeValidator);
+        ensure!(
+            validated.valid,
+            "Package dependencies or sources are invalid: {:?}",
+            validated.diagnostics
+        );
+        Ok(package)
+    }
+
+    pub async fn import_package(
+        workspace: PathBuf,
+        package: &ContextPackage,
+    ) -> Result<PackageImport> {
+        let validated = validate_package(package, &PackageBridgeValidator);
+        ensure!(
+            validated.valid,
+            "Invalid source package: {:?}",
+            validated.diagnostics
+        );
+        let sources = package
+            .artifacts
+            .iter()
+            .map(|a| SourceInstall {
+                segments: a.kind.segments(),
+                key: a.key.clone(),
+                source: a.source.clone(),
+            })
+            .collect();
+        let files = context_store::install_sources(workspace, sources).await?;
+        Ok(PackageImport {
+            files,
+            prerequisites: validated.prerequisites,
+        })
+    }
+}

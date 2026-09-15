@@ -1016,3 +1016,230 @@ async fn live_definition_snapshots_are_workspace_scoped_and_do_not_hydrate_conve
             .is_empty()
     );
 }
+
+#[tokio::test]
+async fn window_edits_are_atomic_and_unique_publications_do_not_reapply_after_head_advances() {
+    use zf_context::window::{PreparedWindow, WindowPatch};
+    use zf_core::identity::{Permission, Scope};
+    use zf_storage::data::{DataError, DataRegistry, WindowRegistry, WindowStoreError};
+    let db = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    let content = ContentStore::new(db.clone()).await.unwrap();
+    let data = DataRegistry::new(db, content, "run").await.unwrap();
+    let windows = WindowRegistry::new(data.clone());
+    let scope = Scope::Flow("author".into());
+    let read_scope = Scope::Flow("reader".into());
+    let window:PreparedWindow=serde_json::from_value(json!({"strategyId":"strategy","strategyRevision":"frozen",
+        "items":[{"kind":"fragment","id":"one","role":"data","format":"text","value":"first","sources":[]},
+                 {"kind":"fragment","id":"two","role":"data","format":"text","value":"second","sources":[]}],
+        "sourceRevisions":{},"capabilities":[]})).unwrap();
+    let first = windows.create(&scope, "context", &window).await.unwrap();
+    let bad = [
+        WindowPatch::Remove { id: "one".into() },
+        WindowPatch::Remove {
+            id: "missing".into(),
+        },
+    ];
+    assert!(
+        windows
+            .patch(&scope, "context", &first.revision, &bad)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        windows.read(&scope, "context").await.unwrap().revision,
+        first.revision
+    );
+    data.grant(&scope, "context", &read_scope, "context", Permission::Read)
+        .await
+        .unwrap();
+    assert!(matches!(
+        windows
+            .patch(
+                &read_scope,
+                "context",
+                &first.revision,
+                &[WindowPatch::Remove { id: "one".into() }]
+            )
+            .await,
+        Err(WindowStoreError::Data(DataError::PermissionDenied))
+    ));
+    let second = windows
+        .patch_unique(
+            &scope,
+            "context",
+            &first.revision,
+            &[WindowPatch::Remove { id: "one".into() }],
+            "patch-one",
+        )
+        .await
+        .unwrap();
+    let third = windows
+        .patch(
+            &scope,
+            "context",
+            &second.revision,
+            &[WindowPatch::Remove { id: "two".into() }],
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        windows
+            .patch(
+                &scope,
+                "context",
+                &first.revision,
+                &[WindowPatch::Remove { id: "one".into() }]
+            )
+            .await,
+        Err(WindowStoreError::Data(DataError::Conflict { .. }))
+    ));
+    let replay = windows
+        .patch_unique(
+            &scope,
+            "context",
+            &first.revision,
+            &[WindowPatch::Remove { id: "one".into() }],
+            "patch-one",
+        )
+        .await
+        .unwrap();
+    assert_eq!(replay.revision, second.revision);
+    assert_eq!(
+        windows.read(&scope, "context").await.unwrap().revision,
+        third.revision
+    );
+    assert_eq!(
+        windows
+            .revision(&scope, "context", &first.revision)
+            .await
+            .unwrap()
+            .value,
+        first.value
+    );
+}
+
+#[tokio::test]
+async fn examples_follow_complete_type_identity_across_sources() {
+    use zf_core::types::{DataType, TypeRegistry};
+    use zf_storage::source_catalog::examples;
+    let workspace = tempfile::tempdir().unwrap();
+    let kind = DataType::Named {
+        name: "RouteResult".into(),
+    };
+    let types = TypeRegistry::from([("RouteResult".into(), DataType::Text)]);
+    let saved = examples::save(
+        workspace.path().into(),
+        kind.clone(),
+        types.clone(),
+        "Documentation terminée".into(),
+        json!("docs checked"),
+    )
+    .await
+    .unwrap();
+    let all = examples::list(workspace.path().into(), kind.clone(), types.clone())
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 2);
+    assert!(
+        all.iter()
+            .any(|example| example.id == saved.id && example.value == json!("docs checked"))
+    );
+    let changed = TypeRegistry::from([("RouteResult".into(), DataType::Number)]);
+    let different = examples::list(workspace.path().into(), kind.clone(), changed)
+        .await
+        .unwrap();
+    assert_eq!(different.len(), 1);
+    assert_eq!(different[0].id, "builtin");
+    assert!(
+        examples::save(
+            workspace.path().into(),
+            kind,
+            types,
+            "Invalid".into(),
+            json!(42)
+        )
+        .await
+        .is_err()
+    );
+    let catalog = examples::catalog(workspace.path().into()).await.unwrap();
+    assert_eq!(catalog.len(), 1);
+    assert!(catalog[0].diagnostics.is_empty());
+}
+
+#[tokio::test]
+async fn definition_packages_preserve_examples_and_validate_bridges_before_installing() {
+    use zf_context::context_package::{ArtifactKind, ArtifactSelection, SourceArtifact};
+    use zf_core::types::{DataType, TypeRegistry};
+    use zf_flows::{bridge_source, composition::BridgeDefinition};
+    use zf_storage::{
+        context_store::{self, packages},
+        source_catalog::examples,
+    };
+    let source = tempfile::tempdir().unwrap();
+    let target = tempfile::tempdir().unwrap();
+    let saved = examples::save(
+        source.path().into(),
+        DataType::Text,
+        TypeRegistry::new(),
+        "Shared".into(),
+        json!("exact payload"),
+    )
+    .await
+    .unwrap();
+    let selection = vec![ArtifactSelection {
+        kind: ArtifactKind::Example,
+        key: saved.id.clone(),
+    }];
+    let mut package = packages::export_selection(source.path().into(), &selection)
+        .await
+        .unwrap();
+    assert_eq!(package.version, 2);
+    let bridge =
+        bridge_source::generate(&BridgeDefinition::new().import("docs", "working-system")).unwrap();
+    package.artifacts.push(SourceArtifact {
+        kind: ArtifactKind::Bridge,
+        key: "docs".into(),
+        hash: context_store::hash(bridge.as_bytes()),
+        source: bridge,
+    });
+    let imported = packages::import_package(target.path().into(), &package)
+        .await
+        .unwrap();
+    assert_eq!(imported.files.len(), 2);
+    assert!(
+        imported
+            .prerequisites
+            .iter()
+            .any(|p| p.kind == "flow" && p.key == "working-system")
+    );
+    assert!(
+        packages::import_package(target.path().into(), &package)
+            .await
+            .is_err()
+    );
+    let roundtrip = packages::export_selection(target.path().into(), &selection)
+        .await
+        .unwrap();
+    assert_eq!(roundtrip.artifacts[0], package.artifacts[0]);
+    let valid_bridge = package.artifacts[1].clone();
+    let untouched = tempfile::tempdir().unwrap();
+    package.artifacts[1].source = "fn bridge() { panic!(\"must never run\"); }".into();
+    package.artifacts[1].hash = context_store::hash(package.artifacts[1].source.as_bytes());
+    assert!(
+        packages::import_package(untouched.path().into(), &package)
+            .await
+            .is_err()
+    );
+    assert!(!untouched.path().join(".zedflow").exists());
+    package.artifacts[1] = valid_bridge;
+    package.artifacts[0].hash = "wrong".into();
+    assert!(
+        packages::import_package(untouched.path().into(), &package)
+            .await
+            .is_err()
+    );
+}
