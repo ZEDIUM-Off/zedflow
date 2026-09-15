@@ -1,0 +1,17 @@
+import { z } from 'zod';
+import { jsonValueSchema } from '../core/json.js';
+import { contextDiagnosticSchema } from '../context/model.js';
+import { bridgeFileSchema } from '../composition/model.js';
+import { flowFileSchema } from './model.js';
+export const deleteFlowResultSchema = z.object({ deleted: z.boolean() }).catchall(jsonValueSchema);
+export type DeleteFlowResult = z.output<typeof deleteFlowResultSchema>;
+export const nodePortSchema = z.object({ id: z.string(), label: z.string(), dataType: z.enum(['state', 'preparedContext']) }).catchall(jsonValueSchema);
+export type NodePort = z.output<typeof nodePortSchema>;
+export const nodeContractSchema = z.object({ nodeId: z.string(), inputs: z.array(nodePortSchema), outputs: z.array(nodePortSchema), consumes: z.array(z.string()), produces: z.array(z.string()) }).catchall(jsonValueSchema);
+export type NodeContract = z.output<typeof nodeContractSchema>;
+export const edgeAnalysisSchema = z.object({ edgeId: z.string(), guaranteed: z.array(z.string()), conditional: z.array(z.string()), consumes: z.array(z.string()), produces: z.array(z.string()), unknown: z.boolean(), junction: z.boolean() }).catchall(jsonValueSchema);
+export type EdgeAnalysis = z.output<typeof edgeAnalysisSchema>;
+export const graphAnalysisSchema = z.object({ nodes: z.array(nodeContractSchema), edges: z.array(edgeAnalysisSchema), diagnostics: z.array(contextDiagnosticSchema) }).catchall(jsonValueSchema);
+export type GraphAnalysis = z.output<typeof graphAnalysisSchema>;
+export const workingSystemExampleResultSchema = z.object({ root: flowFileSchema, worker: flowFileSchema, bridge: bridgeFileSchema, workingDirectory: z.string() }).catchall(jsonValueSchema);
+export type WorkingSystemExampleResult = z.output<typeof workingSystemExampleResultSchema>;

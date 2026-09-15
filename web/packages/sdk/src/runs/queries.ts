@@ -1,0 +1,13 @@
+import { z } from 'zod';
+export { workspaceQuerySchema, type WorkspaceQuery } from '../workspaces/queries.js';
+import { workspaceQuerySchema } from '../workspaces/queries.js';
+export const runCursorQuerySchema = workspaceQuerySchema.extend({ after: z.number().int().nonnegative().optional() });
+export type RunCursorQuery = z.input<typeof runCursorQuerySchema>;
+export const timelineQuerySchema = workspaceQuerySchema.extend({ before: z.number().int().optional() });
+export type TimelineQuery = z.input<typeof timelineQuerySchema>;
+export const definitionQuerySchema = workspaceQuerySchema.extend({ nodePath: z.string().optional(), occurrenceId: z.string().optional(), hash: z.string().optional() });
+export type DefinitionQuery = z.input<typeof definitionQuerySchema>;
+export const contextProgramQuerySchema = workspaceQuerySchema.extend({ nodePath: z.string().min(1), hash: z.string().optional() });
+export type ContextProgramQuery = z.input<typeof contextProgramQuerySchema>;
+export const contextWindowQuerySchema = workspaceQuerySchema.extend({ nodePath: z.string().min(1), alias: z.string().min(1), revision: z.string().optional() });
+export type ContextWindowQuery = z.input<typeof contextWindowQuerySchema>;

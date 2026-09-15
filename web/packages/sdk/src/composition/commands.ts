@@ -1,0 +1,14 @@
+import { z } from 'zod';
+import * as m from './model.js';
+import { strategySelectionSchema } from '../context/commands.js';
+import { contextLibrarySchema } from '../context/model.js';
+export const resolveRequestSchema = z.strictObject({ flow: z.string().min(1), entry: z.string().min(1), bridges: z.array(z.string()).optional() });
+export type ResolveRequest = z.input<typeof resolveRequestSchema>;
+export const analyzeCompositionInputSchema = z.strictObject({ catalog: m.compositionCatalogSchema, request: resolveRequestSchema });
+export type AnalyzeCompositionInput = z.input<typeof analyzeCompositionInputSchema>;
+export const resolveCompositionInputSchema = analyzeCompositionInputSchema.extend({ workspaceId: z.string().min(1).optional(), contexts: z.record(z.string(), strategySelectionSchema).optional(), library: contextLibrarySchema.optional() });
+export type ResolveCompositionInput = z.input<typeof resolveCompositionInputSchema>;
+export const prepareRuntimeInputSchema = z.strictObject({ workspaceId: z.string().min(1).optional(), selection: m.runtimeSelectionSchema });
+export type PrepareRuntimeInput = z.input<typeof prepareRuntimeInputSchema>;
+export const saveBridgeInputSchema = z.strictObject({ workspaceId: z.string().min(1).optional(), key: z.string().min(1), bridge: m.bridgeDefinitionSchema, expectedHash: z.string().optional() });
+export type SaveBridgeInput = z.input<typeof saveBridgeInputSchema>;

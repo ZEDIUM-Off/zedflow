@@ -1,0 +1,38 @@
+import { z } from 'zod';
+import { jsonValueSchema, jsonObjectSchema } from '../core/json.js';
+import * as m from './model.js';
+export const selectedStrategySchema = z.object({ strategy: m.contextStrategySchema, source: z.string(), hash: z.string() }).catchall(jsonValueSchema);
+export type SelectedStrategy = z.output<typeof selectedStrategySchema>;
+type ItemNode = {
+    kind: 'group';
+    id: string;
+    label: string;
+    items: ItemNode[];
+} | {
+    kind: 'fragment';
+    id: string;
+    role: 'instruction' | 'data';
+    format: 'text' | 'json' | 'media' | 'adkMessages';
+    value: z.output<typeof jsonValueSchema>;
+    sources: string[];
+};
+export const contextItemSchema: z.ZodType<ItemNode, ItemNode> = z.lazy(() => z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('group'), id: z.string(), label: z.string(), items: z.array(contextItemSchema) }), z.strictObject({ kind: z.literal('fragment'), id: z.string(), role: m.fragmentRoleSchema, format: m.fragmentFormatSchema, value: jsonValueSchema, sources: z.array(z.string()) })]));
+export type ContextItem = z.output<typeof contextItemSchema>;
+export const contextTraceEntrySchema = z.object({ id: z.string(), blockId: z.string(), path: z.string(), sources: z.array(z.string()), iterations: z.array(z.object({ blockId: z.string(), index: z.number().int().nonnegative() })), outcome: z.boolean().optional() }).catchall(jsonValueSchema);
+export type ContextTraceEntry = z.output<typeof contextTraceEntrySchema>;
+export const contextEvaluationSchema = z.object({ complete: z.boolean(), items: z.array(contextItemSchema), capabilities: z.array(m.contextCapabilitySchema), needs: z.array(z.object({ resource: z.string(), dataType: m.contextTypeSchema, requiredBy: z.array(z.string()) })), diagnostics: z.array(m.contextDiagnosticSchema), trace: z.array(contextTraceEntrySchema).optional() }).catchall(jsonValueSchema);
+export type ContextEvaluation = z.output<typeof contextEvaluationSchema>;
+export const contextPreviewSchema = z.object({ selection: selectedStrategySchema, evaluation: contextEvaluationSchema, request: z.object({ status: z.enum(['trial', 'prepared']), boundary: z.string().optional(), raw: z.string().optional(), byteLength: z.number().int().nonnegative().optional(), sha256: z.string().optional(), diagnostics: z.array(m.contextDiagnosticSchema) }).catchall(jsonValueSchema).nullish() }).catchall(jsonValueSchema);
+export type ContextPreview = z.output<typeof contextPreviewSchema>;
+export const contextValidationSchema = z.object({ valid: z.boolean(), selection: selectedStrategySchema }).catchall(jsonValueSchema);
+export type ContextValidation = z.output<typeof contextValidationSchema>;
+export const contextConversionSchema = z.object({ valid: z.boolean(), strategy: m.contextStrategySchema.optional(), diagnostics: z.array(m.contextDiagnosticSchema) }).catchall(jsonValueSchema);
+export type ContextConversion = z.output<typeof contextConversionSchema>;
+export const sourceCatalogSchema = z.object({ entries: z.array(m.sourceTypeEntrySchema), diagnostics: z.array(m.contextDiagnosticSchema) }).catchall(jsonValueSchema);
+export type SourceCatalog = z.output<typeof sourceCatalogSchema>;
+export const packagePrerequisiteSchema = z.object({ kind: z.string(), key: z.string() }).catchall(jsonValueSchema);
+export type PackagePrerequisite = z.output<typeof packagePrerequisiteSchema>;
+export const contextPackageValidationSchema = z.object({ valid: z.boolean(), prerequisites: z.array(packagePrerequisiteSchema), diagnostics: z.array(m.contextDiagnosticSchema) }).catchall(jsonValueSchema);
+export type ContextPackageValidation = z.output<typeof contextPackageValidationSchema>;
+export const contextPackageImportSchema = z.object({ files: z.array(m.sourceFileSchema), prerequisites: z.array(packagePrerequisiteSchema) }).catchall(jsonValueSchema);
+export type ContextPackageImport = z.output<typeof contextPackageImportSchema>;

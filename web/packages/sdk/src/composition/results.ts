@@ -1,0 +1,11 @@
+import { z } from 'zod';
+import { jsonValueSchema } from '../core/json.js';
+import { contextDiagnosticSchema } from '../context/model.js';
+import { selectedStrategySchema } from '../context/results.js';
+import * as m from './model.js';
+export const compositionAnalysisSchema = z.object({ graph: m.runtimeGraphSchema.nullable(), diagnostics: z.array(contextDiagnosticSchema) }).catchall(jsonValueSchema);
+export type CompositionAnalysis = z.output<typeof compositionAnalysisSchema>;
+export const resolvedCompositionSchema = z.object({ stage: z.literal('resolved'), graph: m.runtimeGraphSchema, contexts: z.record(z.string(), selectedStrategySchema) }).catchall(jsonValueSchema);
+export type ResolvedComposition = z.output<typeof resolvedCompositionSchema>;
+export const preparedCompositionSchema = z.object({ stage: z.literal('prepared'), overview: m.runtimeGraphSummarySchema, runtime: m.preparedRuntimeSchema }).catchall(jsonValueSchema);
+export type PreparedComposition = z.output<typeof preparedCompositionSchema>;
