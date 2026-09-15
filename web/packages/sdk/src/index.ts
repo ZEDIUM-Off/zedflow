@@ -4,3 +4,4 @@ export * from './core/json.js';
 export * from './core/transport.js';
 export * from './core/errors.js';
 export * from './core/schema.js';
+export * from './workspaces/index.js';
