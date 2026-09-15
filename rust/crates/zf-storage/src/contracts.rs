@@ -213,3 +213,45 @@ impl CheckpointStore {
         Ok(())
     }
 }
+
+/// Interprets captured runtime definitions for read projections. The concrete
+/// adapter belongs to runtime; storage never resolves flows or executes them.
+/// An invalid definition must return an error, never a guessed summary.
+pub trait RuntimeInspection: Send + Sync {
+    fn summary(&self, definition: &Value) -> Result<Value>;
+    fn interactive(&self, definition: &Value) -> Result<bool>;
+}
+
+/// Runtime-owned validation for historical checkpoint documents. Storage preserves
+/// their complete values but cannot establish ADK compatibility on its own.
+pub trait CheckpointValidation: Send + Sync {
+    fn validate_checkpoint(&self, checkpoint: &Value) -> Result<()>;
+}
+
+/// Borrowed captured inputs for a runtime receipt proof. These are archive values,
+/// never current workspace data; proving resumability must not execute an effect.
+pub struct ArchiveSnapshot<'a> {
+    pub session_id: &'a str,
+    pub run: &'a Value,
+    pub records: &'a [crate::content_store::ContentRecord],
+    pub registry: &'a crate::data_archive::RegistryArchive,
+}
+
+pub struct DependencyInspection {
+    pub blocked: Vec<String>,
+    pub resources: Vec<zf_core::types::Diagnostic>,
+}
+
+/// Runtime-owned interpretation of executable archive data. No permissive default
+/// is provided: an exporter/importer must explicitly supply the running runtime's
+/// checkpoint, source, dependency and sealed-receipt validation.
+pub trait ArchiveRuntime: CheckpointValidation {
+    fn definition_diagnostics(&self, run: &Value) -> Vec<String>;
+    fn dependencies(&self, run: &Value) -> DependencyInspection;
+    fn resumable_internal_receipt<'a>(
+        &'a self,
+        store: &'a ContentStore,
+        snapshot: ArchiveSnapshot<'a>,
+        receipt: &'a Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<bool>> + Send + 'a>>;
+}

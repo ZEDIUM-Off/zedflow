@@ -11,11 +11,17 @@ zf-core = { path = "../zf-core" }
 zf-context = { path = "../zf-context" }
 zf-flows = { path = "../zf-flows" }
 anyhow.workspace = true
+base64.workspace = true
+zip.workspace = true
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+nix.workspace = true
+same-file.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

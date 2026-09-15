@@ -612,6 +612,55 @@ impl ContentStore {
     }
 }
 
+/// Decode the persisted full-output representation, validating fragment order,
+/// stream identity and exact byte length. Shared by runtime and archive readers.
+pub fn decode_full_output(value: &Value) -> Result<Vec<u8>> {
+    use base64::Engine;
+    if let Some(fragments) = value.as_array() {
+        let mut bytes = Vec::new();
+        for (index, fragment) in fragments.iter().enumerate() {
+            ensure!(
+                fragment["index"].as_u64() == Some(u64::try_from(index)?),
+                "output fragment order mismatch"
+            );
+            ensure!(
+                matches!(fragment["stream"].as_str(), Some("stdout" | "stderr")),
+                "invalid output stream"
+            );
+            bytes.extend(
+                base64::engine::general_purpose::STANDARD.decode(
+                    fragment["data"]
+                        .as_str()
+                        .context("invalid output fragment")?,
+                )?,
+            );
+        }
+        return Ok(bytes);
+    }
+    ensure!(value["encoding"] == "base64", "unsupported output encoding");
+    let length = value["byteLength"]
+        .as_u64()
+        .context("invalid output byte length")?;
+    let chunks = value["chunks"]
+        .as_array()
+        .context("invalid output chunks")?;
+    let mut bytes = Vec::new();
+    for chunk in chunks {
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(chunk.as_str().context("invalid output chunk")?)?;
+        bytes.extend_from_slice(&decoded);
+        ensure!(
+            u64::try_from(bytes.len())? <= length,
+            "output exceeds recorded length"
+        );
+    }
+    ensure!(
+        u64::try_from(bytes.len())? == length,
+        "incomplete output content"
+    );
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

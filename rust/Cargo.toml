@@ -77,6 +77,7 @@ serde_yaml = "0.9"
 ignore = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 base64 = "0.22"
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 syn = { version = "2", features = ["full", "visit", "visit-mut"] }
 quote = "1"
 proc-macro2 = { version = "1", features = ["span-locations"] }
