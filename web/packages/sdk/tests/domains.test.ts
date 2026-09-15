@@ -171,3 +171,16 @@ test('optional command fields are omitted and RTC signalling preserves scoped tr
     await assert.rejects(client.runs.timeline('run/one', { workspaceId: 'w/é' }, controller.signal), { name: 'RequestAbortedError' });
     assert.equal(urls.length, 2);
 });
+
+test('node configuration retains authored source references and optional pinned revisions', async () => {
+    const { nodeConfigSchema } = await import('@zedflow/sdk');
+    const config = {
+        contextStrategy: { key: 'conversation', hash: 'a'.repeat(64) },
+        contextLibraryRef: { key: 'shared', hash: null },
+        contextTypesRef: { key: 'workspace-types' },
+    };
+    assert.deepEqual(nodeConfigSchema.parse(config), config);
+    assert.deepEqual(nodeConfigSchema.parse({ contextStrategy: 'conversation' }), { contextStrategy: 'conversation' });
+    assert.equal(nodeConfigSchema.safeParse({ contextStrategy: { key: 'conversation', hash: 12 } }).success, false);
+    assert.equal(nodeConfigSchema.safeParse({ contextTypesRef: { hash: 'a'.repeat(64) } }).success, false);
+});
