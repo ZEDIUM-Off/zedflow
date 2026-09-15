@@ -638,7 +638,8 @@ fn check(
     }
 }
 
-pub(super) fn valid_id(id: &str) -> bool {
+/// Shared identity rule for authored context artifacts and their catalogue keys.
+pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 160
         && id
