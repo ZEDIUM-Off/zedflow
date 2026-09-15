@@ -13,6 +13,17 @@ zf-flows = { path = "../zf-flows" }
 zf-compiler = { path = "../zf-compiler" }
 zf-storage = { path = "../zf-storage" }
 adk-graph = { workspace = true, features = ["sqlite"] }
+adk-core.workspace = true
+adk-devtools.workspace = true
+adk-skill.workspace = true
+adk-tool.workspace = true
+futures.workspace = true
+ignore.workspace = true
+nix.workspace = true
+serde_yaml.workspace = true
+sha2.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 serde.workspace = true
