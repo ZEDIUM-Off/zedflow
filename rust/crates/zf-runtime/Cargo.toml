@@ -1,0 +1,27 @@
+[package]
+name = "zf-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "ADK execution adapters and durable model/tool boundaries"
+
+[dependencies]
+zf-core = { path = "../zf-core" }
+zf-context = { path = "../zf-context" }
+zf-flows = { path = "../zf-flows" }
+zf-compiler = { path = "../zf-compiler" }
+zf-storage = { path = "../zf-storage" }
+adk-graph = { workspace = true, features = ["sqlite"] }
+anyhow.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+sqlx.workspace = true
+tempfile.workspace = true
+
+[lints]
+workspace = true

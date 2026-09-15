@@ -2,7 +2,7 @@
 use crate::{
     content_store::{ContentBlob, ContentRecord, ContentStore},
     contracts::{
-        ArchiveRuntime, ArchiveSnapshot, CheckpointHeader, CheckpointStore, CheckpointValidation,
+        ArchiveRuntime, ArchiveSnapshot, CheckpointCodec, CheckpointHeader, CheckpointStore,
     },
     session_store,
     workspaces::Workspace,
@@ -347,7 +347,7 @@ async fn sync_directories(root: &Path) -> Result<()> {
 pub async fn checkpoints(
     db_path: &Path,
     id: &str,
-    validator: &dyn CheckpointValidation,
+    validator: &dyn CheckpointCodec,
 ) -> Result<Vec<Value>> {
     use sqlx::Row;
     if !tokio::fs::try_exists(db_path).await? {
@@ -391,8 +391,7 @@ pub async fn checkpoints(
                     Err(error)
                 })?
         );
-        validator.validate_checkpoint(&value)?;
-        result.push(value);
+        result.push(validator.decode_legacy_checkpoint(value)?);
     }
     pool.close().await;
     Ok(result)

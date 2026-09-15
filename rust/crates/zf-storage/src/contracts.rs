@@ -224,7 +224,10 @@ pub trait RuntimeInspection: Send + Sync {
 
 /// Runtime-owned validation for historical checkpoint documents. Storage preserves
 /// their complete values but cannot establish ADK compatibility on its own.
-pub trait CheckpointValidation: Send + Sync {
+pub trait CheckpointCodec: Send + Sync {
+    /// Decode the historical SQL projection into the runtime's canonical serialized
+    /// checkpoint. ADK owns timestamp normalization and omitted default fields.
+    fn decode_legacy_checkpoint(&self, checkpoint: Value) -> Result<Value>;
     fn validate_checkpoint(&self, checkpoint: &Value) -> Result<()>;
 }
 
@@ -245,7 +248,7 @@ pub struct DependencyInspection {
 /// Runtime-owned interpretation of executable archive data. No permissive default
 /// is provided: an exporter/importer must explicitly supply the running runtime's
 /// checkpoint, source, dependency and sealed-receipt validation.
-pub trait ArchiveRuntime: CheckpointValidation {
+pub trait ArchiveRuntime: CheckpointCodec {
     fn definition_diagnostics(&self, run: &Value) -> Vec<String>;
     fn dependencies(&self, run: &Value) -> DependencyInspection;
     fn resumable_internal_receipt<'a>(

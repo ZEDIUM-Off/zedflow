@@ -1,7 +1,7 @@
 //! Explicit offline maintenance. The source directory is never edited in place.
 use crate::{
     content_store::ContentStore,
-    contracts::{CheckpointHeader, CheckpointStore, CheckpointValidation},
+    contracts::{CheckpointCodec, CheckpointHeader, CheckpointStore},
     session_store,
 };
 use anyhow::{Context, Result, ensure};
@@ -352,7 +352,7 @@ pub async fn maintain(
     data: &Path,
     keep_id: &str,
     cutoff_ms: u64,
-    validator: &dyn CheckpointValidation,
+    validator: &dyn CheckpointCodec,
 ) -> Result<MaintenanceReport> {
     let _lock = lock(data)?;
     recover(data).await?;
@@ -490,7 +490,7 @@ async fn normalize_and_verify(
     backup: &Path,
     original: &Path,
     report: &mut MaintenanceReport,
-    validator: &dyn CheckpointValidation,
+    validator: &dyn CheckpointCodec,
 ) -> Result<()> {
     let source = pool(&backup.join("zedflow.db"), false).await?;
     let db = pool(&staging.join("zedflow.db"), true).await?;
@@ -693,7 +693,14 @@ async fn normalize_and_verify(
 mod tests {
     use super::*;
     struct FixtureValidation;
-    impl CheckpointValidation for FixtureValidation {
+    impl CheckpointCodec for FixtureValidation {
+        fn decode_legacy_checkpoint(
+            &self,
+            value: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.validate_checkpoint(&value)?;
+            Ok(value)
+        }
         fn validate_checkpoint(&self, value: &Value) -> Result<()> {
             ensure!(value["state"].is_object(), "invalid fixture state");
             ensure!(

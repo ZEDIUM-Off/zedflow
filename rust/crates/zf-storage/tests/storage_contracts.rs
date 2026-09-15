@@ -501,9 +501,16 @@ async fn registry_archive_preserves_alias_rights_and_publication_identity_across
 
 #[tokio::test]
 async fn legacy_checkpoints_preserve_resume_fields_and_apply_runtime_validation() {
-    use zf_storage::{contracts::CheckpointValidation, session_archive::checkpoints};
+    use zf_storage::{contracts::CheckpointCodec, session_archive::checkpoints};
     struct Validator;
-    impl CheckpointValidation for Validator {
+    impl CheckpointCodec for Validator {
+        fn decode_legacy_checkpoint(
+            &self,
+            value: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.validate_checkpoint(&value)?;
+            Ok(value)
+        }
         fn validate_checkpoint(&self, value: &serde_json::Value) -> anyhow::Result<()> {
             anyhow::ensure!(value["step"].as_u64().is_some(), "invalid fixture step");
             Ok(())
@@ -570,9 +577,16 @@ async fn legacy_checkpoints_preserve_resume_fields_and_apply_runtime_validation(
 
 #[tokio::test]
 async fn offline_maintenance_keeps_new_sessions_and_exact_content_with_recoverable_backup() {
-    use zf_storage::{contracts::CheckpointValidation, migration, session_store};
+    use zf_storage::{contracts::CheckpointCodec, migration, session_store};
     struct Validator;
-    impl CheckpointValidation for Validator {
+    impl CheckpointCodec for Validator {
+        fn decode_legacy_checkpoint(
+            &self,
+            value: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.validate_checkpoint(&value)?;
+            Ok(value)
+        }
         fn validate_checkpoint(&self, value: &serde_json::Value) -> anyhow::Result<()> {
             anyhow::ensure!(value["state"].is_object(), "invalid fixture state");
             Ok(())
@@ -663,12 +677,19 @@ async fn offline_maintenance_keeps_new_sessions_and_exact_content_with_recoverab
 #[tokio::test]
 async fn portable_session_archive_preserves_content_and_import_is_idempotent_without_effects() {
     use zf_storage::{
-        contracts::{ArchiveRuntime, ArchiveSnapshot, CheckpointValidation, DependencyInspection},
+        contracts::{ArchiveRuntime, ArchiveSnapshot, CheckpointCodec, DependencyInspection},
         session_archive, session_store,
         workspaces::Workspace,
     };
     struct FixtureRuntime;
-    impl CheckpointValidation for FixtureRuntime {
+    impl CheckpointCodec for FixtureRuntime {
+        fn decode_legacy_checkpoint(
+            &self,
+            value: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            self.validate_checkpoint(&value)?;
+            Ok(value)
+        }
         fn validate_checkpoint(&self, value: &serde_json::Value) -> anyhow::Result<()> {
             anyhow::ensure!(value["state"].is_object(), "invalid fixture checkpoint");
             Ok(())
