@@ -32,6 +32,12 @@ pub enum CommandKind {
     Resume,
     Rename,
     Authoring,
+    PatchContextWindow,
+    SelectContextWindow,
+    ExportSessions,
+    ImportSessions,
+    OpenWorkspace,
+    UpdateWorkspace,
 }
 
 /// Required policy boundary shared by every command origin.

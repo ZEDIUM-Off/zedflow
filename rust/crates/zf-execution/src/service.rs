@@ -62,6 +62,7 @@ pub(crate) struct ExecutionState {
     maintenance: Arc<RwLock<()>>,
     closed: AtomicBool,
     owner_lock: std::fs::File,
+    migration_lock: std::fs::File,
     launches: std::sync::Mutex<HashMap<String, usize>>,
     launch_changes: tokio::sync::watch::Sender<()>,
     authorizer: Arc<dyn CommandAuthorizer>,
@@ -97,8 +98,32 @@ struct ExecutionResume {
 }
 impl ExecutionService {
     pub async fn open(options: ExecutionOptions) -> Result<Self> {
-        tokio::fs::create_dir_all(&options.data).await?;
-        let data = tokio::fs::canonicalize(options.data).await?;
+        let requested_data = if options.data.is_absolute() {
+            options.data.clone()
+        } else {
+            std::env::current_dir()?.join(&options.data)
+        };
+        tokio::fs::create_dir_all(
+            requested_data
+                .parent()
+                .context("Data directory has no parent")?,
+        )
+        .await?;
+        // This sibling lock survives the directory swaps used by maintenance.
+        // Acquire it before recovery or opening any database inside the directory.
+        let migration_lock = zf_storage::migration::lock(&requested_data).map_err(|error| {
+            commands::ExecutionError::Busy(format!(
+                "Execution storage already owned or unavailable: {error}"
+            ))
+        })?;
+        zf_storage::migration::recover(&requested_data).await?;
+        tokio::fs::create_dir_all(&requested_data).await?;
+        let metadata = tokio::fs::symlink_metadata(&requested_data).await?;
+        ensure!(
+            metadata.is_dir() && !metadata.file_type().is_symlink(),
+            "Data directory must be an ordinary directory"
+        );
+        let data = tokio::fs::canonicalize(&requested_data).await?;
         // Exclusive OS ownership prevents a second service instance from
         // recovering or admitting runs against this same active storage.
         let owner_lock = std::fs::OpenOptions::new()
@@ -177,6 +202,7 @@ impl ExecutionService {
                 maintenance: Arc::new(RwLock::new(())),
                 authorizer: options.authorizer,
                 owner_lock,
+                migration_lock,
                 closed: AtomicBool::new(false),
                 launches: std::sync::Mutex::new(HashMap::new()),
                 launch_changes: tokio::sync::watch::channel(()).0,
@@ -235,6 +261,32 @@ impl ExecutionService {
                 commands::ExecutionError::Busy("Des exécutions ou commandes sont actives".into())
                     .into()
             })
+    }
+    /// Admission for operations which must exclude every execution and command.
+    /// Never queue a writer ahead of a human answer needed by an active run.
+    pub(crate) async fn admit_maintenance(
+        &self,
+        actor: &Actor,
+        kind: CommandKind,
+    ) -> Result<(MaintenanceGuard, workspaces::Workspace)> {
+        let guard = self.try_begin_maintenance()?;
+        ensure!(
+            !self.state.closed.load(Ordering::Acquire),
+            commands::ExecutionError::Busy("Service arrêté".into())
+        );
+        let workspace = workspaces::get(&self.state.db, &actor.workspace_id).await?;
+        self.state
+            .authorizer
+            .authorize(actor, kind, &workspace, None)
+            .await?;
+        Ok((guard, workspace))
+    }
+    pub(crate) fn has_active_run(&self, id: &str) -> bool {
+        self.state
+            .launches
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains_key(id)
     }
     pub(crate) async fn admit(
         &self,
@@ -314,6 +366,7 @@ impl ExecutionService {
         self.state.writer_db.close().await;
         self.state.db.close().await;
         self.state.owner_lock.unlock()?;
+        self.state.migration_lock.unlock()?;
         Ok(())
     }
 }

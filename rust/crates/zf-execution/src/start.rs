@@ -4,7 +4,7 @@ use crate::{
         Actor, CommandKind, command_ack, expand_run_skill, validate_bindings, validate_run_bindings,
     },
     preparation::{self, RuntimeSelection},
-    service::{ExecutionService, launch, now},
+    service::{ExecutionContext, ExecutionService, launch, now},
 };
 use adk_graph::State;
 use anyhow::{Context, Result, ensure};
@@ -51,9 +51,19 @@ impl ExecutionService {
     }
     pub async fn start(&self, actor: &Actor, request: StartRequest) -> Result<Value> {
         let b = self.admit(actor, CommandKind::Start, None).await?;
+        Self::start_admitted(b, &actor.workspace_id, request).await
+    }
+
+    /// Continue a start under the original admission. Preview owns the temporary
+    /// workspace target; caller identity and its maintenance lease stay unchanged.
+    pub(crate) async fn start_admitted(
+        b: ExecutionContext,
+        workspace_id: &str,
+        request: StartRequest,
+    ) -> Result<Value> {
         let authoring = b.authoring_writer.clone();
         let _authoring = authoring.lock().await;
-        let workspace = workspaces::get(&b.db, &actor.workspace_id).await?;
+        let workspace = workspaces::get(&b.db, workspace_id).await?;
         crate::live_files::recover(&b.db, &b.home).await?;
         if workspace.path != b.home {
             crate::live_files::recover(&b.db, &workspace.path).await?;

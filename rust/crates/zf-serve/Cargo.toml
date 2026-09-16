@@ -1,0 +1,47 @@
+[package]
+name = "zf-serve"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "zedflow-daemon"
+path = "src/main.rs"
+
+[dependencies]
+zf-core = { path = "../zf-core" }
+zf-context = { path = "../zf-context" }
+zf-flows = { path = "../zf-flows" }
+zf-compiler = { path = "../zf-compiler" }
+zf-storage = { path = "../zf-storage" }
+zf-runtime = { path = "../zf-runtime" }
+zf-execution = { path = "../zf-execution" }
+anyhow.workspace = true
+axum.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true
+sqlx.workspace = true
+tower-http.workspace = true
+webrtc.workspace = true
+if-addrs.workspace = true
+sha2.workspace = true
+adk-graph.workspace = true
+reqwest.workspace = true
+
+[build-dependencies]
+sha2.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true
