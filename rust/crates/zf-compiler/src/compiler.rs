@@ -103,6 +103,29 @@ pub fn compile(
             )]
         }
     })?;
+    lower_prepared(prepared, primitives)
+}
+
+/// Validate and lower a frozen runtime without consulting or re-resolving a
+/// current catalogue. Serialized history must cross this validation boundary.
+pub fn compile_prepared(
+    prepared: PreparedRuntime,
+    primitives: &dyn PrimitiveContracts,
+) -> Result<CompiledPlan, Vec<Diagnostic>> {
+    prepared.validate(primitives).map_err(|error| {
+        vec![Diagnostic::new(
+            "prepared_validation",
+            "$prepared",
+            format!("{error:#}"),
+        )]
+    })?;
+    lower_prepared(prepared, primitives)
+}
+
+fn lower_prepared(
+    prepared: PreparedRuntime,
+    primitives: &dyn PrimitiveContracts,
+) -> Result<CompiledPlan, Vec<Diagnostic>> {
     let mut graphs = BTreeMap::new();
     let mut entries = BTreeMap::new();
     for (instance, flow) in &prepared.flows {

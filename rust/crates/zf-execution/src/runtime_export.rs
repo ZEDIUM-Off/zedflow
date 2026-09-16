@@ -3,6 +3,7 @@
 use crate::route_runtime::{NativeFactory, RouteRuntime};
 use adk_graph::{ExecutionConfig, State, checkpoint::Checkpointer, error::GraphError};
 use anyhow::{Context, Result, ensure};
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -168,19 +169,142 @@ async fn read_optional(path: &std::path::Path) -> Result<Option<Value>> {
     }
 }
 
-/// Run the same graph, registry, native route host and receipt/checkpoint stores
-/// as the daemon. Reusing a run ID resumes its frontier, not its side effects.
+/// Run a validated composition with its source-pinned native factories.
+/// The owned task retains the data lease until execution and observation drain,
+/// even when its caller stops awaiting the result.
 pub async fn run(
     prepared: PreparedRuntime,
     factories: BTreeMap<String, NativeFactory>,
     options: RunOptions,
 ) -> Result<Value> {
     prepared.validate(&RuntimePrimitives)?;
+    let definition = RevisionDefinition::from_prepared(&prepared, &prepared.graph.entry.instance)?;
+    let entry = prepared.graph.entry.clone();
+    let definitions = prepared
+        .flows
+        .keys()
+        .map(|instance| {
+            Ok((
+                instance.clone(),
+                RevisionDefinition::from_prepared(&prepared, instance)?,
+            ))
+        })
+        .collect::<Result<_>>()?;
+    let source_hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&prepared)?));
+    tokio::spawn(run_owned(
+        ExportRun {
+            source_hash,
+            definition,
+            definitions,
+            scope: entry.instance,
+            port: Some(entry.port),
+            prepared: Some(prepared),
+            factories,
+        },
+        options,
+    ))
+    .await
+    .context("export execution task failed")?
+}
+
+/// Run a standalone flow without manufacturing public ports or rewriting its
+/// source. Resuming an ID restores the same receipts and ADK checkpoints.
+pub async fn run_single(
+    definition: RevisionDefinition,
+    factory: NativeFactory,
+    options: RunOptions,
+) -> Result<Value> {
+    zf_runtime::revisions::validate_definition(&definition)?;
+    let source_hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&definition)?));
+    let definitions = BTreeMap::from([(String::new(), definition.clone())]);
+    tokio::spawn(run_owned(
+        ExportRun {
+            source_hash,
+            definition,
+            definitions,
+            scope: String::new(),
+            port: None,
+            prepared: None,
+            factories: BTreeMap::from([(String::new(), factory)]),
+        },
+        options,
+    ))
+    .await
+    .context("export execution task failed")?
+}
+
+struct ExportRun {
+    source_hash: String,
+    definition: RevisionDefinition,
+    definitions: BTreeMap<String, RevisionDefinition>,
+    scope: String,
+    port: Option<String>,
+    prepared: Option<PreparedRuntime>,
+    factories: BTreeMap<String, NativeFactory>,
+}
+impl ExportRun {
+    fn projection(&self, definition: &RevisionDefinition) -> Result<zf_flows::schema::Composition> {
+        match &self.port {
+            Some(port) => flow_contract::at_entry(&definition.composition, port),
+            None => Ok(definition.composition.clone()),
+        }
+    }
+    fn build(
+        &self,
+        definition: &RevisionDefinition,
+        runtime: Option<&Arc<RouteRuntime>>,
+        services: &Arc<RunServices>,
+        checkpoint: &Arc<StoredCheckpointer>,
+        controller: Arc<RevisionRuntime>,
+        sender: zf_runtime::event_sink::EventSink,
+    ) -> Result<adk_graph::CompiledGraph> {
+        let projection = self.projection(definition)?;
+        if let Some(runtime) = runtime {
+            return runtime.build_instance_with_revisions(
+                &self.scope,
+                &projection,
+                Some(controller),
+                Some(&definition.revision()),
+            );
+        }
+        let native = if definition.revision() == self.definition.revision() {
+            Some(self
+                .factories
+                .get("")
+                .context("standalone native factory absent")?(
+                services.clone(),
+                checkpoint.clone(),
+                "",
+            )?)
+        } else {
+            None
+        };
+        zf_runtime::materialize::build_scope_with_native_and_revisions(
+            &projection,
+            Some(sender),
+            "",
+            Some(services.clone()),
+            Some(checkpoint.clone()),
+            native.as_ref(),
+            Some(controller),
+        )
+    }
+}
+
+async fn run_owned(mut export: ExportRun, options: RunOptions) -> Result<Value> {
+    ensure!(
+        !options.run_id.is_empty()
+            && options.run_id != "."
+            && options.run_id != ".."
+            && !options.run_id.contains(['/', '\\', '\0']),
+        "--run-id must be a directory-safe identifier"
+    );
+    tokio::fs::create_dir_all(&options.data).await?;
+    let _lease = zf_storage::migration::lock(&tokio::fs::canonicalize(&options.data).await?)?;
     let workspace = tokio::fs::canonicalize(&options.workspace).await?;
     let run_data = options.data.join(&options.run_id);
     tokio::fs::create_dir_all(&run_data).await?;
-    let source_hash = format!("{:x}", Sha256::digest(serde_json::to_vec(&prepared)?));
-    let identity = json!({"workspace":workspace,"runtimeHash":source_hash});
+    let identity = json!({"workspace":workspace,"runtimeHash":export.source_hash});
     let identity_file = run_data.join("runtime.json");
     if let Some(prior) = read_optional(&identity_file).await? {
         ensure!(
@@ -245,18 +369,8 @@ pub async fn run(
     services.set_data_registry(
         DataRegistry::new(content.pool().clone(), content.clone(), &options.run_id).await?,
     )?;
-    let definitions = prepared
-        .flows
-        .keys()
-        .map(|instance| {
-            Ok((
-                instance.clone(),
-                RevisionDefinition::from_prepared(&prepared, instance)?,
-            ))
-        })
-        .collect::<Result<_>>()?;
     services.set_revisions(
-        RevisionRuntime::new(content.clone(), &options.run_id, definitions).await?,
+        RevisionRuntime::new(content.clone(), &options.run_id, export.definitions.clone()).await?,
     )?;
     for (path, ids) in capabilities {
         services.set_active_capabilities(path, ids);
@@ -264,6 +378,10 @@ pub async fn run(
     let (sender, mut receiver) = zf_runtime::event_sink::channel(64);
     services.set_sender(Some(sender.clone()));
     let event_file = run_data.join("events.jsonl");
+    let checkpoint = Arc::new(
+        StoredCheckpointer::new(CheckpointStore::new(content.clone()).await?)
+            .with_sender(sender.clone()),
+    );
     let events = tokio::spawn(async move {
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
@@ -278,19 +396,17 @@ pub async fn run(
         file.flush().await?;
         Ok::<_, anyhow::Error>(())
     });
-    let checkpoint = Arc::new(
-        StoredCheckpointer::new(CheckpointStore::new(content.clone()).await?)
-            .with_sender(sender.clone()),
-    );
-    let entry = prepared.graph.entry.clone();
-    let mut definition = RevisionDefinition::from_prepared(&prepared, &entry.instance)?;
+    let mut runtime: Option<Arc<RouteRuntime>> = None;
+    // Keep ownership and task cleanup outside the native code unwind boundary.
+    let value: Result<Value> = std::panic::AssertUnwindSafe(async {
+    let mut definition = export.definition.clone();
     if let Some(saved) = checkpoint.load(&options.run_id).await?
         && let Some(selected) = zf_runtime::revisions::checkpoint_definition(
             &content,
             &options.run_id,
             &options.run_id,
             saved.step,
-            &entry.instance,
+            &export.scope,
         )
         .await?
     {
@@ -300,29 +416,22 @@ pub async fn run(
         );
         definition = selected;
     }
-    let projection = flow_contract::at_entry(&definition.composition, &entry.port)?;
+    let projection = export.projection(&definition)?;
     let mut config = ExecutionConfig::new(&options.run_id)
         .with_recursion_limit(projection.settings.recursion_limit);
     let mut controller = services
         .revisions()
         .context("Revision controller absent")?
-        .rebased(&entry.instance, definition.clone())
+        .rebased(&export.scope, definition.clone())
         .await?;
-    let runtime = RouteRuntime::new(
-        prepared,
-        &services,
-        checkpoint.clone(),
-        Some(sender.clone()),
-    )?;
-    runtime.set_native_factories(factories)?;
-    services.set_dynamic_capabilities(runtime.clone());
-    runtime.initialize(&options.input).await?;
-    let mut graph = runtime.build_instance_with_revisions(
-        &entry.instance,
-        &projection,
-        Some(controller.clone()),
-        Some(&definition.revision()),
-    )?;
+    if let Some(prepared) = export.prepared.take() {
+        let routes = RouteRuntime::new(prepared, &services, checkpoint.clone(), Some(sender.clone()))?;
+        routes.set_native_factories(std::mem::take(&mut export.factories))?;
+        services.set_dynamic_capabilities(routes.clone());
+        runtime = Some(routes);
+        runtime.as_ref().context("route runtime absent")?.initialize(&options.input).await?;
+    }
+    let mut graph = export.build(&definition, runtime.as_ref(), &services, &checkpoint, controller.clone(), sender.clone())?;
     let mut input = options.input;
     let result = loop {
         let result = graph
@@ -336,7 +445,7 @@ pub async fn run(
             && request["kind"] == "revision_boundary"
         {
             ensure!(
-                request["scope"] == entry.instance && request["threadId"] == options.run_id,
+                request["scope"] == export.scope && request["threadId"] == options.run_id,
                 "Revision boundary belongs to another exported frontier"
             );
             let saved = checkpoint
@@ -372,25 +481,24 @@ pub async fn run(
             );
             zf_runtime::revisions::validate_definition(&selected)?;
             controller = controller
-                .rebased(&entry.instance, selected.clone())
+                .rebased(&export.scope, selected.clone())
                 .await?;
-            let projection = flow_contract::at_entry(&selected.composition, &entry.port)?;
+            let projection = export.projection(&selected)?;
             config = config.with_recursion_limit(projection.settings.recursion_limit);
-            graph = runtime.build_instance_with_revisions(
-                &entry.instance,
-                &projection,
-                Some(controller.clone()),
-                Some(&selected.revision()),
-            )?;
-            services.emit(json!({"type":"revision_adopted","scope":entry.instance,"threadId":options.run_id,"step":saved.step,"hash":selected.hash,"definitionRevision":selected.revision(),"definitionRef":request["definitionRef"]})).await;
+            graph = export.build(&selected, runtime.as_ref(), &services, &checkpoint, controller.clone(), sender.clone())?;
+            services.emit(json!({"type":"revision_adopted","scope":export.scope,"threadId":options.run_id,"step":saved.step,"hash":selected.hash,"definitionRevision":selected.revision(),"definitionRef":request["definitionRef"]})).await;
             definition = selected;
             continue;
         }
         break result;
     };
-    let launched = runtime.drain().await?;
-    let routes = runtime.result_snapshot().await?;
-    let value = match result {
+    if matches!(&result, Err(error) if !matches!(error, GraphError::Interrupted(_))) {
+        return Err(result.err().context("graph error absent")?.into());
+    }
+    let (launched, routes) = if let Some(runtime) = &runtime {
+        (runtime.drain().await?, runtime.result_snapshot().await?)
+    } else { (Vec::new(), Vec::new()) };
+    match result {
         Ok(completed) => Ok(
             json!({"status":"completed","runId":options.run_id,"state":completed.state,"routes":routes,"launched":launched}),
         ),
@@ -398,13 +506,26 @@ pub async fn run(
             json!({"status":"waiting","runId":options.run_id,"checkpoint":wait.checkpoint_id,"interrupt":wait.interrupt,"routes":routes,"launched":launched}),
         ),
         Err(error) => Err(error.into()),
+    }
+    }).catch_unwind().await.unwrap_or_else(|_| Err(anyhow::anyhow!("native export execution panicked")));
+    let cleanup = if value.is_err() {
+        match &runtime {
+            Some(runtime) => runtime.cancel_and_drain().await,
+            None => Ok(()),
+        }
+    } else {
+        Ok(())
     };
-    drop(graph);
     drop(runtime);
     services.set_sender(None);
     drop(services);
     drop(checkpoint);
     drop(sender);
-    events.await.context("event log task failed")??;
+    let log = events
+        .await
+        .context("event log task failed")
+        .and_then(|result| result);
+    cleanup?;
+    log?;
     value
 }

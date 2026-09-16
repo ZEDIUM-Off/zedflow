@@ -180,7 +180,7 @@ pub async fn definition(
     };
     Ok(
         json!({"runId":id,"instance":instance,"nodePath":node_path,"occurrenceId":activity.map(|a|&a["occurrenceId"]),
-        "key":definition.key,"hash":definition.hash,"definitionRevision":definition.revision(),"package":definition.package,"source":definition.source,"composition":definition.composition,
+        "key":definition.key,"hash":definition.hash,"definitionRevision":definition.revision(),"package":definition.package,"contextSelections":definition.context_selections,"source":definition.source,"composition":definition.composition,
         "flowRevision":pin,"graphRef":graph_ref,"runtime":runtime,"definitionMatchesGraph":definition_matches_graph,"exact":true}),
     )
 }

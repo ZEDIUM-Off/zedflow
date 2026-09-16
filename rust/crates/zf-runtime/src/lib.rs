@@ -16,6 +16,7 @@ pub mod predicates;
 pub mod resources;
 pub mod revisions;
 pub mod runtime;
+pub mod runtime_export;
 pub mod stored_checkpointer;
 pub mod subgraphs;
 pub mod workspace_context;

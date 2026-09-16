@@ -19,6 +19,7 @@ zf-runtime = { path = "../zf-runtime" }
 zf-execution = { path = "../zf-execution" }
 anyhow.workspace = true
 axum.workspace = true
+base64.workspace = true
 async-trait.workspace = true
 clap.workspace = true
 futures.workspace = true

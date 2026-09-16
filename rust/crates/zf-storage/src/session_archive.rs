@@ -59,6 +59,7 @@ fn runtime_record_kind(kind: &str) -> bool {
             "window-invocation-selection",
             "window-selection-used",
             "window-edit-commands",
+            "window-selection-commands",
             "revision-definitions",
             "revision-heads",
             "revision-active",
@@ -510,6 +511,7 @@ fn projection_refs(value: &Value) -> Vec<String> {
         "contextRef",
         "compositionRef",
         "flowSourceRef",
+        "flowPackageRef",
         "runtimeGraphRef",
         "graphRef",
         "inputRef",
@@ -1009,12 +1011,22 @@ fn validate_bundle(files: BTreeMap<String, Vec<u8>>) -> Result<Bundle> {
     })
 }
 
+fn validate_flow_package(run: &Value) -> Result<()> {
+    if let Some(value) = run.get("flowPackage").filter(|value| !value.is_null()) {
+        let package: zf_flows::package::PackageSnapshot =
+            serde_json::from_value(value.clone()).context("invalid frozen flow package")?;
+        package.validate().context("invalid frozen flow package")?;
+    }
+    Ok(())
+}
+
 /// Validate content before opening a transaction or publishing any target files.
 async fn hydrate_bundle(mut bundle: Bundle, runtime: &dyn ArchiveRuntime) -> Result<Bundle> {
     for checkpoint in &bundle.checkpoints {
         runtime.validate_checkpoint(&serde_json::to_value(checkpoint)?)?;
     }
     if bundle.header.version == 1 {
+        validate_flow_package(&bundle.header.run)?;
         return Ok(bundle);
     }
     let store = memory_store().await?;
@@ -1064,6 +1076,7 @@ async fn hydrate_bundle(mut bundle: Bundle, runtime: &dyn ArchiveRuntime) -> Res
         "projection de session incohérente"
     );
     bundle.header.run = session_store::hydrate_run(&store, &projection).await?;
+    validate_flow_package(&bundle.header.run)?;
     let _: Composition = serde_json::from_value(bundle.header.run["composition"].clone())
         .context("composition exportée invalide")?;
     for (_, event) in &mut bundle.events {

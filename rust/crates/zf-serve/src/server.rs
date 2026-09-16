@@ -732,10 +732,45 @@ struct FlowSelection {
     flow_hash: Option<String>,
     composition: Option<Composition>,
 }
-async fn generated_files(_b: &Backend, _value: Value) -> anyhow::Result<Value> {
-    anyhow::bail!(
-        "export_unavailable: L’export Cargo n’est pas encore disponible dans cette version"
-    )
+async fn generated_files(b: &Backend, value: Value) -> anyhow::Result<Value> {
+    use base64::Engine;
+    use zf_execution::cargo_export::ExportRequest;
+    let actor = b.actor(value["workspaceId"].as_str());
+    let request = if let Some(id) = value["runId"].as_str() {
+        ExportRequest::Passage {
+            run_id: id.into(),
+            query: zf_runtime::inspection::DefinitionQuery {
+                node_path: value["nodePath"].as_str().map(str::to_owned),
+                occurrence_id: value["occurrenceId"].as_str().map(str::to_owned),
+                hash: value["hash"].as_str().map(str::to_owned),
+            },
+        }
+    } else if let Some(selection) = value.get("runtimeSelection") {
+        ExportRequest::Runtime(serde_json::from_value(selection.clone())?)
+    } else if value.get("nodes").is_some() {
+        ExportRequest::Draft(serde_json::from_value(value)?)
+    } else {
+        let selection: FlowSelection = serde_json::from_value(value)?;
+        match (
+            selection.composition,
+            selection.flow_key,
+            selection.flow_hash,
+        ) {
+            (Some(doc), None, None) => ExportRequest::Draft(doc),
+            (None, Some(key), Some(expected_hash)) => ExportRequest::Stored { key, expected_hash },
+            _ => anyhow::bail!("Choisissez une définition ou une clé de flow avec son hash"),
+        }
+    };
+    let captured = b.service.cargo_export(&actor, request).await?;
+    let files:Vec<Value>=captured.project.files.into_iter().map(|(path,bytes)|match String::from_utf8(bytes) {
+        Ok(content)=>json!({"path":path,"content":content}),
+        Err(error)=>json!({"path":path,"encoding":"base64","content":base64::engine::general_purpose::STANDARD.encode(error.into_bytes())}),
+    }).collect();
+    let mut result = json!({"files":files,"revision":captured.project.revision});
+    if let Some(revision) = captured.execution_revision {
+        result["executionRevision"] = revision;
+    }
+    Ok(result)
 }
 async fn generate(App(b): App<Backend>, AuthoringJson(value): AuthoringJson<Value>) -> Api<Value> {
     Ok(Json(generated_files(&b, value).await?))
@@ -752,11 +787,20 @@ async fn build(App(b): App<Backend>, AuthoringJson(value): AuthoringJson<Value>)
         if let Some(parent) = destination.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(destination, file["content"].as_str().unwrap_or_default()).await?;
+        let content = file["content"]
+            .as_str()
+            .context("Contenu d’export absent")?;
+        let bytes = if file["encoding"] == "base64" {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.decode(content)?
+        } else {
+            content.as_bytes().to_vec()
+        };
+        tokio::fs::write(destination, bytes).await?;
     }
     let mut command = tokio::process::Command::new("cargo");
     command
-        .args(["check", "--manifest-path"])
+        .args(["check", "--locked", "--manifest-path"])
         .arg(dir.join("Cargo.toml"))
         .env(
             "CARGO_TARGET_DIR",

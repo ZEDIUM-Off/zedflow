@@ -1,10 +1,11 @@
-import { strToU8, zipSync } from 'fflate'
+import { zipSync } from 'fflate'
+import { generatedFileBytes, type GeneratedFile } from '@zedflow/sdk'
 
-export interface ExportFile { path: string; content: string }
+export type ExportFile = GeneratedFile
 
-/** Keep the daemon's relative paths and UTF-8 source bytes in a Cargo project. */
+/** Preserve source and binary package bytes in the downloaded Cargo project. */
 export function cargoProjectArchive(files: ExportFile[]): Uint8Array<ArrayBuffer> {
-  return zipSync(Object.fromEntries(files.map(file => [file.path, strToU8(file.content)])), { level: 6 })
+  return zipSync(Object.fromEntries(files.map(file => [file.path, generatedFileBytes(file)])), { level: 6 })
 }
 
 export function downloadCargoProject(files: ExportFile[], filename: string) {

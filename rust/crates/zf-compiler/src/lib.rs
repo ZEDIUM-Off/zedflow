@@ -1,5 +1,6 @@
 //! Pure compilation of captured flow and bridge definitions.
 pub mod compiler;
+pub mod export;
 pub mod graph_compiler;
 pub mod package_sources;
 pub mod plan;

@@ -52,7 +52,7 @@ enum Command {
         #[command(flatten)]
         connection: Connection,
     },
-    /// Export Cargo autonome (assemblage disponible avec P6.2).
+    /// Exporter une source/package ou un plan compilé vers un projet Cargo autonome.
     Export {
         path: PathBuf,
         #[arg(long)]
@@ -180,9 +180,7 @@ pub(crate) async fn execute(cli: Cli) -> Result<()> {
         Command::Sessions { id, connection } => {
             sessions(&cli.workspace, &connection, id.as_deref()).await
         }
-        Command::Export { path: _, output: _ } => bail!(
-            "export_unavailable : l’export Cargo n’est pas encore disponible dans cette version ; aucun fichier n’a été écrit"
-        ),
+        Command::Export { path, output } => export_project(&cli.workspace, &path, &output).await,
         Command::Serve(args) => {
             zf_serve::server::serve(zf_serve::server::ServerOptions {
                 listen: args.listen,
@@ -206,6 +204,67 @@ fn diagnostics(values: Vec<zf_core::diagnostics::Diagnostic>) -> anyhow::Error {
     anyhow::anyhow!(
         "{}",
         serde_json::to_string(&values).unwrap_or_else(|_| format!("{values:?}"))
+    )
+}
+
+async fn export_project(workspace: &Path, path: &Path, output: &Path) -> Result<()> {
+    ensure!(
+        !tokio::fs::try_exists(output).await?,
+        "la destination existe déjà : {}",
+        output.display()
+    );
+    let support = zf_runtime::runtime_export::support();
+    let raw = if path.is_file() {
+        Some(tokio::fs::read(path).await?)
+    } else {
+        None
+    };
+    let json = raw
+        .as_deref()
+        .and_then(|bytes| serde_json::from_slice::<Value>(bytes).ok());
+    let project = if let Some(prepared) = json.as_ref().and_then(|value| value.get("prepared")) {
+        let plan = compiler::compile_prepared(
+            serde_json::from_value(prepared.clone())?,
+            &RuntimePrimitives,
+        )
+        .map_err(diagnostics)?;
+        zf_compiler::export::export_runtime(&plan, &support)?
+    } else {
+        let (mut doc, mut source, package) = read_flow(path).await?;
+        let sources = zf_execution::sources::program_sources(&doc, workspace, &[]).await?;
+        if !zf_compiler::programs::freeze(&mut doc, &sources)?.is_empty() {
+            source = flow_format::render(&doc, &GraphValidator::new(&RuntimePrimitives))?;
+        }
+        zf_compiler::export::export_single(
+            &doc,
+            &source,
+            package.as_ref(),
+            &RuntimePrimitives,
+            &support,
+        )?
+    };
+    // Reserve a new destination after all validation; never overwrite user files.
+    // A failed write removes only the directory exclusively created here.
+    tokio::fs::create_dir(output).await?;
+    let written: Result<()> = async {
+        for (name, bytes) in &project.files {
+            let destination = output.join(name);
+            if let Some(parent) = destination.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+            tokio::fs::write(destination, bytes).await?;
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(error) = written {
+        tokio::fs::remove_dir_all(output)
+            .await
+            .context("nettoyage de l’export incomplet")?;
+        return Err(error);
+    }
+    print_json(
+        &json!({"path":output,"revision":project.revision,"files":project.files.len(),"executed":false}),
     )
 }
 

@@ -116,3 +116,12 @@ test('generated declarations retain typed source selections and session commands
     execFileSync(process.execPath, [require.resolve('typescript/bin/tsc'), '--noEmit', '--strict', '--target', 'ES2022', '--module', 'NodeNext', input], { encoding: 'utf8' });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+test('generated package files preserve binary assets and Unicode source bytes', async () => {
+  const { generatedFileSchema, generatedFileBytes } = await import('../dist/generation/model.js');
+  const file = generatedFileSchema.parse({ path: 'assets/data.bin', content: 'AP8qgA==', encoding: 'base64' });
+  assert.deepEqual([...generatedFileBytes(file)], [0, 255, 42, 128]);
+  const text = 'réponse 🦀\n';
+  assert.equal(new TextDecoder().decode(generatedFileBytes({ path: 'flow.rs', content: text })), text);
+  assert.equal(generatedFileSchema.safeParse({ path: 'x', content: '', encoding: 'unknown' }).success, false);
+});

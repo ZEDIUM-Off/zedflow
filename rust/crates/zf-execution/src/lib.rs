@@ -8,6 +8,7 @@ pub mod sources;
 
 pub mod administration;
 pub mod authoring;
+pub mod cargo_export;
 pub mod commands;
 pub mod preparation;
 pub mod preview;

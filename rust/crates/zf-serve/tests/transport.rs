@@ -279,7 +279,7 @@ async fn conversion_and_deletion_use_revision_checked_package_commands() {
     f.service.shutdown().await.unwrap();
 }
 #[tokio::test]
-async fn validation_version_and_deferred_exports_return_explicit_responses() {
+async fn validation_version_and_portable_exports_return_explicit_responses() {
     let f = Fixture::new(false).await;
     let (status, value) = f.request("POST", "/api/validate", composition()).await;
     assert_eq!(status, StatusCode::OK, "{value}");
@@ -290,12 +290,18 @@ async fn validation_version_and_deferred_exports_return_explicit_responses() {
         value["daemon"]["buildId"].as_str().unwrap()
     ));
     let (status, value) = f.request("POST", "/api/generate", composition()).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::OK, "{value}");
+    let files = value["files"].as_array().unwrap();
+    assert!(files.iter().any(|file| file["path"] == "Cargo.lock"));
     assert!(
-        value["error"]
-            .as_str()
-            .unwrap()
-            .contains("export_unavailable")
+        files
+            .iter()
+            .any(|file| file["path"] == "flows/instance-0/flow.rs")
+    );
+    assert!(
+        files
+            .iter()
+            .any(|file| file["path"] == "crates/zf-execution/src/runtime_export.rs")
     );
     let request = Request::builder()
         .method("POST")
@@ -492,4 +498,100 @@ async fn dropping_a_convenience_router_drains_its_service_and_releases_ownership
     })
     .await
     .expect("last router releases service ownership");
+}
+
+#[tokio::test]
+async fn stored_export_keeps_binary_package_assets_and_rejects_stale_selection() {
+    let f = Fixture::new(false).await;
+    let package = f._root.path().join("workspace/.zedflow/flow/binary");
+    std::fs::create_dir_all(&package).unwrap();
+    let mut doc = composition();
+    doc["id"] = json!("binary");
+    let source = zf_flows::flow_format::render(
+        &serde_json::from_value(doc).unwrap(),
+        &zf_compiler::graph_compiler::GraphValidator::new(
+            &zf_runtime::materialize::RuntimePrimitives,
+        ),
+    )
+    .unwrap();
+    std::fs::write(package.join("flow.rs"), source).unwrap();
+    std::fs::write(package.join("data.bin"), [0, 255, 42, 128]).unwrap();
+    std::fs::write(package.join("flow.json"),json!({"formatVersion":1,"id":"binary","name":"Binary","entry":"flow.rs","files":["flow.rs","data.bin"]}).to_string()).unwrap();
+    let snapshot = zf_storage::flow_packages::capture(&package).await.unwrap();
+    let key = zf_storage::workspaces::path_id(&package);
+    let (status, result) = f
+        .request(
+            "POST",
+            "/api/generate",
+            json!({"flowKey":key,"flowHash":snapshot.root}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let binary = result["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["path"] == "flows/instance-0/data.bin")
+        .unwrap();
+    assert_eq!(binary["encoding"], "base64");
+    assert_eq!(binary["content"], "AP8qgA==");
+    let (status, _) = f
+        .request(
+            "POST",
+            "/api/generate",
+            json!({"flowKey":key,"flowHash":"stale"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM runs")
+        .fetch_one(&f.service.database())
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    f.service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn passage_export_reads_frozen_source_and_checks_workspace_and_occurrence() {
+    let f = Fixture::new(false).await;
+    let (status, ack) = f
+        .request(
+            "POST",
+            "/api/runs",
+            json!({"composition":composition(),"input":{"input":"fixture"}}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{ack}");
+    let id = ack["id"].as_str().unwrap();
+    f.idle(id).await;
+    let frozen = f.service.definition(&f.actor(), id).await.unwrap();
+    let (status, exported) = f
+        .request("POST", "/api/generate", json!({"runId":id}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{exported}");
+    let file = exported["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|file| file["path"] == "flows/instance-0/flow.rs")
+        .unwrap();
+    assert_eq!(file["content"], frozen["flowSource"]);
+    assert_eq!(exported["executionRevision"]["runId"], id);
+    let (status, _) = f
+        .request(
+            "POST",
+            "/api/generate",
+            json!({"runId":id,"workspaceId":"another-workspace"}),
+        )
+        .await;
+    assert_ne!(status, StatusCode::OK);
+    let (status, _) = f
+        .request(
+            "POST",
+            "/api/generate",
+            json!({"runId":id,"nodePath":"set","occurrenceId":"missing"}),
+        )
+        .await;
+    assert_ne!(status, StatusCode::OK);
+    f.service.shutdown().await.unwrap();
 }

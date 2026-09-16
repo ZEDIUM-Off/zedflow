@@ -262,12 +262,54 @@ fn daemon_run_transmits_selection_and_open_json_without_local_data() {
 }
 
 #[test]
-fn cargo_export_is_explicitly_unavailable_until_packager_is_delivered() {
+fn cargo_export_preserves_package_and_compiled_plan_without_overwriting() {
     let root = fixture();
-    let result = zf(root.path(), &["export", "missing", "--output", "out"]);
-    assert!(!result.status.success());
-    assert!(String::from_utf8_lossy(&result.stderr).contains("export_unavailable"));
+    assert!(
+        !zf(root.path(), &["export", "missing", "--output", "out"])
+            .status
+            .success()
+    );
     assert!(!root.path().join("out").exists());
+    success(zf(root.path(), &["init", "flow", "demo"]));
+    let source = fs::read(root.path().join(".zedflow/flow/demo/flow.rs")).unwrap();
+    let exported = success(zf(
+        root.path(),
+        &["export", ".zedflow/flow/demo", "--output", "out"],
+    ));
+    assert_eq!(exported["executed"], false);
+    assert_eq!(
+        fs::read(root.path().join("out/flows/instance-0/flow.rs")).unwrap(),
+        source
+    );
+    assert!(root.path().join("out/Cargo.lock").is_file());
+    fs::write(root.path().join("out/keep"), "keep").unwrap();
+    assert!(
+        !zf(
+            root.path(),
+            &["export", ".zedflow/flow/demo", "--output", "out"]
+        )
+        .status
+        .success()
+    );
+    assert_eq!(
+        fs::read_to_string(root.path().join("out/keep")).unwrap(),
+        "keep"
+    );
+    let plan = success(zf(root.path(), &["compile", ".zedflow/flow/demo"]));
+    fs::write(
+        root.path().join("plan.json"),
+        serde_json::to_vec(&plan).unwrap(),
+    )
+    .unwrap();
+    success(zf(
+        root.path(),
+        &["export", "plan.json", "--output", "composed"],
+    ));
+    assert_eq!(
+        fs::read(root.path().join("composed/flows/instance-0/flow.rs")).unwrap(),
+        source
+    );
+    assert!(!root.path().join("data").exists());
 }
 
 #[test]
@@ -341,4 +383,49 @@ fn package_entry_run_refuses_to_drop_package_identity_and_dependencies() {
     assert!(!failed.status.success());
     assert!(String::from_utf8_lossy(&failed.stderr).contains("--flow-key"));
     assert!(!root.path().join("data").exists());
+}
+
+#[test]
+fn export_captures_referenced_context_and_rejects_missing_sources_before_writing() {
+    let root = fixture();
+    let strategy = zf_context::context::ContextStrategy::new("policy", "Policy");
+    let strategy_source = zf_context::context_source::generate(&strategy).unwrap();
+    fs::create_dir_all(root.path().join(".zedflow/context")).unwrap();
+    fs::write(
+        root.path().join(".zedflow/context/policy.rs"),
+        strategy_source,
+    )
+    .unwrap();
+    let node = |id: &str, kind: &str, config: Value| json!({"id":id,"position":{"x":0,"y":0},"data":{"kind":kind,"label":id,"config":config}});
+    let doc = json!({"formatVersion":3,"id":"contextual","name":"Contextual","nodes":[node("start","start",json!({})),
+        node("context","context",json!({"modelNode":"model","contextStrategy":"policy","contextBindings":{}})),
+        node("model","model",json!({"contextNode":"context","provider":"fixture"})),node("end","end",json!({}))],
+        "edges":[{"id":"a","source":"start","target":"context"},{"id":"b","source":"context","target":"model"},{"id":"c","source":"model","target":"end"}]});
+    fs::write(root.path().join("flow.json"), doc.to_string()).unwrap();
+    success(zf(root.path(), &["export", "flow.json", "--output", "out"]));
+    let frozen = fs::read_to_string(root.path().join("out/flows/instance-0/flow.rs")).unwrap();
+    let parsed = zf_flows::flow_format::parse(
+        &frozen,
+        &zf_compiler::graph_compiler::GraphValidator::new(
+            &zf_runtime::materialize::RuntimePrimitives,
+        ),
+    )
+    .unwrap();
+    assert!(
+        parsed
+            .nodes
+            .iter()
+            .find(|node| node.id == "context")
+            .unwrap()
+            .data
+            .config["contextProgram"]
+            .is_object()
+    );
+    fs::remove_file(root.path().join(".zedflow/context/policy.rs")).unwrap();
+    assert!(
+        !zf(root.path(), &["export", "flow.json", "--output", "missing"])
+            .status
+            .success()
+    );
+    assert!(!root.path().join("missing").exists());
 }
