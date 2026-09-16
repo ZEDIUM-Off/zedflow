@@ -182,7 +182,7 @@ fn consume_visible_messages(run: &mut Value, event: &Value) {
 /// The explicit output node owns final replies. A split model node can also
 /// publish the text that accompanies tool calls, identified by its occurrence.
 /// The observer supplies only a field reference; the text stays in its output.
-pub(crate) fn assistant_message(event: &Value) -> Option<Value> {
+pub fn assistant_message(event: &Value) -> Option<Value> {
     if event["type"] != "node_activity" || event["status"] != "completed" {
         return None;
     }

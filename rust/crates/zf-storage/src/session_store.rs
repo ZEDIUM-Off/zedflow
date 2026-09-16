@@ -461,7 +461,7 @@ pub async fn backfill_interactive(
 }
 
 /// Public flow contracts opt into interaction; legacy input/inbox are explicit waits.
-pub(crate) fn composition_interactive(doc: &Value) -> bool {
+pub fn composition_interactive(doc: &Value) -> bool {
     let nodes = doc["nodes"].as_array();
     if let Some(exports) = nodes
         .into_iter()

@@ -496,11 +496,10 @@ pub async fn execute_with_services(
                     message: "Le lot d'outils doit terminer avant le contrôle steering".into(),
                 });
             }
-            let message = services.claim_message("steering", &consumed).or_else(|| {
-                (kind == "inbox")
-                    .then(|| services.claim_message("followup", &consumed))
-                    .flatten()
-            });
+            let mut message = services.claim_message("steering", &consumed).await;
+            if message.is_none() && kind == "inbox" {
+                message = services.claim_message("followup", &consumed).await;
+            }
             if let Some(message) = message {
                 let mut consumed = consumed;
                 let id = message["id"]

@@ -158,6 +158,7 @@ pub struct RunServices {
     bindings: Arc<RwLock<BTreeMap<String, Value>>>,
     activations: Arc<RwLock<BTreeMap<String, Vec<String>>>>,
     queue: Arc<RwLock<Vec<Value>>>,
+    inbox_commands: Arc<tokio::sync::RwLock<()>>,
     sender: Arc<RwLock<Option<EventSink>>>,
     // Receipt claims serialize each effect identity. Distinct native graph
     // branches may execute concurrently; export takes the exclusive barrier.
@@ -170,6 +171,23 @@ pub struct RunServices {
     revisions: Arc<RwLock<Option<Arc<crate::revisions::RevisionRuntime>>>>,
     reader_host: Arc<RwLock<ResourceReads>>,
     resource_readers: Arc<RwLock<Option<Arc<ReaderRegistry>>>>,
+}
+
+/// Excludes inbox claims until a cancellation has durably committed or failed.
+/// Dropping an uncommitted reservation leaves the queue unchanged.
+pub struct MessageCancellation {
+    queue: Arc<RwLock<Vec<Value>>>,
+    id: String,
+    _guard: tokio::sync::OwnedRwLockWriteGuard<()>,
+}
+impl MessageCancellation {
+    /// Publish a cancellation only after the caller's durable command commits.
+    pub fn commit(self) {
+        let mut queue = self.queue.write().unwrap_or_else(|p| p.into_inner());
+        if let Some(message) = queue.iter_mut().find(|message| message["id"] == self.id) {
+            message["status"] = json!("cancelled");
+        }
+    }
 }
 
 impl RunServices {
@@ -224,6 +242,7 @@ impl RunServices {
             )),
             activations: Arc::new(RwLock::new(BTreeMap::new())),
             queue: Arc::new(RwLock::new(queue)),
+            inbox_commands: Arc::new(tokio::sync::RwLock::new(())),
             sender: Arc::new(RwLock::new(None)),
             journal: Arc::new(tokio::sync::RwLock::new(())),
             context_sources: Arc::new(RwLock::new((
@@ -308,6 +327,7 @@ impl RunServices {
             bindings: self.bindings.clone(),
             activations: self.activations.clone(),
             queue: self.queue.clone(),
+            inbox_commands: self.inbox_commands.clone(),
             sender: self.sender.clone(),
             journal: self.journal.clone(),
             store: self.store.clone(),
@@ -550,7 +570,8 @@ impl RunServices {
     /// Prevent a concurrent client removal after the graph has selected a message.
     /// This is an in-memory claim only: the graph checkpoint's consumed IDs remain
     /// authoritative, so an uncheckpointed claim can be retried after restart.
-    pub fn claim_message(&self, kind: &str, consumed: &[String]) -> Option<Value> {
+    pub async fn claim_message(&self, kind: &str, consumed: &[String]) -> Option<Value> {
+        let _guard = self.inbox_commands.read().await;
         let mut queue = self.queue.write().unwrap_or_else(|p| p.into_inner());
         let message = queue.iter_mut().find(|message| {
             message["kind"] == kind
@@ -563,17 +584,30 @@ impl RunServices {
         Some(message.clone())
     }
 
-    pub fn cancel_message(&self, id: &str) -> Result<()> {
-        let mut queue = self.queue.write().unwrap_or_else(|p| p.into_inner());
-        let message = queue
-            .iter_mut()
-            .find(|message| message["id"] == id)
-            .context("message not found")?;
-        ensure!(
-            message["status"] == "pending",
-            "message has already been claimed or processed"
-        );
-        message["status"] = json!("cancelled");
+    /// Reserve a pending message without changing runtime-visible queue state.
+    /// The caller must retain this guard through its durable cancellation write.
+    pub async fn reserve_message_cancellation(&self, id: &str) -> Result<MessageCancellation> {
+        let guard = self.inbox_commands.clone().write_owned().await;
+        {
+            let queue = self.queue.read().unwrap_or_else(|p| p.into_inner());
+            let message = queue
+                .iter()
+                .find(|message| message["id"] == id)
+                .context("message not found")?;
+            ensure!(
+                message["status"] == "pending",
+                "message has already been claimed or processed"
+            );
+        }
+        Ok(MessageCancellation {
+            queue: self.queue.clone(),
+            id: id.into(),
+            _guard: guard,
+        })
+    }
+
+    pub async fn cancel_message(&self, id: &str) -> Result<()> {
+        self.reserve_message_cancellation(id).await?.commit();
         Ok(())
     }
 
@@ -1224,36 +1258,40 @@ mod tests {
         );
     }
 
-    #[test]
-    fn claim_and_cancellation_have_one_winner_and_checkpoint_remains_authority() {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn claim_and_cancellation_have_one_winner_and_checkpoint_remains_authority() {
         let directory = tempfile::tempdir().unwrap();
         let queue =
             vec![json!({"id":"message","kind":"steering","text":"instruction","status":"pending"})];
         let service = services(directory.path(), queue.clone());
-        let barrier = std::sync::Barrier::new(3);
-        let (claimed, cancelled) = std::thread::scope(|scope| {
-            let claim = scope.spawn(|| {
-                barrier.wait();
-                service.claim_message("steering", &[]).is_some()
-            });
-            let cancel = scope.spawn(|| {
-                barrier.wait();
-                service.cancel_message("message").is_ok()
-            });
-            barrier.wait();
-            (claim.join().unwrap(), cancel.join().unwrap())
-        });
+        let barrier = Arc::new(tokio::sync::Barrier::new(3));
+        let claim = {
+            let (service, barrier) = (service.clone(), barrier.clone());
+            tokio::spawn(async move {
+                barrier.wait().await;
+                service.claim_message("steering", &[]).await.is_some()
+            })
+        };
+        let cancel = {
+            let (service, barrier) = (service.clone(), barrier.clone());
+            tokio::spawn(async move {
+                barrier.wait().await;
+                service.cancel_message("message").await.is_ok()
+            })
+        };
+        barrier.wait().await;
+        let (claimed, cancelled) = (claim.await.unwrap(), cancel.await.unwrap());
         assert_ne!(claimed, cancelled);
         assert!(service.pending_message("steering", &[]).is_none());
         if claimed {
             service.replace_queue(queue.clone());
             assert!(
-                service.claim_message("steering", &[]).is_none(),
+                service.claim_message("steering", &[]).await.is_none(),
                 "old DB snapshot cannot unclaim delivery"
             );
             let recovered = services(directory.path(), queue);
             assert!(
-                recovered.claim_message("steering", &[]).is_some(),
+                recovered.claim_message("steering", &[]).await.is_some(),
                 "uncheckpointed claim is retryable after restart"
             );
         }
@@ -1264,8 +1302,42 @@ mod tests {
         assert!(
             consumed
                 .claim_message("steering", &["old".into()])
+                .await
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn cancellation_reservation_blocks_claim_and_rollback_restores_delivery() {
+        let directory = tempfile::tempdir().unwrap();
+        let queue = vec![json!({"id":"message","kind":"followup","status":"pending"})];
+        let service = services(directory.path(), queue.clone());
+        let reservation = service
+            .reserve_message_cancellation("message")
+            .await
+            .unwrap();
+        let mut claim = Box::pin(service.claim_message("followup", &[]));
+        assert!(futures::poll!(claim.as_mut()).is_pending());
+        // A rejected durable write drops the reservation without changing state.
+        service.replace_queue(queue.clone());
+        drop(reservation);
+        assert_eq!(claim.await.unwrap()["id"], "message");
+        assert!(
+            service
+                .reserve_message_cancellation("message")
+                .await
+                .is_err()
+        );
+
+        let service = services(directory.path(), queue);
+        let reservation = service
+            .reserve_message_cancellation("message")
+            .await
+            .unwrap();
+        let mut claim = Box::pin(service.claim_message("followup", &[]));
+        assert!(futures::poll!(claim.as_mut()).is_pending());
+        reservation.commit();
+        assert!(claim.await.is_none());
     }
 
     #[tokio::test]
@@ -1303,7 +1375,7 @@ mod tests {
         .unwrap();
         let restored_queue: Vec<Value> = serde_json::from_slice(&persisted).unwrap();
         let recovered = services(directory.path(), restored_queue);
-        let claimed = recovered.claim_message("followup", &[]).unwrap();
+        let claimed = recovered.claim_message("followup", &[]).await.unwrap();
         assert_eq!(claimed["text"], text);
         assert!(
             claimed["text"]
@@ -1318,7 +1390,7 @@ mod tests {
                 .unwrap()
                 .ends_with("queued arguments")
         );
-        assert!(recovered.claim_message("followup", &[]).is_none());
+        assert!(recovered.claim_message("followup", &[]).await.is_none());
         let (_, newer) = context.expand_skill_with_metadata("/skill:demo").unwrap();
         assert_ne!(newer.unwrap()["hash"], metadata["hash"]);
         std::fs::remove_file(path).unwrap();
@@ -1327,7 +1399,7 @@ mod tests {
             serde_json::from_slice(&persisted).unwrap(),
         );
         assert_eq!(
-            recovered.claim_message("followup", &[]).unwrap()["text"],
+            recovered.claim_message("followup", &[]).await.unwrap()["text"],
             text
         );
     }

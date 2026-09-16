@@ -904,7 +904,7 @@ pub fn validate_publications(publications: &[RevisionPublication]) -> Result<Vec
 
 /// Read graph and flow heads from one SQLite snapshot, then resolve immutable
 /// values outside the statement. No authoring filesystem is consulted here.
-pub(crate) async fn latest_runtime_graph(
+pub async fn latest_runtime_graph(
     store: &ContentStore,
     run_id: &str,
 ) -> Result<Option<PreparedRuntime>> {

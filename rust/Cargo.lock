@@ -3446,6 +3446,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "zf-execution"
+version = "0.2.0-dev"
+dependencies = [
+ "adk-core",
+ "adk-graph",
+ "anyhow",
+ "async-trait",
+ "futures",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "zf-compiler",
+ "zf-context",
+ "zf-core",
+ "zf-flows",
+ "zf-runtime",
+ "zf-storage",
+]
+
+[[package]]
 name = "zf-flows"
 version = "0.2.0-dev"
 dependencies = [
