@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shallowRef } from 'vue'
 const client=useClient()
 import { useClient } from '@zedflow/vue'
 
@@ -8,7 +9,7 @@ import { CLIENT_BUILD, type BuildInfo } from '../buildInfo'
 import { preserveAndReload } from '../composables/reloadState'
 import { HttpError, type DaemonVersion, type Release } from '@zedflow/sdk'
 const development=import.meta.env.DEV
-const version=ref<DaemonVersion>(),error=ref(''),pending=ref(false),checking=ref(false),unavailable=ref(false),offline=ref(false)
+const version=shallowRef<DaemonVersion>(),error=ref(''),pending=ref(false),checking=ref(false),unavailable=ref(false),offline=ref(false)
 const short=(build?:BuildInfo|null)=>build?`${build.version} · ${build.buildId.slice(0,12)}`:'Version non publiée'
 const clientUpdate=computed(()=>!development&&!!version.value?.client&&version.value.client.buildId!==CLIENT_BUILD.buildId)
 const releaseUpdate=computed(()=>!!version.value?.candidate&&version.value.candidate.releaseId!==version.value.releaseId)

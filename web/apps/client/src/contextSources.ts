@@ -1,17 +1,10 @@
-import type { ContextBlock, ContextExpr, ContextType } from '@zedflow/sdk'
+import type { ContextBlock, ContextExpr, ContextType, SourceTypeEntry } from '@zedflow/sdk'
 
 export const CONTEXT_SOURCE_MIME = 'application/x-zedflow-context-source'
 export const CONTEXT_SOURCE_MAX_DEPTH = 64
 const CONTEXT_SOURCE_MAX_NODES = 4096
 export type ContextSourceCategory = 'messages' | 'tools' | 'documents' | 'execution' | 'data' | 'media' | 'custom'
-export interface ContextSourceEntry {
-  id: string
-  label: string
-  category: ContextSourceCategory
-  type: ContextType
-  types: Record<string, ContextType>
-  origin: string
-  providers: string[]
+export type ContextSourceEntry = Pick<SourceTypeEntry, 'id' | 'label' | 'category' | 'type' | 'types' | 'origin' | 'providers'> & {
   description?: string
   alias?: string
 }

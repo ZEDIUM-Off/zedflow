@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { HistoricalModelSelection } from '@zedflow/sdk'
 import { computed } from 'vue'
 import { PopoverRoot, PopoverTrigger, PopoverPortal, PopoverContent, PopoverClose } from 'reka-ui'
 import { Activity, ArrowUpRight, Bot, Folder, GitBranch, Settings2 } from 'lucide-vue-next'
 import type { Composition, ModelSelection, Run, Workspace } from '@zedflow/sdk'
 import { fixedSelection, modelNodes } from '../harness'
 import { statuses } from '../composables/useZedflow'
-const props=defineProps<{workspace?:Workspace;composition:Composition;run:Run|null;bindings:Record<string,ModelSelection>}>()
+const props=defineProps<{workspace?:Workspace;composition:Composition;run:Run|null;bindings:Record<string,HistoricalModelSelection>}>()
 const emit=defineEmits<{details:[tab?:'activity'|'models'|'context']}>()
 const selections=computed(()=>modelNodes(props.composition).map(entry=>({path:entry.path,name:entry.node.data.label,selection:entry.runtime?props.bindings[entry.path]:fixedSelection(entry)})))
 const active=computed(()=>props.run?.activities?.filter(activity=>['running','waiting'].includes(activity.status)).at(-1))

@@ -1,0 +1,14 @@
+# Runtime files stay local. Add only chosen definitions and explicit exports.
+/*
+!/.gitignore
+!/flow/
+!/flows/
+!/context/
+!/types/
+!/examples/
+!/bridges/
+!/sessions/
+**/.catalog.lock
+**/.zedflow-*.tmp
+**/.context-*.tmp
+**/.accepted-*.tmp

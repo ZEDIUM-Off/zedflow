@@ -15,3 +15,6 @@ export const graphAnalysisSchema = z.object({ nodes: z.array(nodeContractSchema)
 export type GraphAnalysis = z.output<typeof graphAnalysisSchema>;
 export const workingSystemExampleResultSchema = z.object({ root: flowFileSchema, worker: flowFileSchema, bridge: bridgeFileSchema, workingDirectory: z.string() }).catchall(jsonValueSchema);
 export type WorkingSystemExampleResult = z.output<typeof workingSystemExampleResultSchema>;
+
+export const flowPackageConversionResultSchema = z.object({ oldKey: z.string(), newKey: z.string(), oldRevision: z.string(), newRevision: z.string(), flow: flowFileSchema, changedConsumers: z.array(z.object({ workspaceId: z.string(), key: z.string(), path: z.string() })) }).catchall(jsonValueSchema);
+export type FlowPackageConversionResult = z.output<typeof flowPackageConversionResultSchema>;

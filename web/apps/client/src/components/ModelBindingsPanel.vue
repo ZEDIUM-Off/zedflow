@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { HistoricalModelSelection } from '@zedflow/sdk'
 import type { ModelEntry } from '@zedflow/sdk'
 
 import { computed } from 'vue'
 import { X, LocateFixed, LockKeyhole } from 'lucide-vue-next'
 import ModelPicker from './ModelPicker.vue'
 import { fixedSelection, type ModelNode, type ModelSelection } from '../harness'
-const props = defineProps<{ nodes: ModelNode[]; models: ModelEntry[]; bindings: Record<string, ModelSelection>; selectedPath?: string; busy?: boolean; running?: boolean }>()
+const props = defineProps<{ nodes: ModelNode[]; models: ModelEntry[]; bindings: Record<string, HistoricalModelSelection>; selectedPath?: string; busy?: boolean; running?: boolean }>()
 const emit = defineEmits<{ close: []; select: [path: string]; change: [path: string, selection: ModelSelection] }>()
 const groups = computed(() => [...new Set(props.nodes.map(entry => entry.group))].map(group => ({ label: group || 'Flow principal', entries: props.nodes.filter(entry => entry.group === group) })))
 </script>

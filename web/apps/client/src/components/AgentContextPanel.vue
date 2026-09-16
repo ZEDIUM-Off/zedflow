@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { WorkspaceContext } from '@zedflow/sdk'
+import { requireNodeConfig } from '@zedflow/sdk'
+import type { RunContext } from '@zedflow/sdk'
 
 import { computed, ref, watch } from 'vue'
 import { BookOpen, FileText, Wrench, X } from 'lucide-vue-next'
@@ -11,13 +12,13 @@ import ContextWindowPanel from './context/ContextWindowPanel.vue'
 import type { ContextProgram } from '@zedflow/sdk'
 import type { AgentAttachments } from '../graph/attachments'
 import { useContextDetail, useRunDetails, detailVersion } from '../composables/runDetails'
-const props=defineProps<{run:Run|null;nodes:ModelNode[];context?:WorkspaceContext|null;selectedPath:string;selectedOccurrence?:string;busy:boolean}>()
+const props=defineProps<{run:Run|null;nodes:ModelNode[];context?:RunContext|null;selectedPath:string;selectedOccurrence?:string;busy:boolean}>()
 const emit=defineEmits<{copy:[program:ContextProgram,blockId:string];close:[];select:[path:string];activate:[nodePath:string,itemId:string,active:boolean,skillName?:string]}>()
 const path=ref(props.nodes.find(node=>node.path===props.selectedPath||node.contextPath===props.selectedPath)?.path||props.nodes[0]?.path||'')
 watch(()=>props.selectedPath,value=>{const target=props.nodes.find(node=>node.path===value||node.contextPath===value);if(target)path.value=target.path})
 watch(()=>props.nodes.map(node=>node.path).join(','),()=>{if(!props.nodes.some(node=>node.path===path.value))path.value=props.nodes[0]?.path||''})
 const entry=computed(()=>props.nodes.find(node=>node.path===path.value))
-const contextConfig=computed(()=>(entry.value?.context||entry.value?.node)?.data.config||{})
+const contextConfig=computed(()=>requireNodeConfig((entry.value?.context||entry.value?.node)?.data.config ?? {}))
 const attachments=computed<AgentAttachments>(()=>contextConfig.value.attachments||{})
 const activated=computed(()=>props.run?.capabilityActivations?.[path.value]||[])
 const details=useRunDetails()

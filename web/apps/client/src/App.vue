@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { shallowRef } from 'vue'
+import { flowPackageInventory, jsonValueSchema } from '@zedflow/sdk'
 import type { InspectionSelection } from './composables/useExecutedDefinition'
 import type { JsonValue } from '@zedflow/sdk'
 
@@ -54,7 +56,8 @@ async function openContextStrategy(key?:string){
 }
 const sidebarOpen=ref(window.innerWidth>=760),browserOpen=ref(false),paletteOpen=ref(false),settingsOpen=ref(false),sourceOpen=ref(false),source=ref('')
 const shareTitle=ref('Exporter la session')
-const sourceFiles=ref<ExportFile[]>([]),sourceRunId=ref<string>(),sourceTitle=ref('Rust du flow')
+const packageInventory=ref<Awaited<ReturnType<typeof flowPackageInventory>>>([])
+const sourceFiles=shallowRef<ExportFile[]>([]),sourceRunId=ref<string>(),sourceTitle=ref('Rust du flow')
 const sourceSelection=ref<{workspaceId:string;nodePath:string;occurrenceId?:string;hash:string}>()
 let sourceRequest=0
 const propertiesOpen=ref(window.innerWidth>=760)
@@ -87,8 +90,8 @@ function inspect(selection:string|InspectionSelection,reveal=true,keepTab=false)
   if(reveal)focusRevision.value++
   inspectorOpen.value=true;if(!keepTab)inspectorTab.value='activity'
 }
-const shareOpen=ref(false),shareResult=ref<SessionExportResponse|null>(null),importOpen=ref(false),importPath=ref(''),importWorkspace=ref('')
-async function exportSession(run:RunSummary){if(run.status==='running'||run.runtimeActive)return;shareTitle.value=run.interactive===false?'Exporter l’exécution':'Exporter la session';shareResult.value=null;shareOpen.value=true;await app.task('Export de la session',async()=>{shareResult.value=await client.sessions.export({workspaceId:run.workspaceId,sessionIds:[run.id]})})}
+const shareOpen=ref(false),shareResult=shallowRef<SessionExportResponse|null>(null),importOpen=ref(false),importPath=ref(''),importWorkspace=ref('')
+async function exportSession(run:RunSummary){if(run.status==='running'||run.runtimeActive)return;shareTitle.value=run.interactive===false?'Exporter l’exécution':'Exporter la session';shareResult.value=null;shareOpen.value=true;await app.task('Export de la session',async()=>{shareResult.value=await client.sessions.export({workspaceId:run.workspaceId||workspaceId.value,sessionIds:[run.id]})})}
 function showImport(){importWorkspace.value=workspaceId.value;importPath.value='';importOpen.value=true}
 async function downloadSession(){
   const exported=shareResult.value;if(!exported)return
@@ -105,7 +108,7 @@ async function newSession(id?:string){await app.newSession(id);if(window.innerWi
 watch(mode,()=>{if(window.innerWidth<760)sidebarOpen.value=false})
 async function showRust(compile=false,runId?:string){
   const request=++sourceRequest
-  sourceOpen.value=true;source.value='';sourceFiles.value=[];sourceRunId.value=runId;sourceSelection.value=undefined
+  packageInventory.value=[];sourceOpen.value=true;source.value='';sourceFiles.value=[];sourceRunId.value=runId;sourceSelection.value=undefined
   sourceTitle.value=runId?'Rust exécuté':'Rust du flow'
   await app.task(compile?'Compilation Rust':'Chargement du Rust',async()=>{
     if(runId&&!compile){
@@ -113,14 +116,15 @@ async function showRust(compile=false,runId?:string){
       const path=active?selectedPath.value:'',occurrence=active?(selectedOccurrence.value||(path?active.activities?.filter(item=>(item.path||item.node)===path).at(-1)?.occurrenceId:active.activities?.at(-1)?.occurrenceId)):undefined
       const owner=run?.workspaceId||workspaceId.value,value=await client.definitions.load({runId,workspaceId:owner,query:{nodePath:path,...(occurrence?{occurrenceId:occurrence}:{})}})
       if(!value?.exact)throw new Error(value&&!value.exact?value.diagnostic.message:'La source exacte de cette occurrence est indisponible.')
-      if(request===sourceRequest){source.value=value.source;sourceSelection.value={workspaceId:owner,nodePath:value.nodePath,occurrenceId:value.occurrenceId,hash:value.hash};notice.value='Source exacte de la version exécutée sélectionnée'}
+      if(request===sourceRequest){source.value=value.source;sourceSelection.value={workspaceId:owner,nodePath:value.nodePath,occurrenceId:value.occurrenceId||undefined,hash:value.hash};notice.value='Source exacte de la version exécutée sélectionnée'}
       return
     }
     const result=await app.generate(compile,runId)
     if(request!==sourceRequest)return
     sourceFiles.value=result.files
-    source.value=result.files.map(file=>`// ${file.path}\n${file.content}`).join('\n\n')
-    if(compile&&!result.success)throw new Error(result.output)
+    if(!runId&&designFile.value?.package)packageInventory.value=await flowPackageInventory(designFile.value.package)
+    source.value=result.files.map(file=>`// ${file.path}${file.encoding==='base64'?' · contenu binaire encodé en base64':''}\n${file.content}`).join('\n\n')
+    if(compile&&!result.success)throw new Error(typeof result.output==='string'?result.output:JSON.stringify(result.output))
     notice.value=compile?'Compilation Cargo réussie':'Source Rust du flow et projet exportable'
   })
 }
@@ -144,13 +148,13 @@ function openDefinition(){
     :'Ce flow n’est pas disponible dans la bibliothèque. Le brouillon de conception est conservé.'
 }
 const actionOpen=ref(false),actionName=ref(''),actionScope=ref<'workspace'|'global'>('workspace')
-type Action={kind:'saveas'}|{kind:'rename'|'duplicate'|'delete';file:FlowFile}|{kind:'session';run:RunSummary}|{kind:'switch';file:FlowFile}|{kind:'create';template:'harness'|'tools'|'interactive'|'autonomous'}
-const action=ref<Action|null>(null)
-const actionTitle=computed(()=>action.value?.kind==='saveas'?'Enregistrer sous':action.value?.kind==='duplicate'?'Dupliquer le flow':action.value?.kind==='delete'?'Supprimer le flow':action.value?.kind==='session'?'Renommer la session':['switch','create'].includes(action.value?.kind||'')?'Conserver le brouillon ?':'Renommer le flow')
+type Action={kind:'saveas'}|{kind:'rename'|'duplicate'|'delete'|'convert';file:FlowFile}|{kind:'session';run:RunSummary}|{kind:'switch';file:FlowFile}|{kind:'create';template:'harness'|'tools'|'interactive'|'autonomous'}
+const action=shallowRef<Action|null>(null)
+const actionTitle=computed(()=>action.value?.kind==='convert'?'Convertir en package Rust':action.value?.kind==='saveas'?'Enregistrer sous':action.value?.kind==='duplicate'?'Dupliquer le flow':action.value?.kind==='delete'?'Supprimer le flow':action.value?.kind==='session'?'Renommer la session':['switch','create'].includes(action.value?.kind||'')?'Conserver le brouillon ?':'Renommer le flow')
 function openAction(value:Action){action.value=value;actionName.value=value.kind==='session'?value.run.name:value.kind==='saveas'?doc.value.name:'file' in value?value.file.name:'';if(value.kind==='duplicate')actionName.value+=' · copie';actionScope.value='workspace';actionOpen.value=true}
 function editFlow(file:FlowFile){designSection.value='flows';if(dirty.value){if(designFile.value?.key===file.key){mode.value='design';return}openAction({kind:'switch',file});return}app.openDesign(file)}
 function createFlow(kind:'harness'|'tools'|'interactive'|'autonomous'){designSection.value='flows';if(dirty.value){openAction({kind:'create',template:kind});return}app.createFlow(kind)}
-async function performAction(){const value=action.value;if(!value)return;if(value.kind==='saveas')await app.save(actionScope.value,true,actionName.value);else if(value.kind==='duplicate')await app.duplicateFlow(value.file,actionScope.value,actionName.value);else if(value.kind==='rename')await app.renameFlow(value.file,actionName.value);else if(value.kind==='delete')await app.removeFlow(value.file);else if(value.kind==='session')await app.renameSession(value.run,actionName.value);else if(value.kind==='switch'||value.kind==='create'){await app.save();if(!error.value){if(value.kind==='switch')app.openDesign(value.file);else app.createFlow(value.template)}}if(!error.value)actionOpen.value=false}
+async function performAction(){const value=action.value;if(!value)return;if(value.kind==='saveas')await app.save(actionScope.value,true,actionName.value);else if(value.kind==='duplicate')await app.duplicateFlow(value.file,actionScope.value,actionName.value);else if(value.kind==='rename')await app.renameFlow(value.file,actionName.value);else if(value.kind==='delete')await app.removeFlow(value.file);else if(value.kind==='convert')await app.convertPackage(value.file);else if(value.kind==='session')await app.renameSession(value.run,actionName.value);else if(value.kind==='switch'||value.kind==='create'){await app.save();if(!error.value){if(value.kind==='switch')app.openDesign(value.file);else app.createFlow(value.template)}}if(!error.value)actionOpen.value=false}
 function discardAndOpen(){if(action.value?.kind==='switch')app.openDesign(action.value.file);else if(action.value?.kind==='create')app.createFlow(action.value.template);actionOpen.value=false}
 function convertedFlow(value:Composition){
   doc.value=value;designFile.value=null;app.designWorkspaceId.value ||= workspaceId.value;
@@ -174,7 +178,7 @@ async function refreshLibrary(){await app.task('Actualisation',()=>app.refresh()
   <WorkspaceSidebar :design-label="designSection==='context'?'Contexte':designSection==='bridges'?'Bridges':'Flows'" v-if="sidebarOpen" :mode="mode" :workspaces="workspaces" :runs="history" :workspace-id="workspaceId" :current-id="current?.id" @mode="mode=$event" @open="browserOpen=true" @new-session="newSession" @session="openSession" @rename="openAction({kind:'session',run:$event})" @export="exportSession" @import="showImport" @close="app.closeWorkspace" @hide="sidebarOpen=false">
     <template #design>
       <nav class="ctx-design-tabs" aria-label="Espace de conception"><button :aria-pressed="designSection==='flows'" @click="designSection='flows'">Flows</button><button :aria-pressed="designSection==='context'" @click="designSection='context'">Contexte</button><button :aria-pressed="designSection==='bridges'" @click="designSection='bridges'">Bridges</button></nav>
-      <FlowLibrary v-show="designSection==='flows'" :flows="flows" :workspaces="workspaces" :workspace-id="workspaceId" :selected-key="designFile?.key" :busy="!!busy" @open="editFlow" @create="createFlow" @rename="openAction({kind:'rename',file:$event})" @duplicate="openAction({kind:'duplicate',file:$event})" @delete="openAction({kind:'delete',file:$event})" @refresh="refreshLibrary" @workspace="app.task('Changement de workspace',()=>app.selectWorkspace($event,false))"/>
+      <FlowLibrary v-show="designSection==='flows'" :flows="flows" :workspaces="workspaces" :workspace-id="workspaceId" :selected-key="designFile?.key" :busy="!!busy" @open="editFlow" @convert="openAction({kind:'convert',file:$event})" @create="createFlow" @rename="openAction({kind:'rename',file:$event})" @duplicate="openAction({kind:'duplicate',file:$event})" @delete="openAction({kind:'delete',file:$event})" @refresh="refreshLibrary" @workspace="app.task('Changement de workspace',()=>app.selectWorkspace($event,false))"/>
       <ContextLibrary v-show="designSection==='context'" :studio="contextStudio" :workspaces="workspaces" @workspace="app.task('Changement de workspace',()=>app.selectWorkspace($event,false))"/>
       <BridgeLibrary v-show="designSection==='bridges'" :studio="bridgeStudio" :workspaces="workspaces" @workspace="app.task('Changement de workspace',()=>app.selectWorkspace($event,false))"/>
     </template>
@@ -216,7 +220,7 @@ async function refreshLibrary(){await app.task('Actualisation',()=>app.refresh()
   <DirectoryBrowser v-model:open="browserOpen" :initial-path="workspace?.path" :busy="!!busy" @select="openFolder"/>
   <AppDialog v-model:open="exampleOpen" title="Exemple Working System"><form class="flow-action-form" @submit.prevent="installExample"><p>Crée deux flows indépendants et un bridge : le harness transmet la demande au flow documentaire, attend son résultat puis prépare la réponse.</p><label>Répertoire du flow Working System<input v-model="exampleCwd" required placeholder="../docs"/></label><small>Chemin sur la machine du daemon, relatif au workspace ou absolu. Chaque flow conserve ses propres outils et son contexte.</small><p v-if="error" role="alert" class="field-error">{{error}}</p><footer><button type="button" @click="exampleOpen=false">Annuler</button><button class="primary" :disabled="!!busy||!exampleCwd.trim()" type="submit">Créer l’exemple</button></footer></form></AppDialog>
   <AppDialog v-model:open="settingsOpen" :title="`Paramètres ADK · ${doc.name}`" wide><GraphSettings :doc="doc"/></AppDialog>
-  <AppDialog v-model:open="sourceOpen" :title="sourceTitle" wide><p v-if="busy" class="banner">{{busy}}…</p><p v-if="error" role="alert" class="banner error">{{error}}</p><pre class="source-preview">{{source}}</pre><footer><small>{{sourceRunId?'Le projet Cargo conserve la version exacte affichée.':'Source conservée et modules du projet Cargo.'}}</small><button :disabled="!!busy||(!sourceFiles.length&&!source)" @click="downloadRust">Télécharger le projet Cargo</button></footer></AppDialog>
-  <AppDialog v-model:open="actionOpen" :title="actionTitle"><form class="flow-action-form" @submit.prevent="performAction"><template v-if="action?.kind==='delete'"><p>Supprimer « {{action.file.name}} » de la bibliothèque ? Les sessions existantes conservent leur version.</p><small>{{action.file.path}}</small></template><p v-else-if="['switch','create'].includes(action?.kind||'')">Le flow courant contient des modifications non enregistrées.</p><label v-else>Nom<input v-model="actionName" required autofocus maxlength="240"/></label><label v-if="action?.kind==='saveas'||action?.kind==='duplicate'">Emplacement<select v-model="actionScope"><option value="workspace">Workspace · .zedflow/flows</option><option value="global">Global · ~/.zedflow/flows</option></select></label><p v-if="error" role="alert" class="field-error">{{error}}</p><footer><button v-if="['switch','create'].includes(action?.kind||'')" type="button" @click="discardAndOpen">Ouvrir sans enregistrer</button><button v-else type="button" @click="actionOpen=false">Annuler</button><button :class="action?.kind==='delete'?'danger':'primary'" :disabled="!!busy||(!['delete','switch','create'].includes(action?.kind||'')&&!actionName.trim())" type="submit">{{action?.kind==='delete'?'Supprimer':['switch','create'].includes(action?.kind||'')?'Enregistrer et ouvrir':'Enregistrer'}}</button></footer></form></AppDialog>
+  <AppDialog v-model:open="sourceOpen" :title="sourceTitle" wide><p v-if="busy" class="banner">{{busy}}…</p><p v-if="error" role="alert" class="banner error">{{error}}</p><details v-for="pkg in packageInventory" :key="pkg.revision" :open="pkg.root"><summary>{{pkg.manifest.name}} · entrée {{pkg.manifest.entry}}</summary><p>Révision du package : <code>{{pkg.revision}}</code></p><p v-if="pkg.root&&designFile?.sourceHash">Hash de l’entrée Rust : <code>{{designFile.sourceHash}}</code></p><ul><li v-for="file in pkg.files" :key="file.path"><code>{{file.path}}</code> · {{file.byteLength}} octets · SHA-256 <code>{{file.sha256}}</code></li></ul></details><pre class="source-preview">{{source}}</pre><footer><small>{{sourceRunId?'Le projet Cargo conserve la version exacte affichée.':'Source conservée et modules du projet Cargo.'}}</small><button :disabled="!!busy||(!sourceFiles.length&&!source)" @click="downloadRust">Télécharger le projet Cargo</button></footer></AppDialog>
+  <AppDialog v-model:open="actionOpen" :title="actionTitle"><form class="flow-action-form" @submit.prevent="performAction"><template v-if="action?.kind==='convert'"><p>Convertir « {{action.file.name}} » en package Rust ?</p><p>Le fichier historique sera retiré et ses références dans les bridges enregistrés seront actualisées. Les sessions existantes conservent leurs sources figées. Le brouillon ouvert reste conservé.</p><small>{{action.file.path}}</small></template><template v-else-if="action?.kind==='delete'"><p>Supprimer « {{action.file.name}} » de la bibliothèque ? Les sessions existantes conservent leur version.</p><small>{{action.file.path}}</small></template><p v-else-if="['switch','create'].includes(action?.kind||'')">Le flow courant contient des modifications non enregistrées.</p><label v-else>Nom<input v-model="actionName" required autofocus maxlength="240"/></label><label v-if="action?.kind==='saveas'||action?.kind==='duplicate'">Emplacement<select v-model="actionScope"><option value="workspace">Workspace · .zedflow/flows</option><option value="global">Global · ~/.zedflow/flows</option></select></label><p v-if="error" role="alert" class="field-error">{{error}}</p><footer><button v-if="['switch','create'].includes(action?.kind||'')" type="button" @click="discardAndOpen">Ouvrir sans enregistrer</button><button v-else type="button" @click="actionOpen=false">Annuler</button><button :class="action?.kind==='delete'?'danger':'primary'" :disabled="!!busy||(!['delete','convert','switch','create'].includes(action?.kind||'')&&!actionName.trim())" type="submit">{{action?.kind==='convert'?'Convertir en package':action?.kind==='delete'?'Supprimer':['switch','create'].includes(action?.kind||'')?'Enregistrer et ouvrir':'Enregistrer'}}</button></footer></form></AppDialog>
 </div>
 </template>

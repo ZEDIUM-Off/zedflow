@@ -1,4 +1,5 @@
 import { isNodeConfig } from './graph/contracts'
+import { jsonObjectSchema, flowExportsReadSchema } from '@zedflow/sdk'
 
 import type { RuntimeGraphSummary } from '@zedflow/sdk'
 
@@ -15,7 +16,10 @@ import type { Predicate } from '@zedflow/sdk'
 
 export function flowExports(composition?: Composition): FlowExports | undefined {
   const config=composition?.nodes.find(node=>node.data.kind==='start')?.data.config
-  return isNodeConfig(config)?config.exports:undefined
+  if(isNodeConfig(config))return config.exports
+  const object=jsonObjectSchema.safeParse(config)
+  const parsed=flowExportsReadSchema.safeParse(object.success?object.data.exports:undefined)
+  return parsed.success?parsed.data:undefined
 }
 export function exportedFlows(flows: FlowFile[]) { return flows.filter(file => file.composition && flowExports(file.composition)) }
 export function emptyFlowExports(): FlowExports { return { contract: { entries: {}, branches: {}, data: {}, requires: {}, inferenceNodes: {} }, types: {}, entries: {}, branches: {}, data: {}, requires: {}, interactive: false } }

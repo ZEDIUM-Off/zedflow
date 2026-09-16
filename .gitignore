@@ -1,14 +1,38 @@
-/target/
+# Generated build and test data
+**/target/
+node_modules/
+dist/
+test-results/
+playwright-report/
+/.agents/output/
 /.lab/
+
+# Local runtime; chosen definitions and session exports may be versioned.
+!/.zedflow/
+/.zedflow/*
+!/.zedflow/flow/
+!/.zedflow/flows/
+!/.zedflow/context/
+!/.zedflow/types/
+!/.zedflow/examples/
+!/.zedflow/bridges/
+!/.zedflow/sessions/
+!/.zedflow/.gitignore
+/.zedflow/**/.catalog.lock
+/.zedflow/**/.zedflow-*.tmp
+/.zedflow/**/.context-*.tmp
+/.zedflow/**/.accepted-*.tmp
+/.zedflow.backup-*
+/.zedflow.staging-*
+/.zedflow.retired-*
+/.zedflow.maintenance*
+/.zedflow.lock
+
+# Credentials and SQLite files are never application source.
 .env
 .env.*
 !.env.example
 *.db
+*.db-journal
 *.db-shm
 *.db-wal
-/.adk-studio/projects/build/
-/.adk-studio/projects/deploy/
-/.adk-studio/projects/*/target/
-/.adk-studio/projects/*/build/
-/.adk-studio/projects/*.keys
-/.adk-studio/projects/*.json.tmp

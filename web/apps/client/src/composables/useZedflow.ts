@@ -5,7 +5,7 @@ import { useClient, useRun, type RunTarget } from '@zedflow/vue'
 import { useReloadPart } from './reloadState'
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import type { Composition, FlowFile, ModelSelection, Run, RunSummary, Workspace } from '@zedflow/sdk'
-import { createBrowserRunTransport, createBrowserConnectivity, type StartRunInput } from '@zedflow/sdk'
+import { editableComposition, runSummarySchema, createBrowserRunTransport, createBrowserConnectivity, type StartRunInput } from '@zedflow/sdk'
 import { useDaemonConnection } from './useDaemonConnection'
 import { provideRunDetails } from './runDetails'
 import { harnessTemplate, template, toolTemplate } from '../templates'
@@ -13,6 +13,9 @@ import { flowIsInteractive, runtimeModelNodes, type RuntimePreparation } from '.
 
 import { modelNodes } from '../harness'
 
+// SDK documents contain JSON, never nested Vue refs. Set the initial value through
+// Vue's ref setter so nested edits remain reactive without expanding recursive JSON types.
+export function documentRef<T>(value:T):import('vue').Ref<T>{return Object.assign(ref<T>(),{value})}
 const clone = <T>(value:T):T => JSON.parse(JSON.stringify(value))
 // Vue Flow enriches bound nodes with selection and geometry. Those transient
 // fields must neither dirty the authoring document nor enter the source file.
@@ -25,14 +28,15 @@ export function useZedflow() {
   const client=useClient()
   const mode = ref<'execution'|'design'>('execution'), initialized=ref(false)
   const builtinHarness=harnessTemplate()
-  const workspaces = ref<Workspace[]>([]), workspaceId = ref(''), flows = ref<FlowFile[]>([]), history = shallowRef<RunSummary[]>([])
+  const workspaces = shallowRef<Workspace[]>([]), workspaceId = ref(''), flows = shallowRef<FlowFile[]>([]), history = shallowRef<RunSummary[]>([])
   const runtimePreparation=shallowRef<RuntimePreparation|null>(null)
-  const current = shallowRef<Run|null>(null), executionFlow = ref<FlowFile|null>(null)
-  const doc = ref<Composition>(clone(builtinHarness)), designFile = ref<FlowFile|null>(null), designWorkspaceId = ref('')
+  const current = shallowRef<Run|null>(null), executionFlow = shallowRef<FlowFile|null>(null)
+  const doc = documentRef<Composition>(clone(builtinHarness))
+  const designFile = shallowRef<FlowFile|null>(null), designWorkspaceId = ref('')
   const baseline = ref(documentText(doc.value)), error = ref(''), notice = ref(''), busy = ref('')
   const daemon=useDaemonConnection(),health=daemon.health
   provideRunDetails(()=>current.value)
-  const models = ref<ModelEntry[]>([]), workspaceContext = ref<WorkspaceContext|null>(null)
+  const models = shallowRef<ModelEntry[]>([]), workspaceContext = shallowRef<WorkspaceContext|null>(null)
   const draftBindings = ref<Record<string,ModelSelection>>({}), events = ref<{seq:number;event:unknown}[]>([])
   const target = shallowRef<RunTarget|null>(null)
   const subscription = useRun(client,target,{
@@ -80,7 +84,7 @@ export function useZedflow() {
   async function openWorkspace(path:string){workspaceIntent++;sessionIntent++;await task('Ouverture du workspace',async()=>{const value=await client.workspaces.open({path});workspaces.value=workspaces.value.some(item=>item.id===value.id)?workspaces.value.map(item=>item.id===value.id?value:item):[...workspaces.value,value];await selectWorkspace(value.id);mode.value='execution'})}
   async function closeWorkspace(id:string){await task('Fermeture du workspace',async()=>{await client.workspaces.update(id,{open:false});await refresh()})}
   function rememberSummary(run:RunSummary){
-    const summary:RunSummary={runtimeActive:run.runtimeActive,interactive:run.interactive,id:run.id,name:run.name,workspaceId:run.workspaceId,workspacePath:run.workspacePath,status:run.status,createdAt:run.createdAt,updatedAt:run.updatedAt,flowRef:run.flowRef,error:run.error}
+    const summary=runSummarySchema.parse(JSON.parse(JSON.stringify({runtimeActive:run.runtimeActive,interactive:run.interactive,id:run.id,name:run.name,workspaceId:run.workspaceId,workspacePath:run.workspacePath,status:run.status,createdAt:run.createdAt,updatedAt:run.updatedAt,flowRef:run.flowRef,error:run.error})))
     const index=history.value.findIndex(item=>item.id===run.id)
     if(index>=0&&JSON.stringify(history.value[index])===JSON.stringify(summary))return
     const list=[...history.value];if(index<0)list.unshift(summary);else list[index]=summary
@@ -110,7 +114,8 @@ export function useZedflow() {
       subscription.prependTimeline({runId:run.id,workspaceId:run.workspaceId||workspaceId.value},page)
     })
   }
-  function openDesign(file:FlowFile){if(!file.composition){error.value=file.diagnostics.join('\n')||'Ce fichier ne peut pas être chargé dans le canvas.';return}designIntent++;designFile.value=clone(file);doc.value=clone(file.composition);designWorkspaceId.value=workspaceId.value;baseline.value=documentText(doc.value);mode.value='design'}
+
+  function openDesign(file:FlowFile){if(!file.composition){error.value=file.diagnostics.join('\n')||'Ce fichier ne peut pas être chargé dans le canvas.';return}let editable:Composition;try{editable=editableComposition(file.composition)}catch(cause){error.value=`Ce flow ne peut pas être interprété par les éditeurs : ${cause instanceof Error?cause.message:String(cause)}`;return}designIntent++;designFile.value=clone(file);doc.value=editable;designWorkspaceId.value=workspaceId.value;baseline.value=documentText(doc.value);mode.value='design'}
   function createFlow(kind:'harness'|'tools'|'interactive'|'autonomous'='harness'){designIntent++;doc.value=kind==='harness'?harnessTemplate():kind==='tools'?toolTemplate():template(kind==='interactive');designFile.value=null;designWorkspaceId.value=workspaceId.value;baseline.value='';mode.value='design'}
   async function persistDesign(scope:'workspace'|'global'='workspace',duplicate=false,name=doc.value.name){
     const intent=designIntent, initialText=documentText(doc.value), initialName=doc.value.name
@@ -120,7 +125,7 @@ export function useZedflow() {
     if(duplicate){composition.id=crypto.randomUUID();composition.revision=0}
     const file=await client.flows.save({workspaceId:targetWorkspace,composition,scope,...(!duplicate&&designFile.value?{key:designFile.value.key,expectedHash:designFile.value.hash}:{})})
     if(intent===designIntent){
-      const saved=clone(file.composition||composition), unchanged=documentText(doc.value)===initialText
+      const saved=editableComposition(file.composition||composition), unchanged=documentText(doc.value)===initialText
       designFile.value=clone(file);designWorkspaceId.value=targetWorkspace;baseline.value=documentText(saved)
       // The response acknowledges the submitted version. Edits made while it
       // was in flight remain a dirty draft against the new on-disk hash.
@@ -153,7 +158,7 @@ export function useZedflow() {
       if(current.value?.id!==run.id||intent!==designIntent)return
       if(source&&documentText(doc.value)===initialText&&!dirty.value){
         const matches=flows.value.filter(file=>file.composition?.id===source.composition.id)
-        designIntent++;doc.value=clone(source.composition);designWorkspaceId.value=source.sourceWorkspaceId
+        designIntent++;doc.value=editableComposition(source.composition);designWorkspaceId.value=source.sourceWorkspaceId
         designFile.value=matches.length===1?clone(matches[0]):null
         baseline.value=designFile.value?.composition?documentText(designFile.value.composition):''
       }
@@ -201,7 +206,21 @@ export function useZedflow() {
   async function changeModel(path:string,selection:ModelSelection){if(!current.value){draftBindings.value={...draftBindings.value,[path]:selection};if(runtimePreparation.value)runtimePreparation.value={...runtimePreparation.value,bindings:draftBindings.value};return}await task('Configuration du modèle',async()=>{await client.runs.selectModel(current.value!.id,{nodePath:path,selection,revision:current.value!.modelRevision||0},{workspaceId:current.value!.workspaceId||workspaceId.value});await subscription?.refresh()})}
   async function runCommand(action:'abort'|'resume'){await task(action==='abort'?'Arrêt':'Reprise',async()=>{if(!current.value)return;await (action==='abort'?client.runs.abort(current.value.id,{workspaceId:current.value.workspaceId||workspaceId.value}):client.runs.resume(current.value.id,{},{workspaceId:current.value.workspaceId||workspaceId.value}));await subscription?.refresh()})}
   async function removeMessage(id:string){await task('Retrait du message',async()=>{await client.runs.removeMessage(current.value!.id,id,{workspaceId:current.value!.workspaceId||workspaceId.value});await subscription?.refresh()})}
-  async function convertDesign(){await task('Conversion du flow',async()=>{const composition=await client.flows.convert(documentValue(doc.value));doc.value=composition;designFile.value=null;baseline.value='';notice.value='Copie convertie en v2. Enregistrez-la pour conserver ce nouveau flow.'})}
+  async function convertPackage(file:FlowFile){await task('Conversion en package Rust',async()=>{
+    const owner=workspaceId.value
+    const result=await client.flows.convertPackage({workspaceId:owner,key:file.key,expectedHash:file.hash})
+    // Rebind catalogue identities without discarding the authored draft or run snapshots.
+    if(designWorkspaceId.value===owner&&designFile.value?.key===result.oldKey){
+      const unchanged=!dirty.value
+      designFile.value=clone(result.flow)
+      if(unchanged&&result.flow.composition){doc.value=editableComposition(result.flow.composition);baseline.value=documentText(doc.value)}
+    }
+    if(workspaceId.value===owner&&executionFlow.value?.key===result.oldKey)executionFlow.value=clone(result.flow)
+    if(runtimePreparation.value?.workspaceId===owner)runtimePreparation.value=null
+    await refresh()
+    if(workspaceId.value===owner)notice.value=`Package créé : ${result.flow.name} · ${result.changedConsumers.length} références de bridges actualisées. Le brouillon ouvert est conservé.`
+  })}
+  async function convertDesign(){await task('Conversion du flow',async()=>{const composition=await client.flows.convert(documentValue(doc.value));doc.value=editableComposition(composition);designFile.value=null;baseline.value='';notice.value='Copie convertie en v2. Enregistrez-la pour conserver ce nouveau flow.'})}
   async function activateCapability(nodePath:string,itemId:string,active:boolean,skillName?:string){if(!current.value)return;await task('Activation du contexte',async()=>{await client.runs.activateCapability(current.value!.id,{nodePath,itemId,active,...(skillName?{skillName}:{})},{workspaceId:current.value!.workspaceId||workspaceId.value});await subscription?.refresh()})}
   async function generate(compile=false,runId?:string,selection?:{workspaceId?:string;nodePath?:string;occurrenceId?:string;hash?:string}){if(runId)return client.generation[compile?'build':'generate']({runId,workspaceId:current.value?.id===runId?current.value.workspaceId:history.value.find(run=>run.id===runId)?.workspaceId||workspaceId.value,...selection});const file=dirty.value||!designFile.value?await persistDesign():designFile.value;return client.generation[compile?'build':'generate']({workspaceId:designWorkspaceId.value||workspaceId.value,flowKey:file.key,flowHash:file.hash})}
   watch([workspaceId,()=>current.value?.id,mode],()=>{
@@ -229,7 +248,7 @@ export function useZedflow() {
       if(workspaceId.value!==initialWorkspace)return
       const first=flows.value.find(file=>file.composition)
       if(first&&doc.value===initialDoc&&documentText(doc.value)===initialDocument&&!designFile.value){
-        designFile.value=clone(first);doc.value=clone(first.composition!);baseline.value=documentText(doc.value)
+        designFile.value=clone(first);doc.value=editableComposition(first.composition!);baseline.value=documentText(doc.value)
       }
       if(sessionIntent===initialSessionIntent&&workspaceIntent===initialWorkspaceIntent&&mode.value==='execution'&&!current.value){
         const previousRun=history.value.find(run=>run.id===previous.runId&&run.workspaceId===workspaceId.value)
@@ -246,7 +265,7 @@ export function useZedflow() {
       }
     }).finally(()=>{
       if(recovery&&workspaces.value.some(item=>item.id===recovery.workspaceId)){
-        workspaceId.value=recovery.workspaceId;doc.value=recovery.doc;baseline.value=recovery.baseline
+        workspaceId.value=recovery.workspaceId;doc.value=editableComposition(recovery.doc);baseline.value=recovery.baseline
         designFile.value=recovery.designFile;designWorkspaceId.value=recovery.designWorkspaceId
         executionFlow.value=recovery.executionFlow;draftBindings.value=recovery.bindings;mode.value=recovery.mode
       }
@@ -255,5 +274,5 @@ export function useZedflow() {
     window.addEventListener('focus',wake);document.addEventListener('visibilitychange',wake)
   })
   onUnmounted(()=>{target.value=null;window.removeEventListener('focus',wake);document.removeEventListener('visibilitychange',wake)})
-  return {returnPreviewDraft,testDraft,interactive,launchAutonomous,runtimePreparation,configureRuntime,launchRuntime,mode,initialized,workspaces,workspaceId,workspace,flows,history,current,executionFlow,doc,designFile,designWorkspaceId,dirty,error,notice,busy,health,daemon,models,context,modelEntries,bindings,events,live,activeComposition,savedCompositions,task,refresh,newSession,openWorkspace,closeWorkspace,openSession,renameSession,openDesign,createFlow,save,removeFlow,duplicateFlow,renameFlow,chooseFlow,launchDesign,respond,answerWait,changeModel,runCommand,removeMessage,generate,selectWorkspace,convertDesign,activateCapability,loadEarlierTimeline}
+  return {returnPreviewDraft,testDraft,interactive,launchAutonomous,runtimePreparation,configureRuntime,launchRuntime,mode,initialized,workspaces,workspaceId,workspace,flows,history,current,executionFlow,doc,designFile,designWorkspaceId,dirty,error,notice,busy,health,daemon,models,context,modelEntries,bindings,events,live,activeComposition,savedCompositions,task,refresh,newSession,openWorkspace,closeWorkspace,openSession,renameSession,openDesign,createFlow,save,removeFlow,duplicateFlow,renameFlow,chooseFlow,launchDesign,respond,answerWait,changeModel,runCommand,removeMessage,generate,selectWorkspace,convertPackage,convertDesign,activateCapability,loadEarlierTimeline}
 }

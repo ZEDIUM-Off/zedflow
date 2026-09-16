@@ -36,6 +36,11 @@ export function createFlowsClient(transport: Transport) {
             const body = validateInput('flows.save', jsonValueSchema, JSON.parse(JSON.stringify(parsed)));
             return transport.json({ operation: 'flows.save', method: 'POST', path: `flows`, body, ...(signal ? { signal } : {}) }, m.flowFileSchema);
         },
+        async convertPackage(input: c.ConvertFlowPackageInput, signal?: AbortSignal): Promise<r.FlowPackageConversionResult> {
+            const parsed = validateInput('flows.convertPackage', c.convertFlowPackageInputSchema, input);
+            const body = validateInput('flows.convertPackage', jsonValueSchema, JSON.parse(JSON.stringify(parsed)));
+            return transport.json({ operation: 'flows.convertPackage', method: 'POST', path: `flows/convert`, body, ...(signal ? { signal } : {}) }, r.flowPackageConversionResultSchema);
+        },
         async convert(input: m.Composition, signal?: AbortSignal): Promise<m.Composition> {
             const parsed = validateInput('flows.convert', m.compositionSchema, input);
             const body = validateInput('flows.convert', jsonValueSchema, JSON.parse(JSON.stringify(parsed)));

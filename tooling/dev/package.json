@@ -1,0 +1,12 @@
+{
+  "name": "@zedflow/dev",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "node dev.mjs",
+    "daemon": "node daemon.mjs"
+  }
+}

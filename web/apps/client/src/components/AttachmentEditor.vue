@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Plus, Trash2, ArrowUp, ArrowDown } from 'lucide-vue-next'
-import type { WorkspaceContext } from '@zedflow/sdk'
+import type { RunContext } from '@zedflow/sdk'
 import { attachmentSlots, primitiveTools, type AgentAttachments, type AttachmentSlot, type InstructionItem, type SkillItem, type FileItem, type ToolItem } from '../graph/attachments'
 const value = defineModel<AgentAttachments>({default: () => ({})})
 const slot = defineModel<AttachmentSlot>('slot', {default: 'instructions'})
-const props = defineProps<{context?: WorkspaceContext | null}>()
+const props = defineProps<{context?: RunContext | null}>()
 const items = computed(() => value.value[slot.value]?.items || [])
 function add() {
   const id = crypto.randomUUID()

@@ -1,20 +1,22 @@
 
-import type { JsonValue } from '@zedflow/sdk'
+import type { JsonValue, ResourceBinding } from '@zedflow/sdk'
 import type { ContextType, ContextExpr, ContextPredicate, ContextBlock, ContextCapability, ContextStrategy, ContextFunction, ContextLibrary, ContextDiagnostic, ContextLibraryFile, ContextTypesFile, ContextFile, ContextItem, ContextTraceEntry, ContextEvaluation, ContextPreview, ContextPreviewProfile } from '@zedflow/sdk'
 
 import { useClient } from '@zedflow/vue'
-import { HttpError, contextDiagnosticSchema } from '@zedflow/sdk'
+import { HttpError, contextDiagnosticSchema, contextPreviewProfileSchema } from '@zedflow/sdk'
 import { useReloadDrafts, managedReload } from './composables/reloadState'
 import { computed, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { conversationToolsDocumentsExample } from './contextExamples'
 
+export type ContextPreviewForm = Omit<ContextPreviewProfile, 'config' | 'tools' | 'media'> & { config: string; tools: string; media: string }
+
 export interface ContextDraft {
   strategy: ContextStrategy; file?: ContextFile; saved: string; source: string; sourceSignature: string
   types: Record<string, ContextType>; typesFile?:ContextTypesFile; library: ContextLibrary; libraryFile?: ContextLibraryFile; resources: Record<string, JsonValue>; grants: string[]
-  bindings?:Record<string,unknown>; preview?: ContextPreview; previewSignature?: string; selectedBlock: string; selectedPreviewItem?: string
+  bindings?:Record<string,ResourceBinding>; preview?: ContextPreview; previewSignature?: string; selectedBlock: string; selectedPreviewItem?: string
   diagnostics: ContextDiagnostic[]; error: string; notice: string; pending: string; conflict: boolean
   previewPending?: boolean; previewAttempt?: string; fixtureName?: string
-  previewProfile?: ContextPreviewProfile
+  previewProfile?: ContextPreviewForm
   fixtures?: { id: string; name: string; resources: Record<string, JsonValue> }[]
 }
 export type ContextExample = 'instructions' | 'tool-result' | 'structured'
@@ -206,7 +208,7 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
     session.value.drafts[key] = draft
     session.value.selected = key
   }
-  function fromFrozen(program:{strategy:ContextStrategy;types:Record<string,ContextType>;library:ContextLibrary;bindings?:Record<string,unknown>},blockId='') {
+  function fromFrozen(program:{strategy:ContextStrategy;types:Record<string,ContextType>;library:ContextLibrary;bindings?:Record<string,ResourceBinding>},blockId='') {
     navigationIntent.value++
     const draft=newDraft(program.strategy);draft.strategy.id=contextId('context');draft.strategy.name+=' · copie';draft.types=cloneContext(program.types);draft.library=cloneContext(program.library);draft.bindings=cloneContext(program.bindings||{});draft.selectedBlock=blockId;draft.notice='Brouillon créé depuis une définition exécutée. Enregistrez-le puis sélectionnez-le explicitement sur le nœud.'
     const key=`draft:${draft.strategy.id}`;session.value.drafts[key]=draft;session.value.selected=key
@@ -257,7 +259,7 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
         if (key !== result.key) { state.drafts[result.key] = draft; if (state.selected === key) state.selected = result.key; delete state.drafts[key] }
       } else {
         const trial=draft.previewProfile
-        const profile=trial ? {provider:trial.provider,model:trial.model,config:JSON.parse(trial.config),tools:JSON.parse(trial.tools),media:JSON.parse(trial.media),reasoningEffort:trial.reasoningEffort||undefined,reasoningSummary:trial.reasoningSummary||undefined,textVerbosity:trial.textVerbosity||undefined}:undefined
+        const profile=trial ? contextPreviewProfileSchema.parse({provider:trial.provider,model:trial.model,config:JSON.parse(trial.config),tools:JSON.parse(trial.tools),media:JSON.parse(trial.media),reasoningEffort:trial.reasoningEffort||undefined,reasoningSummary:trial.reasoningSummary||undefined,textVerbosity:trial.textVerbosity||undefined}):undefined
         const result = await client.context.preview({ workspaceId: id, selection: { kind: 'draft', strategy }, types: cloneContext(draft.types), library: cloneContext(draft.library), resources: cloneContext(draft.resources), grantedCapabilities: [...draft.grants],profile })
         if (signature(draft) === snapshot) {
           draft.source = result.selection.source; draft.sourceSignature = captured

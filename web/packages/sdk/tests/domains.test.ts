@@ -184,3 +184,94 @@ test('node configuration retains authored source references and optional pinned 
     assert.equal(nodeConfigSchema.safeParse({ contextStrategy: { key: 'conversation', hash: 12 } }).success, false);
     assert.equal(nodeConfigSchema.safeParse({ contextTypesRef: { hash: 'a'.repeat(64) } }).success, false);
 });
+
+
+test('package catalogue preserves Rust, binary bytes and revision metadata; conversion is explicit', async () => {
+    const { flowFileSchema, flowPackageInventory, packageFileBytes } = await import('@zedflow/sdk');
+    const { createHash } = await import('node:crypto');
+    const rust = '// exact Unicode é\nfn flow() {}\n';
+    const manifestSource = JSON.stringify({formatVersion:1,id:'fixture',name:'Fixture',entry:'flow.rs',files:['flow.rs','asset.bin']});
+    const revision = 'a'.repeat(64);
+    const file = {key:'new-key',id:'fixture',name:'Fixture',path:'/fixture/.zedflow/flows/fixture',scope:'workspace',workspaceId:'workspace',hash:revision,sourceHash:'b'.repeat(64),source:rust,diagnostics:['fixture diagnostic'],package:{root:revision,packages:{[revision]:{manifestSource,files:{'flow.rs':rust,'asset.bin':{base64:'AP/+AA=='}},dependencies:{}}}}};
+    const decoded = flowFileSchema.parse(file);
+    assert.deepEqual(decoded, file);
+    const inventory = await flowPackageInventory(decoded.package!);
+    assert.equal(inventory[0].manifest.entry, 'flow.rs');
+    const bytes = Uint8Array.of(0,255,254,0);
+    assert.deepEqual(packageFileBytes({base64:'AP/+AA=='}), bytes);
+    assert.equal(inventory[0].files.find(item=>item.path==='asset.bin')?.sha256, createHash('sha256').update(bytes).digest('hex'));
+    assert.equal(inventory[0].files.find(item=>item.path==='flow.rs')?.byteLength, new TextEncoder().encode(rust).byteLength);
+    let requests = 0;
+    const conversion = {oldKey:'legacy-key',newKey:file.key,oldRevision:'old-hash',newRevision:revision,flow:file,changedConsumers:[{workspaceId:'workspace',key:'bridge',path:'/fixture/bridge.rs'}]};
+    const client = createClient({baseUrl:'https://fixture.test/api',protocol:1,fetch:async(url,init)=>{
+        requests++;
+        assert.equal(url, 'https://fixture.test/api/flows/convert');
+        assert.equal(init?.method, 'POST');
+        assert.deepEqual(JSON.parse(String(init?.body)), {workspaceId:'workspace',key:'legacy-key',expectedHash:'old-hash'});
+        return new Response(JSON.stringify(conversion));
+    }});
+    assert.equal(requests, 0);
+    assert.deepEqual(await client.flows.convertPackage({workspaceId:'workspace',key:'legacy-key',expectedHash:'old-hash'}), conversion);
+    await assert.rejects(client.flows.convertPackage({key:'legacy-key',expectedHash:''}), RequestValidationError);
+    assert.equal(requests, 1);
+});
+
+test('node editor validates structure while preserving mutable drafts and unknown extensions', async () => {
+    const { requireNodeConfig, resourceBindingSchema, windowPreparationSchema, flowNodeSchema } = await import('@zedflow/sdk');
+    const value = {contextBindings:{input:{kind:'state',field:''}},contextWindow:{alias:'',prepare:{branch:'',routeId:''}},extension:{preserved:true}};
+    const draft = requireNodeConfig(value);
+    assert.equal(draft, value);
+    assert.equal(requireNodeConfig(draft), value);
+    assert.equal(resourceBindingSchema.safeParse(value.contextBindings.input).success, false);
+    assert.equal(windowPreparationSchema.safeParse(value.contextWindow).success, false);
+    value.contextBindings.input.field='input';value.contextWindow.alias='working';value.contextWindow.prepare.branch='prepare';value.contextWindow.prepare.routeId='bridge/prepare';
+    assert.equal(requireNodeConfig(value), value);
+    assert.equal(resourceBindingSchema.safeParse(value.contextBindings.input).success, true);
+    assert.equal(windowPreparationSchema.safeParse(value.contextWindow).success, true);
+    assert.deepEqual(draft.extension, {preserved:true});
+    assert.throws(()=>requireNodeConfig({contextBindings:{input:{kind:'state',field:42}}}), /Invalid node configuration/);
+    const raw = {id:'invalid-draft',type:'flow',position:{x:0,y:0},data:{kind:'model',label:'Draft',config:{contextBindings:{input:{kind:'state',field:42}}}}};
+    assert.deepEqual(flowNodeSchema.parse(raw), raw);
+});
+
+
+test('numeric editor drafts stay editable while strict settings reject invalid authored limits', async () => {
+    const { requireNodeConfig, retrySettingsSchema, fileItemSchema } = await import('@zedflow/sdk');
+    assert.equal(requireNodeConfig({retry:null}).retry, null);
+    const value={maxOutputTokens:1.5,topK:-1,retry:{maxAttempts:-1.5},attachments:{files:{items:[{id:'file',path:'/fixture',maxChars:-1,startLine:0.5}]}}};
+    assert.equal(requireNodeConfig(value),value);
+    assert.equal(retrySettingsSchema.safeParse(value.retry).success,false);
+    assert.equal(fileItemSchema.safeParse(value.attachments.files.items[0]).success,false);
+    const editable=requireNodeConfig(value);
+    delete editable.retry?.maxAttempts;
+    assert.equal(requireNodeConfig(value),value);
+    editable.maxOutputTokens=null;
+    assert.equal(requireNodeConfig(value),value);
+    assert.throws(()=>requireNodeConfig({maxOutputTokens:'not a number'}),/Invalid node configuration/);
+});
+
+
+test('legacy public exports use Rust defaults only in detached editor copies', async () => {
+    const { compositionSchema, editableComposition, requireNodeConfig, flowExportsReadSchema } = await import('@zedflow/sdk');
+    // Exact exports from zf-flows/tests/formats.rs public_entry_validates_its_type...
+    // and zf-compiler/tests/portable_export.rs authored source fixture.
+    const fixtures=[
+        {contract:{entries:{main:{input:{kind:'text'}}}},entries:{main:{node:'context',inputField:'request'}}},
+        {contract:{entries:{main:{input:{kind:'text'},output:{kind:'text'}}}},entries:{main:{node:'start',inputField:'input',outputField:'response'}},interactive:false},
+    ];
+    for(const exports of fixtures){
+        const raw=compositionSchema.parse({formatVersion:4,id:'legacy',name:'Legacy',revision:0,nodes:[{id:'start',type:'flow',position:{x:0,y:0},data:{label:'Start',kind:'start',config:{exports,extension:{keep:true}}}}],edges:[]});
+        const original=JSON.stringify(raw);
+        assert.throws(()=>requireNodeConfig(raw.nodes[0].data.config),/Invalid node configuration/);
+        const copy=editableComposition(raw);
+        assert.notEqual(copy,raw);assert.equal(JSON.stringify(raw),original);
+        const config=requireNodeConfig(copy.nodes[0].data.config);
+        assert.deepEqual(config.exports,flowExportsReadSchema.parse(exports));
+        assert.deepEqual(config.exports?.contract.branches,{});assert.deepEqual(config.exports?.types,{});
+        assert.deepEqual(config.extension,{keep:true});
+        assert.equal(requireNodeConfig(copy.nodes[0].data.config),copy.nodes[0].data.config);
+        config.exports!.interactive=true;
+        assert.equal(requireNodeConfig(copy.nodes[0].data.config).exports?.interactive,true);
+        assert.equal(JSON.stringify(raw),original);
+    }
+});

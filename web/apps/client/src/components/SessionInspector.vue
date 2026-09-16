@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import type { HistoricalModelSelection } from '@zedflow/sdk'
 import type { InspectionSelection } from '../composables/useExecutedDefinition'
-import type { WorkspaceContext, ModelEntry } from '@zedflow/sdk'
+import type { RunContext, ModelEntry } from '@zedflow/sdk'
 
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { DialogRoot, DialogContent, DialogTitle } from 'reka-ui'
@@ -20,7 +21,7 @@ import RunRevisionPanel from './RunRevisionPanel.vue'
 import { useExecutedDefinition } from '../composables/useExecutedDefinition'
 const expanded=defineModel<boolean>('expanded',{default:false})
 const open=defineModel<boolean>('open',{required:true}), tab=defineModel<'activity'|'models'|'context'|'state'>('tab',{required:true})
-const props=defineProps<{composition:Composition;run:Run|null;nodes:ModelNode[];models:ModelEntry[];bindings:Record<string,ModelSelection>;context:WorkspaceContext|null|undefined;events:{seq:number;event:unknown}[];selectedPath:string;selectedOccurrence?:string;focusRevision:number;busy:boolean}>()
+const props=defineProps<{composition:Composition;run:Run|null;nodes:ModelNode[];models:ModelEntry[];bindings:Record<string,HistoricalModelSelection>;context:RunContext|null|undefined;events:{seq:number;event:unknown}[];selectedPath:string;selectedOccurrence?:string;focusRevision:number;busy:boolean}>()
 const emit=defineEmits<{copyContext:[program:ContextProgram,blockId:string];inspect:[selection:string|InspectionSelection,reveal?:boolean,keepTab?:boolean];activate:[nodePath:string,itemId:string,active:boolean,skillName?:string];change:[path:string,selection:ModelSelection];source:[]}>()
 const width=ref(440),narrow=ref(false)
 const passages=computed(()=>props.selectedPath?passagesByNode(props.run?.activities).get(props.selectedPath)||[]:props.run?.activities||[])

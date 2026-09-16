@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isNodeConfig } from '@zedflow/sdk'
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { VueFlow, type VueFlowStore } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
@@ -39,7 +40,7 @@ const scopes = computed(() => {
   let parent = props.composition, path = ''
   for (const id of scope.value.split('/').filter(Boolean)) {
     const node = parent.nodes.find(value => value.id === id)
-    if (node?.data.kind !== 'subgraph' || !node.data.config.composition) break
+    if (node?.data.kind !== 'subgraph' || !isNodeConfig(node.data.config) || !node.data.config.composition) break
     path = path ? `${path}/${id}` : id; parent = node.data.config.composition
     result.push({ path, label: node.data.label, composition: parent })
   }
@@ -118,7 +119,7 @@ const nodes = computed(() => currentScope.value.composition.nodes.map(node => {
     :id="graphId"
     :key="graphId"
     :nodes="nodes"
-    :edges="currentScope.composition.edges"
+    :edges="currentScope.composition.edges.map(edge=>({...edge,label:edge.label??undefined}))"
     :fit-view-on-init="!recalledViewport(`${graphId}:${!!expanded}`)"
     :min-zoom="0.2"
     :max-zoom="2"

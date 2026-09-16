@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nodeConfigSchema } from '@zedflow/sdk'
 import { computed } from 'vue'
 import type { NodeContract } from '@zedflow/sdk'
 import { Handle, Position } from '@vue-flow/core'
@@ -16,16 +17,17 @@ const icons = { route: GitBranch, await_route: Inbox, context: Layers, model: Cp
 const pieceIcons = {instructions: ScrollText, skills: BookOpen, files: FileText, tools: Wrench}
 const statuses = { running: 'En cours', completed: 'Terminé', waiting: 'Réponse attendue', error: 'Échec', interrupted: 'Interrompu', resumed: 'Repris' }
 const pieces = computed(() => props.data.kind==='agent' && props.formatVersion >= 2 && !props.historical)
-const attachments = computed(() => props.data.config.attachments as AgentAttachments | undefined)
+const parsedConfig=computed(()=>nodeConfigSchema.safeParse(props.data.config))
+const attachments = computed(() => parsedConfig.value.success?parsedConfig.value.data.attachments:undefined)
 const detail = computed(() => {
-  const {kind, config} = props.data
+  const {kind} = props.data;const parsed=parsedConfig.value;if(!parsed.success)return 'Configuration non prise en charge · consulter la source';const config=parsed.data
   if (kind==='agent'||kind==='model') return config.modelBinding==='runtime'?'Modèle choisi à l’exécution':config.provider==='fixture'?'Fixture · une itération':config.model||'Modèle à configurer'
   if (kind==='condition') return config.predicate?predicateLabel(config.predicate):`${config.field} = ${JSON.stringify(config.equals)}`
   if (['input','inbox'].includes(kind)) return config.prompt
   if (kind==='route') return config.branch?`${config.branch} · ${config.invocation==='condition'?'continuer si aucune route':'route requise'}`:'Port public à sélectionner'
   if (kind==='await_route') return `Visite depuis ${config.inputField||'output'}`
   if (kind==='set') return `${config.field} ← valeur`
-  if (kind==='context') {const key=config.contextStrategy?.key||config.contextStrategy;return props.formatVersion>=3 ? ({'harness-default':'Contexte du Harness','workspace-default':'Contexte du workspace','conversation-default':'Conversation et instructions','tools-default':'Conversation avec outils'} as Record<string,string>)[key]||key||(config.contextProgram?'Programme embarqué':'Stratégie à choisir') : 'Instructions · skills'}
+  if (kind==='context') {const key=typeof config.contextStrategy==='string'?config.contextStrategy:config.contextStrategy?.key||'';return props.formatVersion>=3 ? ({'harness-default':'Contexte du Harness','workspace-default':'Contexte du workspace','conversation-default':'Conversation et instructions','tools-default':'Conversation avec outils'} as Record<string,string>)[key]||key||(config.contextProgram?'Programme embarqué':'Stratégie à choisir') : 'Instructions · skills'}
   if (kind==='steering') return 'Consommer la prochaine consigne'
   return {start:'Entrée du flow',end:'Exécution terminée',output:'Publier dans la conversation',tool:config.tool,subgraph:'Flow embarqué'}[kind as 'start'|'end'|'output'|'tool'|'subgraph'] || kind
 })
@@ -39,7 +41,7 @@ function count(slot: AttachmentSlot) { return attachments.value?.[slot]?.items.f
     <div class="flow-card" :class="[data.kind,{selected,active:data.active}]" :data-execution-status="data.executionStatus">
       <svg v-if="data.kind==='condition'" class="node-outline" viewBox="0 0 220 170" preserveAspectRatio="none" aria-hidden="true"><path d="M110 2 L218 85 L110 168 L2 85 Z"/><path class="port-stubs" d="M185 59.5 H220 M185 110.5 H220"/></svg>
       <svg v-else-if="['input','inbox','output'].includes(data.kind)" class="node-outline" viewBox="0 0 220 110" preserveAspectRatio="none" aria-hidden="true"><path :d="data.kind==='output'?'M2 2 H193 L218 55 L193 108 H2 Z':'M22 2 H218 V108 H22 L2 55 Z'"/></svg>
-      <div class="node-content"><div class="node-heading"><component :is="icons[data.kind]" :size="16"/><span>{{data.label}}</span><span v-if="data.active" class="live-dot"/></div>
+      <div class="node-content"><div class="node-heading"><component :is="Object.entries(icons).find(([kind])=>kind===data.kind)?.[1]" :size="16"/><span>{{data.label}}</span><span v-if="data.active" class="live-dot"/></div>
       <div v-if="formatVersion>=3&&['context','model'].includes(data.kind)" class="node-stage">{{data.kind==='context'?'1 · Préparer le contexte':'2 · Appeler le modèle'}}</div>
       <div v-if="historical" class="node-stage">Ancien format · à convertir</div>
       <div class="node-detail" :title="detail">{{detail}}</div>

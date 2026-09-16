@@ -22,6 +22,22 @@ const flowExportsDefinition = z.strictObject({ contract: flowDefinitionSchema, t
 export interface FlowExports extends z.output<typeof flowExportsDefinition> {
 }
 export const flowExportsSchema: z.ZodType<FlowExports, FlowExports> = flowExportsDefinition;
+/** Serde-compatible reader for authored exports that omit defaulted maps/sets. */
+const flowDefinitionReadSchema = flowDefinitionDefinition.extend({
+    entries: flowDefinitionDefinition.shape.entries.default({}),
+    branches: flowDefinitionDefinition.shape.branches.default({}),
+    data: flowDefinitionDefinition.shape.data.default({}),
+    requires: flowDefinitionDefinition.shape.requires.default({}),
+    inferenceNodes: z.record(z.string(), inferenceDefinitionSchema.extend({ resources: z.array(z.string()).default([]), capabilities: z.array(z.string()).default([]) })).default({}),
+});
+export const flowExportsReadSchema = flowExportsDefinition.extend({
+    contract: flowDefinitionReadSchema,
+    types: flowExportsDefinition.shape.types.default({}),
+    branches: flowExportsDefinition.shape.branches.default({}),
+    data: flowExportsDefinition.shape.data.default({}),
+    requires: flowExportsDefinition.shape.requires.default({}),
+    interactive: flowExportsDefinition.shape.interactive.default(false),
+});
 type PredicateNode = {
     kind: 'all' | 'any';
     items: PredicateNode[];

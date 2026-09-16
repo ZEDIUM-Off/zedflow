@@ -2,12 +2,12 @@
 const client=useClient()
 import { useClient } from '@zedflow/vue'
 
-import { ref, watch } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 import { } from '../../contextEngine'
 import type { ContextTypesFile } from '@zedflow/sdk'
 const props=withDefaults(defineProps<{workspaceId:string;file?:ContextTypesFile;active?:boolean;revision?:number}>(),{active:true})
 const emit=defineEmits<{select:[file:ContextTypesFile|undefined];edit:[]}>()
-const files=ref<ContextTypesFile[]>([]),error=ref(''),loading=ref(false);let intent=0
+const files=shallowRef<ContextTypesFile[]>([]),error=ref(''),loading=ref(false);let intent=0
 async function refresh(){const request=++intent;if(!props.workspaceId||props.active===false)return;loading.value=true;error.value='';try{const value=await client.context.listTypes({workspaceId:props.workspaceId});if(request===intent)files.value=Array.isArray(value)?value:[]}catch(cause){if(request===intent)error.value=cause instanceof Error?cause.message:String(cause)}finally{if(request===intent)loading.value=false}}
 async function choose(key:string){if(!key){emit('select',undefined);return}const request=++intent;loading.value=true;error.value='';try{const file=await client.context.readTypes(key,{workspaceId:props.workspaceId});if(request===intent)emit('select',file)}catch(cause){if(request===intent)error.value=cause instanceof Error?cause.message:String(cause)}finally{if(request===intent)loading.value=false}}
 watch(()=>[props.workspaceId,props.active,props.revision],()=>{files.value=[];void refresh()},{immediate:true})

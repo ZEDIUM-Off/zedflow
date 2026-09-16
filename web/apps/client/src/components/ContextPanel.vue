@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { WorkspaceContext } from '@zedflow/sdk'
+import type { RunContext } from '@zedflow/sdk'
 
 import { X, FileText, BookOpen } from 'lucide-vue-next'
 
-defineProps<{ context?: WorkspaceContext | null; snapshot?: boolean }>()
+defineProps<{ context?: RunContext | null; snapshot?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 </script>
 <template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shallowRef } from 'vue'
 const client=useClient()
 import { useClient } from '@zedflow/vue'
 
@@ -12,7 +13,7 @@ const open=defineModel<boolean>('open',{required:true})
 const props=defineProps<{workspaceId:string;workspaces:Workspace[]}>()
 const emit=defineEmits<{imported:[]}>()
 const mode=ref<'export'|'import'>('export'),workspace=ref(''),files=ref<(Omit<SourceArtifact,'source'>&{valid:boolean})[]>([]),selected=ref<string[]>([])
-const packageValue=ref<ContextPackage>(),validation=ref<ContextPackageValidation>(),error=ref(''),notice=ref(''),busy=ref(false),filename=ref('');let intent=0
+const packageValue=shallowRef<ContextPackage>(),validation=shallowRef<ContextPackageValidation>(),error=ref(''),notice=ref(''),busy=ref(false),filename=ref('');let intent=0
 const labels:Record<Kind,string>={strategy:'Stratégies',library:'Bibliothèques',bridge:'Bridges',types:'Types',example:'Exemples par type'}
 const groups=computed(()=>Object.entries(labels).map(([kind,label])=>({kind,label,files:files.value.filter(file=>file.kind===kind)})))
 const identity=(file:{kind:Kind;key:string})=>`${file.kind}/${file.key}`

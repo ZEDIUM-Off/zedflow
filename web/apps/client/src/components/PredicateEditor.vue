@@ -18,7 +18,7 @@ function operator(next: string) {
   else if (next === 'in' && !Array.isArray(value.value.value)) value.value.value = []
   else if (value.value.value === undefined) value.value.value = ''
 }
-function type(next: string) { if(value.value.kind==='compare')value.value.value=({string:'',number:0,boolean:true,null:null,array:[],object:{}} as Record<string,unknown>)[next] }
+function type(next: string) { const defaults:Record<string,import('@zedflow/sdk').JsonValue>={string:'',number:0,boolean:true,null:null,array:[],object:{}};if(value.value.kind==='compare')value.value.value=defaults[next] }
 </script>
 <template>
   <div class="predicate-editor">

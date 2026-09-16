@@ -191,17 +191,26 @@ export const contextTypesFileSchema = sourceFileSchema.extend({ types: contextTy
 export type ContextTypesFile = z.output<typeof contextTypesFileSchema>;
 export const workspaceContextSchema = z.object({ instructions: z.array(z.object({ path: z.string(), content: z.string(), hash: z.string() }).catchall(jsonValueSchema)), skills: z.array(z.object({ name: z.string(), description: z.string(), path: z.string(), manualOnly: z.boolean().optional(), hash: z.string().optional() }).catchall(jsonValueSchema)), diagnostics: z.array(z.string()), loadedSkills: z.array(z.object({ name: z.string(), path: z.string(), hash: z.string(), sourceHash: z.string().optional(), truncated: z.boolean().optional() }).catchall(jsonValueSchema)).optional() }).catchall(jsonValueSchema);
 export type WorkspaceContext = z.output<typeof workspaceContextSchema>;
-export const readerInputSchema = z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('literal'), value: jsonValueSchema }), z.strictObject({ kind: z.literal('state'), field: z.string().min(1), pointer: z.string().optional() })]);
+function readerInputDefinition(identity: z.ZodString) { return z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('literal'), value: jsonValueSchema }), z.strictObject({ kind: z.literal('state'), field: identity, pointer: z.string().optional() })]); }
+export const readerInputSchema = readerInputDefinition(z.string().min(1));
 export type ReaderInput = z.output<typeof readerInputSchema>;
 export const readerContractSchema = z.object({ id: z.string(), version: z.string(), input: contextTypeSchema, output: z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('fixed'), dataType: contextTypeSchema }), z.strictObject({ kind: z.literal('declaredJson') })]) }).catchall(jsonValueSchema);
 export type ReaderContract = z.output<typeof readerContractSchema>;
-export const dataScopeSchema = z.discriminatedUnion('kind', [z.strictObject({ kind: z.enum(['flow', 'bridge']), id: z.string().min(1) }), z.strictObject({ kind: z.literal('runtime') })]);
+function dataScopeDefinition(identity: z.ZodString) { return z.discriminatedUnion('kind', [z.strictObject({ kind: z.enum(['flow', 'bridge']), id: identity }), z.strictObject({ kind: z.literal('runtime') })]); }
+export const dataScopeSchema = dataScopeDefinition(z.string().min(1));
 export type DataScope = z.output<typeof dataScopeSchema>;
-export const resourceProducerSchema = z.strictObject({ branch: z.string().min(1), routeId: z.string().min(1), input: contextExprSchema, outputPointer: z.string().optional() });
+function resourceProducerDefinition(identity: z.ZodString) { return z.strictObject({ branch: identity, routeId: identity, input: contextExprSchema, outputPointer: z.string().optional() }); }
+export const resourceProducerSchema = resourceProducerDefinition(z.string().min(1));
 export type ResourceProducer = z.output<typeof resourceProducerSchema>;
-export const resourceBindingSchema = z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('state'), field: z.string().min(1), pointer: z.string().optional(), encoding: z.literal('adkMessages').optional() }), z.strictObject({ kind: z.literal('attachments'), slot: z.enum(['instructions', 'skills', 'files']) }), z.strictObject({ kind: z.literal('conversation'), historyField: z.string().min(1), inputField: z.string().min(1) }), z.strictObject({ kind: z.literal('attachment'), itemId: z.string().min(1), skillName: z.string().optional() }), z.strictObject({ kind: z.literal('entity'), scope: dataScopeSchema, alias: z.string().min(1), revision: z.string().optional() }), z.strictObject({ kind: z.literal('produced'), producer: resourceProducerSchema }), z.strictObject({ kind: z.literal('reader'), reader: z.string().min(1), input: readerInputSchema })]);
+function resourceBindingDefinition(identity: z.ZodString) { return z.discriminatedUnion('kind', [z.strictObject({ kind: z.literal('state'), field: identity, pointer: z.string().optional(), encoding: z.literal('adkMessages').optional() }), z.strictObject({ kind: z.literal('attachments'), slot: z.enum(['instructions', 'skills', 'files']) }), z.strictObject({ kind: z.literal('conversation'), historyField: identity, inputField: identity }), z.strictObject({ kind: z.literal('attachment'), itemId: identity, skillName: z.string().optional() }), z.strictObject({ kind: z.literal('entity'), scope: dataScopeDefinition(identity), alias: identity, revision: z.string().optional() }), z.strictObject({ kind: z.literal('produced'), producer: resourceProducerDefinition(identity) }), z.strictObject({ kind: z.literal('reader'), reader: identity, input: readerInputDefinition(identity) })]); }
+export const resourceBindingSchema = resourceBindingDefinition(z.string().min(1));
+/** Structural editor schema: empty identities remain drafts until command validation. */
+export const resourceBindingDraftSchema = resourceBindingDefinition(z.string());
 export type ResourceBinding = z.output<typeof resourceBindingSchema>;
-export const windowPreparationSchema = z.strictObject({ alias: z.string().min(1), prepare: z.strictObject({ branch: z.string().min(1), routeId: z.string().min(1) }).optional() });
+function windowPreparationDefinition(identity: z.ZodString) { return z.strictObject({ alias: identity, prepare: z.strictObject({ branch: identity, routeId: identity }).optional() }); }
+export const windowPreparationSchema = windowPreparationDefinition(z.string().min(1));
+/** Structural editor schema: empty identities remain drafts until command validation. */
+export const windowPreparationDraftSchema = windowPreparationDefinition(z.string());
 export type WindowPreparation = z.output<typeof windowPreparationSchema>;
 export const frozenContextSourceSchema = z.object({ key: z.string(), hash: z.string(), source: z.string() }).catchall(jsonValueSchema);
 export type FrozenContextSource = z.output<typeof frozenContextSourceSchema>;

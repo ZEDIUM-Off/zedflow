@@ -1,0 +1,13 @@
+{
+  "name": "@zedflow/releases",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "release:prepare": "node src/releases.mjs prepare",
+    "run": "node src/releases.mjs run",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

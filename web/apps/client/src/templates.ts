@@ -1,3 +1,4 @@
+import { requireNodeConfig, editableComposition, flowExportsReadSchema } from '@zedflow/sdk'
 import type { Composition, FlowNode, Kind } from '@zedflow/sdk'
 import { instructionAttachments } from './graph/attachments'
 import type { FlowExports } from '@zedflow/sdk'
@@ -21,10 +22,7 @@ export const catalog: { kind: Kind; label: string; description: string; config: 
 const legacyAgent = { kind: 'agent' as const, label: 'Appel modèle', config: { fanIn:'any', provider: 'fixture', inputField: 'input', field: 'output', attachments: instructionAttachments('Réponds de manière concise en français.') } }
 function legacyDefinition(kind: Kind) { return kind === 'agent' ? legacyAgent : catalog.find(entry => entry.kind === kind)! }
 // Rust omits empty maps from saved exports. Materialize them only in the editable copy.
-function normalizeFlowExports(value: Record<string, any>): FlowExports {
-  const contract=value.contract||{}
-  return {...value,contract:{...contract,entries:contract.entries||{},branches:contract.branches||{},data:contract.data||{},requires:contract.requires||{},inferenceNodes:contract.inferenceNodes||{}},types:value.types||{},entries:value.entries||{},branches:value.branches||{},data:value.data||{},requires:value.requires||{},interactive:value.interactive??false}
-}
+function normalizeFlowExports(value: unknown): FlowExports { return flowExportsReadSchema.parse(value) }
 export function legacyTemplate(interactive = true): Composition {
   const node = (id: string, kind: Kind, x: number, y: number): FlowNode => ({ id, type: 'flow', position: { x, y }, data: { kind, label: legacyDefinition(kind).label, config: structuredClone(legacyDefinition(kind).config) } })
   const nodes = [node('start','start',60,175), node('model','agent',300,100), node('response','output',750,165),node(interactive?'input':'end',interactive?'input':'end',750,410)]
@@ -54,8 +52,8 @@ export function legacyHarnessTemplate(): Composition {
 export function legacyToolTemplate(): Composition {
   const base=legacyTemplate(true)
   base.name='Assistant avec outils'
-  const model=base.nodes.find(n=>n.id==='model')!
-  model.data.config.attachments.tools={items:[{id:'inspect-json',name:'inspect_json'}]};model.data.config.historyField='messages'
+  const model=base.nodes.find(n=>n.id==='model')!;
+  (requireNodeConfig(model.data.config).attachments??={}).tools={items:[{id:'inspect-json',name:'inspect_json'}]};requireNodeConfig(model.data.config).historyField='messages'
   base.nodes.find(n=>n.id==='response')!.position={x:1070,y:165}
   base.nodes.find(n=>n.id==='input')!.position={x:1070,y:410}
   base.nodes.push({id:'route',type:'flow',position:{x:750,y:125},data:{kind:'condition',label:'Appels demandés ?',config:{predicate:{kind:'compare',field:'hasToolCalls',operator:'eq',value:true}}}},{id:'tools',type:'flow',position:{x:750,y:410},data:{kind:'tool',label:'Exécuter les outils',config:{tool:'execute_calls',field:'output',historyField:'messages',toolCallsField:'toolCalls',ui:{renderer:'table',title:'Résultats des outils'}}}})
@@ -65,7 +63,7 @@ export function legacyToolTemplate(): Composition {
 }
 
 /** Sources are explicit on the context node; the strategy decides what is sent. */
-export function defaultContextBindings(historyField = 'messages', inputField = 'input') {
+export function defaultContextBindings(historyField = 'messages', inputField = 'input'): Record<string, import('@zedflow/sdk').ResourceBinding> {
   return {
     input: {kind: 'state', field: inputField},
     instructions: {kind: 'attachments', slot: 'instructions'},
@@ -77,8 +75,8 @@ export function defaultContextBindings(historyField = 'messages', inputField = '
 
 /** Create a new editable definition. The previous flow and its run snapshots stay intact. */
 export function separateContextNodes(source: Composition, strategy = 'workspace-default', copy = true): Composition {
-  const doc: Composition = JSON.parse(JSON.stringify(source))
-  const startConfig=doc.nodes.find(node=>node.data.kind==='start')?.data.config
+  const doc = editableComposition(source)
+  const startConfig=requireNodeConfig(doc.nodes.find(node=>node.data.kind==='start')?.data.config ?? {})
   if(startConfig?.exports)startConfig.exports=normalizeFlowExports(startConfig.exports)
   if (doc.nodes.some(node => node.data.kind === 'context') && (doc.formatVersion || 1) < 3) {
     throw new Error('Ce flow utilise un contexte historique partagé. Convertissez ses ressources explicitement avant de séparer les appels modèle.')
@@ -88,7 +86,7 @@ export function separateContextNodes(source: Composition, strategy = 'workspace-
   if (copy) { doc.id = crypto.randomUUID(); doc.name += ' · contexte séparé'; doc.revision = 0 }
   const agents = doc.nodes.filter(node => node.data.kind === 'agent')
   for (const agent of agents) {
-    const config = agent.data.config
+    const config = requireNodeConfig(agent.data.config)
     let id = agent.id === 'model' ? 'context' : `${agent.id}-context`
     while (doc.nodes.some(node => node.id === id)) id += '-preparation'
     const contextConfig: Record<string, any> = {modelNode: agent.id, fanIn: config.fanIn || 'all'}
@@ -114,7 +112,7 @@ export function separateContextNodes(source: Composition, strategy = 'workspace-
     for (const edge of doc.edges) if (edge.target === agent.id) edge.target = id
     doc.edges.push({id: `${id}-${agent.id}`, source: id, target: agent.id})
     doc.nodes.splice(doc.nodes.indexOf(agent), 0, context)
-    const exports = doc.nodes.find(node => node.data.kind === 'start')?.data.config.exports
+    const exports = requireNodeConfig(doc.nodes.find(node => node.data.kind === 'start')?.data.config ?? {}).exports
     if (exports) {
       if (exports.contract.inferenceNodes?.[agent.id]) exports.contract.inferenceNodes[agent.id].contextStrategy = typeof contextConfig.contextStrategy === 'string' ? contextConfig.contextStrategy : contextConfig.contextStrategy?.key || null
       for (const [port, node] of Object.entries(exports.branches || {})) {
@@ -149,24 +147,24 @@ export function upgradeHarnessRouting(source: Composition, copy = true): Composi
   const start=result.nodes.find(node=>node.data.kind==='start')
   const steering=result.nodes.find(node=>node.id==='steering'&&node.data.kind==='steering')
   const model=result.nodes.find(node=>node.id==='model'&&node.data.kind==='model')
-  const context=result.nodes.find(node=>node.id===model?.data.config.contextNode&&node.data.kind==='context')
+  const context=result.nodes.find(node=>node.id===(model?requireNodeConfig(model.data.config).contextNode:undefined)&&node.data.kind==='context')
   if(!start||!steering||!model||!context)throw new Error('Cette définition ne possède pas la boucle Harness attendue : réorientations, contexte et modèle.')
-  const inputField=model.data.config.inputField||'input'
+  const inputField=requireNodeConfig(model.data.config).inputField||'input'
   const inbox=result.nodes.find(node=>node.id==='inbox'&&node.data.kind==='inbox')
-  if((steering.data.config.field||'input')!==inputField||inbox&&(inbox.data.config.field||'input')!==inputField)throw new Error('Les réorientations, la suite du travail et le modèle doivent utiliser le même champ d’entrée. Adaptez leur mapping explicitement.')
-  const config=context.data.config,strategy=typeof config.contextStrategy==='string'?config.contextStrategy:config.contextStrategy?.key
+  if((requireNodeConfig(steering.data.config).field||'input')!==inputField||inbox&&(requireNodeConfig(inbox.data.config).field||'input')!==inputField)throw new Error('Les réorientations, la suite du travail et le modèle doivent utiliser le même champ d’entrée. Adaptez leur mapping explicitement.')
+  const config=requireNodeConfig(context.data.config),strategy=typeof config.contextStrategy==='string'?config.contextStrategy:config.contextStrategy?.key
   if(config.contextProgram||strategy&&!['workspace-default','harness-default'].includes(strategy))throw new Error('La stratégie personnalisée de ce Harness doit être adaptée explicitement pour recevoir le résultat de routage.')
   const existing=result.nodes.find(node=>node.id==='dispatch')
-  if(existing&&(existing.data.kind!=='route'||existing.data.config.branch!=='work'))throw new Error('Le nœud dispatch existe déjà avec un autre rôle.')
+  if(existing&&(existing.data.kind!=='route'||requireNodeConfig(existing.data.config).branch!=='work'))throw new Error('Le nœud dispatch existe déjà avec un autre rôle.')
   const routingConfig={branch:'work',invocation:'condition',inputField,field:'routeResult',fallback:''}
   if(existing){
-    if(Object.keys(existing.data.config).length!==Object.keys(routingConfig).length||Object.entries(routingConfig).some(([key,value])=>existing.data.config[key]!==value))throw new Error('Le nœud dispatch possède une configuration personnalisée. Adaptez son routage explicitement.')
+    if(Object.keys(requireNodeConfig(existing.data.config)).length!==Object.keys(routingConfig).length||Object.entries(routingConfig).some(([key,value])=>requireNodeConfig(existing.data.config)[key]!==value))throw new Error('Le nœud dispatch possède une configuration personnalisée. Adaptez son routage explicitement.')
     const incoming=result.edges.filter(edge=>edge.target===existing.id),outgoing=result.edges.filter(edge=>edge.source===existing.id)
     if(incoming.length!==1||incoming[0].source!==steering.id||incoming[0].sourceHandle||outgoing.length!==1||outgoing[0].target!==context.id||outgoing[0].sourceHandle||result.edges.filter(edge=>edge.source===steering.id).length!==1||result.edges.filter(edge=>edge.target===context.id).length!==1)throw new Error('Le routage existant doit relier uniquement Réorientations → Routage → Contexte. Adaptez les connexions personnalisées explicitement.')
   }
   const channel=result.channels?.find(item=>item.name==='routeResult')
   if(channel&&(channel.reducer!=='overwrite'||channel.default!==''))throw new Error('Le canal routeResult existe déjà avec une autre définition.')
-  const exports=normalizeFlowExports(start.data.config.exports||{interactive:true})
+  const exports=normalizeFlowExports(requireNodeConfig(start.data.config).exports||{contract:{},entries:{},interactive:true})
   if(exports.branches.work&&exports.branches.work!=='dispatch')throw new Error('Le branchement work est déjà exposé par un autre nœud.')
   const work=exports.contract.branches.work
   if(work&&(work.contract.input.kind!=='text'||work.contract.output?.kind!=='text'||work.invocations.length!==1||work.invocations[0]!=='condition'))throw new Error('Le contrat work possède des types ou des déclenchements personnalisés. Adaptez-le explicitement au routage du Harness.')
@@ -180,14 +178,14 @@ export function upgradeHarnessRouting(source: Composition, copy = true): Composi
   }
   if(!channel)(result.channels||=[]).push({name:'routeResult',reducer:'overwrite',default:''})
   config.contextStrategy='harness-default'
-  config.contextBindings={...(config.contextBindings||defaultContextBindings(model.data.config.historyField||'messages',model.data.config.inputField||'input')),routeResult:{kind:'state',field:'routeResult'}}
+  config.contextBindings={...(config.contextBindings||defaultContextBindings(requireNodeConfig(model.data.config).historyField||'messages',requireNodeConfig(model.data.config).inputField||'input')),routeResult:{kind:'state',field:'routeResult'}}
   exports.contract.entries.main||={input:{kind:'text'},output:{kind:'text'}}
   exports.entries.main||={node:start.id,inputField,outputField:'response'}
   exports.contract.branches.work={contract:{input:{kind:'text'},output:{kind:'text'}},invocations:['condition']}
   exports.branches.work='dispatch'
-  exports.contract.inferenceNodes[model.id]={model:model.data.config.modelBinding==='runtime'?{kind:'runtime'}:{kind:'fixed',provider:model.data.config.provider||'fixture',model:model.data.config.model||'fixture'},contextStrategy:'harness-default',resources:exports.contract.inferenceNodes[model.id]?.resources||[],capabilities:exports.contract.inferenceNodes[model.id]?.capabilities??['read','write','edit','exec']}
+  exports.contract.inferenceNodes[model.id]={model:requireNodeConfig(model.data.config).modelBinding==='runtime'?{kind:'runtime'}:{kind:'fixed',provider:requireNodeConfig(model.data.config).provider||'fixture',model:requireNodeConfig(model.data.config).model||'fixture'},contextStrategy:'harness-default',resources:exports.contract.inferenceNodes[model.id]?.resources||[],capabilities:exports.contract.inferenceNodes[model.id]?.capabilities??['read','write','edit','exec']}
   exports.interactive=true
-  start.data.config.exports=exports
+  requireNodeConfig(start.data.config).exports=exports
   return result
 }
 export function toolTemplate(): Composition {

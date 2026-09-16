@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shallowRef } from 'vue'
 const client=useClient()
 import { useClient } from '@zedflow/vue'
 
@@ -9,7 +10,7 @@ import AppDialog from './AppDialog.vue'
 const open=defineModel<boolean>('open',{required:true})
 const props=defineProps<{initialPath?:string;busy?:boolean}>()
 const emit=defineEmits<{select:[path:string]}>()
-const listing=ref<DirectoryListing|null>(null), path=ref(''), hidden=ref(false), loading=ref(false), error=ref('')
+const listing=shallowRef<DirectoryListing|null>(null), path=ref(''), hidden=ref(false), loading=ref(false), error=ref('')
 const crumbs=computed(()=>{const parts=(listing.value?.path||'').split('/').filter(Boolean);return [{name:'/',path:'/'},...parts.map((name,index)=>({name,path:'/'+parts.slice(0,index+1).join('/')}))]})
 let version=0
 // A pending navigation owns the path until its canonical result arrives.

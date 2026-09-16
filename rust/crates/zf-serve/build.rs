@@ -27,6 +27,18 @@ fn main() {
         .join("../../..")
         .canonicalize()
         .unwrap();
+    // Metadata must follow a commit even when the source bytes did not change.
+    for name in ["HEAD", "logs/HEAD"] {
+        if let Ok(output) = Command::new("git")
+            .args(["rev-parse", "--git-path", name])
+            .current_dir(&root)
+            .output()
+            && output.status.success()
+        {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            println!("cargo:rerun-if-changed={}", root.join(path).display());
+        }
+    }
     let mut hash = Sha256::new();
     let mut environment: Vec<_> = std::env::vars()
         .filter(|(name, _)| {
@@ -60,6 +72,7 @@ fn main() {
         "rust/crates",
         "rust/Cargo.toml",
         "rust/Cargo.lock",
+        "rust/rust-toolchain.toml",
     ] {
         let path = root.join(name);
         println!("cargo:rerun-if-changed={}", path.display());
@@ -74,6 +87,10 @@ fn main() {
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned());
+    // Revision is part of the embedded manifest and therefore its build identity.
+    hash.update(b"revision\0");
+    hash.update(serde_json::to_vec(&revision).unwrap());
+    hash.update([0]);
     value["component"] = "daemon".into();
     value["buildId"] = format!("{:x}", hash.finalize()).into();
     value["revision"] = serde_json::json!(revision);
