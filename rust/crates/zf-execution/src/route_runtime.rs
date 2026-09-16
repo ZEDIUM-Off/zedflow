@@ -148,7 +148,7 @@ impl RouteRuntime {
         instance: &str,
         projection: &zf_flows::schema::Composition,
         controller: Option<Arc<zf_runtime::revisions::RevisionRuntime>>,
-        source_hash: Option<&str>,
+        definition_revision: Option<&str>,
     ) -> Result<adk_graph::CompiledGraph> {
         let services = self.services()?;
         let scope = format!("{instance}/");
@@ -177,8 +177,14 @@ impl RouteRuntime {
                 }
             }
         }
+        let initial_revision =
+            zf_runtime::revisions::RevisionDefinition::from_prepared(&self.prepared, instance)?
+                .revision();
         let native = factory
-            .filter(|_| exact_projection && source_hash.is_none_or(|hash| hash == source.hash))
+            .filter(|_| {
+                exact_projection
+                    && definition_revision.is_none_or(|revision| revision == initial_revision)
+            })
             .map(|factory| factory(services.clone(), self.checkpoints.clone(), &scope))
             .transpose()?;
         let controller = controller.or_else(|| services.revisions());
@@ -799,7 +805,7 @@ impl RouteRuntime {
             depth <= depth_limit,
             "Route depth {depth} exceeds runtime recursion limit {depth_limit}"
         );
-        let visit = json!({"parentVisitId":parent,"depth":depth,"version":1,"graphRef":graph_ref,"routeId":route_id,"path":invocation.path,"branch":invocation.branch,"invocation":invocation.invocation,"callId":invocation.call_id,"input":invocation.input,"threadId":thread_id,"instance":route.to.instance,"entry":route.to.port,"targetHash":target.hash,"mode":route.mode});
+        let visit = json!({"parentVisitId":parent,"depth":depth,"version":1,"graphRef":graph_ref,"routeId":route_id,"path":invocation.path,"branch":invocation.branch,"invocation":invocation.invocation,"callId":invocation.call_id,"input":invocation.input,"threadId":thread_id,"instance":route.to.instance,"entry":route.to.port,"targetHash":target.hash,"targetRevision":zf_runtime::revisions::RevisionDefinition::from_prepared(&plan, &route.to.instance)?.revision(),"mode":route.mode});
         services
             .persist_record("route-visits", &visit_id, &visit)
             .await?;
@@ -898,12 +904,15 @@ impl RouteRuntime {
             "Cannot resume a routed visit with a different flow revision"
         );
         let checkpoint = self.checkpoints.load(thread_id).await?;
-        let mut definition = zf_runtime::revisions::RevisionDefinition {
-            key: flow.key.clone(),
-            hash: flow.hash.clone(),
-            source: flow.source.clone(),
-            composition: flow.composition.clone(),
-        };
+        let mut definition =
+            zf_runtime::revisions::RevisionDefinition::from_prepared(&plan, instance)?;
+        ensure!(
+            visit.get("targetRevision").map_or(
+                definition.package.is_none() && definition.context_selections.is_empty(),
+                |revision| revision == &definition.revision()
+            ),
+            "Cannot resume a routed visit with a different package definition"
+        );
         if let Some(checkpoint) = &checkpoint
             && let Some(selected) = zf_runtime::revisions::checkpoint_definition(
                 &services.content_store().context("Content storage absent")?,
@@ -930,7 +939,7 @@ impl RouteRuntime {
             instance,
             &projection,
             controller.clone(),
-            Some(&definition.hash),
+            Some(&definition.revision()),
         )?;
         let mut input = State::new();
         if checkpoint.is_none() {
@@ -1047,7 +1056,12 @@ impl RouteRuntime {
                         .await?,
                 )?;
                 ensure!(
-                    definition.hash == request["toHash"],
+                    definition.hash == request["toHash"]
+                        && request.get("toRevision").map_or(
+                            definition.package.is_none()
+                                && definition.context_selections.is_empty(),
+                            |revision| revision == &definition.revision()
+                        ),
                     "Revision boundary source identity mismatch"
                 );
                 let revisions = controller.as_ref().context("Revision controller absent")?;
@@ -1057,9 +1071,9 @@ impl RouteRuntime {
                     instance,
                     &projection,
                     controller.clone(),
-                    Some(&definition.hash),
+                    Some(&definition.revision()),
                 )?;
-                services.emit(json!({"type":"revision_adopted","scope":instance,"threadId":thread_id,"step":checkpoint.step,"hash":definition.hash,"definitionRef":request["definitionRef"],"visitId":visit_id})).await;
+                services.emit(json!({"type":"revision_adopted","scope":instance,"threadId":thread_id,"step":checkpoint.step,"hash":definition.hash,"definitionRevision":definition.revision(),"packageRevision":definition.package.as_ref().map(|p|&p.root),"definitionRef":request["definitionRef"],"visitId":visit_id})).await;
                 continue;
             }
             break execution;
@@ -1286,7 +1300,7 @@ impl DynamicCapabilities for RouteRuntime {
         );
         let (id, route) = routes[0];
         Ok(
-            json!({"routeId":id,"mode":route.mode,"invocation":route.invocation,"targetHash":plan.flows[&route.to.instance].hash,"input":route.input,"output":route.output,"condition":route.condition}),
+            json!({"routeId":id,"mode":route.mode,"invocation":route.invocation,"targetHash":plan.flows[&route.to.instance].hash,"targetRevision":zf_runtime::revisions::RevisionDefinition::from_prepared(&plan, &route.to.instance)?.revision(),"input":route.input,"output":route.output,"condition":route.condition}),
         )
     }
     async fn await_visit(&self, path: &str, visit_id: &str, state: &State) -> Result<RouteOutcome> {

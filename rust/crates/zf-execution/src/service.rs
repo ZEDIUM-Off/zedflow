@@ -576,10 +576,12 @@ async fn execute(
                     if let Some(boundary)=boundary {
                         let instance=boundary["instance"].as_str().context("Boundary instance absent")?;
                         let previous=definitions.get(instance).context("Boundary instance is not part of this run")?;
-                        if boundary["toHash"]!=previous.hash {
+                        if boundary["toRevision"].as_str().or(boundary["toHash"].as_str()) != Some(previous.revision().as_str()) {
                             anyhow::ensure!(checkpoint.thread_id==producer_id && checkpoint.pending_nodes.len()==1 && boundary["threadId"]==producer_id && boundary["step"]==checkpoint.step && boundary["node"]==checkpoint.pending_nodes[0],"Revision boundary and committed frontier disagree");
                             let reference=boundary["definitionRef"].as_str().context("Boundary definition absent")?;
                             let definition:zf_runtime::revisions::RevisionDefinition=serde_json::from_value(producer_services.content_store().context("Revision store absent")?.resolve(reference).await?)?;
+                            zf_runtime::revisions::validate_definition(&definition)?;
+                            anyhow::ensure!(definition.key == previous.key && boundary["toHash"] == definition.hash && boundary["toRevision"].as_str().map_or(definition.package.is_none() && definition.context_selections.is_empty(), |revision| revision == definition.revision()), "Revision boundary definition identity mismatch");
                             anyhow::ensure!(matches!(zf_runtime::revisions::compatibility(&previous.composition,&definition.composition)?,zf_runtime::revisions::Compatibility::SequentialBoundary{..}),"Structural adoption has no proven sequential frontier");
                             let next=if let Some(entry)=&runtime_entry {zf_flows::flow_contract::at_entry(&definition.composition,entry)?}else{definition.composition.clone()};
                             definitions.insert(instance.into(),definition);

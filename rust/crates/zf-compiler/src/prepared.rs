@@ -12,6 +12,7 @@ use zf_flows::{
     bridge_source,
     composition::{CompositionCatalog, ResolveRequest},
     flow_contract, flow_format,
+    package::PackageSnapshot,
 };
 
 /// The capturing service checks filesystem/catalogue preconditions before
@@ -20,6 +21,9 @@ use zf_flows::{
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CompilationSnapshot {
     pub flows: BTreeMap<String, SourceSnapshot>,
+    /// Complete package captures keyed by catalogue flow key, never instance.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub packages: BTreeMap<String, PackageSnapshot>,
     pub bridges: BTreeMap<String, SourceSnapshot>,
     pub programs: ProgramSources,
 }
@@ -50,6 +54,24 @@ pub fn prepare(
     primitives: &dyn PrimitiveContracts,
 ) -> Result<PreparedRuntime> {
     let validator = GraphValidator::new(primitives);
+    for (key, package) in &snapshot.packages {
+        crate::package_sources::validate_package_sources(package)
+            .with_context(|| format!("Invalid package capture: {key}"))?;
+        let file = snapshot
+            .flows
+            .get(key)
+            .with_context(|| format!("Orphan package capture: {key}"))?;
+        file.validate()?;
+        ensure!(
+            package.root_node()?.entry_source()?.as_bytes() == file.source.as_bytes(),
+            "Package entry and captured flow source disagree: {key}"
+        );
+        let authored = flow_format::parse(&file.source, &validator)?;
+        ensure!(
+            package.root_manifest()?.id.as_str() == authored.id,
+            "Package identity and authored flow disagree: {key}"
+        );
+    }
     let mut catalog = CompositionCatalog::default();
     let mut definitions = BTreeMap::new();
     let mut invalid = BTreeMap::new();
@@ -132,9 +154,19 @@ pub fn prepare(
         let file = &snapshot.flows[&resolved.flow];
         if let Some(expected) = expected_hashes.get(&resolved.flow) {
             ensure!(
-                *expected == file.hash,
+                expected
+                    == snapshot
+                        .packages
+                        .get(&resolved.flow)
+                        .map_or(&file.hash, |package| &package.root),
                 "Flow changed since runtime graph selection"
             );
+        }
+        if let Some(package) = snapshot.packages.get(&resolved.flow)
+            && !pins.flow_packages.contains_key(&resolved.flow)
+        {
+            pins.flow_packages
+                .insert(resolved.flow.clone(), package.clone());
         }
         pins.flow_hashes
             .insert(resolved.flow.clone(), file.hash.clone());

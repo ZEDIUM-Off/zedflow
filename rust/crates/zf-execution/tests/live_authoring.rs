@@ -147,6 +147,8 @@ fn candidate(strategy: &ContextStrategy, hash: Option<&str>) -> SourceOverride {
 fn definition(doc: Composition) -> RevisionDefinition {
     let source = flow_source::render(&doc, &GraphValidator::new(&RuntimePrimitives)).unwrap();
     RevisionDefinition {
+        package: None,
+        context_selections: BTreeMap::new(),
         key: "fixture-flow".into(),
         hash: context_store::hash(source.as_bytes()),
         source,

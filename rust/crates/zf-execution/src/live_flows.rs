@@ -22,7 +22,7 @@ use zf_storage::{
     bridge_store::BridgeStore,
     content_store::ContentStore,
     flow_store::{FlowFile, FlowStore, FlowWrite},
-    source_acceptance::{self, FilePrecondition},
+    source_acceptance::FilePrecondition,
     workspaces::{self, Workspace},
 };
 
@@ -94,6 +94,8 @@ pub async fn accept(
             zf_flows::flow_format::render(&linked, &GraphValidator::new(&RuntimePrimitives))?
         };
         let definition = RevisionDefinition {
+            package: Some(plan.package.clone()),
+            context_selections: BTreeMap::new(),
             key: flow_key.clone(),
             hash: zf_storage::flow_store::hash(source.as_bytes()),
             source,
@@ -129,6 +131,8 @@ pub async fn accept(
                     &GraphValidator::new(&RuntimePrimitives),
                 )?;
                 RevisionDefinition {
+                    package: Some(plan.package.clone()),
+                    context_selections: run.context_selections.clone(),
                     key: flow_key.clone(),
                     hash: zf_storage::flow_store::hash(source.as_bytes()),
                     source,
@@ -153,23 +157,26 @@ pub async fn accept(
     // The source itself is checked by expected_hash, including creation.
     preconditions.remove(&plan.path);
     let publication = live_files::stage_publications(store, &publications).await?;
-    let pending = source_acceptance::begin_flow(
-        plan.path.clone(),
-        plan.lock_workspace,
-        plan.source,
-        expected_hash,
-        Some(publication),
-        preconditions
+    for condition in plan.preconditions {
+        preconditions.insert(condition.path, condition.hash);
+    }
+    let pending = zf_storage::flow_packages::begin(zf_storage::flow_packages::PackageWrite {
+        target: plan.path.clone(),
+        workspace: plan.lock_workspace,
+        snapshot: plan.package,
+        expected_revision: expected_hash,
+        publication: Some(publication),
+        preconditions: preconditions
             .into_iter()
             .map(|(path, hash)| FilePrecondition { path, hash })
             .collect(),
-    )
+    })
     .await?;
-    live_files::finish(store, pending).await?;
+    live_files::finish_package(store, pending).await?;
     flows.get(selected, &flow_key).await
 }
 
-fn catalog(
+pub(crate) fn catalog(
     files: &[FlowFile],
     replacement: Option<(&str, &Composition)>,
 ) -> Result<CompositionCatalog> {
@@ -205,8 +212,8 @@ async fn validate_dependents(
     let mut before = catalog(files, None)?;
     let mut after = catalog(files, Some((key, candidate)))?;
     for file in files {
-        if !file.hash.is_empty() {
-            preconditions.insert(file.path.clone(), file.hash.clone());
+        for condition in &file.preconditions {
+            preconditions.insert(condition.path.clone(), condition.hash.clone());
         }
     }
     for file in BridgeStore::new(workspace.path.clone())?.list().await? {

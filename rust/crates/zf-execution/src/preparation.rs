@@ -55,6 +55,7 @@ pub async fn prepare(
     let mut snapshot = CompilationSnapshot::default();
     let mut catalog = CompositionCatalog::default();
     let mut conditions = BTreeMap::new();
+    let mut package_roots = BTreeMap::new();
     let mut definitions = BTreeMap::new();
     let mut discovery_hashes = BTreeMap::new();
 
@@ -72,6 +73,11 @@ pub async fn prepare(
             continue;
         }
         let file = flows.get(workspace, &listed.key).await?;
+        ensure!(
+            file.diagnostics.is_empty(),
+            "Flow capture contains diagnostics: {:?}",
+            file.diagnostics
+        );
         let Some(doc) = file.composition else {
             continue;
         };
@@ -80,13 +86,31 @@ pub async fn prepare(
         };
         let source = file.source.context("Flow source is absent")?;
         let captured = SourceSnapshot::capture(source);
-        ensure!(captured.hash == file.hash, "Flow capture hash mismatch");
+        ensure!(
+            captured.hash == file.source_hash,
+            "Flow capture hash mismatch"
+        );
         for (name, ty) in exports.types {
             if let Some(previous) = catalog.types.insert(name.clone(), ty.clone()) {
                 ensure!(previous == ty, "Conflicting shared type {name}");
             }
         }
-        conditions.insert(file.path, captured.hash.clone());
+        for condition in file.preconditions {
+            if let Some(old) = conditions.insert(condition.path, condition.hash.clone()) {
+                ensure!(
+                    old == condition.hash,
+                    Conflict("Package dependency changed during capture")
+                );
+            }
+        }
+        ensure!(
+            listed.hash == file.hash,
+            Conflict("Flow changed while resolving composition")
+        );
+        if let Some(package) = file.package {
+            package_roots.insert(file.path.clone(), package.root.clone());
+            snapshot.packages.insert(file.key.clone(), package);
+        }
         discovery_hashes.insert(file.key.clone(), listed.hash);
         catalog.flows.insert(file.key.clone(), exports.contract);
         definitions.insert(file.key.clone(), doc);
@@ -136,13 +160,17 @@ pub async fn prepare(
     }
     for (instance, resolved) in &graph.instances {
         let captured = &snapshot.flows[&resolved.flow];
+        let revision = snapshot
+            .packages
+            .get(&resolved.flow)
+            .map_or(captured.hash.as_str(), |package| package.root.as_str());
         ensure!(
-            discovery_hashes[&resolved.flow] == captured.hash,
+            discovery_hashes[&resolved.flow] == revision,
             Conflict("Flow changed while resolving composition")
         );
         if let Some(expected) = selection.flow_hashes.get(&resolved.flow) {
             ensure!(
-                *expected == captured.hash,
+                expected == revision,
                 Conflict("Flow changed since runtime graph selection")
             );
         }
@@ -175,6 +203,12 @@ pub async fn prepare(
         }
     }
     recheck(&conditions).await?;
+    for (path, revision) in package_roots {
+        ensure!(
+            zf_storage::flow_packages::capture(&path).await?.root == revision,
+            Conflict("Flow package changed before compilation admission")
+        );
+    }
     Ok(runtime)
 }
 
@@ -201,7 +235,7 @@ fn merge_programs(target: &mut ProgramSources, incoming: ProgramSources) -> Resu
     Ok(())
 }
 
-async fn recheck(conditions: &BTreeMap<PathBuf, String>) -> Result<()> {
+pub(crate) async fn recheck(conditions: &BTreeMap<PathBuf, String>) -> Result<()> {
     for (path, hash) in conditions {
         let metadata = tokio::fs::symlink_metadata(path)
             .await
@@ -210,7 +244,22 @@ async fn recheck(conditions: &BTreeMap<PathBuf, String>) -> Result<()> {
             metadata.is_file(),
             Conflict("A captured source is no longer a regular file")
         );
-        let bytes = tokio::fs::read(path).await?;
+        use tokio::io::AsyncReadExt;
+        let limit = zf_flows::package::MAX_PACKAGE_FILE_BYTES;
+        ensure!(
+            metadata.len() <= limit as u64,
+            "Captured source exceeds its byte limit"
+        );
+        let mut bytes = Vec::new();
+        tokio::fs::File::open(path)
+            .await?
+            .take(limit as u64 + 1)
+            .read_to_end(&mut bytes)
+            .await?;
+        ensure!(
+            bytes.len() <= limit,
+            "Captured source exceeds its byte limit"
+        );
         ensure!(
             zf_storage::flow_store::hash(&bytes) == *hash,
             Conflict("A source changed while preparing runtime")

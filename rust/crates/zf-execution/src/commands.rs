@@ -100,7 +100,13 @@ pub(crate) async fn command_load(b: &ExecutionContext, id: &str) -> anyhow::Resu
 }
 pub(crate) async fn definition_run(b: &ExecutionContext, id: &str) -> anyhow::Result<Value> {
     let (mut run, _) = b.sync.latest(id).await?;
-    for name in ["composition", "flowSource", "runtimeGraph", "context"] {
+    for name in [
+        "composition",
+        "flowSource",
+        "flowPackage",
+        "runtimeGraph",
+        "context",
+    ] {
         if let Some(reference) = run[format!("{name}Ref")].as_str() {
             run[name] = b.content.resolve(reference).await?;
         }

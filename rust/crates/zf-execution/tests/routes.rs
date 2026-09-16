@@ -780,6 +780,8 @@ async fn routed_child_rebuilds_only_its_sequential_boundary_without_exposing_a_w
             (
                 instance.clone(),
                 RevisionDefinition {
+                    package: None,
+                    context_selections: Default::default(),
                     key: flow.key.clone(),
                     hash: flow.hash.clone(),
                     source: flow.source.clone(),
@@ -822,6 +824,8 @@ async fn routed_child_rebuilds_only_its_sequential_boundary_without_exposing_a_w
             .publish(
                 "bridge/worker",
                 RevisionDefinition {
+                    package: None,
+                    context_selections: Default::default(),
                     key: flow.key,
                     hash: flow.hash.clone(),
                     source: flow.source,
@@ -1033,6 +1037,8 @@ async fn mixed_graph_publication_is_atomic_replayable_and_rejects_runtime_struct
             (
                 instance.clone(),
                 RevisionDefinition {
+                    package: None,
+                    context_selections: Default::default(),
                     key: flow.key.clone(),
                     hash: flow.hash.clone(),
                     source: flow.source.clone(),
@@ -1060,6 +1066,8 @@ async fn mixed_graph_publication_is_atomic_replayable_and_rejects_runtime_struct
         instance: "bridge/worker".into(),
         baseline: old.composition.clone(),
         definition: RevisionDefinition {
+            package: None,
+            context_selections: Default::default(),
             key: updated.key,
             hash: updated.hash.clone(),
             source: updated.source,
@@ -1172,6 +1180,8 @@ async fn native_parallel_step_pins_graph_before_any_model_capture() {
             (
                 instance.clone(),
                 RevisionDefinition {
+                    package: None,
+                    context_selections: Default::default(),
                     key: flow.key.clone(),
                     hash: flow.hash.clone(),
                     source: flow.source.clone(),
@@ -1418,6 +1428,8 @@ mod portable_export {
             zf_flows::flow_format::render(&composition, &GraphValidator::new(&RuntimePrimitives))
                 .unwrap();
         RevisionDefinition {
+            package: None,
+            context_selections: Default::default(),
             key: composition.id.clone(),
             hash: format!("{:x}", Sha256::digest(source.as_bytes())),
             source,

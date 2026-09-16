@@ -66,6 +66,9 @@ impl ExecutionService {
             Some(s) => Some(preparation::prepare(&b.flows, &workspace, s).await?),
             None => None,
         };
+        let mut flow_package = None;
+        let mut package_conditions = Vec::new();
+        let mut package_root = None;
         let (mut composition, mut source, flow_ref) = match &request.definition {
             StartDefinition::Composition(_) => {
                 let runtime = prepared.as_ref().context("Prepared composition absent")?;
@@ -87,6 +90,17 @@ impl ExecutionService {
                         "Le flow a changé ; actualisez avant de lancer cette version."
                     )
                 );
+                ensure!(
+                    file.diagnostics.is_empty(),
+                    "Flow non exécutable : {:?}",
+                    file.diagnostics
+                );
+                package_root = file
+                    .package
+                    .as_ref()
+                    .map(|package| (file.path.clone(), package.root.clone()));
+                flow_package = file.package;
+                package_conditions = file.preconditions;
                 let reference = json!({"key":file.key,"id":file.id,"name":file.name,"path":file.path,"scope":file.scope,"hash":file.hash,"fileVersion":file.file_version});
                 (
                     file.composition.context("Flow non exécutable")?,
@@ -166,6 +180,9 @@ impl ExecutionService {
             })
             .unwrap_or_else(|| composition.name.clone());
         let mut value = json!({"id":id,"name":name,"workspaceId":workspace.id,"workspacePath":workspace.path,"flowRef":flow_ref,"flowSource":source,"composition":composition,"createdAt":now(),"updatedAt":now(),"status":"running","input":input,"state":{},"messages":original_text.map(|text|vec![json!({"id":Uuid::new_v4().to_string(),"role":"user","text":text})]).unwrap_or_default(),"activities":[],"toolActivities":[],"activeNodes":[],"wait":null,"modelBindings":request.model_bindings,"modelRevision":0,"queue":[],"context":context});
+        if let Some(package) = flow_package {
+            value["flowPackage"] = serde_json::to_value(package)?;
+        }
         value["executedSourceHash"] = json!(zf_storage::flow_store::hash(source.as_bytes()));
         if let Some(preview) = request.preview_metadata {
             value["preview"] = preview;
@@ -199,6 +216,19 @@ impl ExecutionService {
         }
         zf_storage::timeline::reconcile(&mut value, &json!({"type":"run_started"}), 0);
         value["startedBy"] = json!({"id":b.actor.id,"workspaceId":b.actor.workspace_id});
+        if let Some((path, revision)) = package_root {
+            ensure!(
+                zf_storage::flow_packages::capture(&path).await?.root == revision,
+                zf_storage::flow_store::Conflict("Flow package changed before admission")
+            );
+        }
+        preparation::recheck(
+            &package_conditions
+                .into_iter()
+                .map(|condition| (condition.path, condition.hash))
+                .collect(),
+        )
+        .await?;
         zf_storage::session_store::save(&b.writer_db, &id, &value).await?;
         b.sync.seed(&id).await?;
         let acknowledgement = command_ack(&b, &id).await?;

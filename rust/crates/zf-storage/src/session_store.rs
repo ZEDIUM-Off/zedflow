@@ -17,6 +17,7 @@ const ROOT_VALUES: &[&str] = &[
     "context",
     "composition",
     "flowSource",
+    "flowPackage",
     "input",
     "runtimeGraph",
 ];

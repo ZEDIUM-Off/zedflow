@@ -12,8 +12,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::sync::Mutex as AsyncMutex;
-use zf_compiler::prepared_model::PreparedRuntime;
-use zf_flows::schema::{Composition, Node as SchemaNode};
+use zf_compiler::prepared_model::{ContextSelection, PreparedRuntime};
+use zf_flows::{
+    package::PackageSnapshot,
+    schema::{Composition, Node as SchemaNode},
+};
 use zf_storage::content_store::ContentStore;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -23,6 +26,115 @@ pub struct RevisionDefinition {
     pub hash: String,
     pub source: String,
     pub composition: Composition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<PackageSnapshot>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub context_selections: BTreeMap<String, ContextSelection>,
+}
+impl RevisionDefinition {
+    /// Full executable identity; legacy source-only definitions retain their hash.
+    pub fn revision(&self) -> String {
+        if self.package.is_none() && self.context_selections.is_empty() {
+            return self.hash.clone();
+        }
+        let mut hash = Sha256::new();
+        hash.update(b"zedflow.definition.v1\0");
+        for part in std::iter::once(self.hash.as_str())
+            .chain(std::iter::once(
+                self.package.as_ref().map_or("", |p| p.root.as_str()),
+            ))
+            .chain(self.context_selections.iter().flat_map(|(path, choice)| {
+                [path.as_str(), choice.key.as_str(), choice.hash.as_str()]
+            }))
+        {
+            hash.update((part.len() as u64).to_be_bytes());
+            hash.update(part.as_bytes());
+        }
+        format!("{:x}", hash.finalize())
+    }
+    pub fn from_prepared(runtime: &PreparedRuntime, instance: &str) -> Result<Self> {
+        let flow = runtime
+            .flows
+            .get(instance)
+            .context("Revision instance absent")?;
+        let mut definition = Self::from_frozen(flow, &runtime.definitions, instance);
+        definition.context_selections.retain(|path, _| {
+            let full_path = format!("{instance}/{path}");
+            runtime
+                .flows
+                .keys()
+                .filter(|candidate| full_path.starts_with(&format!("{candidate}/")))
+                .max_by_key(|candidate| candidate.len())
+                .is_some_and(|owner| owner == instance)
+        });
+        Ok(definition)
+    }
+    fn from_frozen(
+        flow: &zf_compiler::prepared_model::FrozenFlow,
+        pins: &zf_compiler::prepared_model::DefinitionPins,
+        instance: &str,
+    ) -> Self {
+        let prefix = format!("{instance}/");
+        Self {
+            key: flow.key.clone(),
+            hash: flow.hash.clone(),
+            source: flow.source.clone(),
+            composition: flow.composition.clone(),
+            package: pins.flow_packages.get(&flow.key).cloned(),
+            context_selections: pins
+                .context_selections
+                .iter()
+                .filter_map(|(path, selection)| {
+                    path.strip_prefix(&prefix)
+                        .map(|path| (path.to_owned(), selection.clone()))
+                })
+                .collect(),
+        }
+    }
+    /// Install one selected definition and its authored provenance together.
+    pub fn apply_to(&self, plan: &mut PreparedRuntime, instance: &str) -> Result<()> {
+        validate_definition(self)?;
+        let flow = plan
+            .flows
+            .get_mut(instance)
+            .context("Revision instance absent")?;
+        ensure!(
+            flow.key == self.key,
+            "Published flow identity disagrees with runtime instance"
+        );
+        flow.exports = zf_flows::flow_contract::validate(&self.composition)?
+            .context("Published flow exports absent")?;
+        flow.composition = self.composition.clone();
+        flow.source = self.source.clone();
+        flow.hash = self.hash.clone();
+        if let Some(package) = &self.package {
+            plan.definitions
+                .flow_hashes
+                .insert(self.key.clone(), key(package.root_node()?.entry_source()?));
+            plan.definitions
+                .flow_packages
+                .insert(self.key.clone(), package.clone());
+        } else {
+            ensure!(
+                !plan.definitions.flow_packages.contains_key(&self.key),
+                "Revision cannot discard a captured package"
+            );
+        }
+        let prefix = format!("{instance}/");
+        plan.definitions.context_selections.retain(|path, _| {
+            plan.flows
+                .keys()
+                .filter(|candidate| path.starts_with(&format!("{candidate}/")))
+                .max_by_key(|candidate| candidate.len())
+                .is_none_or(|owner| owner != instance)
+        });
+        plan.definitions.context_selections.extend(
+            self.context_selections
+                .iter()
+                .map(|(path, choice)| (format!("{prefix}{path}"), choice.clone())),
+        );
+        Ok(())
+    }
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
@@ -73,7 +185,7 @@ impl RevisionRuntime {
                 .claim_record(
                     &run_id,
                     "revision-definitions",
-                    &key(&format!("{instance}\0{}", definition.hash)),
+                    &key(&format!("{instance}\0{}", definition.revision())),
                     &value,
                 )
                 .await?;
@@ -174,9 +286,9 @@ impl RevisionRuntime {
             .context("Node scope has no published definition")
     }
     async fn definition(&self, reference: &str) -> Result<Arc<RevisionDefinition>> {
-        Ok(Arc::new(serde_json::from_value(
-            self.store.resolve(reference).await?,
-        )?))
+        let definition = serde_json::from_value(self.store.resolve(reference).await?)?;
+        validate_definition(&definition)?;
+        Ok(Arc::new(definition))
     }
     async fn select(&self, scope: &str, node_id: &str, ctx: &NodeContext) -> Result<Selection> {
         let _guard = self.selection.lock().await;
@@ -216,14 +328,9 @@ impl RevisionRuntime {
             base.clone()
         };
         let (head, candidate) = if let Some((_, graph)) = &graph_pin
-            && let Some(flow) = graph.flows.get(instance)
+            && graph.flows.contains_key(instance)
         {
-            let definition = Arc::new(RevisionDefinition {
-                key: flow.key.clone(),
-                hash: flow.hash.clone(),
-                source: flow.source.clone(),
-                composition: flow.composition.clone(),
-            });
+            let definition = Arc::new(RevisionDefinition::from_prepared(graph, instance)?);
             let reference = self.store.intern(&json!(definition)).await?;
             (json!({"definitionRef":reference}), definition)
         } else {
@@ -249,7 +356,7 @@ impl RevisionRuntime {
             (name == "toolCalls" || name.ends_with("ToolCalls"))
                 && value.as_array().is_some_and(|calls| !calls.is_empty())
         });
-        let state_issue = if candidate.hash != fallback.hash {
+        let state_issue = if candidate.revision() != fallback.revision() {
             let headers = zf_storage::contracts::CheckpointStore::new(self.store.clone())
                 .await?
                 .list_headers(&ctx.config.thread_id)
@@ -283,7 +390,7 @@ impl RevisionRuntime {
         } else {
             None
         };
-        if candidate.hash != fallback.hash && pending_calls {
+        if candidate.revision() != fallback.revision() && pending_calls {
             chosen = fallback.clone();
             diagnostic = Some(
                 json!({"code":"pending_tool_calls","message":"An existing model invocation must resolve its pending tool calls before adoption"}),
@@ -300,7 +407,7 @@ impl RevisionRuntime {
                         .iter()
                         .any(|node| node.id == node_id)
                     {
-                        let request = json!({"kind":"revision_boundary","scope":scope,"instance":instance,"nodePath":if scope.is_empty(){node_id.to_owned()}else{format!("{scope}/{node_id}")},"node":node_id,"threadId":ctx.config.thread_id,"step":ctx.step,"fromHash":base.hash,"toHash":candidate.hash,"definitionRef":head["definitionRef"],"reasons":reasons});
+                        let request = json!({"kind":"revision_boundary","scope":scope,"instance":instance,"nodePath":if scope.is_empty(){node_id.to_owned()}else{format!("{scope}/{node_id}")},"node":node_id,"threadId":ctx.config.thread_id,"step":ctx.step,"fromHash":base.hash,"toHash":candidate.hash,"fromRevision":base.revision(),"toRevision":candidate.revision(),"definitionRef":head["definitionRef"],"reasons":reasons});
                         self.store
                             .put_record(&self.run_id, "revision-boundaries", &pin_key, &request)
                             .await?;
@@ -322,7 +429,7 @@ impl RevisionRuntime {
         }
         let definition_ref = self.store.intern(&json!(chosen)).await?;
         let source_ref = self.store.intern(&json!(chosen.source)).await?;
-        let pin = json!({"graphRef":graph_pin.as_ref().map(|(reference,_)|reference),"scope":scope,"instance":instance,"threadId":ctx.config.thread_id,"step":ctx.step,"key":chosen.key,"hash":chosen.hash,"sourceRef":source_ref,"definitionRef":definition_ref,"diagnostic":diagnostic});
+        let pin = json!({"graphRef":graph_pin.as_ref().map(|(reference,_)|reference),"scope":scope,"instance":instance,"threadId":ctx.config.thread_id,"step":ctx.step,"key":chosen.key,"hash":chosen.hash,"definitionRevision":chosen.revision(),"packageRevision":chosen.package.as_ref().map(|package|&package.root),"sourceRef":source_ref,"definitionRef":definition_ref,"diagnostic":diagnostic});
         self.store
             .claim_record(&self.run_id, "revision-steps", &pin_key, &pin)
             .await?;
@@ -410,10 +517,10 @@ impl Node for RevisionNode {
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .as_ref()
-                .filter(|(hash, _)| hash == &definition.hash)
+                .filter(|(hash, _)| hash == &definition.revision())
                 .map(|(_, node)| node.clone())
         };
-        let node = if definition.hash == base.hash {
+        let node = if definition.revision() == base.revision() {
             self.initial.clone()
         } else if let Some(node) = cached {
             node
@@ -427,7 +534,7 @@ impl Node for RevisionNode {
                 .map_err(error)?;
             let node = (self.factory)(&doc, spec).map_err(error)?;
             *self.cache.lock().unwrap_or_else(|p| p.into_inner()) =
-                Some((definition.hash.clone(), node.clone()));
+                Some((definition.revision(), node.clone()));
             node
         };
         CURRENT_REVISION.scope(metadata, node.execute(ctx)).await
@@ -452,6 +559,15 @@ fn at_scope(doc: &Composition, instance: &str, scope: &str) -> Result<Compositio
     Ok(current)
 }
 pub fn validate_definition(definition: &RevisionDefinition) -> Result<()> {
+    if let Some(package) = &definition.package {
+        zf_compiler::prepared_model::validate_package_definition(
+            package,
+            &definition.source,
+            &definition.composition,
+            &definition.context_selections,
+            &RuntimePrimitives,
+        )?;
+    }
     ensure!(
         key(&definition.source) == definition.hash,
         "Revision source hash mismatch"
@@ -781,14 +897,19 @@ async fn publish_batch_impl(
         .iter()
         .map(|item| json!(item.prepared))
         .collect();
+    let revisions: Vec<_> = publications
+        .iter()
+        .map(|item| item.definition.revision())
+        .collect();
     let definition_writes: Vec<_> = publications
         .iter()
         .zip(&definitions)
+        .zip(&revisions)
         .map(
-            |(item, value)| zf_storage::revision_publications::DefinitionWrite {
+            |((item, value), revision)| zf_storage::revision_publications::DefinitionWrite {
                 run_id: &item.run_id,
                 instance: &item.instance,
-                hash: &item.definition.hash,
+                hash: revision,
                 value,
             },
         )
@@ -852,8 +973,12 @@ pub async fn checkpoint_definition(
     let definition: RevisionDefinition = serde_json::from_value(store.resolve(reference).await?)?;
     validate_definition(&definition)?;
     ensure!(
-        pin["hash"] == definition.hash,
-        "Checkpoint definition hash mismatch"
+        pin["hash"] == definition.hash
+            && pin.get("definitionRevision").map_or(
+                definition.package.is_none() && definition.context_selections.is_empty(),
+                |revision| revision == &definition.revision()
+            ),
+        "Checkpoint definition revision mismatch"
     );
     Ok(Some(definition))
 }
@@ -935,9 +1060,9 @@ pub async fn latest_runtime_graph(
         let instance = head["instance"]
             .as_str()
             .context("Revision instance absent")?;
-        let Some(flow) = plan.flows.get_mut(instance) else {
+        if !plan.flows.contains_key(instance) {
             continue;
-        };
+        }
         let definition: RevisionDefinition = serde_json::from_value(
             store
                 .resolve(
@@ -947,16 +1072,9 @@ pub async fn latest_runtime_graph(
                 )
                 .await?,
         )?;
-        ensure!(
-            definition.key == flow.key,
-            "Published flow identity disagrees with runtime instance"
-        );
-        flow.exports = zf_flows::flow_contract::validate(&definition.composition)?
-            .context("Published flow exports absent")?;
-        flow.composition = definition.composition;
-        flow.source = definition.source;
-        flow.hash = definition.hash;
+        definition.apply_to(&mut plan, instance)?;
     }
+    plan.validate(&RuntimePrimitives)?;
     Ok(Some(plan))
 }
 

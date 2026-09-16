@@ -299,9 +299,12 @@ async fn flow_and_bridge_acceptance_share_real_catalogue_preflight_without_http(
         .await
         .unwrap();
     for file in [&root_file, &worker_file] {
-        let actual = tokio::fs::read_to_string(&file.path).await.unwrap();
+        let actual = tokio::fs::read_to_string(file.path.join("flow.rs"))
+            .await
+            .unwrap();
         assert_eq!(file.source.as_deref(), Some(actual.as_str()));
-        assert_eq!(file.hash, context_store::hash(actual.as_bytes()));
+        assert_eq!(file.source_hash, context_store::hash(actual.as_bytes()));
+        assert_eq!(file.package.as_ref().unwrap().root, file.hash);
     }
     let accepted = f
         .service

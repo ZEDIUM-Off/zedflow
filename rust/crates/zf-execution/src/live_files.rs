@@ -58,7 +58,24 @@ pub async fn stage_mixed_publications(
 }
 
 pub async fn finish(store: &ContentStore, pending: PendingAcceptance) -> Result<SourceFile> {
-    if let Some(publication) = pending.publication() {
+    publish_pending(store, pending.id(), pending.publication()).await?;
+    pending.finish().await
+}
+
+pub async fn finish_package(
+    store: &ContentStore,
+    pending: zf_storage::flow_packages::PendingPackage,
+) -> Result<zf_flows::package::PackageSnapshot> {
+    publish_pending(store, pending.id(), pending.publication()).await?;
+    pending.finish().await
+}
+
+async fn publish_pending(
+    store: &ContentStore,
+    id: &str,
+    publication: Option<&Value>,
+) -> Result<()> {
+    if let Some(publication) = publication {
         let reference = publication["publicationsRef"]
             .as_str()
             .context("Source publication batch reference is absent")?;
@@ -68,14 +85,18 @@ pub async fn finish(store: &ContentStore, pending: PendingAcceptance) -> Result<
             Some(reference) => serde_json::from_value(store.resolve(reference).await?)?,
             None => vec![],
         };
-        revisions::publish_mixed_unique(store, pending.id(), &batch, &graphs).await?;
+        revisions::publish_mixed_unique(store, id, &batch, &graphs).await?;
     }
-    pending.finish().await
+    Ok(())
 }
 
 pub async fn recover(db: &SqlitePool, workspace: &Path) -> Result<()> {
+    zf_storage::flow_packages::recover_lifecycle(workspace.into()).await?;
     if let Some(pending) = source_acceptance::recover(workspace.into()).await? {
         finish(&ContentStore::from_pool(db.clone()), pending).await?;
+    }
+    if let Some(pending) = zf_storage::flow_packages::recover(workspace.into()).await? {
+        finish_package(&ContentStore::from_pool(db.clone()), pending).await?;
     }
     Ok(())
 }
@@ -104,19 +125,14 @@ pub fn definitions_from_snapshots(rows: &[RunDefinitionSnapshot]) -> Result<Vec<
             let runtime: prepared::PreparedRuntime = serde_json::from_value(runtime)?;
             runtime
                 .flows
-                .into_iter()
-                .map(|(instance, flow)| {
-                    (
-                        instance,
-                        RevisionDefinition {
-                            key: flow.key,
-                            hash: flow.hash,
-                            source: flow.source,
-                            composition: flow.composition,
-                        },
-                    )
+                .keys()
+                .map(|instance| {
+                    Ok((
+                        instance.clone(),
+                        RevisionDefinition::from_prepared(&runtime, instance)?,
+                    ))
                 })
-                .collect()
+                .collect::<Result<_>>()?
         } else {
             let composition: Composition = serde_json::from_value(run.composition.clone())?;
             let source = &run.flow_source;
@@ -127,6 +143,10 @@ pub fn definitions_from_snapshots(rows: &[RunDefinitionSnapshot]) -> Result<Vec<
             std::collections::BTreeMap::from([(
                 String::new(),
                 RevisionDefinition {
+                    package: (!run.flow_package.is_null())
+                        .then(|| serde_json::from_value(run.flow_package.clone()))
+                        .transpose()?,
+                    context_selections: BTreeMap::new(),
                     key: run.flow_ref["key"]
                         .as_str()
                         .unwrap_or(&composition.id)
@@ -208,8 +228,8 @@ pub async fn accept_source(
     let files = flows.list(workspace).await?;
     let mut preconditions = BTreeMap::new();
     for file in &files {
-        if !file.hash.is_empty() {
-            preconditions.insert(file.path.clone(), file.hash.clone());
+        for condition in &file.preconditions {
+            preconditions.insert(condition.path.clone(), condition.hash.clone());
         }
         let Some(doc) = &file.composition else {
             continue;
@@ -249,6 +269,8 @@ pub async fn accept_source(
             instance: run.instance,
             baseline: run.baseline,
             definition: RevisionDefinition {
+                package: run.definition.package,
+                context_selections: run.definition.context_selections,
                 key: run.definition.key,
                 hash: zf_storage::flow_store::hash(source.as_bytes()),
                 source,
@@ -358,17 +380,10 @@ pub fn graphs_from_snapshots(rows: &[RunDefinitionSnapshot]) -> Result<Vec<RunGr
             baseline.clone()
         };
         for definition in definitions.iter().filter(|d| &d.run_id == run_id) {
-            let flow = prepared
-                .flows
-                .get_mut(&definition.instance)
-                .context("Runtime definition instance absent")?;
-            flow.key.clone_from(&definition.definition.key);
-            flow.hash.clone_from(&definition.definition.hash);
-            flow.source.clone_from(&definition.definition.source);
-            flow.composition
-                .clone_from(&definition.definition.composition);
-            flow.exports = zf_flows::flow_contract::validate(&flow.composition)?
-                .context("Live flow exports absent")?;
+            definition
+                .definition
+                .apply_to(&mut prepared, &definition.instance)?;
+            let flow = &prepared.flows[&definition.instance];
             // Compatible flow edits may enrich inference metadata; the plan's
             // structural contract is rebuilt from these exact current flows.
             prepared
@@ -440,8 +455,8 @@ pub async fn accept_bridge(
     let mut preconditions = BTreeMap::new();
     let mut before = CompositionCatalog::default();
     for file in flows.list(workspace).await? {
-        if !file.hash.is_empty() {
-            preconditions.insert(file.path, file.hash);
+        for condition in &file.preconditions {
+            preconditions.insert(condition.path.clone(), condition.hash.clone());
         }
         let Some(doc) = file.composition else {
             continue;

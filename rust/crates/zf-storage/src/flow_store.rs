@@ -8,7 +8,9 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+#[cfg(test)]
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 use zf_flows::{flow_format::SourceValidator, flow_source, schema::Composition};
 
 #[derive(Debug)]
@@ -30,7 +32,14 @@ pub struct FlowFile {
     pub scope: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_id: Option<String>,
+    /// Catalogue revision: source hash for legacy files, full closure revision for packages.
     pub hash: String,
+    #[serde(default)]
+    pub source_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<zf_flows::package::PackageSnapshot>,
+    #[serde(skip)]
+    pub preconditions: Vec<crate::source_acceptance::FilePrecondition>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_version: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -55,6 +64,18 @@ pub struct FlowWrite {
     pub source: String,
     pub composition: Composition,
     pub create: bool,
+    pub package: zf_flows::package::PackageSnapshot,
+    pub preconditions: Vec<crate::source_acceptance::FilePrecondition>,
+}
+
+/// An exact legacy conversion proposal, without catalogue or run publication.
+/// The execution service audits consumers and validates the captured Rust before
+/// the lifecycle writer rechecks the whole catalogue under its locks.
+pub struct FlowConversionPlan {
+    pub legacy: FlowFile,
+    pub lock_workspace: PathBuf,
+    pub target: PathBuf,
+    pub package: zf_flows::package::PackageSnapshot,
 }
 
 pub fn hash(source: &[u8]) -> String {
@@ -83,12 +104,18 @@ impl FlowStore {
         let mut roots = vec![workspace.path.clone(), self.home.clone()];
         roots.sort();
         roots.dedup();
+        // Coordinated recovery takes all participant locks. Do it before this
+        // read holds any root, never from a nested reader-lock acquisition.
+        for root in &roots {
+            crate::flow_packages::recover_lifecycle(root.clone()).await?;
+        }
         let mut _catalog_guards = Vec::new();
         for root in roots {
             _catalog_guards.push(crate::context_store::reader_lock(root).await?);
         }
         let mut flows = Vec::new();
         let mut seen = HashSet::new();
+        let mut package_keys = HashSet::new();
         for (root, scope) in self.roots(workspace) {
             let mut pending = vec![root];
             while let Some(directory) = pending.pop() {
@@ -137,6 +164,11 @@ impl FlowStore {
                     match tokio::fs::read_to_string(&path).await {
                         Ok(source) => {
                             flow.hash = hash(source.as_bytes());
+                            flow.source_hash.clone_from(&flow.hash);
+                            flow.preconditions = vec![crate::source_acceptance::FilePrecondition {
+                                path: path.clone(),
+                                hash: flow.source_hash.clone(),
+                            }];
                             match flow_source::parse(&source, self.validator.as_ref()) {
                                 Ok(doc) => {
                                     flow.file_version = Some(doc.format_version);
@@ -152,6 +184,57 @@ impl FlowStore {
                             .push(format!("Lecture du fichier impossible : {error}")),
                     }
                     flows.push(flow);
+                }
+            }
+        }
+        // Package roots are distinct from the four historical file roots.
+        // Each immediate directory is one package, not another recursive flow catalogue.
+        for (root, scope) in [
+            (workspace.path.join(".zedflow/flow"), "workspace"),
+            (self.home.join(".zedflow/flow"), "global"),
+        ] {
+            let mut entries = match tokio::fs::read_dir(&root).await {
+                Ok(entries) => entries,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => {
+                    flows.push(diagnostic_file(
+                        &root,
+                        scope,
+                        workspace,
+                        format!("Lecture des packages impossible : {error}"),
+                    ));
+                    continue;
+                }
+            };
+            while let Some(entry) = entries.next_entry().await? {
+                let path = entry.path();
+                if !seen.insert(path.clone()) {
+                    continue;
+                }
+                let mut file = self.read_package(&path, scope, workspace).await;
+                if file.package.is_some() {
+                    package_keys.insert(file.key.clone());
+                }
+                // List responses expose revisions and diagnostics, never the closure's contents.
+                file.package = None;
+                file.source = None;
+                flows.push(file);
+            }
+        }
+        let mut identities = std::collections::BTreeMap::<String, Vec<usize>>::new();
+        for (index, flow) in flows.iter().enumerate() {
+            if flow.composition.is_some() || package_keys.contains(&flow.key) {
+                identities.entry(flow.id.clone()).or_default().push(index);
+            }
+        }
+        for (id, entries) in identities {
+            if entries.len() > 1
+                && entries
+                    .iter()
+                    .any(|i| flows[*i].hash != flows[entries[0]].hash)
+            {
+                for index in entries {
+                    flows[index].diagnostics.push(format!("Identité de flow concurrente : {id}. Choisissez une conversion ou une identité distincte."));
                 }
             }
         }
@@ -171,11 +254,31 @@ impl FlowStore {
             .into_iter()
             .find(|file| file.key == key)
             .context("Flow introuvable dans ce workspace")?;
+        if tokio::fs::symlink_metadata(&flow.path).await?.is_dir() {
+            let _guard = crate::context_store::reader_lock(if flow.scope == "global" {
+                self.home.clone()
+            } else {
+                workspace.path.clone()
+            })
+            .await?;
+            let mut loaded = self.read_package(&flow.path, &flow.scope, workspace).await;
+            for diagnostic in flow.diagnostics {
+                if !loaded.diagnostics.contains(&diagnostic) {
+                    loaded.diagnostics.push(diagnostic);
+                }
+            }
+            return Ok(loaded);
+        }
         if !tokio::fs::symlink_metadata(&flow.path).await?.is_file() {
             return Ok(flow);
         }
         if let Ok(source) = tokio::fs::read_to_string(&flow.path).await {
             flow.hash = hash(source.as_bytes());
+            flow.source_hash.clone_from(&flow.hash);
+            flow.preconditions = vec![crate::source_acceptance::FilePrecondition {
+                path: flow.path.clone(),
+                hash: flow.source_hash.clone(),
+            }];
             // Parse the same bytes returned and later frozen by callers.
             flow.composition = flow_source::parse(&source, self.validator.as_ref()).ok();
             flow.file_version = flow.composition.as_ref().map(|doc| doc.format_version);
@@ -193,6 +296,117 @@ impl FlowStore {
         Ok(flow)
     }
 
+    async fn read_package(&self, path: &Path, scope: &str, workspace: &Workspace) -> FlowFile {
+        let mut flow = diagnostic_file(path, scope, workspace, String::new());
+        flow.diagnostics.clear();
+        let result = async {
+            let captured = crate::flow_packages::capture_with_preconditions(path).await?;
+            let manifest = captured.snapshot.root_manifest()?;
+            let source = captured.snapshot.root_node()?.entry_source()?.to_owned();
+            let doc = flow_source::parse(&source, self.validator.as_ref());
+            // Capture remains inspectable even when the visual projection is unsupported.
+            flow.id = manifest.id.as_str().to_owned();
+            flow.name.clone_from(&manifest.name);
+            flow.source_hash = hash(source.as_bytes());
+            flow.hash.clone_from(&captured.snapshot.root);
+            flow.source = Some(source);
+            flow.preconditions = captured.preconditions;
+            flow.package = Some(captured.snapshot);
+            ensure!(
+                path.file_name().and_then(|s| s.to_str()) == Some(flow.id.as_str()),
+                "Package directory must match its flow identity"
+            );
+            let doc = doc?;
+            ensure!(
+                flow.id == doc.id,
+                "Package identity and Rust flow identity disagree"
+            );
+            flow.name.clone_from(&doc.name);
+            flow.file_version = Some(doc.format_version);
+            flow.composition = Some(doc);
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        if let Err(error) = result {
+            flow.diagnostics.push(format!("{error:#}"));
+        }
+        flow
+    }
+
+    /// Capture a legacy entry without rewriting its source or revision.
+    /// This method performs no installation and grants no execution capability.
+    pub async fn plan_conversion(
+        &self,
+        workspace: &Workspace,
+        key: &str,
+        expected_hash: &str,
+    ) -> Result<FlowConversionPlan> {
+        let legacy = self.get(workspace, key).await?;
+        ensure!(legacy.package.is_none(), "Ce flow est déjà un package");
+        ensure!(
+            legacy.hash == expected_hash && !expected_hash.is_empty(),
+            Conflict("Le flow a changé avant sa conversion")
+        );
+        ensure!(
+            legacy.diagnostics.is_empty(),
+            "Le flow historique contient des diagnostics : {:?}",
+            legacy.diagnostics
+        );
+        let composition = legacy
+            .composition
+            .as_ref()
+            .context("Le flow historique ne peut pas être converti automatiquement")?;
+        let source = legacy
+            .source
+            .as_ref()
+            .context("Source historique absente")?;
+        ensure!(
+            hash(source.as_bytes()) == expected_hash,
+            Conflict("La source historique a changé pendant sa lecture")
+        );
+        ensure!(
+            self.roots(workspace)
+                .iter()
+                .any(|(root, scope)| legacy.scope == *scope && legacy.path.starts_with(root)),
+            "Le flow n’appartient pas à une racine historique reconnue"
+        );
+        let lock_workspace = if legacy.scope == "global" {
+            self.home.clone()
+        } else {
+            workspace.path.clone()
+        };
+        let target = lock_workspace.join(".zedflow/flow").join(&composition.id);
+        let package = zf_flows::package::PackageSnapshot::capture(
+            serde_json::json!({"formatVersion":1,"id":composition.id,"name":composition.name,
+                "entry":"flow.rs","files":["flow.rs"]})
+            .to_string(),
+            std::collections::BTreeMap::from([("flow.rs".into(), source.as_bytes().to_vec())]),
+            std::collections::BTreeMap::new(),
+        )?;
+        ensure!(
+            self.list(workspace)
+                .await?
+                .iter()
+                .all(|other| other.key == key || other.id != composition.id),
+            "Identité de flow concurrente : {}. Résolvez les doublons avant conversion.",
+            composition.id
+        );
+        match tokio::fs::symlink_metadata(&target).await {
+            Ok(_) => anyhow::bail!(
+                "La destination du package existe déjà : {}",
+                target.display()
+            ),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        Ok(FlowConversionPlan {
+            legacy,
+            lock_workspace,
+            target,
+            package,
+        })
+    }
+
     pub async fn store(
         &self,
         workspace: &Workspace,
@@ -203,16 +417,19 @@ impl FlowStore {
     ) -> Result<FlowFile> {
         let _guard = self.writer.lock().await;
         let plan = self.plan(workspace, doc, scope, key, expected_hash).await?;
-        let _authoring = crate::context_store::writer_lock(plan.lock_workspace).await?;
-        atomic_write(
-            &plan.path,
-            plan.source.as_bytes(),
-            plan.create,
-            expected_hash,
-        )
+        let path = plan.path.clone();
+        crate::flow_packages::begin(crate::flow_packages::PackageWrite {
+            workspace: plan.lock_workspace,
+            target: path.clone(),
+            snapshot: plan.package,
+            expected_revision: expected_hash.map(str::to_owned),
+            publication: None,
+            preconditions: plan.preconditions,
+        })
+        .await?
+        .finish()
         .await?;
-        drop(_authoring);
-        self.get(workspace, &path_id(&plan.path)).await
+        self.get(workspace, &path_id(&path)).await
     }
 
     pub async fn plan(
@@ -227,8 +444,21 @@ impl FlowStore {
             ["global", "workspace"].contains(&scope),
             "Portée de flow invalide"
         );
+        let mut previous_package = None;
+        let mut preconditions = Vec::new();
         let (path, create, lock_workspace) = if let Some(key) = key {
             let old = self.get(workspace, key).await?;
+            ensure!(
+                old.package.is_some(),
+                "Ce flow historique doit être converti explicitement en package avant modification."
+            );
+            ensure!(
+                old.diagnostics.is_empty(),
+                "Le package contient des diagnostics : {:?}",
+                old.diagnostics
+            );
+            previous_package = old.package;
+            preconditions = old.preconditions;
             ensure!(
                 old.composition.is_some(),
                 "Ce fichier ne peut pas être modifié visuellement"
@@ -255,10 +485,7 @@ impl FlowStore {
             } else {
                 workspace.path.clone()
             };
-            let directory = root.join(".zedflow/flows");
-            tokio::fs::create_dir_all(&directory).await?;
-            let directory = tokio::fs::canonicalize(directory).await?;
-            (directory.join(filename(&doc)), true, root)
+            (root.join(".zedflow/flow").join(&doc.id), true, root)
         };
         let source = flow_source::render(&doc, self.validator.as_ref())?;
         let restored = flow_source::parse(&source, self.validator.as_ref())?;
@@ -266,12 +493,56 @@ impl FlowStore {
             restored.id == doc.id,
             "Le fichier généré ne préserve pas l’identité du flow"
         );
+        let package = if let Some(previous) = previous_package {
+            let mut snapshot = previous;
+            let mut node = snapshot
+                .packages
+                .remove(&snapshot.root)
+                .context("Package root absent")?;
+            let mut manifest = node.manifest()?;
+            ensure!(
+                manifest.id.as_str() == doc.id,
+                "Une modification ne peut pas changer l’identité du package"
+            );
+            if manifest.name != doc.name {
+                manifest.name.clone_from(&doc.name);
+                node.manifest_source = serde_json::to_string_pretty(&manifest)?;
+            }
+            node.files.insert(
+                zf_flows::package::ENTRY_FILE.into(),
+                source.as_bytes().to_vec(),
+            );
+            snapshot.root = node.revision();
+            snapshot.packages.insert(snapshot.root.clone(), node);
+            snapshot.validate()?;
+            snapshot
+        } else {
+            let manifest = zf_flows::package::FlowPackageManifest {
+                format_version: zf_flows::package::PACKAGE_FORMAT_VERSION,
+                id: doc.id.clone().into(),
+                name: doc.name.clone(),
+                description: None,
+                entry: zf_flows::package::ENTRY_FILE.into(),
+                files: vec![zf_flows::package::ENTRY_FILE.into()],
+                dependencies: Default::default(),
+            };
+            zf_flows::package::PackageSnapshot::capture(
+                serde_json::to_string_pretty(&manifest)?,
+                std::collections::BTreeMap::from([(
+                    zf_flows::package::ENTRY_FILE.into(),
+                    source.as_bytes().to_vec(),
+                )]),
+                Default::default(),
+            )?
+        };
         Ok(FlowWrite {
             path,
             lock_workspace,
             source,
             composition: doc,
             create,
+            package,
+            preconditions,
         })
     }
 
@@ -324,6 +595,9 @@ fn diagnostic_file(
         scope: scope.into(),
         workspace_id: (scope == "workspace").then(|| workspace.id.clone()),
         hash: String::new(),
+        source_hash: String::new(),
+        package: None,
+        preconditions: vec![],
         file_version: None,
         composition: None,
         diagnostics: vec![diagnostic],
@@ -331,28 +605,7 @@ fn diagnostic_file(
     }
 }
 
-fn filename(doc: &Composition) -> String {
-    let slug: String = doc
-        .name
-        .chars()
-        .take(64)
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect();
-    let slug = slug.trim_matches('-');
-    let id = hash(doc.id.as_bytes());
-    format!(
-        "{}-{}.rs",
-        if slug.is_empty() { "flow" } else { slug },
-        &id[..12]
-    )
-}
-
+#[cfg(test)]
 async fn atomic_write(
     path: &Path,
     bytes: &[u8],

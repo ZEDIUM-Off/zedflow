@@ -20,6 +20,7 @@ pub struct RunDefinitionSnapshot {
     pub flow_ref: Value,
     pub composition: Value,
     pub flow_source: Value,
+    pub flow_package: Value,
     pub runtime_graph: Value,
     pub revision_heads: BTreeMap<String, DefinitionHead>,
     pub runtime_graph_head: Option<DefinitionHead>,
@@ -52,7 +53,7 @@ async fn head(store: &ContentStore, reference: &str, target: &str) -> Result<Def
 pub async fn snapshots(db: &SqlitePool, workspace_id: &str) -> Result<Vec<RunDefinitionSnapshot>> {
     let mut tx = db.begin().await?;
     let rows: Vec<(String,String)> = sqlx::query_as(
-        "SELECT id,json_object('flowRef',json_extract(document,'$.flowRef'),'composition',json_extract(document,'$.composition'),'compositionRef',json_extract(document,'$.compositionRef'),'flowSource',json_extract(document,'$.flowSource'),'flowSourceRef',json_extract(document,'$.flowSourceRef'),'runtimeGraph',json_extract(document,'$.runtimeGraph'),'runtimeGraphRef',json_extract(document,'$.runtimeGraphRef')) FROM runs WHERE json_extract(document,'$.workspaceId')=? AND COALESCE(json_extract(document,'$.status'),'')!='completed' ORDER BY id"
+        "SELECT id,json_object('flowRef',json_extract(document,'$.flowRef'),'composition',json_extract(document,'$.composition'),'compositionRef',json_extract(document,'$.compositionRef'),'flowSource',json_extract(document,'$.flowSource'),'flowSourceRef',json_extract(document,'$.flowSourceRef'),'flowPackage',json_extract(document,'$.flowPackage'),'flowPackageRef',json_extract(document,'$.flowPackageRef'),'runtimeGraph',json_extract(document,'$.runtimeGraph'),'runtimeGraphRef',json_extract(document,'$.runtimeGraphRef')) FROM runs WHERE json_extract(document,'$.workspaceId')=? AND COALESCE(json_extract(document,'$.status'),'')!='completed' ORDER BY id"
     ).bind(workspace_id).fetch_all(&mut *tx).await?;
     let mut captures = Vec::with_capacity(rows.len());
     for (id, raw) in rows {
@@ -79,6 +80,7 @@ pub async fn snapshots(db: &SqlitePool, workspace_id: &str) -> Result<Vec<RunDef
             run_id,
             composition: field(&store, &fields, "composition").await?,
             flow_source: field(&store, &fields, "flowSource").await?,
+            flow_package: field(&store, &fields, "flowPackage").await?,
             runtime_graph: field(&store, &fields, "runtimeGraph").await?,
             flow_ref: fields["flowRef"].clone(),
             revision_heads,

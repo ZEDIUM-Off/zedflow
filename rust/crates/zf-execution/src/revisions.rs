@@ -9,21 +9,16 @@ pub(crate) fn revision_definitions(
         let runtime: zf_compiler::prepared_model::PreparedRuntime =
             serde_json::from_value(runtime.clone())?;
         runtime.validate(&zf_runtime::materialize::RuntimePrimitives)?;
-        return Ok(runtime
+        return runtime
             .flows
-            .into_iter()
-            .map(|(instance, flow)| {
-                (
-                    instance,
-                    RevisionDefinition {
-                        key: flow.key,
-                        hash: flow.hash,
-                        source: flow.source,
-                        composition: flow.composition,
-                    },
-                )
+            .keys()
+            .map(|instance| {
+                Ok((
+                    instance.clone(),
+                    RevisionDefinition::from_prepared(&runtime, instance)?,
+                ))
             })
-            .collect());
+            .collect::<anyhow::Result<_>>();
     }
     let composition: Composition = serde_json::from_value(run["composition"].clone())?;
     let source = if let Some(source) = run["flowSource"].as_str() {
@@ -45,6 +40,12 @@ pub(crate) fn revision_definitions(
     Ok(std::collections::BTreeMap::from([(
         String::new(),
         RevisionDefinition {
+            package: run
+                .get("flowPackage")
+                .filter(|v| !v.is_null())
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()?,
+            context_selections: Default::default(),
             key: run["flowRef"]["key"]
                 .as_str()
                 .unwrap_or(&composition.id)

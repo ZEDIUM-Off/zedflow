@@ -556,6 +556,8 @@ async fn revision_preparation_preserves_native_context_and_the_pinned_step_after
         )
         .unwrap();
         RevisionDefinition {
+            package: None,
+            context_selections: Default::default(),
             key: "fixture".into(),
             hash: format!("{:x}", Sha256::digest(source.as_bytes())),
             source,

@@ -676,21 +676,27 @@ pub(super) fn workspace_lock(
         return Ok(None);
     };
     let root = directory(workspace, &[], false)?.context("Source workspace disappeared")?;
+    super::flow_packages::ensure_no_lifecycle_locked(&root)?;
     if exclusive {
         recover_locked(workspace, &root)?;
         super::source_acceptance::recover_files_locked(workspace, &root)?;
+        super::flow_packages::recover_files_locked(workspace, &root)?;
         return Ok(Some(lock));
     }
     loop {
+        super::flow_packages::ensure_no_lifecycle_locked(&root)?;
         if fs::symlink_metadata(root.join(IMPORT_MARKER)).is_err()
             && fs::symlink_metadata(root.join(super::source_acceptance::MARKER)).is_err()
+            && fs::symlink_metadata(root.join(super::flow_packages::MARKER)).is_err()
         {
             break;
         }
         lock.unlock()?;
         lock.lock()?;
+        super::flow_packages::ensure_no_lifecycle_locked(&root)?;
         recover_locked(workspace, &root)?;
         super::source_acceptance::recover_files_locked(workspace, &root)?;
+        super::flow_packages::recover_files_locked(workspace, &root)?;
         lock.unlock()?;
         lock.lock_shared()?;
     }

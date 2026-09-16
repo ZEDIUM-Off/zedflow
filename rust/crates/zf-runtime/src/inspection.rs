@@ -29,22 +29,18 @@ async fn initial(
     if !runtime.is_null() {
         let runtime: PreparedRuntime = serde_json::from_value(runtime)?;
         runtime.validate(&RuntimePrimitives)?;
-        return Ok(runtime
+        return runtime
             .flows
-            .into_iter()
-            .map(|(instance, flow)| {
-                (
-                    instance,
-                    RevisionDefinition {
-                        key: flow.key,
-                        source: flow.source,
-                        hash: flow.hash,
-                        composition: flow.composition,
-                    },
-                )
+            .keys()
+            .map(|instance| {
+                Ok((
+                    instance.clone(),
+                    RevisionDefinition::from_prepared(&runtime, instance)?,
+                ))
             })
-            .collect());
+            .collect::<anyhow::Result<_>>();
     }
+    let package = field(store, run, "flowPackage").await?;
     let composition = field(store, run, "composition").await?;
     let source = field(store, run, "flowSource").await?;
     let source = source
@@ -54,6 +50,12 @@ async fn initial(
     Ok(BTreeMap::from([(
         String::new(),
         RevisionDefinition {
+            package: if package.is_null() {
+                None
+            } else {
+                Some(serde_json::from_value(package)?)
+            },
+            context_selections: Default::default(),
             key: run["flowRef"]["key"]
                 .as_str()
                 .or(composition["id"].as_str())
@@ -131,18 +133,26 @@ pub async fn definition(
         .or_else(|| bases.contains_key("root").then_some("root"))
         .unwrap_or_default();
     let base = bases.get(instance).context("Flow instance absent")?;
-    let hash = query
+    let base_revision = base.revision();
+    let pinned_revision = pin.and_then(|p| {
+        p["definitionRevision"]
+            .as_str()
+            .or_else(|| p["hash"].as_str())
+    });
+    let revision = query
         .hash
         .as_deref()
-        .or_else(|| pin.and_then(|p| p["hash"].as_str()))
-        .unwrap_or(&base.hash);
-    if let (Some(requested), Some(pin_hash)) = (&query.hash, pin.and_then(|p| p["hash"].as_str())) {
-        ensure!(requested == pin_hash, "Passage used another flow revision");
+        .or(pinned_revision)
+        .unwrap_or(&base_revision);
+    if let (Some(requested), Some(pinned)) = (&query.hash, pinned_revision) {
+        ensure!(requested == pinned, "Passage used another flow revision");
     }
-    let definition = if hash == base.hash {
+    let definition = if let Some(reference) = pin.and_then(|p| p["definitionRef"].as_str()) {
+        serde_json::from_value::<RevisionDefinition>(store.resolve(reference).await?)?
+    } else if revision == base_revision {
         base.clone()
     } else {
-        let key = zf_storage::context_store::hash(format!("{instance}\0{hash}").as_bytes());
+        let key = zf_storage::context_store::hash(format!("{instance}\0{revision}").as_bytes());
         let value = store
             .record(id, "revision-definitions", &key)
             .await?
@@ -150,26 +160,28 @@ pub async fn definition(
         serde_json::from_value::<RevisionDefinition>(value)?
     };
     super::revisions::validate_definition(&definition)?;
-    ensure!(definition.hash == hash, "Definition hash mismatch");
+    ensure!(
+        definition.key == base.key && definition.revision() == revision,
+        "Definition revision mismatch"
+    );
     let graph_ref = pin.and_then(|p| p["graphRef"].as_str());
-    let runtime = if let Some(reference) = graph_ref {
-        let mut runtime: PreparedRuntime = serde_json::from_value(store.resolve(reference).await?)?;
-        if let Some(flow) = runtime.flows.get_mut(instance) {
-            flow.composition = definition.composition.clone();
-            flow.source = definition.source.clone();
-            flow.hash = definition.hash.clone();
-            flow.exports = zf_flows::flow_contract::validate(&flow.composition)?
-                .context("Instance exports absent")?;
-        }
+    let (runtime, definition_matches_graph) = if let Some(reference) = graph_ref {
+        let runtime: PreparedRuntime = serde_json::from_value(store.resolve(reference).await?)?;
         runtime.validate(&RuntimePrimitives)?;
-        Some(runtime.summary())
+        let captured = RevisionDefinition::from_prepared(&runtime, instance)?;
+        // A pending invocation may retain an older definition than this graph's
+        // catalogue. Both captures are exact; do not fabricate a mixed graph.
+        (
+            Some(runtime.summary()),
+            Some(captured.revision() == definition.revision()),
+        )
     } else {
-        None
+        (None, None)
     };
     Ok(
         json!({"runId":id,"instance":instance,"nodePath":node_path,"occurrenceId":activity.map(|a|&a["occurrenceId"]),
-        "key":definition.key,"hash":definition.hash,"source":definition.source,"composition":definition.composition,
-        "flowRevision":pin,"graphRef":graph_ref,"runtime":runtime,"exact":true}),
+        "key":definition.key,"hash":definition.hash,"definitionRevision":definition.revision(),"package":definition.package,"source":definition.source,"composition":definition.composition,
+        "flowRevision":pin,"graphRef":graph_ref,"runtime":runtime,"definitionMatchesGraph":definition_matches_graph,"exact":true}),
     )
 }
 
@@ -199,15 +211,16 @@ pub async fn revisions(store: &ContentStore, run: &Value) -> Result<Value> {
                     )
                     .await?,
             )?;
-            definition.hash
+            definition
         } else {
-            base.hash.clone()
+            base.clone()
         };
+        let published_revision = published.revision();
         let scopes:Vec<_>=active.iter().filter(|pin|pin["instance"]==instance).map(|pin|json!({
-            "scope":pin["scope"],"threadId":pin["threadId"],"step":pin["step"],"hash":pin["hash"],"graphRef":pin["graphRef"],
-            "diagnostic":pin["diagnostic"],"pending":pin["hash"]!=published
+            "scope":pin["scope"],"threadId":pin["threadId"],"step":pin["step"],"hash":pin["hash"],"definitionRevision":pin["definitionRevision"],"packageRevision":pin["packageRevision"],"graphRef":pin["graphRef"],
+            "diagnostic":pin["diagnostic"],"pending":pin.get("definitionRevision").unwrap_or(&pin["hash"])!=&json!(published_revision)
         })).collect();
-        instances.push(json!({"instance":instance,"key":base.key,"initialHash":base.hash,"publishedHash":published,"scopes":scopes}));
+        instances.push(json!({"instance":instance,"key":base.key,"initialHash":base.hash,"publishedHash":published.hash,"initialRevision":base.revision(),"publishedRevision":published_revision,"scopes":scopes}));
     }
     let graph = store.record(id, "runtime-graph-heads", "current").await?;
     Ok(

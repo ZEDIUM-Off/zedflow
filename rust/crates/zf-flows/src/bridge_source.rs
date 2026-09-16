@@ -119,9 +119,75 @@ pub fn generate(bridge: &BridgeDefinition) -> Result<String, Vec<Diagnostic>> {
 }
 
 pub fn parse(source: &str) -> Result<BridgeDefinition, Vec<Diagnostic>> {
-    parse_inner(source).map_err(diagnostic)
+    parse_inner(source)
+        .map(|(bridge, _)| bridge)
+        .map_err(diagnostic)
 }
-fn parse_inner(source: &str) -> Result<BridgeDefinition> {
+
+/// Remaps only flow arguments of supported `.import` and `.reuse` builders.
+///
+/// Every byte outside the replaced string literals is preserved, including
+/// comments, whitespace, line endings, aliases and connection predicates.
+/// Matching uses the decoded Rust string value. A missing or unchanged key
+/// returns the original source bytes after validation.
+///
+/// # Errors
+///
+/// Returns diagnostics if the source is not a supported bridge, a literal's
+/// source span cannot be verified, or reparsing changes any other semantics.
+pub fn remap_flow_imports(
+    source: &str,
+    old_key: &str,
+    new_key: &str,
+) -> Result<String, Vec<Diagnostic>> {
+    remap_flow_imports_inner(source, old_key, new_key).map_err(diagnostic)
+}
+
+fn remap_flow_imports_inner(source: &str, old_key: &str, new_key: &str) -> Result<String> {
+    let (mut expected, imports) = parse_inner(source)?;
+    if old_key == new_key || !expected.imports.values().any(|value| value.flow == old_key) {
+        return Ok(source.to_owned());
+    }
+    let mut spans = imports
+        .into_iter()
+        .filter(|literal| string_value(literal) == old_key)
+        .map(|literal| literal.span().byte_range())
+        .collect::<Vec<_>>();
+    spans.sort_by_key(|span| span.start);
+    let replacement = text(new_key);
+    let mut output = String::with_capacity(source.len());
+    let mut cursor = 0;
+    for span in spans {
+        ensure!(span.start >= cursor, "Overlapping bridge import spans");
+        let unchanged = source
+            .get(cursor..span.start)
+            .context("Invalid bridge import start span")?;
+        let original = source
+            .get(span.clone())
+            .context("Invalid bridge import literal span")?;
+        ensure!(
+            string_value(&syn::parse_str::<syn::LitStr>(original)?) == old_key,
+            "Bridge import span does not match its parsed value"
+        );
+        output.push_str(unchanged);
+        output.push_str(&replacement);
+        cursor = span.end;
+    }
+    output.push_str(&source[cursor..]);
+    for import in expected.imports.values_mut() {
+        if import.flow == old_key {
+            new_key.clone_into(&mut import.flow);
+        }
+    }
+    let (actual, _) = parse_inner(&output)?;
+    ensure!(
+        serde_json::to_value(&expected)? == serde_json::to_value(&actual)?,
+        "Bridge import remapping changed unrelated semantics"
+    );
+    Ok(output)
+}
+
+fn parse_inner(source: &str) -> Result<(BridgeDefinition, Vec<syn::LitStr>)> {
     ensure!(
         source.len() <= context_source::MAX_SOURCE_BYTES,
         "Bridge source exceeds 1 MiB"
@@ -151,6 +217,7 @@ fn parse_inner(source: &str) -> Result<BridgeDefinition> {
     }
     call(root, "BridgeDefinition::new", 0)?;
     let mut bridge = BridgeDefinition::default();
+    let mut imports = Vec::new();
     for method in chain.into_iter().rev() {
         let args: Vec<_> = method.args.iter().collect();
         match method.method.to_string().as_str() {
@@ -164,8 +231,10 @@ fn parse_inner(source: &str) -> Result<BridgeDefinition> {
             "import" | "reuse" => {
                 let reuse = method.method == "reuse";
                 count(&args, if reuse { 3 } else { 2 })?;
+                let flow = string_literal(args[1])?;
+                imports.push(flow.clone());
                 let value = FlowImport {
-                    flow: literal(args[1])?,
+                    flow: string_value(flow),
                     reuse: if reuse { Some(literal(args[2])?) } else { None },
                 };
                 ensure!(
@@ -219,13 +288,38 @@ fn parse_inner(source: &str) -> Result<BridgeDefinition> {
         "use zedflow_daemon::harness::composition::*;",
         1,
     );
-    let actual = file.to_token_stream().to_string();
+    let actual = normalize_strings(file.to_token_stream()).to_string();
     ensure!(
-        syn::parse_file(&canonical)?.to_token_stream().to_string() == actual
-            || syn::parse_file(&legacy)?.to_token_stream().to_string() == actual,
+        normalize_strings(syn::parse_file(&canonical)?.to_token_stream()).to_string() == actual
+            || normalize_strings(syn::parse_file(&legacy)?.to_token_stream()).to_string() == actual,
         "Source contains unrecognized syntax or noncanonical builder order"
     );
-    Ok(bridge)
+    Ok((bridge, imports))
+}
+
+// Compare Rust string values, while retaining every other token and delimiter.
+// This accepts equivalent escapes/raw literals without accepting ignored syntax.
+fn normalize_strings(tokens: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    use proc_macro2::{Group, Literal, TokenTree};
+    tokens
+        .into_iter()
+        .map(|token| match token {
+            TokenTree::Group(group) => TokenTree::Group(Group::new(
+                group.delimiter(),
+                normalize_strings(group.stream()),
+            )),
+            TokenTree::Literal(ref literal) => {
+                if let Ok(string) = syn::parse_str::<syn::LitStr>(&literal.to_string())
+                    && string.suffix().is_empty()
+                {
+                    TokenTree::Literal(Literal::string(&string_value(&string)))
+                } else {
+                    token
+                }
+            }
+            other => other,
+        })
+        .collect()
 }
 fn count(args: &[&Expr], count: usize) -> Result<()> {
     ensure!(args.len() == count, "Expected {count} literal arguments");
@@ -258,10 +352,24 @@ fn call<'a>(expr: &'a Expr, name: &str, n: usize) -> Result<Vec<&'a Expr>> {
     Ok(args)
 }
 fn literal(expr: &Expr) -> Result<String> {
+    Ok(string_value(string_literal(expr)?))
+}
+fn string_value(literal: &syn::LitStr) -> String {
+    let value = literal.value();
+    // Rust normalizes physical CRLF before lexing. syn already does this for
+    // ordinary strings, but retains physical CRLF inside raw string values.
+    // Escaped `\r\n` in ordinary strings must keep their distinct value.
+    if literal.token().to_string().starts_with('r') {
+        value.replace("\r\n", "\n")
+    } else {
+        value
+    }
+}
+fn string_literal(expr: &Expr) -> Result<&syn::LitStr> {
     if let Expr::Lit(l) = expr
         && let syn::Lit::Str(s) = &l.lit
     {
-        return Ok(s.value());
+        return Ok(s);
     }
     bail!("Expected a literal string")
 }
@@ -314,7 +422,7 @@ fn parse_connection(expr: &Expr) -> Result<Connection> {
                     "Only literal JSON macro is allowed"
                 );
                 connection.condition = Some(
-                    context_source::parse_json_tokens(value.mac.tokens.clone())
+                    context_source::parse_json_tokens(normalize_strings(value.mac.tokens.clone()))
                         .map_err(|d| anyhow::anyhow!("{d:?}"))?,
                 );
             }

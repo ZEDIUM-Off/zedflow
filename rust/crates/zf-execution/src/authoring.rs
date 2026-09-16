@@ -34,7 +34,63 @@ pub struct StoreBridge {
     pub expected_hash: Option<String>,
 }
 
+/// Explicit conversion of one legacy source, identified by its current revision.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConvertFlow {
+    pub key: String,
+    pub expected_hash: String,
+}
+
+/// Delete a package after the service audits current catalogue consumers.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeleteFlowPackage {
+    pub key: String,
+    pub expected_hash: String,
+}
+
 impl ExecutionService {
+    /// Convert a legacy catalogue entry without changing historical run heads.
+    pub async fn convert_flow(
+        &self,
+        actor: &Actor,
+        request: ConvertFlow,
+    ) -> Result<crate::flow_conversion::ConversionResult> {
+        let b = self.admit(actor, CommandKind::Authoring, None).await?;
+        let _authoring = b.authoring_writer.lock().await;
+        let workspace = authoring_workspace(&b).await?;
+        crate::flow_conversion::convert(
+            &b.db,
+            &b.flows,
+            &workspace,
+            &b.home,
+            &request.key,
+            &request.expected_hash,
+        )
+        .await
+    }
+
+    /// Delete a package only after revision and current dependency checks.
+    pub async fn delete_flow_package(
+        &self,
+        actor: &Actor,
+        request: DeleteFlowPackage,
+    ) -> Result<()> {
+        let b = self.admit(actor, CommandKind::Authoring, None).await?;
+        let _authoring = b.authoring_writer.lock().await;
+        let workspace = authoring_workspace(&b).await?;
+        crate::flow_conversion::delete(
+            &b.db,
+            &b.flows,
+            &workspace,
+            &b.home,
+            &request.key,
+            &request.expected_hash,
+        )
+        .await
+    }
+
     /// Accepts a flow after recovery, source preflight and live-run compatibility checks.
     ///
     /// # Errors

@@ -3414,9 +3414,11 @@ name = "zf-compiler"
 version = "0.2.0-dev"
 dependencies = [
  "anyhow",
+ "proc-macro2",
  "serde",
  "serde_json",
  "sha2",
+ "syn 2.0.119",
  "zf-context",
  "zf-core",
  "zf-flows",
@@ -3475,10 +3477,12 @@ name = "zf-flows"
 version = "0.2.0-dev"
 dependencies = [
  "anyhow",
+ "base64",
  "proc-macro2",
  "quote",
  "serde",
  "serde_json",
+ "sha2",
  "syn 2.0.119",
  "uuid",
  "zf-context",

@@ -80,6 +80,8 @@ impl PendingAcceptance {
     }
     pub async fn finish(self) -> Result<SourceFile> {
         tokio::task::spawn_blocking(move || {
+            // The worker outlives a cancelled caller; it must own the lock too.
+            let _lock = self._lock;
             let root = context_store::directory(&self.workspace, &[], false)?
                 .context("Source root disappeared")?;
             let path = source_path(&self.workspace, &self.intent.revision)?;
@@ -454,7 +456,7 @@ async fn begin_internal(
         );
         for condition in preconditions {
             ensure!(
-                source_hash(&condition.path, 2 * 1024 * 1024)?.as_deref()
+                source_hash(&condition.path, zf_flows::package::MAX_PACKAGE_FILE_BYTES)?.as_deref()
                     == Some(condition.hash.as_str()),
                 Conflict("A dependent definition changed during source preflight")
             );
@@ -487,6 +489,7 @@ pub async fn recover(workspace: PathBuf) -> Result<Option<PendingAcceptance>> {
         };
         let root =
             context_store::directory(&workspace, &[], false)?.context("Source workspace absent")?;
+        crate::flow_packages::ensure_no_lifecycle_locked(&root)?;
         context_store::recover_locked(&workspace, &root)?;
         let Some(mut intent) = intent(&root)? else {
             return Ok(None);

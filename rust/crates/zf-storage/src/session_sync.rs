@@ -117,7 +117,13 @@ impl SessionSync {
         }
         run["hasFlowSource"] =
             json!(run["flowSourceRef"].is_string() || run["flowSource"].is_string());
-        for key in ["flowSource", "state", "input", "runtimeGraph"] {
+        for key in [
+            "flowSource",
+            "flowPackage",
+            "state",
+            "input",
+            "runtimeGraph",
+        ] {
             run.as_object_mut().map(|value| value.remove(key));
         }
         run["state"] = json!({});
@@ -190,6 +196,7 @@ pub fn changes(previous: &Value, next: &Value) -> Value {
                 "composition",
                 "context",
                 "flowSource",
+                "flowPackage",
                 "state",
                 "input",
                 "runtimeGraph",

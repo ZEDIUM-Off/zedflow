@@ -10,6 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use zf_flows::{
     composition::{CompositionCatalog, ResolveRequest},
     flow_contract::{self, FlowExports},
+    package::PackageSnapshot,
     schema::Composition,
 };
 
@@ -37,6 +38,9 @@ pub struct PreparedRuntime {
 pub struct DefinitionPins {
     /// Authored file hashes differ from executable hashes after context linking.
     pub flow_hashes: BTreeMap<String, String>,
+    /// Authored package closures are shared by all instances of the same flow.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub flow_packages: BTreeMap<String, PackageSnapshot>,
     pub bridge_hashes: BTreeMap<String, String>,
     pub bridge_sources: BTreeMap<String, String>,
     /// Initial per-instance choices. Effective program revisions live in each
@@ -158,7 +162,13 @@ impl PreparedRuntime {
         for (id, flow) in &self.flows {
             inference_nodes(&flow.composition, id, &format!("{id}/"), &mut inferences);
         }
-        json!({"interactive":self.interactive(),"types":self.graph.types,"entry":self.graph.entry,"instances":instances,"inferences":inferences,"routes":self.graph.routes,"aliases":self.graph.aliases,"dataBindings":self.graph.data_bindings,"bridges":self.graph.bridges.keys().collect::<Vec<_>>(),"flowHashes":self.definitions.flow_hashes,"bridgeHashes":self.definitions.bridge_hashes})
+        let package_revisions: BTreeMap<_, _> = self
+            .definitions
+            .flow_packages
+            .iter()
+            .map(|(key, package)| (key, &package.root))
+            .collect();
+        json!({"packageRevisions":package_revisions,"interactive":self.interactive(),"types":self.graph.types,"entry":self.graph.entry,"instances":instances,"inferences":inferences,"routes":self.graph.routes,"aliases":self.graph.aliases,"dataBindings":self.graph.data_bindings,"bridges":self.graph.bridges.keys().collect::<Vec<_>>(),"flowHashes":self.definitions.flow_hashes,"bridgeHashes":self.definitions.bridge_hashes})
     }
     pub fn root(&self) -> Result<&FrozenFlow> {
         self.flows
@@ -166,6 +176,33 @@ impl PreparedRuntime {
             .context("Runtime entry instance is absent")
     }
     pub fn validate(&self, primitives: &dyn PrimitiveContracts) -> Result<()> {
+        let mut authored_packages = BTreeMap::new();
+        let mut package_identities = BTreeMap::new();
+        for (key, package) in &self.definitions.flow_packages {
+            ensure!(
+                self.flows.values().any(|flow| &flow.key == key),
+                "Orphan package pin: {key}"
+            );
+            let authored = package_authored(package, primitives)?;
+            for (revision, node) in &package.packages {
+                let id = node.package_id()?;
+                if let Some(previous) = package_identities.insert(id.clone(), revision) {
+                    ensure!(
+                        previous == revision,
+                        "Concurrent package revisions across selected flows: {}",
+                        id.as_str()
+                    );
+                }
+            }
+            let source = package.root_node()?.entry_source()?;
+            ensure!(
+                self.definitions.flow_hashes.get(key)
+                    == Some(&crate::programs::hash(source.as_bytes())),
+                "Package authored source hash mismatch: {key}"
+            );
+
+            authored_packages.insert(key, authored);
+        }
         if !self.definitions.context_selections.is_empty() {
             let summary = self.summary();
             for (path, selection) in &self.definitions.context_selections {
@@ -208,6 +245,31 @@ impl PreparedRuntime {
             );
         }
         for (instance, flow) in &self.flows {
+            ensure!(
+                self.graph
+                    .instances
+                    .get(instance)
+                    .is_some_and(|resolved| resolved.flow == flow.key),
+                "Frozen flow key and resolved instance disagree: {instance}"
+            );
+            if let Some(authored) = authored_packages.get(&flow.key) {
+                let linked = validate_package_execution(
+                    authored,
+                    &flow.composition,
+                    instance,
+                    &self.definitions.context_selections,
+                )?;
+                let authored_source = self.definitions.flow_packages[&flow.key]
+                    .root_node()?
+                    .entry_source()?;
+                validate_package_source(
+                    authored_source,
+                    &flow.source,
+                    &flow.composition,
+                    linked,
+                    primitives,
+                )?;
+            }
             ensure!(
                 format!("{:x}", Sha256::digest(flow.source.as_bytes())) == flow.hash,
                 "Frozen flow source hash mismatch: {instance}"
@@ -301,4 +363,197 @@ fn human_boundary(doc: &Composition) -> bool {
                 && serde_json::from_value::<Composition>(node.data.config["composition"].clone())
                     .map_or(true, |child| human_boundary(&child))
     })
+}
+
+/// Validate an executable definition against its captured authored package.
+/// `selections` contains explicit context choices with paths relative to this
+/// definition, such as `model` or `child/model`. The caller authenticates source
+/// lineage and hashes stored outside this package; no live catalogue is read.
+///
+/// # Errors
+/// Rejects corrupt closures, mismatched flow identity or executable source,
+/// invalid selections, and edits beyond supported context linking/overrides.
+pub fn validate_package_definition(
+    package: &PackageSnapshot,
+    source: &str,
+    composition: &Composition,
+    selections: &BTreeMap<String, ContextSelection>,
+    primitives: &dyn PrimitiveContracts,
+) -> Result<()> {
+    let authored = package_authored(package, primitives)?;
+    let selections: BTreeMap<String, ContextSelection> = selections
+        .iter()
+        .map(|(path, selection)| (format!("/{path}"), selection.clone()))
+        .collect();
+    let linked = validate_package_execution(&authored, composition, "", &selections)?;
+    let parsed = zf_flows::flow_format::parse(source, &GraphValidator::new(primitives))?;
+    ensure!(
+        serde_json::to_value(parsed)? == serde_json::to_value(composition)?,
+        "Frozen source and flow disagree"
+    );
+    validate_package_source(
+        package.root_node()?.entry_source()?,
+        source,
+        composition,
+        linked,
+        primitives,
+    )
+}
+
+fn package_authored(
+    package: &PackageSnapshot,
+    primitives: &dyn PrimitiveContracts,
+) -> Result<Composition> {
+    crate::package_sources::validate_package_sources(package)?;
+    let authored = zf_flows::flow_format::parse(
+        package.root_node()?.entry_source()?,
+        &GraphValidator::new(primitives),
+    )?;
+    ensure!(
+        package.root_manifest()?.id.as_str() == authored.id,
+        "Package identity and authored flow disagree"
+    );
+    Ok(authored)
+}
+
+fn validate_package_source(
+    authored_source: &str,
+    source: &str,
+    composition: &Composition,
+    linked: bool,
+    primitives: &dyn PrimitiveContracts,
+) -> Result<()> {
+    let expected_source = if linked {
+        zf_flows::flow_format::render(composition, &GraphValidator::new(primitives))?
+    } else {
+        authored_source.to_owned()
+    };
+    ensure!(
+        source == expected_source,
+        "Package executable source differs from captured source or canonical context linking"
+    );
+    Ok(())
+}
+
+/// Rebuild only the transformations the compiler permits between authored and
+/// executable documents. In particular, a valid executable hash alone cannot
+/// substitute another graph, tool configuration, or context binding for a pin.
+fn validate_package_execution(
+    authored: &Composition,
+    executable: &Composition,
+    instance: &str,
+    selections: &BTreeMap<String, ContextSelection>,
+) -> Result<bool> {
+    let mut expected = authored.clone();
+    let prefix = format!("{instance}/");
+    let selections: BTreeMap<String, ContextSelection> = selections
+        .iter()
+        .filter_map(|(path, selection)| {
+            path.strip_prefix(&prefix)
+                .map(|path| (path.to_owned(), selection.clone()))
+        })
+        .collect();
+    for (path, selection) in &selections {
+        ensure!(
+            selection.hash.len() == 64
+                && selection.hash.bytes().all(|byte| byte.is_ascii_hexdigit()),
+            "Runtime context choice has an invalid initial hash: {path}"
+        );
+    }
+    crate::prepared::apply_context_selections(&mut expected, &selections, Some(executable))?;
+    let linked = relink_captured_programs(&mut expected, executable)?;
+    ensure!(
+        serde_json::to_value(expected)? == serde_json::to_value(executable)?,
+        "Package authored flow and executable differ beyond context linking: {instance}"
+    );
+    Ok(linked || !selections.is_empty())
+}
+
+fn relink_captured_programs(expected: &mut Composition, executable: &Composition) -> Result<bool> {
+    use crate::programs::{self, ProgramSources, SourceKind, SourceSnapshot};
+    let mut linked = false;
+    for node in &mut expected.nodes {
+        let actual = executable
+            .nodes
+            .iter()
+            .find(|actual| actual.id == node.id)
+            .with_context(|| format!("Package executable node absent: {}", node.id))?;
+        if node.data.kind == "subgraph" {
+            let mut child = serde_json::from_value(node.data.config["composition"].clone())?;
+            let actual_child = serde_json::from_value(actual.data.config["composition"].clone())?;
+            linked |= relink_captured_programs(&mut child, &actual_child)?;
+            node.data.config["composition"] = serde_json::to_value(child)?;
+        }
+        if !matches!(node.data.kind.as_str(), "agent" | "context")
+            || node
+                .data
+                .config
+                .get("contextStrategy")
+                .is_none_or(serde_json::Value::is_null)
+        {
+            continue;
+        }
+        let program = &actual.data.config["contextProgram"];
+        programs::validate_frozen(program)?;
+        let mut sources = ProgramSources::default();
+        let source = program["source"]
+            .as_str()
+            .context("Frozen strategy source absent")?;
+        let key = program["strategy"]["id"]
+            .as_str()
+            .context("Frozen strategy identity absent")?;
+        sources
+            .strategies
+            .insert(key.to_owned(), SourceSnapshot::capture(source.to_owned()));
+        for (field, files) in [
+            ("librarySources", &mut sources.libraries),
+            ("typeSources", &mut sources.types),
+        ] {
+            if let Some(captures) = program[field].as_array() {
+                for capture in captures {
+                    let key = capture["key"]
+                        .as_str()
+                        .context("Frozen context dependency key absent")?;
+                    let source = capture["source"]
+                        .as_str()
+                        .context("Frozen context dependency source absent")?;
+                    ensure!(
+                        files
+                            .insert(key.to_owned(), SourceSnapshot::capture(source.to_owned()))
+                            .is_none(),
+                        "Duplicate frozen context dependency: {key}"
+                    );
+                }
+            }
+        }
+        // Source lineage is authenticated by the capturing host. Frozen runtime
+        // validation permits an accepted later revision of the same reference,
+        // while reconstructing every effective program field from captured bytes.
+        let mut scope = Composition {
+            nodes: vec![node.clone()],
+            format_version: expected.format_version,
+            id: expected.id.clone(),
+            name: expected.name.clone(),
+            revision: expected.revision,
+            edges: Vec::new(),
+            settings: expected.settings.clone(),
+            channels: Vec::new(),
+        };
+        for reference in programs::references(&scope)? {
+            let files = match reference.kind {
+                SourceKind::Strategy => &mut sources.strategies,
+                SourceKind::Library => &mut sources.libraries,
+                SourceKind::Types => &mut sources.types,
+            };
+            if let Some(hash) = reference.hash
+                && let Some(file) = files.get_mut(&reference.key)
+            {
+                file.accepted_references.insert(hash);
+            }
+        }
+        programs::freeze(&mut scope, &sources)?;
+        linked = true;
+        node.data.config = scope.nodes.remove(0).data.config;
+    }
+    Ok(linked)
 }

@@ -32,6 +32,8 @@ pub struct ExportManifest {
     pub graph: RuntimeGraph,
     pub executed_hashes: BTreeMap<String, String>,
     pub flow_hashes: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub flow_packages: BTreeMap<String, zf_flows::package::PackageSnapshot>,
     pub bridge_hashes: BTreeMap<String, String>,
 }
 
@@ -91,6 +93,7 @@ pub fn assemble(
         definitions: DefinitionPins {
             context_selections: manifest.context_selections,
             flow_hashes: manifest.flow_hashes,
+            flow_packages: manifest.flow_packages,
             bridge_hashes: manifest.bridge_hashes,
             bridge_sources,
         },
@@ -244,19 +247,14 @@ pub async fn run(
     )?;
     let definitions = prepared
         .flows
-        .iter()
-        .map(|(instance, flow)| {
-            (
+        .keys()
+        .map(|instance| {
+            Ok((
                 instance.clone(),
-                RevisionDefinition {
-                    key: flow.key.clone(),
-                    composition: flow.composition.clone(),
-                    source: flow.source.clone(),
-                    hash: flow.hash.clone(),
-                },
-            )
+                RevisionDefinition::from_prepared(&prepared, instance)?,
+            ))
         })
-        .collect();
+        .collect::<Result<_>>()?;
     services.set_revisions(
         RevisionRuntime::new(content.clone(), &options.run_id, definitions).await?,
     )?;
@@ -285,13 +283,7 @@ pub async fn run(
             .with_sender(sender.clone()),
     );
     let entry = prepared.graph.entry.clone();
-    let initial = prepared.root()?;
-    let mut definition = RevisionDefinition {
-        key: initial.key.clone(),
-        hash: initial.hash.clone(),
-        source: initial.source.clone(),
-        composition: initial.composition.clone(),
-    };
+    let mut definition = RevisionDefinition::from_prepared(&prepared, &entry.instance)?;
     if let Some(saved) = checkpoint.load(&options.run_id).await?
         && let Some(selected) = zf_runtime::revisions::checkpoint_definition(
             &content,
@@ -329,7 +321,7 @@ pub async fn run(
         &entry.instance,
         &projection,
         Some(controller.clone()),
-        Some(&definition.hash),
+        Some(&definition.revision()),
     )?;
     let mut input = options.input;
     let result = loop {
@@ -370,7 +362,12 @@ pub async fn run(
                     .await?,
             )?;
             ensure!(
-                selected.hash == request["toHash"] && selected.key == definition.key,
+                selected.hash == request["toHash"]
+                    && selected.key == definition.key
+                    && request["toRevision"].as_str().map_or(
+                        selected.package.is_none() && selected.context_selections.is_empty(),
+                        |revision| revision == selected.revision()
+                    ),
                 "Revision boundary source identity mismatch"
             );
             zf_runtime::revisions::validate_definition(&selected)?;
@@ -383,9 +380,9 @@ pub async fn run(
                 &entry.instance,
                 &projection,
                 Some(controller.clone()),
-                Some(&selected.hash),
+                Some(&selected.revision()),
             )?;
-            services.emit(json!({"type":"revision_adopted","scope":entry.instance,"threadId":options.run_id,"step":saved.step,"hash":selected.hash,"definitionRef":request["definitionRef"]})).await;
+            services.emit(json!({"type":"revision_adopted","scope":entry.instance,"threadId":options.run_id,"step":saved.step,"hash":selected.hash,"definitionRevision":selected.revision(),"definitionRef":request["definitionRef"]})).await;
             definition = selected;
             continue;
         }
