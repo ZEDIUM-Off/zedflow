@@ -501,3 +501,80 @@ fn reader_dependency_diagnostics_are_metadata_only_and_keep_nested_paths() {
         "not a database"
     );
 }
+
+#[tokio::test]
+async fn run_services_scope_native_reads_and_share_capture_store_and_cancellation() {
+    use std::sync::Arc;
+    use zf_core::types::{DataType, TypeRegistry};
+    use zf_runtime::{runtime::RunServices, workspace_context::ContextSnapshot};
+    let temp = tempfile::tempdir().unwrap();
+    let child_dir = temp.path().join("docs");
+    std::fs::create_dir(&child_dir).unwrap();
+    std::fs::write(temp.path().join("value.txt"), "same content").unwrap();
+    std::fs::write(child_dir.join("value.txt"), "same content").unwrap();
+    let services = RunServices::new(
+        "scope-test".into(),
+        temp.path().into(),
+        temp.path().join("data"),
+        ContextSnapshot::default(),
+        json!({}),
+        vec![],
+    )
+    .unwrap();
+    services.set_context_sources(vec![], None);
+    // Child services created before storage attachment must see the same store.
+    let child = services.for_working_directory(Some("docs")).unwrap();
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    let content = ContentStore::new(pool.clone()).await.unwrap();
+    services.set_content_store(content.clone());
+    let input = json!({"path":"value.txt"});
+    let types = TypeRegistry::new();
+    let parent_readers = services.resource_readers().unwrap();
+    let child_readers = child.resource_readers().unwrap();
+    let parent_value = services
+        .resource_reads()
+        .read(
+            &parent_readers,
+            "file.text",
+            &input,
+            &DataType::Text,
+            &types,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let child_value = child
+        .resource_reads()
+        .read(&child_readers, "file.text", &input, &DataType::Text, &types)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(Arc::ptr_eq(&parent_value.value, &child_value.value));
+    assert_eq!(
+        child_value.provenance["source"]["path"],
+        json!(child_dir.join("value.txt"))
+    );
+    assert_eq!(
+        parent_value.provenance["source"]["path"],
+        json!(temp.path().join("value.txt"))
+    );
+    let reference = child_value.provenance["contentRef"].as_str().unwrap();
+    assert_eq!(
+        content.resolve(reference).await.unwrap(),
+        json!("same content")
+    );
+    // The common cancellation token applies to acquisitions in every instance.
+    services.cancel.cancel();
+    assert!(
+        child
+            .resource_reads()
+            .read(&child_readers, "file.text", &input, &DataType::Text, &types)
+            .await
+            .is_err()
+    );
+    pool.close().await;
+}

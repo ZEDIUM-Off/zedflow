@@ -10,6 +10,7 @@ pub mod flow_store;
 pub mod live_files;
 pub mod migration;
 pub mod projection_summary;
+pub mod revision_publications;
 pub mod session_archive;
 pub mod session_store;
 pub mod session_sync;

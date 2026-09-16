@@ -714,3 +714,72 @@ fn context_programs_follow_only_explicitly_accepted_reference_ancestry() {
         .push(' ');
     assert!(programs::freeze(&mut doc, &sources).is_err());
 }
+
+#[test]
+fn compiled_entries_are_projected_without_replacing_frozen_authoring_sources() {
+    use zf_compiler::{
+        compiler::{CompileRequest, compile},
+        graph_compiler::GraphValidator,
+        prepared::CompilationSnapshot,
+        programs::SourceSnapshot,
+    };
+    let mut value = serde_json::to_value(exposed_flow("worker", false)).unwrap();
+    value["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .insert(2, flow_node("out", "output", json!({"text":"{{input}}"})));
+    value["edges"] = json!([{"id":"a","source":"start","target":"action"},{"id":"b","source":"action","target":"out"},{"id":"c","source":"out","target":"end"}]);
+    value["nodes"][0]["data"]["config"]["exports"]["contract"]["entries"]["secondary"] =
+        json!({"input":{"kind":"text"},"output":{"kind":"text"}});
+    value["nodes"][0]["data"]["config"]["exports"]["entries"]["secondary"] =
+        json!({"node":"out","inputField":"input","outputField":"response"});
+    let doc = serde_json::from_value(value).unwrap();
+    let source =
+        zf_flows::flow_format::render(&doc, &GraphValidator::new(&FixturePrimitives)).unwrap();
+    let mut snapshot = CompilationSnapshot::default();
+    snapshot
+        .flows
+        .insert("worker".into(), SourceSnapshot::capture(source.clone()));
+    let request = CompileRequest::new(ResolveRequest {
+        flow: "worker".into(),
+        entry: "secondary".into(),
+        bridges: vec![],
+    });
+    let compiled = compile(&snapshot, &request, &FixturePrimitives).unwrap();
+    let secondary = compiled.entry("root", "secondary").unwrap();
+    assert_eq!(
+        secondary
+            .graph()
+            .nodes()
+            .iter()
+            .map(|n| n.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["out"]
+    );
+    assert!(
+        !secondary
+            .composition()
+            .nodes
+            .iter()
+            .any(|n| n.id == "action")
+    );
+    assert!(
+        compiled
+            .entry("root", "main")
+            .unwrap()
+            .graph()
+            .nodes()
+            .iter()
+            .any(|n| n.id == "action")
+    );
+    assert!(compiled.entry("root", "missing").is_none());
+    assert!(compiled.entry("missing", "secondary").is_none());
+    assert_eq!(compiled.prepared().flows["root"].source, source);
+    assert!(
+        compiled.prepared().flows["root"]
+            .composition
+            .nodes
+            .iter()
+            .any(|n| n.id == "action")
+    );
+}

@@ -1243,3 +1243,195 @@ async fn definition_packages_preserve_examples_and_validate_bridges_before_insta
             .is_err()
     );
 }
+
+async fn window_selection_fixture() -> (tempfile::TempDir, ContentStore) {
+    let directory = tempfile::tempdir().unwrap();
+    let options = SqliteConnectOptions::new()
+        .filename(directory.path().join("selections.db"))
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Full);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect_with(options)
+        .await
+        .unwrap();
+    (directory, ContentStore::new(pool).await.unwrap())
+}
+
+fn window_selection_command(
+    id: &str,
+    path: &str,
+) -> zf_context::window_preparation::WindowSelectionCommand {
+    zf_context::window_preparation::WindowSelectionCommand {
+        id: id.into(),
+        node_path: path.into(),
+        alias: "prepared".into(),
+        revision: zf_core::identity::Revision::from("selected-revision"),
+        program_hash: "frozen-program".into(),
+    }
+}
+
+#[tokio::test]
+async fn window_selection_identity_is_idempotent_and_unique_across_nodes_in_a_run() {
+    use zf_storage::data::queue_window_selection;
+    let (_directory, store) = window_selection_fixture().await;
+    let command = window_selection_command("command-one", "root/agent");
+    let expected = json!({"id":"command-one","nodePath":"root/agent","alias":"prepared",
+        "revision":"selected-revision","programHash":"frozen-program"});
+    assert_eq!(
+        queue_window_selection(&store, "run", &command)
+            .await
+            .unwrap(),
+        expected
+    );
+    assert_eq!(
+        queue_window_selection(&store, "run", &command)
+            .await
+            .unwrap(),
+        expected
+    );
+    for changed in [
+        zf_context::window_preparation::WindowSelectionCommand {
+            revision: "other-revision".into(),
+            ..command.clone()
+        },
+        window_selection_command("command-one", "root/other-agent"),
+    ] {
+        let error = queue_window_selection(&store, "run", &changed)
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("identity reused with different arguments")
+        );
+    }
+    let next = window_selection_command("command-two", "root/agent");
+    assert!(
+        queue_window_selection(&store, "run", &next)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("unconsumed window selection")
+    );
+    assert!(
+        queue_window_selection(&store, "other-run", &next)
+            .await
+            .is_ok()
+    );
+    assert!(
+        queue_window_selection(
+            &store,
+            "run",
+            &window_selection_command("command-three", "root/other-agent")
+        )
+        .await
+        .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn window_selection_claim_captures_absence_and_replays_across_reopen() {
+    use zf_storage::data::{claim_window_selection, queue_window_selection};
+    let (directory, store) = window_selection_fixture().await;
+    let command = window_selection_command("command-one", "root/agent");
+    assert!(
+        claim_window_selection(&store, "run", "root/agent", "empty")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    queue_window_selection(&store, "run", &command)
+        .await
+        .unwrap();
+    assert!(
+        claim_window_selection(&store, "run", "root/agent", "empty")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let captured = claim_window_selection(&store, "run", "root/agent", "first")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(captured.id, command.id);
+    assert_eq!(captured.revision, command.revision);
+    queue_window_selection(&store, "run", &command)
+        .await
+        .unwrap();
+    let next = window_selection_command("command-two", "root/agent");
+    queue_window_selection(&store, "run", &next).await.unwrap();
+    store.pool().close().await;
+    drop(store);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .connect_with(SqliteConnectOptions::new().filename(directory.path().join("selections.db")))
+        .await
+        .unwrap();
+    let reopened = ContentStore::new(pool).await.unwrap();
+    assert!(
+        claim_window_selection(&reopened, "run", "root/agent", "empty")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        claim_window_selection(&reopened, "run", "root/agent", "first")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        command.id
+    );
+    assert_eq!(
+        claim_window_selection(&reopened, "run", "root/agent", "second")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        next.id
+    );
+    assert!(
+        claim_window_selection(&reopened, "run", "root/agent", "third")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn window_selection_concurrent_claims_consume_once_and_replay_their_capture() {
+    use zf_storage::data::{claim_window_selection, queue_window_selection};
+    let (_directory, store) = window_selection_fixture().await;
+    let command = window_selection_command("command-one", "root/agent");
+    queue_window_selection(&store, "run", &command)
+        .await
+        .unwrap();
+    let (left, right) = tokio::join!(
+        claim_window_selection(&store, "run", "root/agent", "left"),
+        claim_window_selection(&store, "run", "root/agent", "right"),
+    );
+    let (left, right) = (left.unwrap(), right.unwrap());
+    assert_ne!(left.is_some(), right.is_some());
+    for (occurrence, original) in [("left", left), ("right", right)] {
+        let retry = claim_window_selection(&store, "run", "root/agent", occurrence)
+            .await
+            .unwrap();
+        assert_eq!(retry.map(|value| value.id), original.map(|value| value.id));
+    }
+    let next = window_selection_command("command-two", "root/agent");
+    queue_window_selection(&store, "run", &next).await.unwrap();
+    let (left, right) = tokio::join!(
+        claim_window_selection(&store, "run", "root/agent", "shared"),
+        claim_window_selection(&store, "run", "root/agent", "shared"),
+    );
+    assert_eq!(left.unwrap().unwrap().id, next.id);
+    assert_eq!(right.unwrap().unwrap().id, next.id);
+    assert!(
+        claim_window_selection(&store, "run", "root/agent", "after-shared")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

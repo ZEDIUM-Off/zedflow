@@ -729,3 +729,100 @@ impl WindowRegistry {
             .await?)
     }
 }
+
+fn window_selection_node_hash(path: &str) -> anyhow::Result<String> {
+    use sha2::Digest;
+    Ok(format!(
+        "{:x}",
+        sha2::Sha256::digest(serde_json::to_vec(path)?)
+    ))
+}
+
+/// Persist an authorized selection, accepting an identical command replay.
+/// The runtime must first validate the command identity, owner, alias access,
+/// selected revision and program. The scope is a namespace, not authorization.
+///
+/// # Errors
+/// Rejects reuse of a command identity with different arguments, a second
+/// unconsumed selection for the same node, or a storage failure.
+pub async fn queue_window_selection(
+    store: &ContentStore,
+    scope: &str,
+    command: &zf_context::window_preparation::WindowSelectionCommand,
+) -> anyhow::Result<Value> {
+    let kind = format!(
+        "window-selections:{}",
+        window_selection_node_hash(&command.node_path)?
+    );
+    let value = serde_json::to_value(command)?;
+    let prepared = store.prepare(&value)?;
+    let mut tx = store.pool().begin_with("BEGIN IMMEDIATE").await?;
+    let existing: Option<String> =
+        sqlx::query_scalar("SELECT value_ref FROM zf_records WHERE scope=? AND kind LIKE 'window-selections:%' AND key=?")
+            .bind(scope)
+            .bind(&command.id)
+            .fetch_optional(&mut *tx)
+            .await?;
+    if let Some(existing) = existing {
+        anyhow::ensure!(
+            existing == prepared.reference,
+            "Window command identity reused with different arguments"
+        );
+        tx.rollback().await?;
+        return Ok(value);
+    }
+    let pending: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM zf_records c LEFT JOIN zf_records u ON u.scope=c.scope AND u.kind='window-selection-used' AND u.key=c.key WHERE c.scope=? AND c.kind=? AND u.key IS NULL)").bind(scope).bind(&kind).fetch_one(&mut *tx).await?;
+    anyhow::ensure!(
+        !pending,
+        "This agent already has an unconsumed window selection"
+    );
+    store.persist_in(&mut tx, &prepared).await?;
+    sqlx::query("INSERT INTO zf_records(scope,kind,key,value_ref) VALUES(?,?,?,?)")
+        .bind(scope)
+        .bind(kind)
+        .bind(&command.id)
+        .bind(&prepared.reference)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    store.mark_committed(&prepared);
+    Ok(value)
+}
+
+/// Atomically capture the next queued selection for an occurrence.
+/// Retrying that occurrence returns its original choice, including `None`;
+/// distinct occurrences cannot consume the same command.
+///
+/// # Errors
+/// Returns database, content resolution or command decoding failures.
+pub async fn claim_window_selection(
+    store: &ContentStore,
+    scope: &str,
+    path: &str,
+    occurrence: &str,
+) -> anyhow::Result<Option<zf_context::window_preparation::WindowSelectionCommand>> {
+    let null_ref = store.intern(&Value::Null).await?;
+    let kind = format!("window-selections:{}", window_selection_node_hash(path)?);
+    let use_record =
+        store.prepare(&serde_json::json!({"nodePath":path,"occurrence":occurrence}))?;
+    let mut tx = store.pool().begin_with("BEGIN IMMEDIATE").await?;
+    let prior: Option<String> = sqlx::query_scalar("SELECT value_ref FROM zf_records WHERE scope=? AND kind='window-invocation-selection' AND key=?").bind(scope).bind(occurrence).fetch_optional(&mut *tx).await?;
+    let selected = if let Some(prior) = prior {
+        tx.rollback().await?;
+        prior
+    } else {
+        let candidate: Option<(String,String)> = sqlx::query_as("SELECT c.key,c.value_ref FROM zf_records c LEFT JOIN zf_records u ON u.scope=c.scope AND u.kind='window-selection-used' AND u.key=c.key WHERE c.scope=? AND c.kind=? AND u.key IS NULL ORDER BY c.key LIMIT 1").bind(scope).bind(&kind).fetch_optional(&mut *tx).await?;
+        store.persist_in(&mut tx, &use_record).await?;
+        let reference = if let Some((id, reference)) = candidate {
+            sqlx::query("INSERT INTO zf_records(scope,kind,key,value_ref) VALUES(?,'window-selection-used',?,?)").bind(scope).bind(id).bind(&use_record.reference).execute(&mut *tx).await?;
+            reference
+        } else {
+            null_ref
+        };
+        sqlx::query("INSERT INTO zf_records(scope,kind,key,value_ref) VALUES(?,'window-invocation-selection',?,?)").bind(scope).bind(occurrence).bind(&reference).execute(&mut *tx).await?;
+        tx.commit().await?;
+        store.mark_committed(&use_record);
+        reference
+    };
+    Ok(serde_json::from_value(store.resolve(&selected).await?)?)
+}

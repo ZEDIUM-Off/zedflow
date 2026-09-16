@@ -3,7 +3,8 @@
 use crate::{
     graph_compiler::PrimitiveContracts,
     plan::{self, GraphPlan},
-    prepared::{self, CompilationSnapshot, ContextSelection, PreparedRuntime},
+    prepared::{self, CompilationSnapshot, ContextSelection},
+    prepared_model::PreparedRuntime,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -38,6 +39,22 @@ pub struct CompiledPlan {
     revision: String,
     prepared: PreparedRuntime,
     graphs: BTreeMap<String, GraphPlan>,
+    entries: BTreeMap<String, BTreeMap<String, CompiledEntry>>,
+}
+/// Validated projection of a frozen flow at one declared public entry.
+/// Private fields prevent pairing a projected document with another graph.
+#[derive(Clone, Debug, Serialize)]
+pub struct CompiledEntry {
+    composition: zf_flows::schema::Composition,
+    graph: GraphPlan,
+}
+impl CompiledEntry {
+    pub fn composition(&self) -> &zf_flows::schema::Composition {
+        &self.composition
+    }
+    pub fn graph(&self) -> &GraphPlan {
+        &self.graph
+    }
 }
 impl CompiledPlan {
     pub fn revision(&self) -> &str {
@@ -48,6 +65,9 @@ impl CompiledPlan {
     }
     pub fn graphs(&self) -> &BTreeMap<String, GraphPlan> {
         &self.graphs
+    }
+    pub fn entry(&self, instance: &str, port: &str) -> Option<&CompiledEntry> {
+        self.entries.get(instance)?.get(port)
     }
 }
 
@@ -84,16 +104,35 @@ pub fn compile(
         }
     })?;
     let mut graphs = BTreeMap::new();
+    let mut entries = BTreeMap::new();
     for (instance, flow) in &prepared.flows {
         let graph = plan::lower(&flow.composition, primitives)
             .map_err(|error| vec![Diagnostic::new("lowering", instance, format!("{error:#}"))])?;
         graphs.insert(instance.clone(), graph);
+        let mut projected_entries = BTreeMap::new();
+        for port in flow.exports.entries.keys() {
+            let projected = zf_flows::flow_contract::at_entry(&flow.composition, port)
+                .and_then(|composition| {
+                    let graph = plan::lower(&composition, primitives)?;
+                    Ok(CompiledEntry { composition, graph })
+                })
+                .map_err(|error| {
+                    vec![Diagnostic::new(
+                        "entry_lowering",
+                        format!("{instance}.entries.{port}"),
+                        format!("{error:#}"),
+                    )]
+                })?;
+            projected_entries.insert(port.clone(), projected);
+        }
+        entries.insert(instance.clone(), projected_entries);
     }
-    let encoded = serde_json::to_vec(&(1_u32, &prepared, &graphs))
+    let encoded = serde_json::to_vec(&(2_u32, &prepared, &graphs, &entries))
         .map_err(|error| vec![Diagnostic::new("plan_encoding", "$plan", error.to_string())])?;
     Ok(CompiledPlan {
         revision: format!("{:x}", Sha256::digest(encoded)),
         prepared,
         graphs,
+        entries,
     })
 }

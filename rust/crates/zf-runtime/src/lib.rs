@@ -1,8 +1,22 @@
 //! Runtime adapters for ADK. Admission and session orchestration belong to execution.
+pub mod agent_capabilities;
 pub mod archive_validation;
+pub mod capabilities;
+pub mod codex;
 pub mod event_sink;
+pub mod inference;
+pub mod inference_raw;
+pub mod inspection;
+pub mod materialize;
+pub mod model_catalog;
+pub mod models;
+pub mod observation;
+pub mod operations;
 pub mod predicates;
 pub mod resources;
+pub mod revisions;
+pub mod runtime;
 pub mod stored_checkpointer;
+pub mod subgraphs;
 pub mod workspace_context;
 pub mod workspace_tools;
