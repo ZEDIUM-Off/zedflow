@@ -113,6 +113,65 @@ test('context studio edits nested blocks with the keyboard, saves actual Rust an
   await expect(page.getByRole('dialog', { name: 'Rust de la stratégie', exact: true }).locator('.ctx-rust-source')).toHaveText(source)
 })
 
+test('group rename owns focus after its action menu closes', async ({ page }) => {
+  const panel = await studio(page)
+  await addBlock(page, panel.locator('.ctx-program-panel'), 'Groupe')
+  const group = panel.locator('[data-block-kind="group"]').first()
+  const actions = group.getByRole('button', { name: 'Actions du bloc 1', exact: true })
+  await actions.click()
+  type CloseProbe = { closed: boolean; flush: () => void; restore: () => void }
+  await page.getByRole('menu').evaluate(menu => {
+    const scope = menu.closest('[data-reka-popper-content-wrapper]')
+    if (!scope) throw new Error('The action menu focus scope is missing')
+    const original = window.setTimeout
+    const pending: (() => void)[] = []
+    let closing = false
+    const probe: CloseProbe = {
+      closed: false,
+      flush() { for (const callback of pending.splice(0)) callback() },
+      restore() { window.setTimeout = original; scope.removeEventListener('focusScope.autoFocusOnUnmount', close, true) },
+    }
+    function close() {
+      closing = true
+      queueMicrotask(() => { closing = false; probe.closed = true })
+    }
+    scope.addEventListener('focusScope.autoFocusOnUnmount', close, true)
+    // Hold zero-delay callbacks from this real close event and its synchronous
+    // FocusScope cleanup, until the next microtask. Release after input below.
+    window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) => {
+      if (closing && delay === 0 && typeof handler === 'function') {
+        pending.push(() => handler(...args))
+        return -pending.length
+      }
+      return original(handler, delay, ...args)
+    }) as typeof window.setTimeout
+    ;(window as Window & { contextMenuCloseProbe: CloseProbe }).contextMenuCloseProbe = probe
+  })
+  try {
+    await page.getByRole('menuitem', { name: 'Renommer le groupe', exact: true }).click()
+    await expect.poll(() => page.evaluate(() => (window as Window & { contextMenuCloseProbe: CloseProbe }).contextMenuCloseProbe.closed)).toBe(true)
+    const name = group.getByLabel('Nom du groupe', { exact: true })
+    await expect(name).toBeFocused()
+    await name.fill('Working system')
+    await page.evaluate(() => (window as Window & { contextMenuCloseProbe: CloseProbe }).contextMenuCloseProbe.flush())
+    await expect(name).toBeFocused()
+    await expect(name).toHaveValue('Working system')
+    await name.press('Enter')
+    await expect(name).toHaveCount(0)
+    await expect(group.locator(':scope > .ctx-block-content > .ctx-block-header .ctx-block-title')).toHaveText('Working system')
+  } finally {
+    await page.evaluate(() => {
+      const target = window as Window & { contextMenuCloseProbe?: CloseProbe }
+      const probe = target.contextMenuCloseProbe!
+      try { probe.flush() } finally { probe.restore(); delete target.contextMenuCloseProbe }
+    })
+  }
+  await actions.click()
+  await page.getByRole('menuitem', { name: 'Dupliquer ce bloc', exact: true }).click()
+  await expect(panel.locator('[data-block-kind="group"]')).toHaveCount(2)
+  await expect(actions).toBeFocused()
+})
+
 test('context studio preserves dirty workspace drafts and reports a real external source conflict', async ({ page, request }) => {
   const health = await (await request.get('/api/health')).json()
   const workspaceB = await (await request.post('/api/workspaces', { data: { path: fixturePath('workspace-b') } })).json()

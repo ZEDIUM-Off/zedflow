@@ -140,7 +140,14 @@ function drop(event: DragEvent, index: number) {
   blocks.value.splice(destination, 0, block)
   draggingBlock = undefined; dropIndex.value = undefined; announcement.value = `Bloc déplacé à la position ${destination + 1}.`; emit('select', block.id); void focus(block.id)
 }
-async function rename(block: Extract<ContextBlock, { kind: 'group' }>) { renaming.value = block.id; await nextTick(); document.getElementById(`context-block-name-${block.id}`)?.focus() }
+function rename(block: Extract<ContextBlock, { kind: 'group' }>) { renaming.value = block.id }
+async function closeMenuFocus(event: Event, block: ContextBlock) {
+  if (renaming.value !== block.id) return
+  // Renaming owns the next focus; the menu must not restore its trigger later.
+  event.preventDefault()
+  await nextTick()
+  if (renaming.value === block.id) document.getElementById(`context-block-name-${block.id}`)?.focus()
+}
 </script>
 <template>
   <div class="ctx-block-list ctx-composed-program" :aria-label="label" :data-depth="depth" @dragleave.self="dropIndex=undefined">
@@ -153,7 +160,7 @@ async function rename(block: Extract<ContextBlock, { kind: 'group' }>) { renamin
           <input v-if="block.kind==='group' && renaming===block.id" :id="`context-block-name-${block.id}`" v-model="block.label" class="ctx-block-name" aria-label="Nom du groupe" @blur="renaming=''" @keydown.enter="renaming=''" @keydown.esc="renaming=''"/>
           <button v-else class="ctx-block-title" :tabindex="depth>0&&block.kind==='emit'&&!collapsed[block.id]?-1:undefined" @focus="emit('select',block.id)" @keydown="keys($event,index)" @click.stop="collapsed[block.id]=!collapsed[block.id]"><span>{{title(block)}}</span></button>
           <small class="ctx-block-subtitle">{{subtitle(block)}}</small><span v-if="block.kind==='if' && conditionOutcome(block.id)" class="ctx-condition-outcome" :title="conditionOutcome(block.id)?.description" :aria-label="conditionOutcome(block.id)?.description">{{conditionOutcome(block.id)?.label}}</span>
-          <DropdownMenuRoot><DropdownMenuTrigger class="ctx-block-more icon-button" :aria-label="`Actions du bloc ${index+1}`"><MoreVertical :size="14"/></DropdownMenuTrigger><DropdownMenuPortal><DropdownMenuContent class="compact-menu" align="end" :side-offset="4"><DropdownMenuItem v-if="block.kind==='group'" @select="rename(block)"><Pencil :size="13"/>Renommer le groupe</DropdownMenuItem><DropdownMenuItem v-if="block.kind==='emit'" @select="details[block.id]=!details[block.id];collapsed[block.id]=false"><Text :size="13"/>Rôle et représentation</DropdownMenuItem><DropdownMenuItem :disabled="index===0" @select="move(index,-1)"><ArrowUp :size="13"/>Monter ce bloc <small>Alt ↑</small></DropdownMenuItem><DropdownMenuItem :disabled="index===blocks.length-1" @select="move(index,1)"><ArrowDown :size="13"/>Descendre ce bloc <small>Alt ↓</small></DropdownMenuItem><DropdownMenuItem @select="duplicate(index)"><Copy :size="13"/>Dupliquer ce bloc</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem @select="remove(index)"><Trash2 :size="13"/>Supprimer ce bloc</DropdownMenuItem></DropdownMenuContent></DropdownMenuPortal></DropdownMenuRoot>
+          <DropdownMenuRoot><DropdownMenuTrigger class="ctx-block-more icon-button" :aria-label="`Actions du bloc ${index+1}`"><MoreVertical :size="14"/></DropdownMenuTrigger><DropdownMenuPortal><DropdownMenuContent class="compact-menu" align="end" :side-offset="4" @close-auto-focus="closeMenuFocus($event,block)"><DropdownMenuItem v-if="block.kind==='group'" @select="rename(block)"><Pencil :size="13"/>Renommer le groupe</DropdownMenuItem><DropdownMenuItem v-if="block.kind==='emit'" @select="details[block.id]=!details[block.id];collapsed[block.id]=false"><Text :size="13"/>Rôle et représentation</DropdownMenuItem><DropdownMenuItem :disabled="index===0" @select="move(index,-1)"><ArrowUp :size="13"/>Monter ce bloc <small>Alt ↑</small></DropdownMenuItem><DropdownMenuItem :disabled="index===blocks.length-1" @select="move(index,1)"><ArrowDown :size="13"/>Descendre ce bloc <small>Alt ↓</small></DropdownMenuItem><DropdownMenuItem @select="duplicate(index)"><Copy :size="13"/>Dupliquer ce bloc</DropdownMenuItem><DropdownMenuSeparator/><DropdownMenuItem @select="remove(index)"><Trash2 :size="13"/>Supprimer ce bloc</DropdownMenuItem></DropdownMenuContent></DropdownMenuPortal></DropdownMenuRoot>
         </header>
         <div v-show="!collapsed[block.id]" class="ctx-block-body">
           <template v-if="block.kind==='group'"><ContextBlockEditor v-if="depth<CONTEXT_SOURCE_MAX_DEPTH" v-model="block.items" :resources="resources" :types="types" :variables="variables" :variable-types="variableTypes" :selected="selected" :trace="trace" :version="version" :depth="depth+1" :label="`Contenu de ${block.label}`" @select="emit('select',$event)"/><p v-else class="ctx-depth-limit" role="alert">Ce programme dépasse 64 niveaux de blocs. Réduisez l’imbrication pour poursuivre l’édition visuelle.</p></template>
