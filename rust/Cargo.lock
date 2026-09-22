@@ -4707,7 +4707,7 @@ dependencies = [
 
 [[package]]
 name = "zf-cli"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4729,7 +4729,7 @@ dependencies = [
 
 [[package]]
 name = "zf-compiler"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "proc-macro2",
@@ -4744,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "zf-context"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -4760,7 +4760,7 @@ dependencies = [
 
 [[package]]
 name = "zf-core"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4768,7 +4768,7 @@ dependencies = [
 
 [[package]]
 name = "zf-execution"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-graph",
@@ -4793,7 +4793,7 @@ dependencies = [
 
 [[package]]
 name = "zf-flows"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4810,7 +4810,7 @@ dependencies = [
 
 [[package]]
 name = "zf-runtime"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-devtools",
@@ -4844,7 +4844,7 @@ dependencies = [
 
 [[package]]
 name = "zf-serve"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "adk-core",
  "adk-graph",
@@ -4878,7 +4878,7 @@ dependencies = [
 
 [[package]]
 name = "zf-storage"
-version = "0.2.0-dev"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/zf-core", "crates/zf-context", "crates/zf-flows", "crates/zf-compiler", "crates/zf-storage", "crates/zf-runtime", "crates/zf-execution", "crates/zf-serve", "crates/zf-cli"]
 
 [workspace.package]
-version = "0.2.0-dev"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.96.1"
 publish = false
