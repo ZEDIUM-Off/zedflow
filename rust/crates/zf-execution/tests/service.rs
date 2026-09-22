@@ -717,6 +717,37 @@ async fn composed_root_inbox_uses_qualified_node_contract_to_wake() {
 }
 
 #[tokio::test]
+async fn failed_startup_releases_both_data_ownership_locks() {
+    let temp = tempfile::tempdir().unwrap();
+    let data = temp.path().join("data");
+    let options = || ExecutionOptions {
+        data: data.clone(),
+        workspace: temp.path().join("workspace"),
+        flow_home: temp.path().join("home"),
+        context_home: Some(temp.path().join("home")),
+        skill_dirs: vec![],
+        authorizer: Arc::new(Policy::default()),
+    };
+    // The missing workspace fails after both ownership locks were acquired.
+    assert!(ExecutionService::open(options()).await.is_err());
+    let migration = zf_storage::migration::lock(&data)
+        .expect("failed startup must release the sibling data lock");
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(data.join("execution.lock"))
+        .expect("startup reached execution ownership before failing");
+    let execution = zf_storage::migration::DataLock::try_lock(file)
+        .expect("failed startup must release the internal execution lock");
+    drop(execution);
+    drop(migration);
+    std::fs::create_dir(temp.path().join("workspace")).unwrap();
+    std::fs::create_dir(temp.path().join("home")).unwrap();
+    let service = ExecutionService::open(options()).await.unwrap();
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn one_storage_has_one_execution_owner_until_shutdown() {
     let temp = tempfile::tempdir().unwrap();
     let service = open(temp.path(), Arc::new(Policy::default())).await;

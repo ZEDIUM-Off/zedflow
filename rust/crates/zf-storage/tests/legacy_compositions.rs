@@ -289,6 +289,8 @@ async fn offline_owner_and_backup_tampering_are_refused() {
             .to_string()
             .contains("backup changed")
     );
+    let _owner =
+        zf_storage::migration::lock(&f.data).expect("a failed import must release data ownership");
 }
 
 #[tokio::test]

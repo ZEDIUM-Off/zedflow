@@ -113,7 +113,7 @@ async fn standalone_resumes_without_public_ports_or_repeating_recorded_effects()
     let events = std::fs::read_to_string(temp.path().join("data/portable/events.jsonl")).unwrap();
     assert!(events.contains("receiptRef"));
     assert!(events.contains("checkpoint"));
-    zf_storage::migration::lock(&temp.path().join("data")).unwrap();
+    drop(zf_storage::migration::lock(&temp.path().join("data")).unwrap());
 }
 #[tokio::test]
 async fn exported_run_rejects_changed_source_package_or_workspace_before_effects() {
@@ -206,7 +206,7 @@ async fn native_build_failure_drains_the_log_and_releases_ownership() {
             .to_string()
             .contains("native fixture failure")
     );
-    zf_storage::migration::lock(&temp.path().join("data")).unwrap();
+    drop(zf_storage::migration::lock(&temp.path().join("data")).unwrap());
     assert!(!temp.path().join("workspace/effects").exists());
 }
 

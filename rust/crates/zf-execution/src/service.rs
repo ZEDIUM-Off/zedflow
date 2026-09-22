@@ -61,8 +61,8 @@ pub(crate) struct ExecutionState {
     pub(crate) context_home: Option<PathBuf>,
     maintenance: Arc<RwLock<()>>,
     closed: AtomicBool,
-    owner_lock: std::fs::File,
-    migration_lock: std::fs::File,
+    owner_lock: zf_storage::migration::DataLock,
+    migration_lock: zf_storage::migration::DataLock,
     launches: std::sync::Mutex<HashMap<String, usize>>,
     launch_changes: tokio::sync::watch::Sender<()>,
     authorizer: Arc<dyn CommandAuthorizer>,
@@ -132,11 +132,12 @@ impl ExecutionService {
             .read(true)
             .write(true)
             .open(data.join("execution.lock"))?;
-        owner_lock.try_lock().map_err(|error| {
-            commands::ExecutionError::Busy(format!(
-                "Execution storage already owned or unavailable: {error}"
-            ))
-        })?;
+        let owner_lock =
+            zf_storage::migration::DataLock::try_lock(owner_lock).map_err(|error| {
+                commands::ExecutionError::Busy(format!(
+                    "Execution storage already owned or unavailable: {error}"
+                ))
+            })?;
         let workspace = tokio::fs::canonicalize(options.workspace).await?;
         let context = ContextSnapshot::load_with_home(
             &workspace,

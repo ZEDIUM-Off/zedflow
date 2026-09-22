@@ -63,10 +63,46 @@ fn sibling(data: &Path, suffix: &str) -> Result<PathBuf> {
     Ok(data.with_file_name(format!("{name}.{suffix}")))
 }
 
-/// Hold this file for the entire daemon lifetime, or the whole maintenance.
+/// Exclusive ownership of a data directory during execution or maintenance.
+///
+/// The descriptor stays private so only this guard can release ownership.
+#[derive(Debug)]
+#[must_use = "keep the guard alive for the whole operation to retain ownership"]
+pub struct DataLock {
+    file: File,
+}
+
+impl DataLock {
+    /// Acquire exclusive ownership without waiting, retaining the file privately.
+    ///
+    /// # Errors
+    /// Returns contention or the operating system error if locking fails.
+    pub fn try_lock(file: File) -> std::result::Result<Self, std::fs::TryLockError> {
+        file.try_lock()?;
+        Ok(Self { file })
+    }
+
+    /// Release ownership explicitly after all protected work has drained.
+    ///
+    /// # Errors
+    /// Returns the operating system error if unlocking fails.
+    pub fn unlock(&self) -> std::io::Result<()> {
+        self.file.unlock()
+    }
+}
+
+impl Drop for DataLock {
+    fn drop(&mut self) {
+        // Closing this descriptor alone is insufficient when a concurrent fork
+        // inherited the same open file description before exec closed it.
+        let _ = self.unlock();
+    }
+}
+
+/// Hold this guard for the entire daemon lifetime, or the whole maintenance.
 /// The lock lives outside the data directory so an atomic directory swap cannot
 /// replace its inode and let a second process enter.
-pub fn lock(data: &Path) -> Result<File> {
+pub fn lock(data: &Path) -> Result<DataLock> {
     let data = absolute_data(data)?;
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -74,12 +110,11 @@ pub fn lock(data: &Path) -> Result<File> {
         .read(true)
         .write(true)
         .open(sibling(&data, "lock")?)?;
-    file.try_lock().map_err(|error| {
+    DataLock::try_lock(file).map_err(|error| {
         anyhow::anyhow!(
             "Le dossier de données est utilisé par un daemon ou une maintenance : {error}"
         )
-    })?;
-    Ok(file)
+    })
 }
 
 async fn sync_directory(path: &Path) -> Result<()> {
@@ -691,6 +726,62 @@ async fn normalize_and_verify(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn ownership_is_released_while_duplicate_descriptor_remains_open() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        std::fs::create_dir(&data).unwrap();
+        let owner = super::lock(&data).unwrap();
+        // A duplicate shares the lock's open file description, as after fork.
+        let duplicate = owner.file.try_clone().unwrap();
+        assert!(super::lock(&data).is_err());
+        std::fs::rename(&data, temp.path().join("retired")).unwrap();
+        std::fs::create_dir(&data).unwrap();
+        assert!(super::lock(&data).is_err());
+        drop(owner);
+        let replacement = super::lock(&data).expect("owner drop must explicitly unlock");
+        drop(duplicate);
+        assert!(super::lock(&data).is_err());
+        drop(replacement);
+        assert!(super::lock(&data).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ownership_is_released_on_error_while_duplicate_descriptor_remains_open() {
+        fn fail(
+            data: &std::path::Path,
+            duplicate: &mut Option<std::fs::File>,
+        ) -> anyhow::Result<()> {
+            let owner = super::lock(data)?;
+            *duplicate = Some(owner.file.try_clone()?);
+            anyhow::bail!("fixture operation failed");
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        let mut duplicate = None;
+        assert!(fail(&data, &mut duplicate).is_err());
+        let replacement = super::lock(&data).expect("error return must release ownership");
+        drop(duplicate);
+        assert!(super::lock(&data).is_err());
+        drop(replacement);
+    }
+
+    #[test]
+    fn explicitly_released_guard_does_not_unlock_its_replacement() {
+        let temp = tempfile::tempdir().unwrap();
+        let data = temp.path().join("data");
+        let owner = super::lock(&data).unwrap();
+        owner.unlock().unwrap();
+        let replacement = super::lock(&data).unwrap();
+        drop(owner);
+        assert!(super::lock(&data).is_err());
+        drop(replacement);
+        assert!(super::lock(&data).is_ok());
+    }
+
     use super::*;
     struct FixtureValidation;
     impl CheckpointCodec for FixtureValidation {
