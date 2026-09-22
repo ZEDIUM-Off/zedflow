@@ -182,7 +182,11 @@ for (const editing of [false, true]) test(`context catalogue arrival ${editing ?
       await page.locator('[data-context-key="workspace-default"]').click()
     }
     await expect(name).toHaveValue('Assistant de workspace')
-  } finally { release() }
+  } finally {
+    release()
+    // Returning to B can start another catalogue fetch after its draft is visible.
+    await page.unrouteAll({ behavior: 'wait' })
+  }
 })
 
 test('context preview distinguishes inactive branches, structured needs and typed errors on narrow screens', async ({ page, request }) => {
