@@ -251,7 +251,7 @@ async fn zip_roundtrip_restores_child_checkpoint_assets_and_context_without_repe
     let target = tempfile::tempdir().unwrap();
     let (target_app, service) = app_with_service(target.path()).await;
     // Occupy event identities so the import must actually translate its anchors.
-    start(
+    let existing = start(
         &target_app,
         flow(
             "existing",
@@ -264,6 +264,15 @@ async fn zip_roundtrip_restores_child_checkpoint_assets_and_context_without_repe
         ),
     )
     .await;
+    // The persisted wait precedes the owner's final queue check and lease
+    // release. Import requires that owner to finish, not only its visible wait.
+    tokio::time::timeout(
+        Duration::from_secs(15),
+        service.wait_idle(existing["id"].as_str().unwrap()),
+    )
+    .await
+    .expect("existing session owner did not finish after reaching wait")
+    .unwrap();
     let health = ok(&target_app, "GET", "/api/health", None).await;
     let zipped = target.path().join("chosen-session.zip");
     std::fs::write(&zipped, zip).unwrap();
