@@ -667,6 +667,40 @@ pub(super) fn workspace_lock_raw(
     }
     Ok(Some(lock))
 }
+/// Import inspection must reject pending authoring work while holding the raw
+/// catalogue lock; ordinary readers retain their existing automatic recovery.
+pub(crate) fn require_clean_publications(root: &Path, allow_package: bool) -> Result<()> {
+    super::flow_packages::ensure_no_lifecycle_locked(root)?;
+    let mut markers = vec![IMPORT_MARKER, super::source_acceptance::MARKER];
+    if !allow_package {
+        markers.push(super::flow_packages::MARKER);
+    }
+    for marker in markers {
+        match fs::symlink_metadata(root.join(marker)) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+            Ok(_) => anyhow::bail!("Pending authoring publication requires recovery before import"),
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn clean_workspace_lock(
+    workspace: &Path,
+    create: bool,
+    exclusive: bool,
+) -> Result<Option<File>> {
+    let lock = workspace_lock_raw(workspace, create, exclusive)?;
+    if lock.is_some() {
+        require_clean_publications(&workspace.join(".zedflow"), false)?;
+    }
+    Ok(lock)
+}
+
+pub(crate) async fn clean_reader_lock(workspace: PathBuf) -> Result<Option<File>> {
+    tokio::task::spawn_blocking(move || clean_workspace_lock(&workspace, false, false)).await?
+}
+
 pub(super) fn workspace_lock(
     workspace: &Path,
     create: bool,

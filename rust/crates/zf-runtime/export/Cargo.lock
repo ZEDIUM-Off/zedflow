@@ -3436,6 +3436,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "syn 2.0.119",
+ "tempfile",
  "zf-core",
 ]
 
@@ -3530,6 +3531,7 @@ dependencies = [
  "anyhow",
  "base64",
  "chrono",
+ "futures",
  "nix",
  "same-file",
  "serde",

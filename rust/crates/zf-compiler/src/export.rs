@@ -23,7 +23,8 @@ const FLOW_DEPENDENCIES: &[&str] = &[
     "zf-runtime",
     "zf-flows",
 ];
-const FLOW_WRAPPER: &str = r#"#[path = "flow.rs"]
+const FLOW_WRAPPER: &str = r#"#![recursion_limit = "1024"]
+#[path = "flow.rs"]
 mod definition;
 pub use zf_runtime::{models, operations, runtime, subgraphs};
 pub fn build_scope(
@@ -106,11 +107,13 @@ pub fn export_runtime(plan: &CompiledPlan, support: &RuntimeSupport) -> Result<C
         )?;
         files.insert(
             format!("{directory}/zedflow_export.rs"),
-            b"#[path = \"flow.rs\"]\nmod definition;\npub use definition::*;\npub use zf_runtime::{models, operations, runtime, subgraphs};\n".to_vec(),
+            b"#![recursion_limit = \"1024\"]\n#[path = \"flow.rs\"]\nmod definition;\npub use definition::*;\npub use zf_runtime::{models, operations, runtime, subgraphs};\n".to_vec(),
         );
         members.push(directory);
     }
-    let mut main = String::from("use std::{collections::BTreeMap, sync::Arc};\n");
+    let mut main = String::from(
+        "#![recursion_limit = \"1024\"]\nuse std::{collections::BTreeMap, sync::Arc};\n",
+    );
     let mut flow_inputs = String::new();
     let mut registrations = String::new();
     let mut runner_dependencies: BTreeMap<String, (String, String)> = BTreeMap::new();
@@ -275,7 +278,7 @@ pub fn export_single_with_context(
                 &format!("zedflow-package-{revision}"),
                 &package_dependencies(node, "../"),
             )?;
-            files.insert(format!("{directory}/zedflow_export.rs"), b"#[path = \"flow.rs\"]\nmod definition;\npub use definition::*;\npub use zf_runtime::{models, operations, runtime, subgraphs};\n".to_vec());
+            files.insert(format!("{directory}/zedflow_export.rs"), b"#![recursion_limit = \"1024\"]\n#[path = \"flow.rs\"]\nmod definition;\npub use definition::*;\npub use zf_runtime::{models, operations, runtime, subgraphs};\n".to_vec());
             members.push(directory);
         }
         add_package_files(&mut files, directory, package.root_node()?)?;
@@ -302,7 +305,7 @@ pub fn export_single_with_context(
         "definition.json".into(),
         serde_json::to_vec_pretty(&definition)?,
     );
-    let main = r#"
+    let main = r#"#![recursion_limit = "1024"]
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let definition: zf_runtime::revisions::RevisionDefinition = zf_context::context_json::from_str(include_str!("../../definition.json"))?;
@@ -727,4 +730,4 @@ impl LockedPackages {
     }
 }
 
-const README: &str = "# Frozen Zedflow Cargo export\n\nBuild with Rust 1.96.1: `cargo build --locked`. With cached registry dependencies use `--offline --locked`.\n\nRun `cargo run --locked -- --workspace /path/to/workspace --data /path/to/data --run-id example --input '{\"input\":\"hello\"}'`. Reuse the data directory and run ID to resume a waiting checkpoint; provide answer state through --input. Models and capabilities require explicit bindings.\n\nThe workspace contains the seven internal library crates, exact executed Rust sources, authored packages and their frozen dependency closure. Registry sources are governed by Cargo.lock; they are not vendored. Package format, runtime metadata, archive format and storage epoch remain independent.\n";
+const README: &str = "# Frozen Zedflow Cargo export\n\nBuild with Rust 1.96.1: `cargo build --locked`. With cached registry dependencies use `--offline --locked`.\n\nRun `cargo run --locked -- --workspace /path/to/workspace --home /path/to/source-home --data /path/to/data --run-id example --input '{\"input\":\"hello\"}'`. Reuse the data directory and run ID to resume a waiting checkpoint; provide answer state through --input. Models and capabilities require explicit bindings. --home selects instruction/skill sources without changing process HOME; omit it for normal home discovery. A resumed run retains its captured context.\n\nThe workspace contains the seven internal library crates, exact executed Rust sources, authored packages and their frozen dependency closure. Registry sources are governed by Cargo.lock; they are not vendored. Package format, runtime metadata, archive format and storage epoch remain independent.\n";

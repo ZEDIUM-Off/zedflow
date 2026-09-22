@@ -1533,6 +1533,7 @@ mod portable_export {
         };
         let options = |input: Value| RunOptions {
             workspace: workspace.clone(),
+            home: Some(workspace.join(".fixture-home")),
             data: data.clone(),
             run_id: "export-resume".into(),
             input: serde_json::from_value::<State>(input).unwrap(),

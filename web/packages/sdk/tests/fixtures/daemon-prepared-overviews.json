@@ -1,0 +1,1094 @@
+{
+  "unpaired": {
+    "overview": {
+      "aliases": {
+        "root": "root"
+      },
+      "bridgeHashes": {},
+      "bridges": [],
+      "dataBindings": {},
+      "entry": {
+        "instance": "root",
+        "port": "main"
+      },
+      "flowHashes": {
+        "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5": "a12673a9a3574b939df4f3788916fee399be906a5bf28e31a5a2e377737e901c"
+      },
+      "inferences": {
+        "root/model": {
+          "config": {
+            "contextNode": null,
+            "model": "fixture-echo",
+            "provider": "fixture"
+          },
+          "context": null,
+          "contextPath": null,
+          "contextProgramHash": null,
+          "instance": "root",
+          "label": "model",
+          "node": "model"
+        }
+      },
+      "instances": {
+        "root": {
+          "entries": {
+            "main": {
+              "input": {
+                "kind": "text"
+              },
+              "output": {
+                "kind": "text"
+              }
+            }
+          },
+          "flow": "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5",
+          "hash": "a12673a9a3574b939df4f3788916fee399be906a5bf28e31a5a2e377737e901c",
+          "interactive": false,
+          "name": "P72 unpaired overview",
+          "workingDirectory": null
+        }
+      },
+      "interactive": false,
+      "packageRevisions": {
+        "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5": "1c34f46c0b22088babda5a4246098adab86addba9306b4f2b19073b96c4c9f1a"
+      },
+      "routes": {},
+      "types": {}
+    },
+    "runtime": {
+      "definitions": {
+        "bridgeHashes": {},
+        "bridgeSources": {},
+        "flowHashes": {
+          "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5": "a12673a9a3574b939df4f3788916fee399be906a5bf28e31a5a2e377737e901c"
+        },
+        "flowPackages": {
+          "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5": {
+            "packages": {
+              "1c34f46c0b22088babda5a4246098adab86addba9306b4f2b19073b96c4c9f1a": {
+                "dependencies": {},
+                "files": {
+                  "flow.rs": "// @zedflow format v3. See docs/flow-format.md.\n#![allow(dead_code, unused_imports)]\nuse adk_graph::prelude::*;\nuse adk_graph::edge::{Edge, EdgeTarget};\nuse std::{collections::HashMap, sync::Arc};\nuse zf_runtime::{models, operations, runtime, subgraphs};\n\nconst ZEDFLOW_FORMAT: u32 = 3;\n// @zedflow flow-view: identity, name, revision\nconst FLOW: (&str, &str, i64) = (\"7b186759-f9c2-4f64-9288-f004aaccefc7\", \"P72 unpaired overview\", 1);\n// @zedflow node-view 0: identity, renderer, label, x, y\nconst NODE_0: (&str, &str, &str, f64, f64) = (\"start\", \"flow\", \"start\", 0.0, 0.0);\n// @zedflow node-view 1: identity, renderer, label, x, y\nconst NODE_1: (&str, &str, &str, f64, f64) = (\"model\", \"flow\", \"model\", 0.0, 0.0);\n// @zedflow node-view 2: identity, renderer, label, x, y\nconst NODE_2: (&str, &str, &str, f64, f64) = (\"publish\", \"flow\", \"publish\", 0.0, 0.0);\n// @zedflow node-view 3: identity, renderer, label, x, y\nconst NODE_3: (&str, &str, &str, f64, f64) = (\"end\", \"flow\", \"end\", 0.0, 0.0);\n// @zedflow edge-view 0: identity, source handle, label\nconst EDGE_0: (&str, Option<&str>, Option<&str>) = (\"edge-0\", None, None);\n// @zedflow edge-view 1: identity, source handle, label\nconst EDGE_1: (&str, Option<&str>, Option<&str>) = (\"edge-1\", None, None);\n// @zedflow edge-view 2: identity, source handle, label\nconst EDGE_2: (&str, Option<&str>, Option<&str>) = (\"edge-2\", None, None);\n\npub fn build(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>) -> anyhow::Result<CompiledGraph> {\n    build_scope(services, checkpointer, \"\")\n}\n\npub(super) fn build_scope(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>, scope: &str) -> anyhow::Result<CompiledGraph> {\n    let node_0 = START;\n    let config_0 = json!({\"exports\": {\"branches\": {}, \"contract\": {\"branches\": {}, \"data\": {}, \"entries\": {\"main\": {\"input\": {\"kind\": \"text\"}, \"output\": {\"kind\": \"text\"}}}, \"inferenceNodes\": {}, \"requires\": {}}, \"data\": {}, \"entries\": {\"main\": {\"inputField\": \"input\", \"node\": \"start\", \"outputField\": \"output\"}}, \"interactive\": false, \"requires\": {}, \"types\": {}}});\n    let _ = &config_0;\n    let node_1 = NODE_1.0;\n    let config_1 = json!({\"model\": \"fixture-echo\", \"provider\": \"fixture\"});\n    let _ = &config_1;\n    let node_2 = NODE_2.0;\n    let config_2 = json!({\"inputField\": \"output\"});\n    let _ = &config_2;\n    let node_3 = END;\n    let config_3 = json!({});\n    let _ = &config_3;\n    let channels = json!([]);\n    let settings = json!({\"idleTimeoutMs\": null, \"maxConcurrency\": null, \"recursionLimit\": 100, \"retry\": null, \"strictChannels\": false, \"timeoutMs\": null});\n    let mut runtime_channels: Vec<Value> = serde_json::from_value(channels)?;\n    runtime_channels.extend(serde_json::from_value::<Vec<Value>>(json!([{\"name\": \"__zedflow:model-input:model\", \"reducer\": \"overwrite\"}]))?);\n    let mut graph = StateGraph::new(operations::state_schema(&Value::Array(runtime_channels))?);\n    let path_1 = format!(\"{scope}{}\", node_1);\n    let mut runtime_config_1 = if config_1.is_object() { config_1.clone() } else { json!({}) };\n    runtime_config_1[\"nodeId\"] = json!(node_1);\n    runtime_config_1[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node(models::node_with_services(node_1, &runtime_config_1, &path_1, services.clone())?);\n    let path_2 = format!(\"{scope}{}\", node_2);\n    let mut runtime_config_2 = if config_2.is_object() { config_2.clone() } else { json!({}) };\n    runtime_config_2[\"nodeId\"] = json!(node_2);\n    runtime_config_2[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node_fn(node_2, {\n        let services = services.clone();\n        move |ctx| {\n            let config = runtime_config_2.clone();\n            let services = services.clone();\n            let path = path_2.clone();\n            async move { operations::execute_with_services(\"output\", &config, ctx, &path, services).await }\n        }\n    });\n    let edge_0 = (node_0, node_1);\n    let edge_1 = (node_1, node_2);\n    let edge_2 = (node_2, node_3);\n    graph = graph.add_edge(edge_0.0, edge_0.1);\n    graph = graph.add_edge(edge_1.0, edge_1.1);\n    graph = graph.add_edge(edge_2.0, edge_2.1);\n    Ok(operations::configure(graph.compile()?, &settings, &[]).with_checkpointer_arc(checkpointer))\n}\n"
+                },
+                "manifestSource": "{\n  \"formatVersion\": 1,\n  \"id\": \"7b186759-f9c2-4f64-9288-f004aaccefc7\",\n  \"name\": \"P72 unpaired overview\",\n  \"entry\": \"flow.rs\",\n  \"files\": [\n    \"flow.rs\"\n  ],\n  \"dependencies\": {}\n}"
+              }
+            },
+            "root": "1c34f46c0b22088babda5a4246098adab86addba9306b4f2b19073b96c4c9f1a"
+          }
+        }
+      },
+      "flows": {
+        "root": {
+          "composition": {
+            "channels": [],
+            "edges": [
+              {
+                "id": "edge-0",
+                "label": null,
+                "source": "start",
+                "sourceHandle": null,
+                "target": "model"
+              },
+              {
+                "id": "edge-1",
+                "label": null,
+                "source": "model",
+                "sourceHandle": null,
+                "target": "publish"
+              },
+              {
+                "id": "edge-2",
+                "label": null,
+                "source": "publish",
+                "sourceHandle": null,
+                "target": "end"
+              }
+            ],
+            "formatVersion": 3,
+            "id": "7b186759-f9c2-4f64-9288-f004aaccefc7",
+            "name": "P72 unpaired overview",
+            "nodes": [
+              {
+                "data": {
+                  "config": {
+                    "exports": {
+                      "branches": {},
+                      "contract": {
+                        "branches": {},
+                        "data": {},
+                        "entries": {
+                          "main": {
+                            "input": {
+                              "kind": "text"
+                            },
+                            "output": {
+                              "kind": "text"
+                            }
+                          }
+                        },
+                        "inferenceNodes": {},
+                        "requires": {}
+                      },
+                      "data": {},
+                      "entries": {
+                        "main": {
+                          "inputField": "input",
+                          "node": "start",
+                          "outputField": "output"
+                        }
+                      },
+                      "interactive": false,
+                      "requires": {},
+                      "types": {}
+                    }
+                  },
+                  "kind": "start",
+                  "label": "start"
+                },
+                "id": "start",
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {
+                    "model": "fixture-echo",
+                    "provider": "fixture"
+                  },
+                  "kind": "agent",
+                  "label": "model"
+                },
+                "id": "model",
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {
+                    "inputField": "output"
+                  },
+                  "kind": "output",
+                  "label": "publish"
+                },
+                "id": "publish",
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {},
+                  "kind": "end",
+                  "label": "end"
+                },
+                "id": "end",
+                "position": {
+                  "x": 0,
+                  "y": 0
+                },
+                "type": "flow"
+              }
+            ],
+            "revision": 1,
+            "settings": {
+              "idleTimeoutMs": null,
+              "maxConcurrency": null,
+              "recursionLimit": 100,
+              "retry": null,
+              "strictChannels": false,
+              "timeoutMs": null
+            }
+          },
+          "exports": {
+            "branches": {},
+            "contract": {
+              "branches": {},
+              "data": {},
+              "entries": {
+                "main": {
+                  "input": {
+                    "kind": "text"
+                  },
+                  "output": {
+                    "kind": "text"
+                  }
+                }
+              },
+              "inferenceNodes": {},
+              "requires": {}
+            },
+            "data": {},
+            "entries": {
+              "main": {
+                "inputField": "input",
+                "node": "start",
+                "outputField": "output"
+              }
+            },
+            "interactive": false,
+            "requires": {},
+            "types": {}
+          },
+          "hash": "a12673a9a3574b939df4f3788916fee399be906a5bf28e31a5a2e377737e901c",
+          "key": "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5",
+          "source": "// @zedflow format v3. See docs/flow-format.md.\n#![allow(dead_code, unused_imports)]\nuse adk_graph::prelude::*;\nuse adk_graph::edge::{Edge, EdgeTarget};\nuse std::{collections::HashMap, sync::Arc};\nuse zf_runtime::{models, operations, runtime, subgraphs};\n\nconst ZEDFLOW_FORMAT: u32 = 3;\n// @zedflow flow-view: identity, name, revision\nconst FLOW: (&str, &str, i64) = (\"7b186759-f9c2-4f64-9288-f004aaccefc7\", \"P72 unpaired overview\", 1);\n// @zedflow node-view 0: identity, renderer, label, x, y\nconst NODE_0: (&str, &str, &str, f64, f64) = (\"start\", \"flow\", \"start\", 0.0, 0.0);\n// @zedflow node-view 1: identity, renderer, label, x, y\nconst NODE_1: (&str, &str, &str, f64, f64) = (\"model\", \"flow\", \"model\", 0.0, 0.0);\n// @zedflow node-view 2: identity, renderer, label, x, y\nconst NODE_2: (&str, &str, &str, f64, f64) = (\"publish\", \"flow\", \"publish\", 0.0, 0.0);\n// @zedflow node-view 3: identity, renderer, label, x, y\nconst NODE_3: (&str, &str, &str, f64, f64) = (\"end\", \"flow\", \"end\", 0.0, 0.0);\n// @zedflow edge-view 0: identity, source handle, label\nconst EDGE_0: (&str, Option<&str>, Option<&str>) = (\"edge-0\", None, None);\n// @zedflow edge-view 1: identity, source handle, label\nconst EDGE_1: (&str, Option<&str>, Option<&str>) = (\"edge-1\", None, None);\n// @zedflow edge-view 2: identity, source handle, label\nconst EDGE_2: (&str, Option<&str>, Option<&str>) = (\"edge-2\", None, None);\n\npub fn build(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>) -> anyhow::Result<CompiledGraph> {\n    build_scope(services, checkpointer, \"\")\n}\n\npub(super) fn build_scope(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>, scope: &str) -> anyhow::Result<CompiledGraph> {\n    let node_0 = START;\n    let config_0 = json!({\"exports\": {\"branches\": {}, \"contract\": {\"branches\": {}, \"data\": {}, \"entries\": {\"main\": {\"input\": {\"kind\": \"text\"}, \"output\": {\"kind\": \"text\"}}}, \"inferenceNodes\": {}, \"requires\": {}}, \"data\": {}, \"entries\": {\"main\": {\"inputField\": \"input\", \"node\": \"start\", \"outputField\": \"output\"}}, \"interactive\": false, \"requires\": {}, \"types\": {}}});\n    let _ = &config_0;\n    let node_1 = NODE_1.0;\n    let config_1 = json!({\"model\": \"fixture-echo\", \"provider\": \"fixture\"});\n    let _ = &config_1;\n    let node_2 = NODE_2.0;\n    let config_2 = json!({\"inputField\": \"output\"});\n    let _ = &config_2;\n    let node_3 = END;\n    let config_3 = json!({});\n    let _ = &config_3;\n    let channels = json!([]);\n    let settings = json!({\"idleTimeoutMs\": null, \"maxConcurrency\": null, \"recursionLimit\": 100, \"retry\": null, \"strictChannels\": false, \"timeoutMs\": null});\n    let mut runtime_channels: Vec<Value> = serde_json::from_value(channels)?;\n    runtime_channels.extend(serde_json::from_value::<Vec<Value>>(json!([{\"name\": \"__zedflow:model-input:model\", \"reducer\": \"overwrite\"}]))?);\n    let mut graph = StateGraph::new(operations::state_schema(&Value::Array(runtime_channels))?);\n    let path_1 = format!(\"{scope}{}\", node_1);\n    let mut runtime_config_1 = if config_1.is_object() { config_1.clone() } else { json!({}) };\n    runtime_config_1[\"nodeId\"] = json!(node_1);\n    runtime_config_1[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node(models::node_with_services(node_1, &runtime_config_1, &path_1, services.clone())?);\n    let path_2 = format!(\"{scope}{}\", node_2);\n    let mut runtime_config_2 = if config_2.is_object() { config_2.clone() } else { json!({}) };\n    runtime_config_2[\"nodeId\"] = json!(node_2);\n    runtime_config_2[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node_fn(node_2, {\n        let services = services.clone();\n        move |ctx| {\n            let config = runtime_config_2.clone();\n            let services = services.clone();\n            let path = path_2.clone();\n            async move { operations::execute_with_services(\"output\", &config, ctx, &path, services).await }\n        }\n    });\n    let edge_0 = (node_0, node_1);\n    let edge_1 = (node_1, node_2);\n    let edge_2 = (node_2, node_3);\n    graph = graph.add_edge(edge_0.0, edge_0.1);\n    graph = graph.add_edge(edge_1.0, edge_1.1);\n    graph = graph.add_edge(edge_2.0, edge_2.1);\n    Ok(operations::configure(graph.compile()?, &settings, &[]).with_checkpointer_arc(checkpointer))\n}\n"
+        }
+      },
+      "graph": {
+        "aliases": {
+          "root": "root"
+        },
+        "bridges": {},
+        "dataBindings": {},
+        "entry": {
+          "instance": "root",
+          "port": "main"
+        },
+        "inferences": {},
+        "instances": {
+          "root": {
+            "definition": {
+              "branches": {},
+              "data": {},
+              "entries": {
+                "main": {
+                  "input": {
+                    "kind": "text"
+                  },
+                  "output": {
+                    "kind": "text"
+                  }
+                }
+              },
+              "inferenceNodes": {},
+              "requires": {}
+            },
+            "flow": "07f85118aa129098f72df5fb4773a3f74eab3aa6e1ffb044c77048247f6b7ef5"
+          }
+        },
+        "routes": {},
+        "types": {}
+      }
+    },
+    "stage": "prepared"
+  },
+  "paired": {
+    "overview": {
+      "aliases": {
+        "root": "root"
+      },
+      "bridgeHashes": {},
+      "bridges": [],
+      "dataBindings": {},
+      "entry": {
+        "instance": "root",
+        "port": "main"
+      },
+      "flowHashes": {
+        "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da": "6d52a0c16111adced85774bf9a350579c2f0d53ccd26617d083f2de032fc6c97"
+      },
+      "inferences": {
+        "root/model": {
+          "config": {
+            "contextNode": "context",
+            "contextStrategy": "conversation-default",
+            "provider": "fixture"
+          },
+          "context": {
+            "config": {
+              "attachments": {
+                "instructions": {
+                  "items": [
+                    {
+                      "activation": "always",
+                      "id": "instructions",
+                      "mode": "literal",
+                      "source": {
+                        "kind": "text",
+                        "text": "Réponds de manière concise en français."
+                      }
+                    }
+                  ]
+                }
+              },
+              "contextBindings": {
+                "files": {
+                  "kind": "attachments",
+                  "slot": "files"
+                },
+                "history": {
+                  "historyField": "messages",
+                  "inputField": "input",
+                  "kind": "conversation"
+                },
+                "input": {
+                  "field": "input",
+                  "kind": "state"
+                },
+                "instructions": {
+                  "kind": "attachments",
+                  "slot": "instructions"
+                },
+                "skills": {
+                  "kind": "attachments",
+                  "slot": "skills"
+                }
+              },
+              "contextProgram": {
+                "bindings": {
+                  "files": {
+                    "kind": "attachments",
+                    "slot": "files"
+                  },
+                  "history": {
+                    "historyField": "messages",
+                    "inputField": "input",
+                    "kind": "conversation"
+                  },
+                  "input": {
+                    "field": "input",
+                    "kind": "state"
+                  },
+                  "instructions": {
+                    "kind": "attachments",
+                    "slot": "instructions"
+                  },
+                  "skills": {
+                    "kind": "attachments",
+                    "slot": "skills"
+                  }
+                },
+                "hash": "5549fcf360b7bbc8137e7d45568f95d381c18ad200644715a2f367685a3b3563",
+                "library": {
+                  "projections": {},
+                  "subprograms": {}
+                },
+                "librarySources": [],
+                "source": "// @zedflow-context 2\nuse zf_context::context::*;\nuse zf_core::types::DataType;\nuse std::collections::BTreeMap;\n\npub fn strategy() -> ContextStrategy {\n    ContextStrategy::new_v2(\"conversation-default\", \"Conversation\")\n        .define_type(\"ConversationMessage\", DataType::Record { fields: BTreeMap::from([(\"parts\".into(), DataType::List { item: Box::new(DataType::Record { fields: BTreeMap::from([]) }) }), (\"role\".into(), DataType::Text)]) })\n        .define_type(\"SelectedFiles\", DataType::Text)\n        .define_type(\"SkillCatalog\", DataType::Text)\n        .define_type(\"UserInput\", DataType::Text)\n        .define_type(\"WorkspaceInstructions\", DataType::Text)\n        .require(\"files\", DataType::Named { name: \"SelectedFiles\".into() })\n        .require(\"history\", DataType::List { item: Box::new(DataType::Named { name: \"ConversationMessage\".into() }) })\n        .require(\"input\", DataType::Named { name: \"UserInput\".into() })\n        .require(\"instructions\", DataType::Named { name: \"WorkspaceInstructions\".into() })\n        .require(\"skills\", DataType::Named { name: \"SkillCatalog\".into() })\n        .with_program(vec![\n            ContextBlock::emit(\"instructions\", FragmentRole::Instruction, FragmentFormat::Text,\n                ContextExpr::resource(\"instructions\")\n            ),\n            ContextBlock::emit(\"skills\", FragmentRole::Instruction, FragmentFormat::Text,\n                ContextExpr::resource(\"skills\")\n            ),\n            ContextBlock::emit(\"files\", FragmentRole::Data, FragmentFormat::Text,\n                ContextExpr::resource(\"files\")\n            ),\n            ContextBlock::branch(\"conversation\",\n                ContextPredicate::present(ContextExpr::resource(\"history\")),\n                vec![\n                    ContextBlock::for_each(\"history-messages\", ContextExpr::resource(\"history\"), \"message\", vec![\n                        ContextBlock::emit(\"history\", FragmentRole::Data, FragmentFormat::AdkMessages,\n                            ContextExpr::list(DataType::Named { name: \"ConversationMessage\".into() }, vec![ContextExpr::variable(\"message\")])\n                        ),\n                    ]),\n                ],\n                vec![\n                    ContextBlock::emit(\"input\", FragmentRole::Data, FragmentFormat::Text,\n                        ContextExpr::resource(\"input\")\n                    ),\n                ]\n            ),\n        ])\n}\n",
+                "strategy": {
+                  "capabilities": [],
+                  "id": "conversation-default",
+                  "name": "Conversation",
+                  "program": [
+                    {
+                      "format": "text",
+                      "id": "instructions",
+                      "kind": "emit",
+                      "role": "instruction",
+                      "value": {
+                        "kind": "resource",
+                        "name": "instructions"
+                      }
+                    },
+                    {
+                      "format": "text",
+                      "id": "skills",
+                      "kind": "emit",
+                      "role": "instruction",
+                      "value": {
+                        "kind": "resource",
+                        "name": "skills"
+                      }
+                    },
+                    {
+                      "format": "text",
+                      "id": "files",
+                      "kind": "emit",
+                      "role": "data",
+                      "value": {
+                        "kind": "resource",
+                        "name": "files"
+                      }
+                    },
+                    {
+                      "condition": {
+                        "kind": "present",
+                        "value": {
+                          "kind": "resource",
+                          "name": "history"
+                        }
+                      },
+                      "else": [
+                        {
+                          "format": "text",
+                          "id": "input",
+                          "kind": "emit",
+                          "role": "data",
+                          "value": {
+                            "kind": "resource",
+                            "name": "input"
+                          }
+                        }
+                      ],
+                      "id": "conversation",
+                      "kind": "if",
+                      "then": [
+                        {
+                          "id": "history-messages",
+                          "item": "message",
+                          "items": [
+                            {
+                              "format": "adkMessages",
+                              "id": "history",
+                              "kind": "emit",
+                              "role": "data",
+                              "value": {
+                                "itemType": {
+                                  "kind": "named",
+                                  "name": "ConversationMessage"
+                                },
+                                "items": [
+                                  {
+                                    "kind": "variable",
+                                    "name": "message"
+                                  }
+                                ],
+                                "kind": "list"
+                              }
+                            }
+                          ],
+                          "kind": "forEach",
+                          "value": {
+                            "kind": "resource",
+                            "name": "history"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "requirements": {
+                    "files": {
+                      "kind": "named",
+                      "name": "SelectedFiles"
+                    },
+                    "history": {
+                      "item": {
+                        "kind": "named",
+                        "name": "ConversationMessage"
+                      },
+                      "kind": "list"
+                    },
+                    "input": {
+                      "kind": "named",
+                      "name": "UserInput"
+                    },
+                    "instructions": {
+                      "kind": "named",
+                      "name": "WorkspaceInstructions"
+                    },
+                    "skills": {
+                      "kind": "named",
+                      "name": "SkillCatalog"
+                    }
+                  },
+                  "types": {
+                    "ConversationMessage": {
+                      "fields": {
+                        "parts": {
+                          "item": {
+                            "fields": {},
+                            "kind": "record"
+                          },
+                          "kind": "list"
+                        },
+                        "role": {
+                          "kind": "text"
+                        }
+                      },
+                      "kind": "record"
+                    },
+                    "SelectedFiles": {
+                      "kind": "text"
+                    },
+                    "SkillCatalog": {
+                      "kind": "text"
+                    },
+                    "UserInput": {
+                      "kind": "text"
+                    },
+                    "WorkspaceInstructions": {
+                      "kind": "text"
+                    }
+                  },
+                  "version": 2
+                },
+                "typeSources": [],
+                "types": {
+                  "ConversationMessage": {
+                    "fields": {
+                      "parts": {
+                        "item": {
+                          "fields": {},
+                          "kind": "record"
+                        },
+                        "kind": "list"
+                      },
+                      "role": {
+                        "kind": "text"
+                      }
+                    },
+                    "kind": "record"
+                  },
+                  "SelectedFiles": {
+                    "kind": "text"
+                  },
+                  "SkillCatalog": {
+                    "kind": "text"
+                  },
+                  "UserInput": {
+                    "kind": "text"
+                  },
+                  "WorkspaceInstructions": {
+                    "kind": "text"
+                  }
+                }
+              },
+              "contextStrategy": "conversation-default",
+              "fanIn": "any",
+              "modelNode": "model"
+            },
+            "label": "Préparer le contexte",
+            "node": "context"
+          },
+          "contextPath": "root/context",
+          "contextProgramHash": "5549fcf360b7bbc8137e7d45568f95d381c18ad200644715a2f367685a3b3563",
+          "instance": "root",
+          "label": "Modèle",
+          "node": "model"
+        }
+      },
+      "instances": {
+        "root": {
+          "entries": {
+            "main": {
+              "input": {
+                "kind": "text"
+              },
+              "output": {
+                "kind": "text"
+              }
+            }
+          },
+          "flow": "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da",
+          "hash": "9a64910529ea9a9485ddd09c1017fa05333c10530737a9f7d26b7fd50757cbc8",
+          "interactive": false,
+          "name": "Analyse autonome",
+          "workingDirectory": null
+        }
+      },
+      "interactive": false,
+      "packageRevisions": {
+        "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da": "3d3980392ed1120a375c4068a30251eb3df95dc102fe60320a97de11aa705b6b"
+      },
+      "routes": {},
+      "types": {}
+    },
+    "runtime": {
+      "definitions": {
+        "bridgeHashes": {},
+        "bridgeSources": {},
+        "flowHashes": {
+          "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da": "6d52a0c16111adced85774bf9a350579c2f0d53ccd26617d083f2de032fc6c97"
+        },
+        "flowPackages": {
+          "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da": {
+            "packages": {
+              "3d3980392ed1120a375c4068a30251eb3df95dc102fe60320a97de11aa705b6b": {
+                "dependencies": {},
+                "files": {
+                  "flow.rs": "// @zedflow format v3. See docs/flow-format.md.\n#![allow(dead_code, unused_imports)]\nuse adk_graph::prelude::*;\nuse adk_graph::edge::{Edge, EdgeTarget};\nuse std::{collections::HashMap, sync::Arc};\nuse zf_runtime::{models, operations, runtime, subgraphs};\n\nconst ZEDFLOW_FORMAT: u32 = 3;\n// @zedflow flow-view: identity, name, revision\nconst FLOW: (&str, &str, i64) = (\"434ad3cc-9963-4daa-a68f-d48e5d8c8de3\", \"Analyse autonome\", 1);\n// @zedflow node-view 0: identity, renderer, label, x, y\nconst NODE_0: (&str, &str, &str, f64, f64) = (\"start\", \"flow\", \"Début\", 60.0, 175.0);\n// @zedflow node-view 1: identity, renderer, label, x, y\nconst NODE_1: (&str, &str, &str, f64, f64) = (\"context\", \"flow\", \"Préparer le contexte\", 280.0, 160.0);\n// @zedflow node-view 2: identity, renderer, label, x, y\nconst NODE_2: (&str, &str, &str, f64, f64) = (\"model\", \"flow\", \"Modèle\", 590.0, 160.0);\n// @zedflow node-view 3: identity, renderer, label, x, y\nconst NODE_3: (&str, &str, &str, f64, f64) = (\"response\", \"flow\", \"Réponse\", 910.0, 160.0);\n// @zedflow node-view 4: identity, renderer, label, x, y\nconst NODE_4: (&str, &str, &str, f64, f64) = (\"end\", \"flow\", \"Fin\", 910.0, 410.0);\n// @zedflow edge-view 0: identity, source handle, label\nconst EDGE_0: (&str, Option<&str>, Option<&str>) = (\"e1\", None, None);\n// @zedflow edge-view 1: identity, source handle, label\nconst EDGE_1: (&str, Option<&str>, Option<&str>) = (\"e2\", None, None);\n// @zedflow edge-view 2: identity, source handle, label\nconst EDGE_2: (&str, Option<&str>, Option<&str>) = (\"e3\", None, None);\n// @zedflow edge-view 3: identity, source handle, label\nconst EDGE_3: (&str, Option<&str>, Option<&str>) = (\"context-model\", None, None);\n\npub fn build(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>) -> anyhow::Result<CompiledGraph> {\n    build_scope(services, checkpointer, \"\")\n}\n\npub(super) fn build_scope(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>, scope: &str) -> anyhow::Result<CompiledGraph> {\n    let node_0 = START;\n    let config_0 = json!({\"exports\": {\"branches\": {}, \"contract\": {\"branches\": {}, \"data\": {}, \"entries\": {\"main\": {\"input\": {\"kind\": \"text\"}, \"output\": {\"kind\": \"text\"}}}, \"inferenceNodes\": {}, \"requires\": {}}, \"data\": {}, \"entries\": {\"main\": {\"inputField\": \"input\", \"node\": \"start\", \"outputField\": \"output\"}}, \"interactive\": false, \"requires\": {}, \"types\": {}}});\n    let _ = &config_0;\n    let node_1 = NODE_1.0;\n    let config_1 = json!({\"attachments\": {\"instructions\": {\"items\": [{\"activation\": \"always\", \"id\": \"instructions\", \"mode\": \"literal\", \"source\": {\"kind\": \"text\", \"text\": \"Réponds de manière concise en français.\"}}]}}, \"contextBindings\": {\"files\": {\"kind\": \"attachments\", \"slot\": \"files\"}, \"history\": {\"historyField\": \"messages\", \"inputField\": \"input\", \"kind\": \"conversation\"}, \"input\": {\"field\": \"input\", \"kind\": \"state\"}, \"instructions\": {\"kind\": \"attachments\", \"slot\": \"instructions\"}, \"skills\": {\"kind\": \"attachments\", \"slot\": \"skills\"}}, \"contextStrategy\": \"conversation-default\", \"fanIn\": \"any\", \"modelNode\": \"model\"});\n    let _ = &config_1;\n    let node_2 = NODE_2.0;\n    let config_2 = json!({\"contextNode\": \"context\", \"fanIn\": \"any\", \"field\": \"output\", \"historyField\": \"messages\", \"inputField\": \"input\", \"provider\": \"fixture\"});\n    let _ = &config_2;\n    let node_3 = NODE_3.0;\n    let config_3 = json!({\"text\": \"{{output}}\"});\n    let _ = &config_3;\n    let node_4 = END;\n    let config_4 = json!({});\n    let _ = &config_4;\n    let channels = json!([]);\n    let settings = json!({\"idleTimeoutMs\": null, \"maxConcurrency\": null, \"recursionLimit\": 100, \"retry\": null, \"strictChannels\": false, \"timeoutMs\": null});\n    let mut runtime_channels: Vec<Value> = serde_json::from_value(channels)?;\n    runtime_channels.extend(serde_json::from_value::<Vec<Value>>(json!([{\"name\": \"__zedflow:model-input:model\", \"reducer\": \"overwrite\"}, {\"name\": \"__zedflow:prepared-consumed:model\", \"reducer\": \"overwrite\"}, {\"name\": \"__zedflow:prepared:context\", \"reducer\": \"overwrite\"}]))?);\n    let mut graph = StateGraph::new(operations::state_schema(&Value::Array(runtime_channels))?);\n    let path_1 = format!(\"{scope}{}\", node_1);\n    let mut runtime_config_1 = if config_1.is_object() { config_1.clone() } else { json!({}) };\n    runtime_config_1[\"nodeId\"] = json!(node_1);\n    runtime_config_1[\"__zedflowVersion\"] = json!(3);\n    let mut peer_config_1 = config_2.clone();\n    peer_config_1[\"nodeId\"] = json!(node_2);\n    peer_config_1[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node(models::context_node_with_services(node_1, &runtime_config_1, &peer_config_1, &path_1, services.clone())?);\n    let path_2 = format!(\"{scope}{}\", node_2);\n    let mut runtime_config_2 = if config_2.is_object() { config_2.clone() } else { json!({}) };\n    runtime_config_2[\"nodeId\"] = json!(node_2);\n    runtime_config_2[\"__zedflowVersion\"] = json!(3);\n    let mut peer_config_2 = config_1.clone();\n    peer_config_2[\"nodeId\"] = json!(node_1);\n    peer_config_2[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node(models::inference_node_with_services(node_2, &runtime_config_2, &peer_config_2, &path_2, services.clone())?);\n    let path_3 = format!(\"{scope}{}\", node_3);\n    let mut runtime_config_3 = if config_3.is_object() { config_3.clone() } else { json!({}) };\n    runtime_config_3[\"nodeId\"] = json!(node_3);\n    runtime_config_3[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node_fn(node_3, {\n        let services = services.clone();\n        move |ctx| {\n            let config = runtime_config_3.clone();\n            let services = services.clone();\n            let path = path_3.clone();\n            async move { operations::execute_with_services(\"output\", &config, ctx, &path, services).await }\n        }\n    });\n    let edge_0 = (node_0, node_1);\n    let edge_1 = (node_2, node_3);\n    let edge_2 = (node_3, node_4);\n    let edge_3 = (node_1, node_2);\n    graph = graph.add_edge(edge_0.0, edge_0.1);\n    graph.edges.push(Edge::Conditional { source: edge_3.0.to_owned(), router: Arc::new(|_| \"next\".into()), targets: HashMap::from([(\"next\".into(), EdgeTarget::from(edge_3.1))]) });\n    graph = graph.add_edge(edge_1.0, edge_1.1);\n    graph = graph.add_edge(edge_2.0, edge_2.1);\n    Ok(operations::configure(graph.compile()?, &settings, &[]).with_checkpointer_arc(checkpointer))\n}\n"
+                },
+                "manifestSource": "{\n  \"formatVersion\": 1,\n  \"id\": \"434ad3cc-9963-4daa-a68f-d48e5d8c8de3\",\n  \"name\": \"Analyse autonome\",\n  \"entry\": \"flow.rs\",\n  \"files\": [\n    \"flow.rs\"\n  ],\n  \"dependencies\": {}\n}"
+              }
+            },
+            "root": "3d3980392ed1120a375c4068a30251eb3df95dc102fe60320a97de11aa705b6b"
+          }
+        }
+      },
+      "flows": {
+        "root": {
+          "composition": {
+            "channels": [],
+            "edges": [
+              {
+                "id": "e1",
+                "label": null,
+                "source": "start",
+                "sourceHandle": null,
+                "target": "context"
+              },
+              {
+                "id": "e2",
+                "label": null,
+                "source": "model",
+                "sourceHandle": null,
+                "target": "response"
+              },
+              {
+                "id": "e3",
+                "label": null,
+                "source": "response",
+                "sourceHandle": null,
+                "target": "end"
+              },
+              {
+                "id": "context-model",
+                "label": null,
+                "source": "context",
+                "sourceHandle": null,
+                "target": "model"
+              }
+            ],
+            "formatVersion": 3,
+            "id": "434ad3cc-9963-4daa-a68f-d48e5d8c8de3",
+            "name": "Analyse autonome",
+            "nodes": [
+              {
+                "data": {
+                  "config": {
+                    "exports": {
+                      "branches": {},
+                      "contract": {
+                        "branches": {},
+                        "data": {},
+                        "entries": {
+                          "main": {
+                            "input": {
+                              "kind": "text"
+                            },
+                            "output": {
+                              "kind": "text"
+                            }
+                          }
+                        },
+                        "inferenceNodes": {},
+                        "requires": {}
+                      },
+                      "data": {},
+                      "entries": {
+                        "main": {
+                          "inputField": "input",
+                          "node": "start",
+                          "outputField": "output"
+                        }
+                      },
+                      "interactive": false,
+                      "requires": {},
+                      "types": {}
+                    }
+                  },
+                  "kind": "start",
+                  "label": "Début"
+                },
+                "id": "start",
+                "position": {
+                  "x": 60,
+                  "y": 175
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {
+                    "attachments": {
+                      "instructions": {
+                        "items": [
+                          {
+                            "activation": "always",
+                            "id": "instructions",
+                            "mode": "literal",
+                            "source": {
+                              "kind": "text",
+                              "text": "Réponds de manière concise en français."
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "contextBindings": {
+                      "files": {
+                        "kind": "attachments",
+                        "slot": "files"
+                      },
+                      "history": {
+                        "historyField": "messages",
+                        "inputField": "input",
+                        "kind": "conversation"
+                      },
+                      "input": {
+                        "field": "input",
+                        "kind": "state"
+                      },
+                      "instructions": {
+                        "kind": "attachments",
+                        "slot": "instructions"
+                      },
+                      "skills": {
+                        "kind": "attachments",
+                        "slot": "skills"
+                      }
+                    },
+                    "contextProgram": {
+                      "bindings": {
+                        "files": {
+                          "kind": "attachments",
+                          "slot": "files"
+                        },
+                        "history": {
+                          "historyField": "messages",
+                          "inputField": "input",
+                          "kind": "conversation"
+                        },
+                        "input": {
+                          "field": "input",
+                          "kind": "state"
+                        },
+                        "instructions": {
+                          "kind": "attachments",
+                          "slot": "instructions"
+                        },
+                        "skills": {
+                          "kind": "attachments",
+                          "slot": "skills"
+                        }
+                      },
+                      "hash": "5549fcf360b7bbc8137e7d45568f95d381c18ad200644715a2f367685a3b3563",
+                      "library": {
+                        "projections": {},
+                        "subprograms": {}
+                      },
+                      "librarySources": [],
+                      "source": "// @zedflow-context 2\nuse zf_context::context::*;\nuse zf_core::types::DataType;\nuse std::collections::BTreeMap;\n\npub fn strategy() -> ContextStrategy {\n    ContextStrategy::new_v2(\"conversation-default\", \"Conversation\")\n        .define_type(\"ConversationMessage\", DataType::Record { fields: BTreeMap::from([(\"parts\".into(), DataType::List { item: Box::new(DataType::Record { fields: BTreeMap::from([]) }) }), (\"role\".into(), DataType::Text)]) })\n        .define_type(\"SelectedFiles\", DataType::Text)\n        .define_type(\"SkillCatalog\", DataType::Text)\n        .define_type(\"UserInput\", DataType::Text)\n        .define_type(\"WorkspaceInstructions\", DataType::Text)\n        .require(\"files\", DataType::Named { name: \"SelectedFiles\".into() })\n        .require(\"history\", DataType::List { item: Box::new(DataType::Named { name: \"ConversationMessage\".into() }) })\n        .require(\"input\", DataType::Named { name: \"UserInput\".into() })\n        .require(\"instructions\", DataType::Named { name: \"WorkspaceInstructions\".into() })\n        .require(\"skills\", DataType::Named { name: \"SkillCatalog\".into() })\n        .with_program(vec![\n            ContextBlock::emit(\"instructions\", FragmentRole::Instruction, FragmentFormat::Text,\n                ContextExpr::resource(\"instructions\")\n            ),\n            ContextBlock::emit(\"skills\", FragmentRole::Instruction, FragmentFormat::Text,\n                ContextExpr::resource(\"skills\")\n            ),\n            ContextBlock::emit(\"files\", FragmentRole::Data, FragmentFormat::Text,\n                ContextExpr::resource(\"files\")\n            ),\n            ContextBlock::branch(\"conversation\",\n                ContextPredicate::present(ContextExpr::resource(\"history\")),\n                vec![\n                    ContextBlock::for_each(\"history-messages\", ContextExpr::resource(\"history\"), \"message\", vec![\n                        ContextBlock::emit(\"history\", FragmentRole::Data, FragmentFormat::AdkMessages,\n                            ContextExpr::list(DataType::Named { name: \"ConversationMessage\".into() }, vec![ContextExpr::variable(\"message\")])\n                        ),\n                    ]),\n                ],\n                vec![\n                    ContextBlock::emit(\"input\", FragmentRole::Data, FragmentFormat::Text,\n                        ContextExpr::resource(\"input\")\n                    ),\n                ]\n            ),\n        ])\n}\n",
+                      "strategy": {
+                        "capabilities": [],
+                        "id": "conversation-default",
+                        "name": "Conversation",
+                        "program": [
+                          {
+                            "format": "text",
+                            "id": "instructions",
+                            "kind": "emit",
+                            "role": "instruction",
+                            "value": {
+                              "kind": "resource",
+                              "name": "instructions"
+                            }
+                          },
+                          {
+                            "format": "text",
+                            "id": "skills",
+                            "kind": "emit",
+                            "role": "instruction",
+                            "value": {
+                              "kind": "resource",
+                              "name": "skills"
+                            }
+                          },
+                          {
+                            "format": "text",
+                            "id": "files",
+                            "kind": "emit",
+                            "role": "data",
+                            "value": {
+                              "kind": "resource",
+                              "name": "files"
+                            }
+                          },
+                          {
+                            "condition": {
+                              "kind": "present",
+                              "value": {
+                                "kind": "resource",
+                                "name": "history"
+                              }
+                            },
+                            "else": [
+                              {
+                                "format": "text",
+                                "id": "input",
+                                "kind": "emit",
+                                "role": "data",
+                                "value": {
+                                  "kind": "resource",
+                                  "name": "input"
+                                }
+                              }
+                            ],
+                            "id": "conversation",
+                            "kind": "if",
+                            "then": [
+                              {
+                                "id": "history-messages",
+                                "item": "message",
+                                "items": [
+                                  {
+                                    "format": "adkMessages",
+                                    "id": "history",
+                                    "kind": "emit",
+                                    "role": "data",
+                                    "value": {
+                                      "itemType": {
+                                        "kind": "named",
+                                        "name": "ConversationMessage"
+                                      },
+                                      "items": [
+                                        {
+                                          "kind": "variable",
+                                          "name": "message"
+                                        }
+                                      ],
+                                      "kind": "list"
+                                    }
+                                  }
+                                ],
+                                "kind": "forEach",
+                                "value": {
+                                  "kind": "resource",
+                                  "name": "history"
+                                }
+                              }
+                            ]
+                          }
+                        ],
+                        "requirements": {
+                          "files": {
+                            "kind": "named",
+                            "name": "SelectedFiles"
+                          },
+                          "history": {
+                            "item": {
+                              "kind": "named",
+                              "name": "ConversationMessage"
+                            },
+                            "kind": "list"
+                          },
+                          "input": {
+                            "kind": "named",
+                            "name": "UserInput"
+                          },
+                          "instructions": {
+                            "kind": "named",
+                            "name": "WorkspaceInstructions"
+                          },
+                          "skills": {
+                            "kind": "named",
+                            "name": "SkillCatalog"
+                          }
+                        },
+                        "types": {
+                          "ConversationMessage": {
+                            "fields": {
+                              "parts": {
+                                "item": {
+                                  "fields": {},
+                                  "kind": "record"
+                                },
+                                "kind": "list"
+                              },
+                              "role": {
+                                "kind": "text"
+                              }
+                            },
+                            "kind": "record"
+                          },
+                          "SelectedFiles": {
+                            "kind": "text"
+                          },
+                          "SkillCatalog": {
+                            "kind": "text"
+                          },
+                          "UserInput": {
+                            "kind": "text"
+                          },
+                          "WorkspaceInstructions": {
+                            "kind": "text"
+                          }
+                        },
+                        "version": 2
+                      },
+                      "typeSources": [],
+                      "types": {
+                        "ConversationMessage": {
+                          "fields": {
+                            "parts": {
+                              "item": {
+                                "fields": {},
+                                "kind": "record"
+                              },
+                              "kind": "list"
+                            },
+                            "role": {
+                              "kind": "text"
+                            }
+                          },
+                          "kind": "record"
+                        },
+                        "SelectedFiles": {
+                          "kind": "text"
+                        },
+                        "SkillCatalog": {
+                          "kind": "text"
+                        },
+                        "UserInput": {
+                          "kind": "text"
+                        },
+                        "WorkspaceInstructions": {
+                          "kind": "text"
+                        }
+                      }
+                    },
+                    "contextStrategy": "conversation-default",
+                    "fanIn": "any",
+                    "modelNode": "model"
+                  },
+                  "kind": "context",
+                  "label": "Préparer le contexte"
+                },
+                "id": "context",
+                "position": {
+                  "x": 280,
+                  "y": 160
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {
+                    "contextNode": "context",
+                    "fanIn": "any",
+                    "field": "output",
+                    "historyField": "messages",
+                    "inputField": "input",
+                    "provider": "fixture"
+                  },
+                  "kind": "model",
+                  "label": "Modèle"
+                },
+                "id": "model",
+                "position": {
+                  "x": 590,
+                  "y": 160
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {
+                    "text": "{{output}}"
+                  },
+                  "kind": "output",
+                  "label": "Réponse"
+                },
+                "id": "response",
+                "position": {
+                  "x": 910,
+                  "y": 160
+                },
+                "type": "flow"
+              },
+              {
+                "data": {
+                  "config": {},
+                  "kind": "end",
+                  "label": "Fin"
+                },
+                "id": "end",
+                "position": {
+                  "x": 910,
+                  "y": 410
+                },
+                "type": "flow"
+              }
+            ],
+            "revision": 1,
+            "settings": {
+              "idleTimeoutMs": null,
+              "maxConcurrency": null,
+              "recursionLimit": 100,
+              "retry": null,
+              "strictChannels": false,
+              "timeoutMs": null
+            }
+          },
+          "exports": {
+            "branches": {},
+            "contract": {
+              "branches": {},
+              "data": {},
+              "entries": {
+                "main": {
+                  "input": {
+                    "kind": "text"
+                  },
+                  "output": {
+                    "kind": "text"
+                  }
+                }
+              },
+              "inferenceNodes": {},
+              "requires": {}
+            },
+            "data": {},
+            "entries": {
+              "main": {
+                "inputField": "input",
+                "node": "start",
+                "outputField": "output"
+              }
+            },
+            "interactive": false,
+            "requires": {},
+            "types": {}
+          },
+          "hash": "9a64910529ea9a9485ddd09c1017fa05333c10530737a9f7d26b7fd50757cbc8",
+          "key": "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da",
+          "source": "// @zedflow format v3. See docs/flow-format.md.\n#![allow(dead_code, unused_imports)]\nuse adk_graph::prelude::*;\nuse adk_graph::edge::{Edge, EdgeTarget};\nuse std::{collections::HashMap, sync::Arc};\nuse zf_runtime::{models, operations, runtime, subgraphs};\n\nconst ZEDFLOW_FORMAT: u32 = 3;\n// @zedflow flow-view: identity, name, revision\nconst FLOW: (&str, &str, i64) = (\"434ad3cc-9963-4daa-a68f-d48e5d8c8de3\", \"Analyse autonome\", 1);\n// @zedflow node-view 0: identity, renderer, label, x, y\nconst NODE_0: (&str, &str, &str, f64, f64) = (\"start\", \"flow\", \"Début\", 60.0, 175.0);\n// @zedflow node-view 1: identity, renderer, label, x, y\nconst NODE_1: (&str, &str, &str, f64, f64) = (\"context\", \"flow\", \"Préparer le contexte\", 280.0, 160.0);\n// @zedflow node-view 2: identity, renderer, label, x, y\nconst NODE_2: (&str, &str, &str, f64, f64) = (\"model\", \"flow\", \"Modèle\", 590.0, 160.0);\n// @zedflow node-view 3: identity, renderer, label, x, y\nconst NODE_3: (&str, &str, &str, f64, f64) = (\"response\", \"flow\", \"Réponse\", 910.0, 160.0);\n// @zedflow node-view 4: identity, renderer, label, x, y\nconst NODE_4: (&str, &str, &str, f64, f64) = (\"end\", \"flow\", \"Fin\", 910.0, 410.0);\n// @zedflow edge-view 0: identity, source handle, label\nconst EDGE_0: (&str, Option<&str>, Option<&str>) = (\"e1\", None, None);\n// @zedflow edge-view 1: identity, source handle, label\nconst EDGE_1: (&str, Option<&str>, Option<&str>) = (\"e2\", None, None);\n// @zedflow edge-view 2: identity, source handle, label\nconst EDGE_2: (&str, Option<&str>, Option<&str>) = (\"e3\", None, None);\n// @zedflow edge-view 3: identity, source handle, label\nconst EDGE_3: (&str, Option<&str>, Option<&str>) = (\"context-model\", None, None);\n\npub fn build(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>) -> anyhow::Result<CompiledGraph> {\n    build_scope(services, checkpointer, \"\")\n}\n\npub(super) fn build_scope(services: Arc<runtime::RunServices>, checkpointer: Arc<dyn adk_graph::checkpoint::Checkpointer>, scope: &str) -> anyhow::Result<CompiledGraph> {\n    let node_0 = START;\n    let config_0 = json!({\"exports\": {\"branches\": {}, \"contract\": {\"branches\": {}, \"data\": {}, \"entries\": {\"main\": {\"input\": {\"kind\": \"text\"}, \"output\": {\"kind\": \"text\"}}}, \"inferenceNodes\": {}, \"requires\": {}}, \"data\": {}, \"entries\": {\"main\": {\"inputField\": \"input\", \"node\": \"start\", \"outputField\": \"output\"}}, \"interactive\": false, \"requires\": {}, \"types\": {}}});\n    let _ = &config_0;\n    let node_1 = NODE_1.0;\n    let config_1 = json!({\"attachments\": {\"instructions\": {\"items\": [{\"activation\": \"always\", \"id\": \"instructions\", \"mode\": \"literal\", \"source\": {\"kind\": \"text\", \"text\": \"Réponds de manière concise en français.\"}}]}}, \"contextBindings\": {\"files\": {\"kind\": \"attachments\", \"slot\": \"files\"}, \"history\": {\"historyField\": \"messages\", \"inputField\": \"input\", \"kind\": \"conversation\"}, \"input\": {\"field\": \"input\", \"kind\": \"state\"}, \"instructions\": {\"kind\": \"attachments\", \"slot\": \"instructions\"}, \"skills\": {\"kind\": \"attachments\", \"slot\": \"skills\"}}, \"contextProgram\": {\"bindings\": {\"files\": {\"kind\": \"attachments\", \"slot\": \"files\"}, \"history\": {\"historyField\": \"messages\", \"inputField\": \"input\", \"kind\": \"conversation\"}, \"input\": {\"field\": \"input\", \"kind\": \"state\"}, \"instructions\": {\"kind\": \"attachments\", \"slot\": \"instructions\"}, \"skills\": {\"kind\": \"attachments\", \"slot\": \"skills\"}}, \"hash\": \"5549fcf360b7bbc8137e7d45568f95d381c18ad200644715a2f367685a3b3563\", \"library\": {\"projections\": {}, \"subprograms\": {}}, \"librarySources\": [], \"source\": \"// @zedflow-context 2\\nuse zf_context::context::*;\\nuse zf_core::types::DataType;\\nuse std::collections::BTreeMap;\\n\\npub fn strategy() -> ContextStrategy {\\n    ContextStrategy::new_v2(\\\"conversation-default\\\", \\\"Conversation\\\")\\n        .define_type(\\\"ConversationMessage\\\", DataType::Record { fields: BTreeMap::from([(\\\"parts\\\".into(), DataType::List { item: Box::new(DataType::Record { fields: BTreeMap::from([]) }) }), (\\\"role\\\".into(), DataType::Text)]) })\\n        .define_type(\\\"SelectedFiles\\\", DataType::Text)\\n        .define_type(\\\"SkillCatalog\\\", DataType::Text)\\n        .define_type(\\\"UserInput\\\", DataType::Text)\\n        .define_type(\\\"WorkspaceInstructions\\\", DataType::Text)\\n        .require(\\\"files\\\", DataType::Named { name: \\\"SelectedFiles\\\".into() })\\n        .require(\\\"history\\\", DataType::List { item: Box::new(DataType::Named { name: \\\"ConversationMessage\\\".into() }) })\\n        .require(\\\"input\\\", DataType::Named { name: \\\"UserInput\\\".into() })\\n        .require(\\\"instructions\\\", DataType::Named { name: \\\"WorkspaceInstructions\\\".into() })\\n        .require(\\\"skills\\\", DataType::Named { name: \\\"SkillCatalog\\\".into() })\\n        .with_program(vec![\\n            ContextBlock::emit(\\\"instructions\\\", FragmentRole::Instruction, FragmentFormat::Text,\\n                ContextExpr::resource(\\\"instructions\\\")\\n            ),\\n            ContextBlock::emit(\\\"skills\\\", FragmentRole::Instruction, FragmentFormat::Text,\\n                ContextExpr::resource(\\\"skills\\\")\\n            ),\\n            ContextBlock::emit(\\\"files\\\", FragmentRole::Data, FragmentFormat::Text,\\n                ContextExpr::resource(\\\"files\\\")\\n            ),\\n            ContextBlock::branch(\\\"conversation\\\",\\n                ContextPredicate::present(ContextExpr::resource(\\\"history\\\")),\\n                vec![\\n                    ContextBlock::for_each(\\\"history-messages\\\", ContextExpr::resource(\\\"history\\\"), \\\"message\\\", vec![\\n                        ContextBlock::emit(\\\"history\\\", FragmentRole::Data, FragmentFormat::AdkMessages,\\n                            ContextExpr::list(DataType::Named { name: \\\"ConversationMessage\\\".into() }, vec![ContextExpr::variable(\\\"message\\\")])\\n                        ),\\n                    ]),\\n                ],\\n                vec![\\n                    ContextBlock::emit(\\\"input\\\", FragmentRole::Data, FragmentFormat::Text,\\n                        ContextExpr::resource(\\\"input\\\")\\n                    ),\\n                ]\\n            ),\\n        ])\\n}\\n\", \"strategy\": {\"capabilities\": [], \"id\": \"conversation-default\", \"name\": \"Conversation\", \"program\": [{\"format\": \"text\", \"id\": \"instructions\", \"kind\": \"emit\", \"role\": \"instruction\", \"value\": {\"kind\": \"resource\", \"name\": \"instructions\"}}, {\"format\": \"text\", \"id\": \"skills\", \"kind\": \"emit\", \"role\": \"instruction\", \"value\": {\"kind\": \"resource\", \"name\": \"skills\"}}, {\"format\": \"text\", \"id\": \"files\", \"kind\": \"emit\", \"role\": \"data\", \"value\": {\"kind\": \"resource\", \"name\": \"files\"}}, {\"condition\": {\"kind\": \"present\", \"value\": {\"kind\": \"resource\", \"name\": \"history\"}}, \"else\": [{\"format\": \"text\", \"id\": \"input\", \"kind\": \"emit\", \"role\": \"data\", \"value\": {\"kind\": \"resource\", \"name\": \"input\"}}], \"id\": \"conversation\", \"kind\": \"if\", \"then\": [{\"id\": \"history-messages\", \"item\": \"message\", \"items\": [{\"format\": \"adkMessages\", \"id\": \"history\", \"kind\": \"emit\", \"role\": \"data\", \"value\": {\"itemType\": {\"kind\": \"named\", \"name\": \"ConversationMessage\"}, \"items\": [{\"kind\": \"variable\", \"name\": \"message\"}], \"kind\": \"list\"}}], \"kind\": \"forEach\", \"value\": {\"kind\": \"resource\", \"name\": \"history\"}}]}], \"requirements\": {\"files\": {\"kind\": \"named\", \"name\": \"SelectedFiles\"}, \"history\": {\"item\": {\"kind\": \"named\", \"name\": \"ConversationMessage\"}, \"kind\": \"list\"}, \"input\": {\"kind\": \"named\", \"name\": \"UserInput\"}, \"instructions\": {\"kind\": \"named\", \"name\": \"WorkspaceInstructions\"}, \"skills\": {\"kind\": \"named\", \"name\": \"SkillCatalog\"}}, \"types\": {\"ConversationMessage\": {\"fields\": {\"parts\": {\"item\": {\"fields\": {}, \"kind\": \"record\"}, \"kind\": \"list\"}, \"role\": {\"kind\": \"text\"}}, \"kind\": \"record\"}, \"SelectedFiles\": {\"kind\": \"text\"}, \"SkillCatalog\": {\"kind\": \"text\"}, \"UserInput\": {\"kind\": \"text\"}, \"WorkspaceInstructions\": {\"kind\": \"text\"}}, \"version\": 2}, \"typeSources\": [], \"types\": {\"ConversationMessage\": {\"fields\": {\"parts\": {\"item\": {\"fields\": {}, \"kind\": \"record\"}, \"kind\": \"list\"}, \"role\": {\"kind\": \"text\"}}, \"kind\": \"record\"}, \"SelectedFiles\": {\"kind\": \"text\"}, \"SkillCatalog\": {\"kind\": \"text\"}, \"UserInput\": {\"kind\": \"text\"}, \"WorkspaceInstructions\": {\"kind\": \"text\"}}}, \"contextStrategy\": \"conversation-default\", \"fanIn\": \"any\", \"modelNode\": \"model\"});\n    let _ = &config_1;\n    let node_2 = NODE_2.0;\n    let config_2 = json!({\"contextNode\": \"context\", \"fanIn\": \"any\", \"field\": \"output\", \"historyField\": \"messages\", \"inputField\": \"input\", \"provider\": \"fixture\"});\n    let _ = &config_2;\n    let node_3 = NODE_3.0;\n    let config_3 = json!({\"text\": \"{{output}}\"});\n    let _ = &config_3;\n    let node_4 = END;\n    let config_4 = json!({});\n    let _ = &config_4;\n    let channels = json!([]);\n    let settings = json!({\"idleTimeoutMs\": null, \"maxConcurrency\": null, \"recursionLimit\": 100, \"retry\": null, \"strictChannels\": false, \"timeoutMs\": null});\n    let mut runtime_channels: Vec<Value> = serde_json::from_value(channels)?;\n    runtime_channels.extend(serde_json::from_value::<Vec<Value>>(json!([{\"name\": \"__zedflow:model-input:model\", \"reducer\": \"overwrite\"}, {\"name\": \"__zedflow:prepared-consumed:model\", \"reducer\": \"overwrite\"}, {\"name\": \"__zedflow:prepared:context\", \"reducer\": \"overwrite\"}]))?);\n    let mut graph = StateGraph::new(operations::state_schema(&Value::Array(runtime_channels))?);\n    let path_1 = format!(\"{scope}{}\", node_1);\n    let mut runtime_config_1 = if config_1.is_object() { config_1.clone() } else { json!({}) };\n    runtime_config_1[\"nodeId\"] = json!(node_1);\n    runtime_config_1[\"__zedflowVersion\"] = json!(3);\n    let mut peer_config_1 = config_2.clone();\n    peer_config_1[\"nodeId\"] = json!(node_2);\n    peer_config_1[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node(models::context_node_with_services(node_1, &runtime_config_1, &peer_config_1, &path_1, services.clone())?);\n    let path_2 = format!(\"{scope}{}\", node_2);\n    let mut runtime_config_2 = if config_2.is_object() { config_2.clone() } else { json!({}) };\n    runtime_config_2[\"nodeId\"] = json!(node_2);\n    runtime_config_2[\"__zedflowVersion\"] = json!(3);\n    let mut peer_config_2 = config_1.clone();\n    peer_config_2[\"nodeId\"] = json!(node_1);\n    peer_config_2[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node(models::inference_node_with_services(node_2, &runtime_config_2, &peer_config_2, &path_2, services.clone())?);\n    let path_3 = format!(\"{scope}{}\", node_3);\n    let mut runtime_config_3 = if config_3.is_object() { config_3.clone() } else { json!({}) };\n    runtime_config_3[\"nodeId\"] = json!(node_3);\n    runtime_config_3[\"__zedflowVersion\"] = json!(3);\n    graph = graph.add_node_fn(node_3, {\n        let services = services.clone();\n        move |ctx| {\n            let config = runtime_config_3.clone();\n            let services = services.clone();\n            let path = path_3.clone();\n            async move { operations::execute_with_services(\"output\", &config, ctx, &path, services).await }\n        }\n    });\n    let edge_0 = (node_0, node_1);\n    let edge_1 = (node_2, node_3);\n    let edge_2 = (node_3, node_4);\n    let edge_3 = (node_1, node_2);\n    graph = graph.add_edge(edge_0.0, edge_0.1);\n    graph.edges.push(Edge::Conditional { source: edge_3.0.to_owned(), router: Arc::new(|_| \"next\".into()), targets: HashMap::from([(\"next\".into(), EdgeTarget::from(edge_3.1))]) });\n    graph = graph.add_edge(edge_1.0, edge_1.1);\n    graph = graph.add_edge(edge_2.0, edge_2.1);\n    Ok(operations::configure(graph.compile()?, &settings, &[]).with_checkpointer_arc(checkpointer))\n}\n"
+        }
+      },
+      "graph": {
+        "aliases": {
+          "root": "root"
+        },
+        "bridges": {},
+        "dataBindings": {},
+        "entry": {
+          "instance": "root",
+          "port": "main"
+        },
+        "inferences": {},
+        "instances": {
+          "root": {
+            "definition": {
+              "branches": {},
+              "data": {},
+              "entries": {
+                "main": {
+                  "input": {
+                    "kind": "text"
+                  },
+                  "output": {
+                    "kind": "text"
+                  }
+                }
+              },
+              "inferenceNodes": {},
+              "requires": {}
+            },
+            "flow": "0df5efe7e4b6fe894d27f451927f717d9a2991229bb626f10953f7fa2fade8da"
+          }
+        },
+        "routes": {},
+        "types": {}
+      }
+    },
+    "stage": "prepared"
+  }
+}

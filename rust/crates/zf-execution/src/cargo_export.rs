@@ -48,7 +48,13 @@ impl ExecutionService {
             ExportRequest::Passage { run_id, .. } => Some(run_id.as_str()),
             _ => None,
         };
-        let b = self.admit(actor, CommandKind::Read, id).await?;
+        let admitted = self.admit(actor, CommandKind::Read, None).await?;
+        let b = if let Some(id) = id {
+            self.require_run_scope(actor, id).await?;
+            self.admit(actor, CommandKind::Read, Some(id)).await?
+        } else {
+            admitted
+        };
         let _authoring = b.authoring_writer.lock().await;
         let workspace = workspaces::get(&b.db, &actor.workspace_id).await?;
         let support = support();

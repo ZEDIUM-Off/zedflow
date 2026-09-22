@@ -1269,7 +1269,29 @@ async fn download_sessions(
     let bytes = b
         .service
         .download_sessions(&b.actor(Some(&workspace.id)), id)
-        .await?;
+        .await
+        .map_err(|error| {
+            let status = error_status(&error);
+            if let Some(domain) = error
+                .chain()
+                .find_map(|cause| cause.downcast_ref::<zf_execution::commands::ExecutionError>())
+            {
+                return ApiError(status, domain.to_string());
+            }
+            let cause = if error.chain().any(|cause| cause.is::<std::io::Error>()) {
+                "io"
+            } else if error.chain().any(|cause| cause.is::<serde_json::Error>()) {
+                "metadata_json"
+            } else {
+                "validation"
+            };
+            // Log only a technical category, never paths, metadata or archive bytes.
+            eprintln!(
+                "{}",
+                json!({"event":"session_download_failed","status":status.as_u16(),"cause":cause})
+            );
+            ApiError(status, "Téléchargement de session impossible".into())
+        })?;
     Ok((
         [
             (header::CONTENT_TYPE, "application/zip".to_owned()),
@@ -1576,6 +1598,12 @@ struct AppUpdate {
     expected_daemon_build_id: String,
 }
 async fn app_update(App(b): App<Backend>, Json(request): Json<AppUpdate>) -> Api<Value> {
+    if !crate::app_updates::valid_id(&request.release_id) {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "Identifiant de release invalide".into(),
+        ));
+    }
     let mut gate = b.updates.gate.write().await;
     if *gate {
         return Err(ApiError(
@@ -1583,11 +1611,26 @@ async fn app_update(App(b): App<Backend>, Json(request): Json<AppUpdate>) -> Api
             "Une mise à jour est déjà en cours".into(),
         ));
     }
-    let maintenance = b.service.try_begin_maintenance()?;
+    let maintenance = b
+        .service
+        .try_begin_maintenance()
+        .map_err(|error| ApiError(StatusCode::CONFLICT, error.to_string()))?;
     let ack = b
         .updates
         .request(&request.release_id, &request.expected_daemon_build_id)
-        .await?;
+        .await
+        .map_err(|error| {
+            if error.is::<crate::app_updates::RequestConflict>() {
+                ApiError(StatusCode::CONFLICT, error.to_string())
+            } else if error.is::<crate::app_updates::ReleaseNotFound>() {
+                ApiError(StatusCode::NOT_FOUND, "Release absente".into())
+            } else {
+                ApiError(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Impossible de préparer la mise à jour".into(),
+                )
+            }
+        })?;
     *gate = true;
     let shutdown = b.sync.shutdown.clone();
     tokio::spawn(async move {

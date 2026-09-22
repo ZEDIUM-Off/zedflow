@@ -6,12 +6,12 @@ use crate::{
     source_acceptance::FilePrecondition,
 };
 use anyhow::{Context, Result, ensure};
-pub(crate) use lifecycle::ensure_no_lifecycle_locked;
 pub use lifecycle::{
     BridgeMutation, CataloguePrecondition, LegacyRetirement, PackageConversion, PackageDeletion,
     PackagePrecondition, capture_catalogue_preconditions, convert_package, delete_package,
     recover_lifecycle,
 };
+pub(crate) use lifecycle::{ensure_no_lifecycle_locked, inspect_catalogue_preconditions};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -62,7 +62,7 @@ struct Intent {
 pub struct PendingPackage {
     workspace: PathBuf,
     intent: Intent,
-    _lock: File,
+    _lock: Vec<File>,
 }
 impl PendingPackage {
     pub fn id(&self) -> &str {
@@ -668,6 +668,15 @@ fn finish(workspace: &Path, root: &Path, mut intent: Intent) -> Result<PackageSn
 /// cancelled future leaves its owned worker to finish installation and releases
 /// the lock only afterwards; the marker then supports a subsequent recovery.
 pub async fn begin(write: PackageWrite) -> Result<PendingPackage> {
+    begin_checked(write, Vec::new()).await
+}
+
+/// Import admission checks the audited catalogues under the existing writer locks.
+/// The ordinary package journal still owns publication and recovery.
+pub(crate) async fn begin_checked(
+    write: PackageWrite,
+    conditions: Vec<CataloguePrecondition>,
+) -> Result<PendingPackage> {
     tokio::task::spawn_blocking(move || {
         ensure!(
             cfg!(target_os = "linux"),
@@ -675,8 +684,7 @@ pub async fn begin(write: PackageWrite) -> Result<PendingPackage> {
         );
         write.snapshot.validate()?;
         io::directory(&write.workspace, false)?;
-        let lock = context_store::workspace_lock(&write.workspace, true, true)?
-            .context("package workspace absent")?;
+        let locks = lock_catalogues(&conditions, Some(&write.workspace))?;
         let root = root(&write.workspace)?;
         let destination = root
             .join("flow")
@@ -714,12 +722,73 @@ pub async fn begin(write: PackageWrite) -> Result<PendingPackage> {
         Ok(PendingPackage {
             workspace: write.workspace,
             intent,
-            _lock: lock,
+            _lock: locks,
         })
     })
     .await
     .context("package publication worker failed")?
 }
+fn lock_catalogues(
+    conditions: &[CataloguePrecondition],
+    workspace: Option<&Path>,
+) -> Result<Vec<File>> {
+    let mut roots: Vec<_> = conditions
+        .iter()
+        .map(|c| c.workspace().to_owned())
+        .collect();
+    roots.extend(workspace.map(Path::to_owned));
+    roots.sort();
+    roots.dedup();
+    let mut locks = Vec::new();
+    for root in roots {
+        let lock = if conditions.is_empty() {
+            context_store::workspace_lock(&root, true, true)?
+        } else {
+            context_store::clean_workspace_lock(&root, true, true)?
+        };
+        locks.push(lock.context("package workspace absent")?);
+    }
+    for condition in conditions {
+        condition.check()?;
+    }
+    Ok(locks)
+}
+
+/// Keep final import verification and its completion receipt under the same locks.
+pub(crate) async fn guard_catalogues(conditions: Vec<CataloguePrecondition>) -> Result<Vec<File>> {
+    tokio::task::spawn_blocking(move || lock_catalogues(&conditions, None)).await?
+}
+
+/// Recover only a create-only publication whose exact revision belongs to this
+/// pending SQLite import. Other authoring journals need their own recovery owner.
+pub(crate) async fn recover_import(
+    workspace: PathBuf,
+    expected: BTreeMap<String, String>,
+) -> Result<()> {
+    tokio::task::spawn_blocking(move || {
+        let Some(_lock) = context_store::workspace_lock_raw(&workspace, false, true)? else {
+            return Ok(());
+        };
+        let root = root(&workspace)?;
+        context_store::require_clean_publications(&root, true)?;
+        let Some(mut intent) = read(&root)? else {
+            return Ok(());
+        };
+        let manifest = intent.snapshot.root_manifest()?;
+        let id = manifest.id.as_str();
+        ensure!(
+            intent.publication.is_none()
+                && intent.previous_revision.is_none()
+                && expected.get(id) == Some(&intent.snapshot.root),
+            Conflict("pending package publication does not belong to this legacy import")
+        );
+        install(&workspace, &root, &mut intent)?;
+        finish(&workspace, &root, intent)?;
+        Ok(())
+    })
+    .await?
+}
+
 /// Recover a filesystem/SQLite handoff; replay the payload by `id` before finish.
 pub async fn recover(workspace: PathBuf) -> Result<Option<PendingPackage>> {
     tokio::task::spawn_blocking(move || {
@@ -736,7 +805,7 @@ pub async fn recover(workspace: PathBuf) -> Result<Option<PendingPackage>> {
         Ok(Some(PendingPackage {
             workspace,
             intent,
-            _lock: lock,
+            _lock: vec![lock],
         }))
     })
     .await
@@ -754,4 +823,132 @@ pub(crate) fn recover_files_locked(workspace: &Path, root: &Path) -> Result<()> 
     );
     finish(workspace, root, intent)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod import_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn checked_import_refuses_catalogue_added_after_audit_before_publication() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        let home = root.path().join("home");
+        for path in [&workspace, &home] {
+            std::fs::create_dir(path).unwrap();
+        }
+        let conditions = capture_catalogue_preconditions(vec![workspace.clone(), home.clone()])
+            .await
+            .unwrap();
+        let outside = home.join(".agents/flows");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("concurrent.rs"), "concurrent authoring").unwrap();
+        let snapshot = PackageSnapshot::capture(
+            serde_json::json!({"formatVersion":1,"id":"test","name":"Test","entry":"flow.rs","files":["flow.rs"]}).to_string(),
+            BTreeMap::from([("flow.rs".into(), b"// preserved source".to_vec())]), Default::default(),
+        ).unwrap();
+        let target = workspace.join(".zedflow/flow/test");
+        let result = begin_checked(
+            PackageWrite {
+                workspace: workspace.clone(),
+                target: target.clone(),
+                snapshot,
+                expected_revision: None,
+                publication: None,
+                preconditions: vec![],
+            },
+            conditions.clone(),
+        )
+        .await;
+        assert!(
+            result
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("catalogue changed")
+        );
+        assert!(!target.exists());
+        assert!(!workspace.join(".zedflow/.package-acceptance.json").exists());
+        assert!(guard_catalogues(conditions).await.is_err());
+        assert_eq!(
+            std::fs::read_to_string(outside.join("concurrent.rs")).unwrap(),
+            "concurrent authoring"
+        );
+    }
+}
+
+#[cfg(test)]
+mod import_race_tests {
+    use super::*;
+
+    fn snapshot(id: &str) -> PackageSnapshot {
+        PackageSnapshot::capture(
+            serde_json::json!({"formatVersion":1,"id":id,"name":id,"entry":"flow.rs","files":["flow.rs"]}).to_string(),
+            BTreeMap::from([("flow.rs".into(), b"// exact concurrent source".to_vec())]), Default::default(),
+        ).unwrap()
+    }
+    #[tokio::test]
+    async fn import_inspection_and_admission_never_recover_a_journal_arriving_after_precheck() {
+        let root = tempfile::tempdir().unwrap();
+        let workspace = root.path().join("workspace");
+        let home = root.path().join("home");
+        for path in [&workspace, &home] {
+            std::fs::create_dir(path).unwrap();
+        }
+        let conditions = inspect_catalogue_preconditions(vec![workspace.clone(), home.clone()])
+            .await
+            .unwrap();
+        // Another writer installs and leaves its journal after the import's audit.
+        let pending = begin(PackageWrite {
+            workspace: workspace.clone(),
+            target: workspace.join(".zedflow/flow/another"),
+            snapshot: snapshot("another"),
+            expected_revision: None,
+            publication: None,
+            preconditions: vec![],
+        })
+        .await
+        .unwrap();
+        drop(pending);
+        let marker = workspace.join(".zedflow/.package-acceptance.json");
+        let before = std::fs::read(&marker).unwrap();
+        let store = crate::flow_store::FlowStore::new(
+            home.clone(),
+            std::sync::Arc::new(|_: &zf_flows::schema::Composition| Ok(())),
+        );
+        let scoped = crate::workspaces::Workspace {
+            id: crate::workspaces::path_id(&workspace),
+            name: "fixture".into(),
+            path: workspace.clone(),
+            open: false,
+        };
+        assert!(store.inspect_catalog(&scoped).await.is_err());
+        assert!(
+            inspect_catalogue_preconditions(vec![workspace.clone(), home])
+                .await
+                .is_err()
+        );
+        assert!(
+            begin_checked(
+                PackageWrite {
+                    workspace: workspace.clone(),
+                    target: workspace.join(".zedflow/flow/imported"),
+                    snapshot: snapshot("imported"),
+                    expected_revision: None,
+                    publication: None,
+                    preconditions: vec![]
+                },
+                conditions.clone()
+            )
+            .await
+            .is_err()
+        );
+        assert!(guard_catalogues(conditions).await.is_err());
+        assert_eq!(std::fs::read(&marker).unwrap(), before);
+        assert!(!workspace.join(".zedflow/flow/imported").exists());
+        assert_eq!(
+            std::fs::read(workspace.join(".zedflow/flow/another/flow.rs")).unwrap(),
+            b"// exact concurrent source"
+        );
+    }
 }

@@ -47,6 +47,23 @@ pub struct CataloguePrecondition {
     catalogue: String,
     inventory: Option<Inventory>,
 }
+impl CataloguePrecondition {
+    pub(super) fn workspace(&self) -> &Path {
+        &self.workspace
+    }
+    pub(super) fn check(&self) -> Result<()> {
+        ensure!(
+            canonical(&self.workspace) && CATALOGUES.contains(&self.catalogue.as_str()),
+            "invalid catalogue precondition"
+        );
+        ensure!(
+            inventory(&self.workspace.join(&self.catalogue))? == self.inventory,
+            Conflict("catalogue changed since import audit")
+        );
+        Ok(())
+    }
+}
+
 /// Full closure revision observed while auditing another catalogue package.
 /// Reacquisition also validates dependency inventories outside the catalogues.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -369,7 +386,20 @@ fn recover_other_writes(workspaces: &[PathBuf]) -> Result<()> {
 /// Capture these immediately before the host's consumer/collision audit, then
 /// pass the unchanged values to conversion/deletion. No absent directory is made.
 pub async fn capture_catalogue_preconditions(
+    workspaces: Vec<PathBuf>,
+) -> Result<Vec<CataloguePrecondition>> {
+    capture_conditions(workspaces, true).await
+}
+
+pub(crate) async fn inspect_catalogue_preconditions(
+    workspaces: Vec<PathBuf>,
+) -> Result<Vec<CataloguePrecondition>> {
+    capture_conditions(workspaces, false).await
+}
+
+async fn capture_conditions(
     mut workspaces: Vec<PathBuf>,
+    recover: bool,
 ) -> Result<Vec<CataloguePrecondition>> {
     tokio::task::spawn_blocking(move || {
         workspaces.sort();
@@ -383,7 +413,11 @@ pub async fn capture_catalogue_preconditions(
         for workspace in workspaces {
             ensure!(canonical(&workspace), "invalid catalogue workspace");
             io::directory(&workspace, false)?;
-            let _lock = context_store::workspace_lock(&workspace, false, true)?;
+            let _lock = if recover {
+                context_store::workspace_lock(&workspace, false, true)?
+            } else {
+                context_store::clean_workspace_lock(&workspace, false, true)?
+            };
             for catalogue in CATALOGUES {
                 let inventory = inventory(&workspace.join(catalogue))?;
                 entries = entries

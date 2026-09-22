@@ -599,8 +599,14 @@ async fn bridge_save_publishes_a_new_plan_and_refuses_a_live_instance_rebuild_be
     let worker:Composition=serde_json::from_value(json!({"formatVersion":3,"id":"worker-flow","name":"Worker","nodes":[
         node("s","start",json!({"exports":{"contract":{"entries":{"main":contract,"alternate":contract}},"entries":{"main":{"node":"work","inputField":"input","outputField":"output"},"alternate":{"node":"work","inputField":"input","outputField":"output"}}}})),
         node("work","set",json!({"field":"output","value":"result"})),node("e","end",json!({}))],"edges":edges})).unwrap();
-    f.flow(&root).await;
-    f.flow(&worker).await;
+    f.flows
+        .store(&f.workspace, root.clone(), "workspace", None, None)
+        .await
+        .unwrap();
+    f.flows
+        .store(&f.workspace, worker.clone(), "workspace", None, None)
+        .await
+        .unwrap();
     let files = f.flows.list(&f.workspace).await.unwrap();
     let root_key = files.iter().find(|f| f.id == root.id).unwrap().key.clone();
     let worker_key = files
@@ -647,13 +653,15 @@ async fn bridge_save_publishes_a_new_plan_and_refuses_a_live_instance_rebuild_be
         .bridge_sources
         .insert("delegate".into(), first.source.unwrap());
     prepared.validate(&RuntimePrimitives).unwrap();
-    let run = json!({"id":"composed","workspaceId":f.workspace.id,"status":"waiting","runtimeGraph":prepared});
-    sqlx::query("INSERT INTO runs VALUES(?,?)")
-        .bind("composed")
-        .bind(run.to_string())
-        .execute(&f.db)
-        .await
-        .unwrap();
+    let run = json!({"workspaceId":f.workspace.id,"status":"waiting","runtimeGraph":prepared});
+    for id in ["composed", "composed-copy"] {
+        sqlx::query("INSERT INTO runs VALUES(?,?)")
+            .bind(id)
+            .bind(run.to_string())
+            .execute(&f.db)
+            .await
+            .unwrap();
+    }
     let mut next = serde_json::to_value(&bridge).unwrap();
     next["connections"]["call"]["to"]["port"] = json!("alternate");
     let next: BridgeDefinition = serde_json::from_value(next).unwrap();
@@ -718,6 +726,65 @@ async fn bridge_save_publishes_a_new_plan_and_refuses_a_live_instance_rebuild_be
             .unwrap(),
         head
     );
+
+    // A flow save must still select every child after a bridge graph adoption,
+    // and subsequent saves must interpret the current flow heads, not old pins.
+    for value in ["first child revision", "second child revision"] {
+        let file = f.flows.get(&f.workspace, &worker_key).await.unwrap();
+        let mut changed = file.composition.unwrap();
+        changed.nodes[1].data.config["value"] = json!(value);
+        let plan = f
+            .flows
+            .plan(
+                &f.workspace,
+                changed,
+                "workspace",
+                Some(&worker_key),
+                Some(&file.hash),
+            )
+            .await
+            .unwrap();
+        let saved = zf_execution::live_flows::accept(
+            &f.db,
+            &f.store,
+            &f.flows,
+            &f.workspace,
+            plan,
+            Some(file.hash),
+            false,
+        )
+        .await
+        .unwrap();
+        let definitions = live_files::run_definitions(&f.db, &f.workspace.id)
+            .await
+            .unwrap();
+        let children: Vec<_> = definitions
+            .iter()
+            .filter(|d| d.definition.key == worker_key)
+            .collect();
+        assert_eq!(children.len(), 2);
+        for child in children {
+            assert_eq!(
+                child.definition.source,
+                saved.source.as_ref().unwrap().as_str()
+            );
+            assert_eq!(
+                child.definition.composition.nodes[1].data.config["value"],
+                value
+            );
+            assert_eq!(child.baseline.nodes[1].data.config["value"], "result");
+        }
+        let graphs = live_files::run_graphs(&f.db, &f.workspace.id)
+            .await
+            .unwrap();
+        assert_eq!(graphs.len(), 2);
+        for graph in graphs {
+            assert_eq!(
+                graph.prepared.graph.routes["delegate/call"].to.port,
+                "alternate"
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -1021,4 +1088,200 @@ async fn source_capture_authenticates_each_pin_and_ignores_inactive_library_refe
         .unwrap();
     assert!(empty.strategies.is_empty() && empty.libraries.is_empty() && empty.types.is_empty());
     programs::freeze(&mut inactive, &empty).unwrap();
+}
+
+fn plain_flow(id: &str) -> Composition {
+    serde_json::from_value(json!({"formatVersion":3,"id":id,"name":id,"nodes":[
+        {"id":"s","position":{"x":0,"y":0},"data":{"kind":"start","label":"Start","config":{}}},
+        {"id":"e","position":{"x":0,"y":0},"data":{"kind":"end","label":"End","config":{}}}
+    ],"edges":[{"id":"edge","source":"s","target":"e"}]}))
+    .unwrap()
+}
+
+async fn package_runs(f: &Fixture, file: &zf_storage::flow_store::FlowFile, count: usize) {
+    let document = json!({"workspaceId":f.workspace.id,"status":"waiting",
+        "flowRef":{"key":file.key},"composition":file.composition,
+        "flowSource":file.source,"flowPackage":file.package});
+    for index in 0..count {
+        sqlx::query("INSERT INTO runs VALUES(?,?)")
+            .bind(format!("run-{index}"))
+            .bind(document.to_string())
+            .execute(&f.db)
+            .await
+            .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn repeated_unaffected_packages_preserve_creation_update_and_publications() {
+    for count in [0, 8, 16] {
+        let f = Fixture::new().await;
+        let unrelated = f
+            .flows
+            .store(
+                &f.workspace,
+                plain_flow("unrelated"),
+                "workspace",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        package_runs(&f, &unrelated, count).await;
+        let plan = f
+            .flows
+            .plan(
+                &f.workspace,
+                plain_flow("candidate"),
+                "workspace",
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let expected_source = plan.source.clone();
+        let expected_package = plan.package.clone();
+        let saved = zf_execution::live_flows::accept(
+            &f.db,
+            &f.store,
+            &f.flows,
+            &f.workspace,
+            plan,
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved.source.as_ref().unwrap(), &expected_source);
+        assert_eq!(saved.hash, expected_package.root);
+        assert_eq!(saved.package.as_ref().unwrap(), &expected_package);
+        let mut changed = saved.composition.clone().unwrap();
+        changed.name = "Updated unused".into();
+        let plan = f
+            .flows
+            .plan(
+                &f.workspace,
+                changed,
+                "workspace",
+                Some(&saved.key),
+                Some(&saved.hash),
+            )
+            .await
+            .unwrap();
+        let expected_source = plan.source.clone();
+        let expected_package = plan.package.clone();
+        let updated = zf_execution::live_flows::accept(
+            &f.db,
+            &f.store,
+            &f.flows,
+            &f.workspace,
+            plan,
+            Some(saved.hash),
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(updated.source.as_ref().unwrap(), &expected_source);
+        assert_eq!(updated.hash, expected_package.root);
+        assert_eq!(updated.package.as_ref().unwrap(), &expected_package);
+        assert_eq!(f.flows.list(&f.workspace).await.unwrap().len(), 2);
+        let captured = zf_storage::live_files::snapshots(&f.db, &f.workspace.id)
+            .await
+            .unwrap();
+        assert_eq!(captured.len(), count);
+        assert!(captured.iter().all(|row| row.revision_heads.is_empty()));
+        assert_eq!(
+            f.flows
+                .get(&f.workspace, &unrelated.key)
+                .await
+                .unwrap()
+                .hash,
+            unrelated.hash
+        );
+    }
+}
+
+#[tokio::test]
+async fn failed_participant_or_external_edit_publishes_no_flow_or_heads() {
+    for corruption in 0..3 {
+        let f = Fixture::new().await;
+        let mut file = f
+            .flows
+            .store(&f.workspace, plain_flow("shared"), "workspace", None, None)
+            .await
+            .unwrap();
+        let dependency = if corruption == 2 {
+            let dependency = f
+                .flows
+                .store(
+                    &f.workspace,
+                    plain_flow("dependency"),
+                    "workspace",
+                    None,
+                    None,
+                )
+                .await
+                .unwrap();
+            let manifest_path = file.path.join("flow.json");
+            let mut manifest: Value =
+                serde_json::from_slice(&std::fs::read(&manifest_path).unwrap()).unwrap();
+            manifest["dependencies"] = json!({"dep":{"path":"../dependency"}});
+            std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+            file = f.flows.get(&f.workspace, &file.key).await.unwrap();
+            Some(dependency.path.join("flow.rs"))
+        } else {
+            None
+        };
+        package_runs(&f, &file, 3).await;
+        let mut changed = file.composition.clone().unwrap();
+        changed.name = "Must not publish".into();
+        let plan = f
+            .flows
+            .plan(
+                &f.workspace,
+                changed,
+                "workspace",
+                Some(&file.key),
+                Some(&file.hash),
+            )
+            .await
+            .unwrap();
+        let source_path = file.path.join("flow.rs");
+        if corruption == 0 {
+            // Same key and claimed package revision, different source bytes.
+            sqlx::query("UPDATE runs SET document=json_set(document,'$.flowSource','broken') WHERE id='run-2'")
+                .execute(&f.db).await.unwrap();
+        } else {
+            let path = dependency.as_ref().unwrap_or(&source_path);
+            let source = std::fs::read_to_string(path).unwrap();
+            std::fs::write(path, format!("{source}\n// external edit\n")).unwrap();
+        }
+        let dependency_before = dependency.as_ref().map(|path| std::fs::read(path).unwrap());
+        let before = std::fs::read(&source_path).unwrap();
+        assert!(
+            zf_execution::live_flows::accept(
+                &f.db,
+                &f.store,
+                &f.flows,
+                &f.workspace,
+                plan,
+                Some(file.hash),
+                false
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&source_path).unwrap(), before);
+        assert_eq!(
+            dependency.as_ref().map(|path| std::fs::read(path).unwrap()),
+            dependency_before
+        );
+        assert!(
+            zf_storage::live_files::snapshots(&f.db, &f.workspace.id)
+                .await
+                .unwrap()
+                .iter()
+                .all(|r| r.revision_heads.is_empty())
+        );
+    }
 }

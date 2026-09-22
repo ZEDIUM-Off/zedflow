@@ -1387,16 +1387,41 @@ fn make_zip(files: BTreeMap<String, Vec<u8>>) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
+#[derive(Debug)]
+pub struct ExportNotFound;
+impl std::fmt::Display for ExportNotFound {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Export absent de ce workspace")
+    }
+}
+impl std::error::Error for ExportNotFound {}
+
+async fn download_bytes(path: &Path) -> Result<Vec<u8>> {
+    regular_bytes(path).await.map_err(|error| {
+        if error.chain().any(|cause| {
+            cause
+                .downcast_ref::<std::io::Error>()
+                .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+        }) {
+            ExportNotFound.into()
+        } else {
+            error
+        }
+    })
+}
+
 pub async fn download(data: &Path, id: &str, workspace: &Workspace) -> Result<Vec<u8>> {
     valid_id(id)?;
     let root = data.join("session-downloads");
     let metadata: Value =
-        serde_json::from_slice(&regular_bytes(&root.join(format!("{id}.json"))).await?)?;
-    ensure!(
-        metadata["workspaceId"] == workspace.id,
-        "export appartenant à un autre workspace"
-    );
-    regular_bytes(&root.join(format!("{id}.zip"))).await
+        serde_json::from_slice(&download_bytes(&root.join(format!("{id}.json"))).await?)?;
+    let owner = metadata
+        .get("workspaceId")
+        .and_then(Value::as_str)
+        .filter(|owner| !owner.is_empty())
+        .context("invalid session export metadata owner")?;
+    ensure!(owner == workspace.id, ExportNotFound);
+    download_bytes(&root.join(format!("{id}.zip"))).await
 }
 
 fn read_zip(bytes: Vec<u8>) -> Result<Vec<Bundle>> {

@@ -1,0 +1,31 @@
+import { test, expect } from '@playwright/test'
+import { designTemplate, inspector, useDesign } from './helpers'
+
+test('the real daemon runs the workspace harness, asks for its model, and resumes a second turn', async ({ page, request }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/')
+  await expect(page.getByText('Daemon connecté')).toBeVisible()
+  await designTemplate(page, 'harness')
+  await useDesign(page, 'AGENTS.md')
+  await expect(page.locator('.composer-wait-prompt')).toContainText('Choisissez le modèle avant de préparer son contexte', { timeout: 20000 })
+  await page.locator('.model-wait-composer').getByLabel('Fournisseur du modèle').selectOption('fixture')
+  await page.getByRole('button', { name: 'Choisir et reprendre' }).click()
+  await expect(page.locator('.assistant-markdown')).toContainText('ADK', { timeout: 20000 })
+  await expect(page.locator('.composer-wait-prompt')).toContainText('Sur quoi continuer ?')
+  await expect(page.locator('.conversation-content [data-tool="read"]')).toBeVisible()
+  const id = await page.locator('.session-row.chosen').getAttribute('data-session-id')
+  const current = await (await request.get(`/api/runs/${id}`)).json()
+  expect(current.status).toBe('waiting')
+  expect(current.modelBindings.model.provider).toBe('fixture')
+  expect(current.context).toHaveProperty('instructions')
+  expect(current.toolActivities.some((activity: any) => activity.name === 'read' && activity.status === 'completed')).toBe(true)
+  await page.locator('.composer textarea').fill('AGENTS.md')
+  await page.locator('.composer textarea').press('Enter')
+  await expect(page.locator('.is-user').last()).toContainText('AGENTS.md')
+  await expect(page.locator('.assistant-markdown')).toHaveCount(2, { timeout: 20000 })
+  await expect(page.locator('.composer-wait-prompt')).toContainText('Sur quoi continuer ?')
+  await inspector(page, 'Contexte')
+  await page.screenshot({ path:test.info().outputPath('09-harness-live.png') })
+  expect(errors).toEqual([])
+})

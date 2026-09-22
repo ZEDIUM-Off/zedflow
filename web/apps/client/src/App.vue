@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { shallowRef } from 'vue'
 import { flowPackageInventory, jsonValueSchema } from '@zedflow/sdk'
-import type { InspectionSelection } from './composables/useExecutedDefinition'
+import { executedDefinitionRequest, executedSourceQuery, type InspectionSelection } from './composables/useExecutedDefinition'
 import type { JsonValue } from '@zedflow/sdk'
 
 const client=useClient()
@@ -58,7 +58,7 @@ const sidebarOpen=ref(window.innerWidth>=760),browserOpen=ref(false),paletteOpen
 const shareTitle=ref('Exporter la session')
 const packageInventory=ref<Awaited<ReturnType<typeof flowPackageInventory>>>([])
 const sourceFiles=shallowRef<ExportFile[]>([]),sourceRunId=ref<string>(),sourceTitle=ref('Rust du flow')
-const sourceSelection=ref<{workspaceId:string;nodePath:string;occurrenceId?:string;hash:string}>()
+const sourceSelection=ref<{workspaceId:string;nodePath?:string;occurrenceId?:string;hash:string}>()
 let sourceRequest=0
 const propertiesOpen=ref(window.innerWidth>=760)
 const inspectorOpen=ref(false),inspectorTab=ref<'activity'|'models'|'context'|'state'>('activity'),selectedPath=ref(''),focusRevision=ref(0)
@@ -113,10 +113,10 @@ async function showRust(compile=false,runId?:string){
   await app.task(compile?'Compilation Rust':'Chargement du Rust',async()=>{
     if(runId&&!compile){
       const active=current.value?.id===runId?current.value:undefined,run=active||history.value.find(run=>run.id===runId)
-      const path=active?selectedPath.value:'',occurrence=active?(selectedOccurrence.value||(path?active.activities?.filter(item=>(item.path||item.node)===path).at(-1)?.occurrenceId:active.activities?.at(-1)?.occurrenceId)):undefined
-      const owner=run?.workspaceId||workspaceId.value,value=await client.definitions.load({runId,workspaceId:owner,query:{nodePath:path,...(occurrence?{occurrenceId:occurrence}:{})}})
+      const path=active?selectedPath.value:'',occurrence=active&&path?(selectedOccurrence.value||active.activities?.filter(item=>(item.path||item.node)===path).at(-1)?.occurrenceId):undefined
+      const owner=run?.workspaceId||workspaceId.value,value=await client.definitions.load(executedDefinitionRequest({...run,id:runId,name:run?.name||'',status:run?.status||'',workspaceId:owner},path,occurrence))
       if(!value?.exact)throw new Error(value&&!value.exact?value.diagnostic.message:'La source exacte de cette occurrence est indisponible.')
-      if(request===sourceRequest){source.value=value.source;sourceSelection.value={workspaceId:owner,nodePath:value.nodePath,occurrenceId:value.occurrenceId||undefined,hash:value.hash};notice.value='Source exacte de la version exécutée sélectionnée'}
+      if(request===sourceRequest){sourceTitle.value=path?'Rust exécuté':'Rust initial du run';source.value=value.source;sourceSelection.value={workspaceId:owner,...executedSourceQuery(path,path?(value.occurrenceId??occurrence):undefined),hash:value.definitionRevision??value.hash};notice.value=path?'Source exacte du passage sélectionné':'Définition racine et graphe initial figés à l’admission'}
       return
     }
     const result=await app.generate(compile,runId)

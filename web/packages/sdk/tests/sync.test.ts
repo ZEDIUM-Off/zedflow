@@ -75,6 +75,45 @@ test('sync recovers gaps by cursor, reconnects and ignores late responses after 
   assert.equal(clock.tasks.size, 0);
 });
 
+test('current heartbeats and duplicate deltas do not refetch or republish, while a gap catches up', async () => {
+  const clock = new Clock(), queries: sdk.SyncRequest[] = [], published: sdk.RunProjectionState[] = [];
+  let observer!: sdk.RunStreamObserver;
+  const next = delta([{ collection: 'timeline', id: 'next', value: { id: 'next', seq: 2, kind: 'message', role: 'assistant', text: 'Next' } }]);
+  const catchup = delta([{ collection: 'timeline', id: 'recovered', value: { id: 'recovered', seq: 3, kind: 'message', role: 'assistant', text: 'Recovered' } }], 2, 3);
+  const sync = sdk.followRun({ runId: 'run', workspaceId: 'ws', clock,
+    transport: { snapshot: async request => { queries.push(request); return queries.length === 1 ? bootstrap() : catchup; } },
+    stream: { subscribe: (_request, next) => { observer = next; return () => {}; } },
+    receive: value => published.push(value),
+  });
+  try {
+    await tick();
+    assert.equal(queries.length, 1); assert.equal(queries[0]!.after, undefined);
+    assert.equal(published.length, 1);
+    const initial = sync.state;
+    assert.equal(observer.frame({ type: 'heartbeat', runId: 'run', workspaceId: 'ws', revision: 1, cursor: 1 }, 'sse'), true);
+    await tick();
+    assert.equal(queries.length, 1); assert.equal(published.length, 1); assert.equal(sync.state, initial);
+    assert.equal(observer.frame(next, 'sse'), true);
+    await tick();
+    assert.equal(queries.length, 1); assert.equal(published.length, 2);
+    assert.equal(sync.state?.revision, 2); assert.equal(sync.state?.cursor, 2);
+    assert.deepEqual(sync.state?.run.timeline?.map(entry => entry.text), ['Hello', 'Next']);
+    const advanced = sync.state;
+    assert.equal(observer.frame(next, 'sse'), true);
+    clock.advance(1000); await tick();
+    assert.equal(queries.length, 1); assert.equal(published.length, 2); assert.equal(sync.state, advanced);
+    assert.equal(observer.frame({ type: 'heartbeat', runId: 'run', workspaceId: 'ws', revision: 3, cursor: 3 }, 'sse'), false);
+    assert.equal(sync.state, advanced);
+    await tick();
+    assert.equal(queries.length, 2); assert.equal(queries[1]!.after, 2);
+    assert.equal(published.length, 3); assert.equal(published[2], sync.state);
+    assert.equal(sync.state?.revision, 3); assert.equal(sync.state?.cursor, 3);
+    assert.deepEqual(sync.state?.run.timeline?.map(entry => entry.text), ['Hello', 'Next', 'Recovered']);
+    assert.equal(sync.state?.run.timeline?.[0], initial?.run.timeline?.[0]);
+  } finally { sync.close(); }
+  assert.equal(clock.tasks.size, 0);
+});
+
 test('delta cursor regression and invalid initial state never publish a changed run', () => {
   const projection = new sdk.RunProjection('run', 'ws'); projection.apply(bootstrap());
   const state = projection.state;

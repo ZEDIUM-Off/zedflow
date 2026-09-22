@@ -107,6 +107,79 @@ pub async fn run_definitions(db: &SqlitePool, workspace_id: &str) -> Result<Vec<
     definitions_from_snapshots(&snapshots::snapshots(db, workspace_id).await?)
 }
 
+/// Select a flow only after full interpretation. Identical captures share that
+/// pure validation within this call, never across workspaces or authoring commands.
+pub(crate) fn flow_definitions_from_snapshots(
+    rows: &[RunDefinitionSnapshot],
+    flow_key: &str,
+) -> Result<Vec<RunDefinition>> {
+    select_flow_definitions(rows, flow_key, definitions_from_snapshots)
+}
+
+fn select_flow_definitions(
+    rows: &[RunDefinitionSnapshot],
+    flow_key: &str,
+    mut interpret: impl FnMut(&[RunDefinitionSnapshot]) -> Result<Vec<RunDefinition>>,
+) -> Result<Vec<RunDefinition>> {
+    let mut selected: Vec<RunDefinition> = Vec::new();
+    let mut validated = BTreeMap::<Vec<u8>, std::ops::Range<usize>>::new();
+    for row in rows {
+        match validated.entry(definition_snapshot_key(row)?) {
+            std::collections::btree_map::Entry::Occupied(entry) => {
+                for index in entry.get().clone() {
+                    let mut definition = selected[index].clone();
+                    // The interpreter only copies this outer ID to its output;
+                    // all embedded IDs and references belong to the exact key.
+                    definition.run_id.clone_from(&row.run_id);
+                    selected.push(definition);
+                }
+            }
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                let start = selected.len();
+                selected.extend(
+                    interpret(std::slice::from_ref(row))?
+                        .into_iter()
+                        .filter(|run| run.definition.key == flow_key),
+                );
+                entry.insert(start..selected.len());
+            }
+        }
+    }
+    Ok(selected)
+}
+
+fn definition_snapshot_key(row: &RunDefinitionSnapshot) -> Result<Vec<u8>> {
+    // Exhaustive patterns make additions to either storage type require a new
+    // decision here. Compare full encodings, not hashes or purported identities.
+    let RunDefinitionSnapshot {
+        run_id: _,
+        flow_ref,
+        composition,
+        flow_source,
+        flow_package,
+        runtime_graph,
+        revision_heads,
+        runtime_graph_head,
+    } = row;
+    fn head_parts(head: &snapshots::DefinitionHead) -> (&Value, &Value) {
+        let snapshots::DefinitionHead { head, definition } = head;
+        (head, definition)
+    }
+    let heads: BTreeMap<_, _> = revision_heads
+        .iter()
+        .map(|(key, head)| (key, head_parts(head)))
+        .collect();
+    Ok(serde_json::to_vec(&(
+        flow_ref,
+        composition,
+        flow_source,
+        flow_package,
+        runtime_graph,
+        heads,
+        runtime_graph_head.as_ref().map(head_parts),
+    ))?)
+}
+
 /// Interpret one coherent storage capture without re-reading mutable heads.
 pub fn definitions_from_snapshots(rows: &[RunDefinitionSnapshot]) -> Result<Vec<RunDefinition>> {
     let mut definitions = vec![];
@@ -568,4 +641,383 @@ pub async fn accept_bridge(
     )
     .await?;
     finish(&store, pending).await
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+    use zf_storage::live_files::DefinitionHead;
+
+    fn snapshot(id: &str) -> RunDefinitionSnapshot {
+        let composition: Composition = serde_json::from_value(json!({
+            "formatVersion":3,"id":"fixture","name":"Fixture",
+            "nodes":[
+                {"id":"s","position":{"x":0,"y":0},"data":{"kind":"start","label":"Start","config":{}}},
+                {"id":"e","position":{"x":0,"y":0},"data":{"kind":"end","label":"End","config":{}}}
+            ],"edges":[{"id":"edge","source":"s","target":"e"}]
+        })).unwrap();
+        let source =
+            zf_flows::flow_format::render(&composition, &GraphValidator::new(&RuntimePrimitives))
+                .unwrap();
+        RunDefinitionSnapshot {
+            run_id: id.into(),
+            flow_ref: json!({"key":"fixture-key"}),
+            composition: serde_json::to_value(composition).unwrap(),
+            flow_source: json!(source),
+            flow_package: Value::Null,
+            runtime_graph: Value::Null,
+            revision_heads: BTreeMap::new(),
+            runtime_graph_head: None,
+        }
+    }
+
+    fn compare(rows: &[RunDefinitionSnapshot], key: &str) -> usize {
+        let expected: Vec<_> = definitions_from_snapshots(rows)
+            .unwrap()
+            .into_iter()
+            .filter(|run| run.definition.key == key)
+            .collect();
+        let mut validations = 0;
+        let actual = select_flow_definitions(rows, key, |row| {
+            let definitions = definitions_from_snapshots(row)?;
+            validations += definitions.len();
+            Ok(definitions)
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(actual).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        validations
+    }
+
+    #[test]
+    fn repeated_snapshots_validate_once_for_new_unused_and_affected_keys() {
+        for count in [0, 8, 16] {
+            let rows: Vec<_> = (0..count).map(|i| snapshot(&format!("run-{i}"))).collect();
+            for key in ["new-key", "unused-existing-key", "fixture-key"] {
+                assert_eq!(compare(&rows, key), usize::from(count > 0));
+                // A separate invocation must validate again, not reuse a previous success.
+                assert_eq!(compare(&rows, key), usize::from(count > 0));
+            }
+        }
+    }
+
+    #[test]
+    fn distinct_snapshots_are_all_interpreted_even_when_unaffected() {
+        let rows: Vec<_> = (0..8)
+            .map(|i| {
+                let mut row = snapshot(&format!("run-{i}"));
+                let mut composition: Composition =
+                    serde_json::from_value(row.composition.clone()).unwrap();
+                composition.name = format!("Distinct history {i}");
+                row.flow_source = json!(
+                    zf_flows::flow_format::render(
+                        &composition,
+                        &GraphValidator::new(&RuntimePrimitives)
+                    )
+                    .unwrap()
+                );
+                row.composition = serde_json::to_value(composition).unwrap();
+                row
+            })
+            .collect();
+        assert_eq!(compare(&rows, "new-key"), 8);
+    }
+
+    #[test]
+    fn every_snapshot_field_and_nested_identity_participates_in_the_exact_key() {
+        fn complete(id: &str) -> RunDefinitionSnapshot {
+            let mut row = snapshot(id);
+            row.flow_package = json!({"closure":{"alias":"original"}});
+            row.runtime_graph = json!({"flows":{"child":{"key":"child-key"}},"definitions":{"contextSelections":{"child/context":{"key":"policy"}}}});
+            row.revision_heads.insert(
+                "head".into(),
+                DefinitionHead {
+                    head: json!({"instance":"child","runId":"embedded-id"}),
+                    definition: json!({"key":"child-key","source":"exact"}),
+                },
+            );
+            row.runtime_graph_head = Some(DefinitionHead {
+                head: json!({"graphRef":"adopted","runId":"embedded-id"}),
+                definition: json!({"flows":{"child":{"key":"adopted-key"}},"aliases":{}}),
+            });
+            row
+        }
+        let key = definition_snapshot_key(&complete("first")).unwrap();
+        assert_eq!(
+            key,
+            definition_snapshot_key(&complete("different-run")).unwrap()
+        );
+        for field in 0..13 {
+            let mut row = complete("second");
+            match field {
+                0 => row.flow_ref["key"] = json!("alias"),
+                1 => row.composition["name"] = json!("other"),
+                2 => row.flow_source = json!(format!("{}\n", row.flow_source.as_str().unwrap())),
+                3 => row.flow_package["closure"]["alias"] = json!("different"),
+                4 => row.runtime_graph["flows"]["child"]["key"] = json!("alias"),
+                5 => {
+                    row.runtime_graph["definitions"]["contextSelections"]["child/context"]["key"] =
+                        json!("other")
+                }
+                6 => {
+                    let head = row.revision_heads.remove("head").unwrap();
+                    row.revision_heads.insert("different-key".into(), head);
+                }
+                7 => row.revision_heads.get_mut("head").unwrap().head["instance"] = json!("root"),
+                8 => {
+                    row.revision_heads.get_mut("head").unwrap().definition["source"] =
+                        json!("different bytes")
+                }
+                9 => {
+                    row.runtime_graph_head.as_mut().unwrap().head["runId"] =
+                        json!("different embedded id")
+                }
+                10 => {
+                    row.runtime_graph_head.as_mut().unwrap().definition["aliases"] =
+                        json!({"new":"alias"})
+                }
+                11 => row.runtime_graph_head = None,
+                12 => row.revision_heads.clear(),
+                _ => unreachable!(),
+            }
+            assert_ne!(key, definition_snapshot_key(&row).unwrap(), "field {field}");
+            // Count misses independently of interpretation, including fields the
+            // old interpreter does not inspect (e.g. adopted runtime graph heads).
+            let mut calls = 0;
+            select_flow_definitions(&[complete("first"), row], "unused", |_| {
+                calls += 1;
+                Ok(vec![])
+            })
+            .unwrap();
+            assert_eq!(calls, 2, "field {field}");
+        }
+    }
+
+    #[test]
+    fn package_closure_aliases_and_bytes_are_not_authenticated_by_root_alone() {
+        use zf_flows::package::PackageSnapshot;
+        let leaf = snapshot("leaf");
+        let leaf = PackageSnapshot::capture(
+            json!({"formatVersion":1,"id":"dependency","name":"Dependency","entry":"flow.rs","files":["flow.rs"]}).to_string(),
+            BTreeMap::from([("flow.rs".into(), leaf.flow_source.as_str().unwrap().replace("fixture", "dependency").into_bytes())]),
+            BTreeMap::new(),
+        ).unwrap();
+        let packaged = |id: &str, alias: &str| {
+            let mut row = snapshot(id);
+            let package = PackageSnapshot::capture(
+                json!({"formatVersion":1,"id":"fixture","name":"Fixture","entry":"flow.rs","files":["flow.rs"],"dependencies":{alias:{"path":"../dependency"}}}).to_string(),
+                BTreeMap::from([("flow.rs".into(), row.flow_source.as_str().unwrap().as_bytes().to_vec())]),
+                BTreeMap::from([(alias.into(), leaf.clone())]),
+            ).unwrap();
+            row.flow_package = serde_json::to_value(package).unwrap();
+            row
+        };
+        let rows = [
+            packaged("a", "first"),
+            packaged("b", "first"),
+            packaged("c", "second"),
+        ];
+        assert_eq!(compare(&rows, "fixture-key"), 2);
+        assert_eq!(compare(&rows, "unused-key"), 2);
+        let mut corrupt = packaged("bad", "first");
+        corrupt.flow_package["packages"][&leaf.root]["files"]["flow.rs"] =
+            json!("tampered dependency");
+        let rows = [packaged("valid", "first"), corrupt];
+        let expected = definitions_from_snapshots(&rows).unwrap_err().to_string();
+        assert_eq!(
+            flow_definitions_from_snapshots(&rows, "unused-key")
+                .unwrap_err()
+                .to_string(),
+            expected
+        );
+    }
+
+    #[tokio::test]
+    async fn flow_selection_remains_under_the_start_and_authoring_lock() {
+        use crate::{
+            authoring::StoreFlow,
+            commands::{Actor, CommandAuthorizer, CommandKind},
+            service::{ExecutionOptions, ExecutionService},
+            start::{StartDefinition, StartRequest},
+        };
+        use std::sync::Arc;
+        struct Authority;
+        #[async_trait::async_trait]
+        impl CommandAuthorizer for Authority {
+            async fn authorize(
+                &self,
+                _: &Actor,
+                _: CommandKind,
+                _: &zf_storage::workspaces::Workspace,
+                _: Option<&Value>,
+            ) -> Result<()> {
+                Ok(())
+            }
+        }
+        let root = tempfile::tempdir().unwrap();
+        for name in ["workspace", "home"] {
+            std::fs::create_dir(root.path().join(name)).unwrap();
+        }
+        let service = ExecutionService::open(ExecutionOptions {
+            data: root.path().join("data"),
+            workspace: root.path().join("workspace"),
+            flow_home: root.path().join("home"),
+            context_home: Some(root.path().join("home")),
+            skill_dirs: vec![],
+            authorizer: Arc::new(Authority),
+        })
+        .await
+        .unwrap();
+        let actor = Actor {
+            id: "fixture".into(),
+            workspace_id: service.default_workspace_id().into(),
+        };
+        let mut composition = snapshot("source").composition;
+        composition["nodes"].as_array_mut().unwrap().push(json!({"id":"wait","position":{"x":0,"y":0},"data":{"kind":"input","label":"Wait","config":{"field":"answer","prompt":"Continue?","responseType":"text"}}}));
+        composition["edges"] = json!([{"id":"a","source":"s","target":"wait"},{"id":"b","source":"wait","target":"e"}]);
+        let file = service
+            .store_flow(
+                &actor,
+                StoreFlow {
+                    composition: serde_json::from_value(composition).unwrap(),
+                    scope: None,
+                    key: None,
+                    expected_hash: None,
+                },
+            )
+            .await
+            .unwrap();
+        let request = || StartRequest {
+            definition: StartDefinition::Stored {
+                key: file.key.clone(),
+                expected_hash: file.hash.clone(),
+            },
+            input: Default::default(),
+            model_bindings: json!({}),
+            node_path: None,
+            prepared_context: None,
+            preview_metadata: None,
+        };
+        let first = service.start(&actor, request()).await.unwrap();
+        service
+            .wait_idle(first["id"].as_str().unwrap())
+            .await
+            .unwrap();
+        let context = service
+            .admit(&actor, CommandKind::Read, None)
+            .await
+            .unwrap();
+        let guard = context.authoring_writer.lock().await;
+        let initial = snapshots::snapshots(&service.database(), &actor.workspace_id)
+            .await
+            .unwrap();
+        assert_eq!(initial.len(), 1);
+        let mut changed = file.composition.clone().unwrap();
+        changed.name = "Published under lock".into();
+        let mut start = Box::pin(service.start(&actor, request()));
+        let mut save = Box::pin(service.store_flow(
+            &actor,
+            StoreFlow {
+                composition: changed,
+                scope: None,
+                key: Some(file.key.clone()),
+                expected_hash: Some(file.hash.clone()),
+            },
+        ));
+        // Poll both commands while holding the actual service lock. Neither a
+        // new run nor a head can publish before the coherent capture is allowed.
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), &mut start)
+                .await
+                .is_err()
+        );
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(50), &mut save)
+                .await
+                .is_err()
+        );
+        let before = snapshots::snapshots(&service.database(), &actor.workspace_id)
+            .await
+            .unwrap();
+        assert_eq!(before.len(), 1);
+        assert_eq!(
+            definition_snapshot_key(&before[0]).unwrap(),
+            definition_snapshot_key(&initial[0]).unwrap()
+        );
+        drop(guard);
+        let (started, saved) = tokio::join!(start, save);
+        let started = started.unwrap();
+        service
+            .wait_idle(started["id"].as_str().unwrap())
+            .await
+            .unwrap();
+        let saved = saved.unwrap();
+        let definitions = run_definitions(&service.database(), &actor.workspace_id)
+            .await
+            .unwrap();
+        assert_eq!(definitions.len(), 2);
+        for definition in definitions {
+            assert_eq!(
+                definition.definition.source,
+                saved.source.as_ref().unwrap().as_str()
+            );
+        }
+        drop(context);
+        service.shutdown().await.unwrap();
+    }
+
+    #[test]
+    fn changed_source_and_malformed_heads_never_reuse_a_success() {
+        for corruption in 0..5 {
+            let good = snapshot("good");
+            let mut bad = snapshot("bad");
+            if corruption == 1 || corruption == 2 {
+                let mut definition = serde_json::to_value(
+                    &definitions_from_snapshots(std::slice::from_ref(&good)).unwrap()[0].definition,
+                )
+                .unwrap();
+                if corruption == 2 {
+                    definition["key"] = json!(42);
+                }
+                bad.revision_heads.insert(
+                    zf_storage::context_store::hash(b""),
+                    DefinitionHead {
+                        head: json!({"instance":if corruption == 1 { "wrong" } else { "" }}),
+                        definition,
+                    },
+                );
+            } else if corruption == 3 {
+                bad.runtime_graph = json!({"flows":{"child":{"key":42}}});
+            } else if corruption == 4 {
+                bad.composition["id"] = json!(42);
+            } else {
+                bad.flow_source = json!("invalid source");
+            }
+            let rows = [good, bad];
+            let expected = definitions_from_snapshots(&rows).unwrap_err().to_string();
+            let mut calls = 0;
+            let error = select_flow_definitions(&rows, "new-key", |row| {
+                calls += 1;
+                definitions_from_snapshots(row)
+            })
+            .unwrap_err();
+            assert_eq!(error.to_string(), expected);
+            assert_eq!(calls, 2);
+        }
+        let mut rows = [snapshot("a"), snapshot("b")];
+        for row in &mut rows {
+            row.flow_source = Value::Null;
+        }
+        let mut calls = 0;
+        assert!(
+            select_flow_definitions(&rows, "unused", |row| {
+                calls += 1;
+                definitions_from_snapshots(row)
+            })
+            .is_err()
+        );
+        assert_eq!(calls, 1, "first error must stop interpretation");
+    }
 }

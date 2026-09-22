@@ -2,7 +2,7 @@
 
 ## Source et version
 
-Le lab utilise les packages publiés de [Zavora ADK-Rust](https://github.com/zavora-ai/adk-rust),
+Le produit utilise les packages publiés de [Zavora ADK-Rust](https://github.com/zavora-ai/adk-rust),
 fixés exactement à **2.2.0**. ADK-Rust est un projet indépendant ; il ne faut pas
 assimiler sa version ou sa couverture fonctionnelle à celles de Google ADK.
 
@@ -16,7 +16,7 @@ et [adk-graph](https://docs.rs/adk-graph/2.2.0/adk_graph/).
 
 Le workspace upstream inventorié contient 42 crates de bibliothèque publiables,
 le binaire compagnon `cargo-adk`, et `xtask`, outil de maintenance non publié.
-Les 42 bibliothèques sont des dépendances directes du lab, toutes présentes dans
+Les 42 bibliothèques sont des dépendances du catalogue `rust/crates/zf-runtime/Cargo.toml`, toutes présentes dans
 le lockfile. [adk-catalog.json](adk-catalog.json) conserve la liste exploitable.
 
 | Domaine | Crates |
@@ -35,13 +35,13 @@ le lockfile. [adk-catalog.json](adk-catalog.json) conserve la liste exploitable.
 ## Profils de compilation
 
 Le profil par défaut compile les agents, graphes, modèles Gemini, sessions, mémoire,
-outils et runner nécessaires aux expériences. Les graphes activent SQLite,
+outils et runner nécessaires au runtime produit. Les graphes activent SQLite,
 functional, node-cache, delta-checkpoint et time-travel.
 
 `adk-platform` rend disponibles toutes les autres bibliothèques sauf `adk-mistralrs`,
 et active le profil `full` de la crate façade ainsi que son CLI et SQLite.
 `local-inference` ajoute `adk-mistralrs` sur CPU. `all-adk` réunit ces deux profils.
-`--all-features` est également vérifié pour ce lab.
+`--all-features` est une gate du produit.
 
 Une bibliothèque disponible ne signifie pas que tous ses services externes sont
 configurés ou démarrés. Les profils ne téléchargent pas de poids de modèle et
@@ -50,8 +50,7 @@ ONNX, l'audio matériel, les clouds et les backends de bases de données demande
 des expériences et des prérequis spécifiques.
 
 Les sources de toutes les dépendances sont récupérées par `cargo fetch --locked`.
-Le binaire de lab reste rapide à reconstruire avec le profil par défaut ; les
-expériences peuvent activer le groupe large lorsqu'elles en ont besoin.
+Le catalogue complet est compilé séparément du profil produit par défaut.
 
 ## Corrections de résolution reproductibles
 
@@ -76,18 +75,11 @@ cargo install cargo-adk --version 2.2.0 --locked
 cargo adk --help
 ```
 
-Pour le reboot sur cet appareil, il a été installé dans un répertoire dédié :
+Le compagnon `cargo-adk` et ADK Studio sont des outils upstream optionnels,
+non installés par le manifeste produit. Les anciennes expériences lab/Studio
+ne sont pas un frontend ni une gate de Zedflow. Le catalogue compile la bibliothèque
+`adk-cli` ; le daemon produit est `zedflow-daemon` (`zf-serve`) et sa CLI est `zf`.
 
-```sh
-export PATH="$HOME/.local/share/zedflow-adk-tools/bin:$PATH"
-cargo adk --help
-```
-
-La bibliothèque `adk-cli` est compilée avec le catalogue et permet notamment
-d'explorer son `Launcher`. Son binaire upstream `adk-rust` n'est pas installé par
-le manifeste du lab. Le launcher de ce dépôt reste `zedflow-lab`.
-
-ADK Studio est installé séparément et sert d'interface visuelle au lab. Le paquet
-publié 1.0.1 dépend d'ADK 1.x ; il ne modifie pas le catalogue Rust 2.2.0 du dépôt.
-Les projets natifs de Studio sont versionnés dans `.adk-studio/projects/`.
-Voir [studio.md](studio.md) pour la procédure et la frontière entre ces expériences.
+Toutes les commandes Cargo de cette page partent de `rust/` (toolchain 1.96.1),
+avec `CARGO_TARGET_DIR=/tmp/zedflow-adk-target`. Voir [validation](validation.md)
+pour la distinction entre dépendance compilée et fournisseur réellement essayé.

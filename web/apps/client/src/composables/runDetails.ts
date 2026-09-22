@@ -31,15 +31,27 @@ export { detailVersion } from '@zedflow/sdk'
 
 export function useContextDetail(source: () => ContextSnapshot | undefined, active: () => boolean = () => true) {
   const details = useRunDetails()
-  const version = computed(() => source() ? detailVersion(source()!) : undefined)
+  const version = computed(() => {
+    const value = source()
+    if (!value) return undefined
+    // Context references and revisions advance independently. Tag the revision
+    // so an explicit string cannot collide with detailVersion's derived string.
+    const revision = typeof value.detailRevision === 'string' || typeof value.detailRevision === 'number'
+      ? ['explicit', value.detailRevision] : ['derived', detailVersion(value)]
+    return JSON.stringify([value.contentRef ?? null, revision])
+  })
   const request = computed(() => { const value = source(); return value ? { ...details.scope(), kind: 'context' as const, id: value.invocationId, revision: version.value } : undefined })
   const entry = computed(() => request.value ? details.entry(request.value) : undefined)
   const snapshot = computed(() => {
     const index = source(), loaded = entry.value?.value
     if (!loaded) return index
-    return { ...loaded, ...(index?.requestRef !== undefined ? { requestRef: index.requestRef } : {}), ...(index?.rawRef !== undefined ? { rawRef: index.rawRef } : {}), ...(index?.requestBoundary !== undefined ? { requestBoundary: index.requestBoundary } : {}), ...(index?.requestStatus !== undefined ? { requestStatus: index.requestStatus } : {}) }
+    // entry is looked up with this index's scope and version; never attach a
+    // new reference to a body fetched under an older key. Keep the index identity
+    // when this hydrated snapshot is passed to another context-detail consumer.
+    const {contentRef: _bodyReference, detailRevision: _bodyRevision, ...body} = loaded
+    return { ...body, ...(index?.contentRef !== undefined ? {contentRef: index.contentRef} : {}), ...(index?.detailRevision !== undefined ? {detailRevision: index.detailRevision} : {}), ...(index?.requestRef !== undefined ? { requestRef: index.requestRef } : {}), ...(index?.rawRef !== undefined ? { rawRef: index.rawRef } : {}), ...(index?.requestBoundary !== undefined ? { requestBoundary: index.requestBoundary } : {}), ...(index?.requestStatus !== undefined ? { requestStatus: index.requestStatus } : {}) }
   })
   function load() { if (active() && request.value) void details.load(request.value).catch(() => {}) }
-  watch(() => [active(), source(), version.value], load, { immediate: true })
+  watch(() => [active(), request.value], load, { immediate: true })
   return { snapshot, entry, load }
 }

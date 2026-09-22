@@ -10,3 +10,7 @@ pub use publication::{
 };
 pub(crate) use publication::{MARKER, recover_files_locked};
 pub use publication::{PackageWrite, PendingPackage, begin, recover};
+
+pub(crate) use publication::{
+    begin_checked, guard_catalogues, inspect_catalogue_preconditions, recover_import,
+};

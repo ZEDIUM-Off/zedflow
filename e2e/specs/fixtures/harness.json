@@ -1,0 +1,417 @@
+{
+  "formatVersion": 3,
+  "id": "harness",
+  "name": "Harness de workspace",
+  "revision": 0,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow",
+      "position": {
+        "x": 30,
+        "y": 175
+      },
+      "data": {
+        "label": "Début",
+        "kind": "start",
+        "config": {
+          "exports": {
+            "contract": {
+              "entries": {
+                "main": {
+                  "input": {
+                    "kind": "text"
+                  },
+                  "output": {
+                    "kind": "text"
+                  }
+                }
+              },
+              "branches": {
+                "work": {
+                  "contract": {
+                    "input": {
+                      "kind": "text"
+                    },
+                    "output": {
+                      "kind": "text"
+                    }
+                  },
+                  "invocations": [
+                    "condition"
+                  ]
+                }
+              },
+              "data": {},
+              "requires": {},
+              "inferenceNodes": {
+                "model": {
+                  "model": {
+                    "kind": "runtime"
+                  },
+                  "contextStrategy": "harness-default",
+                  "resources": [],
+                  "capabilities": [
+                    "read",
+                    "write",
+                    "edit",
+                    "exec"
+                  ]
+                }
+              }
+            },
+            "types": {},
+            "entries": {
+              "main": {
+                "node": "start",
+                "inputField": "input",
+                "outputField": "response"
+              }
+            },
+            "branches": {
+              "work": "dispatch"
+            },
+            "data": {},
+            "requires": {},
+            "interactive": true
+          }
+        }
+      }
+    },
+    {
+      "id": "steering",
+      "type": "flow",
+      "position": {
+        "x": 240,
+        "y": 165
+      },
+      "data": {
+        "label": "Réorientations",
+        "kind": "steering",
+        "config": {
+          "fanIn": "any",
+          "field": "input",
+          "historyField": "messages"
+        }
+      }
+    },
+    {
+      "id": "dispatch",
+      "type": "flow",
+      "position": {
+        "x": 540,
+        "y": 165
+      },
+      "data": {
+        "kind": "route",
+        "label": "Routage du travail",
+        "config": {
+          "branch": "work",
+          "invocation": "condition",
+          "inputField": "input",
+          "field": "routeResult",
+          "fallback": ""
+        }
+      }
+    },
+    {
+      "id": "context",
+      "type": "flow",
+      "position": {
+        "x": 850,
+        "y": 165
+      },
+      "data": {
+        "kind": "context",
+        "label": "Préparer le contexte",
+        "config": {
+          "modelNode": "model",
+          "fanIn": "any",
+          "attachments": {
+            "instructions": {
+              "items": [
+                {
+                  "id": "workspace-instructions",
+                  "source": {
+                    "kind": "workspace"
+                  },
+                  "activation": "always"
+                },
+                {
+                  "id": "agent-instructions",
+                  "source": {
+                    "kind": "text",
+                    "text": "Aide l’utilisateur dans son workspace. Utilise les outils pour lire, modifier et vérifier le travail. Respecte les instructions attachées et charge les skills pertinents. Décris le résultat et les vérifications effectuées."
+                  },
+                  "mode": "literal",
+                  "activation": "always"
+                }
+              ]
+            },
+            "skills": {
+              "items": [
+                {
+                  "id": "workspace-skills",
+                  "source": {
+                    "kind": "workspace"
+                  },
+                  "activation": "explicit"
+                }
+              ]
+            },
+            "tools": {
+              "items": [
+                {
+                  "id": "tool-read",
+                  "name": "read"
+                },
+                {
+                  "id": "tool-write",
+                  "name": "write"
+                },
+                {
+                  "id": "tool-edit",
+                  "name": "edit"
+                },
+                {
+                  "id": "tool-exec",
+                  "name": "exec"
+                }
+              ]
+            }
+          },
+          "contextStrategy": "harness-default",
+          "contextBindings": {
+            "input": {
+              "kind": "state",
+              "field": "input"
+            },
+            "instructions": {
+              "kind": "attachments",
+              "slot": "instructions"
+            },
+            "skills": {
+              "kind": "attachments",
+              "slot": "skills"
+            },
+            "files": {
+              "kind": "attachments",
+              "slot": "files"
+            },
+            "history": {
+              "kind": "conversation",
+              "historyField": "messages",
+              "inputField": "input"
+            },
+            "routeResult": {
+              "kind": "state",
+              "field": "routeResult"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "model",
+      "type": "flow",
+      "position": {
+        "x": 1160,
+        "y": 165
+      },
+      "data": {
+        "label": "Modèle du workspace",
+        "kind": "model",
+        "config": {
+          "fanIn": "any",
+          "inputField": "input",
+          "field": "output",
+          "modelBinding": "runtime",
+          "historyField": "messages",
+          "toolCallsField": "toolCalls",
+          "contextNode": "context"
+        }
+      }
+    },
+    {
+      "id": "route",
+      "type": "flow",
+      "position": {
+        "x": 1470,
+        "y": 125
+      },
+      "data": {
+        "label": "Appels demandés ?",
+        "kind": "condition",
+        "config": {
+          "predicate": {
+            "kind": "compare",
+            "field": "hasToolCalls",
+            "operator": "eq",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "id": "tools",
+      "type": "flow",
+      "position": {
+        "x": 1470,
+        "y": 440
+      },
+      "data": {
+        "label": "Exécuter un outil",
+        "kind": "tool",
+        "config": {
+          "tool": "execute_next_call",
+          "arguments": {
+            "value": {
+              "status": "ok"
+            }
+          },
+          "field": "output",
+          "ui": {
+            "renderer": "json",
+            "title": "Outil du workspace"
+          },
+          "fanIn": "any",
+          "historyField": "messages",
+          "toolCallsField": "toolCalls",
+          "retry": {
+            "maxAttempts": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "remaining",
+      "type": "flow",
+      "position": {
+        "x": 1100,
+        "y": 400
+      },
+      "data": {
+        "label": "Appels restants ?",
+        "kind": "condition",
+        "config": {
+          "predicate": {
+            "kind": "compare",
+            "field": "hasToolCalls",
+            "operator": "eq",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "id": "response",
+      "type": "flow",
+      "position": {
+        "x": 1790,
+        "y": 165
+      },
+      "data": {
+        "label": "Réponse",
+        "kind": "output",
+        "config": {
+          "text": "{{output}}"
+        }
+      }
+    },
+    {
+      "id": "inbox",
+      "type": "flow",
+      "position": {
+        "x": 1790,
+        "y": 440
+      },
+      "data": {
+        "label": "Suite du travail",
+        "kind": "inbox",
+        "config": {
+          "field": "input",
+          "prompt": "Sur quoi continuer ?",
+          "responseType": "text",
+          "historyField": "messages"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "start-steering",
+      "source": "start",
+      "target": "steering"
+    },
+    {
+      "id": "steering-model",
+      "source": "steering",
+      "target": "dispatch"
+    },
+    {
+      "id": "model-route",
+      "source": "model",
+      "target": "route"
+    },
+    {
+      "id": "route-tools",
+      "source": "route",
+      "target": "tools",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "route-response",
+      "source": "route",
+      "target": "response",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "tools-remaining",
+      "source": "tools",
+      "target": "remaining"
+    },
+    {
+      "id": "remaining-tools",
+      "source": "remaining",
+      "target": "tools",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "remaining-steering",
+      "source": "remaining",
+      "target": "steering",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "response-inbox",
+      "source": "response",
+      "target": "inbox"
+    },
+    {
+      "id": "inbox-steering",
+      "source": "inbox",
+      "target": "steering"
+    },
+    {
+      "id": "context-model",
+      "source": "context",
+      "target": "model"
+    },
+    {
+      "id": "dispatch-context",
+      "source": "dispatch",
+      "target": "context"
+    }
+  ],
+  "settings": {
+    "recursionLimit": 10000,
+    "maxConcurrency": 1
+  },
+  "channels": [
+    {
+      "name": "routeResult",
+      "reducer": "overwrite",
+      "default": ""
+    }
+  ]
+}

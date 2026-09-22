@@ -38,6 +38,15 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Importer explicitement les compositions SQLite, daemon arrêté, sans exécution.
+    MigrateCompositions {
+        #[arg(long)]
+        data: PathBuf,
+        #[arg(long)]
+        flow_home: PathBuf,
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Créer un template sans écraser, activer ou exécuter.
     Init { kind: Kind, id: String },
     /// Valider une source Rust, un document JSON ou un dossier package sans exécution.
@@ -136,6 +145,25 @@ struct ServeArgs {
 
 pub(crate) async fn execute(cli: Cli) -> Result<()> {
     match cli.command {
+        Command::MigrateCompositions {
+            data,
+            flow_home,
+            dry_run,
+        } => {
+            let flows = zf_storage::flow_store::FlowStore::new(
+                flow_home.clone(),
+                Arc::new(GraphValidator::new(&RuntimePrimitives)),
+            );
+            let report = zf_storage::legacy_compositions::import(
+                &data,
+                &cli.workspace,
+                &flow_home,
+                &flows,
+                dry_run,
+            )
+            .await?;
+            print_json(&serde_json::to_value(report)?)
+        }
         Command::Init { kind, id } => {
             let path =
                 tokio::task::spawn_blocking(move || templates::create(&cli.workspace, kind, &id))

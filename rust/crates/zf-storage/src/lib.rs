@@ -8,6 +8,7 @@ pub mod data;
 pub mod data_archive;
 pub mod flow_packages;
 pub mod flow_store;
+pub mod legacy_compositions;
 pub mod live_files;
 pub mod migration;
 pub mod projection_summary;

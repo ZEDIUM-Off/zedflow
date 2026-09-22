@@ -82,7 +82,13 @@ pub async fn definition(
 ) -> Result<Value> {
     let id = run["id"].as_str().context("Run identity absent")?;
     let bases = initial(store, run).await?;
-    let activity = if let Some(occurrence) = &query.occurrence_id {
+    // No passage selection means the admission snapshot, never the last child
+    // activity or a subsequently published/adopted graph.
+    let whole_run =
+        query.node_path.as_deref().is_none_or(str::is_empty) && query.occurrence_id.is_none();
+    let activity = if whole_run {
+        None
+    } else if let Some(occurrence) = &query.occurrence_id {
         Some(
             run["activities"]
                 .as_array()
@@ -147,6 +153,12 @@ pub async fn definition(
     if let (Some(requested), Some(pinned)) = (&query.hash, pinned_revision) {
         ensure!(requested == pinned, "Passage used another flow revision");
     }
+    if whole_run {
+        ensure!(
+            revision == base_revision,
+            "Whole-run inspection requires the initial root revision"
+        );
+    }
     let definition = if let Some(reference) = pin.and_then(|p| p["definitionRef"].as_str()) {
         serde_json::from_value::<RevisionDefinition>(store.resolve(reference).await?)?
     } else if revision == base_revision {
@@ -164,9 +176,20 @@ pub async fn definition(
         definition.key == base.key && definition.revision() == revision,
         "Definition revision mismatch"
     );
-    let graph_ref = pin.and_then(|p| p["graphRef"].as_str());
-    let (runtime, definition_matches_graph) = if let Some(reference) = graph_ref {
-        let runtime: PreparedRuntime = serde_json::from_value(store.resolve(reference).await?)?;
+    let graph_ref = if whole_run {
+        run["runtimeGraphRef"].as_str()
+    } else {
+        pin.and_then(|p| p["graphRef"].as_str())
+    };
+    let graph = if let Some(reference) = graph_ref {
+        store.resolve(reference).await?
+    } else if whole_run {
+        run["runtimeGraph"].clone()
+    } else {
+        Value::Null
+    };
+    let (runtime, definition_matches_graph) = if !graph.is_null() {
+        let runtime: PreparedRuntime = serde_json::from_value(graph)?;
         runtime.validate(&RuntimePrimitives)?;
         let captured = RevisionDefinition::from_prepared(&runtime, instance)?;
         // A pending invocation may retain an older definition than this graph's

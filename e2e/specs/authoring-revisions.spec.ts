@@ -1,0 +1,91 @@
+import { test, expect } from '@playwright/test'
+import { access, readFile } from 'node:fs/promises'
+import { legacyTemplate as template } from './fixtures/templates'
+import { fixturePath, inspector, openSession, saveFlow, waitRun } from './helpers'
+
+test('testing a dirty flow uses a temporary workspace and returns to the same draft and camera',async({page,request})=>{
+  const composition=template(false);composition.name=`Preview ${crypto.randomUUID().slice(0,8)}`
+  const action=composition.nodes.find(node=>node.id==='model')!
+  action.data.kind='tool';action.data.config={tool:'exec',arguments:{command:'printf x >> preview-effect.txt'},field:'output'}
+  const file=await saveFlow(request,composition)
+  await page.goto('/');await page.getByRole('button',{name:'Conception',exact:true}).click()
+  await page.locator(`[data-flow-key="${file.key}"] .flow-file-open`).click()
+  await page.getByLabel('Nom de composition',{exact:true}).fill('Brouillon conservé après le test')
+  await page.locator('.design-space .flow-card.output').click()
+  await page.getByLabel('Contenu',{exact:true}).fill('Résultat du brouillon')
+  await page.locator('.design-space .vue-flow__controls-zoomin').click()
+  const viewport=page.locator('.design-space .vue-flow__transformationpane'),camera=await viewport.getAttribute('style')
+  await page.getByRole('button',{name:'Tester le brouillon',exact:true}).click()
+  const dialog=page.getByRole('dialog',{name:'Tester dans un workspace temporaire'})
+  await dialog.getByLabel('Entrée du test',{exact:true}).fill('Donnée de test')
+  const started=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/runs/preview'&&response.request().method()==='POST')
+  await dialog.getByRole('button',{name:'Lancer le test du brouillon',exact:true}).click()
+  const response=await started;expect(response.ok(),await response.text()).toBeTruthy();const ack=await response.json()
+  const completed=await waitRun(request,ack.id,'completed',ack.workspaceId)
+  expect(completed.preview?.temporaryWorkspace).toBe(true)
+  expect(await readFile(`${completed.workspacePath}/preview-effect.txt`,'utf8')).toBe('x')
+  expect(await access(fixturePath('workspace-a','preview-effect.txt')).then(()=>true,()=>false)).toBe(false)
+  const unchanged=await(await request.get(`/api/flows/${file.key}?workspaceId=${completed.preview!.sourceWorkspaceId}`)).json()
+  expect(unchanged.hash).toBe(file.hash);expect(unchanged.composition.name).toBe(composition.name)
+  await expect(page.getByRole('region',{name:'Exécution autonome'})).toContainText('Résultat du brouillon')
+  await expect(page.locator('.composer')).toHaveCount(0)
+  await page.getByRole('button',{name:'Retour au brouillon',exact:true}).click()
+  await expect(page.getByLabel('Nom de composition',{exact:true})).toHaveValue('Brouillon conservé après le test')
+  await expect(page.getByLabel('Contenu',{exact:true})).toHaveValue('Résultat du brouillon')
+  await expect(viewport).toHaveAttribute('style',camera!)
+  await expect(page.locator('.design-title')).toContainText('Modifications non enregistrées')
+  await page.getByRole('button',{name:'Exécution',exact:true}).click();await page.reload()
+  await expect(page.getByRole('button',{name:'Retour au brouillon',exact:true})).toBeVisible()
+  const restored=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/preview-source'))
+  await page.getByRole('button',{name:'Retour au brouillon',exact:true}).click()
+  expect((await restored).ok()).toBeTruthy()
+  await expect(page.getByLabel('Nom de composition',{exact:true})).toHaveValue('Brouillon conservé après le test')
+  await expect(page.locator('.design-title')).toContainText('Modifications non enregistrées')
+})
+
+test('an inspector follows the exact adopted flow of each occurrence and preserves its camera and the designer draft',async({page,request})=>{
+  const composition=template(true);composition.name=`Révisions ${crypto.randomUUID().slice(0,8)}`
+  composition.nodes.find(node=>node.id==='response')!.data.label='Réponse originale'
+  const file=await saveFlow(request,composition)
+  const creation=await request.post('/api/runs',{data:{flowKey:file.key,flowHash:file.hash,input:{input:'Premier passage'}}})
+  expect(creation.ok(),await creation.text()).toBeTruthy();const ack=await creation.json(),first=await waitRun(request,ack.id,'waiting')
+  const original=first.activities!.find(item=>item.node==='response')!
+  const updated=structuredClone(composition);updated.nodes.find(node=>node.id==='response')!.data.label='Réponse révisée';updated.nodes.find(node=>node.id==='response')!.data.config.text='Version adoptée'
+  const save=await request.post('/api/flows',{data:{workspaceId:first.workspaceId,key:file.key,expectedHash:file.hash,composition:updated}});expect(save.ok(),await save.text()).toBeTruthy()
+  const answer=await request.post(`/api/runs/${ack.id}/answer?workspaceId=${first.workspaceId}`,{data:{waitId:first.wait!.id,value:'Deuxième passage'}});expect(answer.ok(),await answer.text()).toBeTruthy()
+  let latest=first
+  await expect.poll(async()=>{latest=await(await request.get(`/api/runs/${ack.id}?workspaceId=${first.workspaceId}`)).json();return latest.status==='waiting'?latest.activities!.filter(item=>item.node==='response').length:0}).toBe(2)
+  const revised=latest.activities!.filter(item=>item.node==='response').at(-1)!
+  const definition=await(await request.get(`/api/runs/${ack.id}/definition?workspaceId=${first.workspaceId}&occurrenceId=${revised.occurrenceId}&nodePath=response`)).json()
+  expect(definition.exact).toBe(true)
+  await page.goto('/');await openSession(page,ack.id,first.workspaceId)
+  await page.getByRole('button',{name:'Conception',exact:true}).click();await page.getByLabel('Nom de composition',{exact:true}).fill('Brouillon indépendant de l’inspection')
+  await page.getByRole('button',{name:'Exécution',exact:true}).click();await inspector(page)
+  await page.locator('.passage-index [data-node="response"]').first().click()
+  await page.getByLabel('Passage du nœud',{exact:true}).selectOption(original.occurrenceId)
+  await expect(page.locator('.run-canvas')).toContainText('Réponse originale')
+  await page.getByRole('button',{name:'Source du passage',exact:true}).click()
+  const source=page.getByRole('dialog',{name:'Source Rust exacte du passage'})
+  await expect(source.locator('.source-preview')).toContainText('Réponse originale');await expect(source.locator('.source-preview')).not.toContainText('Version adoptée')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button',{name:'Rust exécuté',exact:true}).click()
+  const project=page.getByRole('dialog',{name:'Rust exécuté',exact:true})
+  const shown=await project.locator('.source-preview').textContent()
+  const generated=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/generate')
+  const downloaded=page.waitForEvent('download')
+  await project.getByRole('button',{name:'Télécharger le projet Cargo',exact:true}).click()
+  const exported=await generated;expect(exported.ok(),await exported.text()).toBeTruthy()
+  expect(exported.request().postDataJSON().occurrenceId).toBe(original.occurrenceId)
+  expect((await exported.json()).files.find((item:any)=>item.path==='flows/instance-0/flow.rs').content).toBe(shown)
+  await downloaded;await page.keyboard.press('Escape')
+  await page.getByLabel('Passage du nœud',{exact:true}).selectOption(revised.occurrenceId)
+  await expect(page.locator('.run-canvas')).toContainText('Réponse révisée')
+  await expect(page.locator('.run-revisions')).toContainText(definition.hash.slice(0,12))
+  await page.locator('.run-canvas .vue-flow__controls-zoomin').click()
+  const viewport=page.locator('.run-canvas .vue-flow__transformationpane'),camera=await viewport.getAttribute('style')
+  await page.getByRole('button',{name:'Fermer les détails',exact:true}).click();await inspector(page)
+  await expect(viewport).toHaveAttribute('style',camera!)
+  await expect(page.getByLabel('Passage du nœud',{exact:true})).toHaveValue(revised.occurrenceId)
+  await page.getByRole('button',{name:'Conception',exact:true}).click()
+  await expect(page.getByLabel('Nom de composition',{exact:true})).toHaveValue('Brouillon indépendant de l’inspection')
+})

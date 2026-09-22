@@ -1,6 +1,8 @@
 # Contextes, état et ressources modulaires
 
-Statut : principes à expérimenter, pas une API Zedflow déjà disponible.
+Statut : principes de ressources. Le [plan du context engine](context-engine.md)
+précise le registre d’entités par références, les scopes et les stratégies de
+projection, avec l’état de réalisation de chaque lot.
 
 ## Un module peut apporter des capacités
 
@@ -55,18 +57,17 @@ Ajouter des champs à une map globale est possible techniquement, mais ne suffit
 pas à composer des modules indépendants de manière compréhensible. L'enjeu est de
 rendre les liens explicites sans imposer un framework disproportionné à chaque flow.
 
-## Expérience actuelle
+## Intégration du produit
 
-`flows/shared_memory.rs` reçoit un `Arc<InMemoryMemoryService>` ADK et un identifiant
-de projet. Plusieurs graphes peuvent recevoir le même service. Les entrées écrites
-dans un projet se retrouvent dans un autre run du même projet et restent absentes
-de l'autre projet testé. Le service survit aux objets graphes mais pas au processus.
+Les anciennes expériences `shared_memory` et `agent_loop` du lab ont été retirées.
+Elles ne constituent pas une preuve d'isolation ni une API du produit. Les primitives
+ADK demeurent disponibles via le catalogue et les adaptateurs du runtime.
 
-`flows/agent_loop.rs` transmet explicitement la question et les éléments de réponse
-au modèle. Les canaux privés du sous-graphe de recherche restent hors de l'état
-parent grâce au mapping isolé ADK. Ces expériences illustrent certaines frontières ;
-elles ne mettent pas encore en œuvre un contexte global extensible de Zedflow.
-
-À expérimenter ensuite : deux instances d'un même bundle avec des stores distincts,
-un store durable partagé par plusieurs assemblages, l'absence d'une ressource requise,
-les écritures concurrentes et la reprise après changement de schéma.
+Le daemon raccorde désormais les scopes de flows, de bridges et de Runtime Graph
+à un registre persistant d'entités et de révisions. Les stratégies sélectionnent
+ces données ou des sources explicitement liées, puis les projettent pour une
+inférence. Les [interfaces](context-api.md) portent les contrats implémentés ; les
+[vérifications](validation.md) couvrent notamment les instances indépendantes,
+les alias partagés, les ressources absentes, les conflits de publication et la
+reprise. Les politiques de mémoire entre runs restent à composer à partir de
+ces ressources et de leurs producteurs.

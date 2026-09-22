@@ -4,7 +4,7 @@ use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -54,6 +54,7 @@ pub struct FlowStore {
     home: PathBuf,
     validator: Arc<dyn SourceValidator>,
     writer: Arc<Mutex<()>>,
+    parsed_sources: Arc<std::sync::Mutex<VecDeque<(String, Composition)>>>,
 }
 
 /// A conflict-checked proposal. The accepting writer checks the hash again
@@ -88,7 +89,41 @@ impl FlowStore {
             home,
             validator,
             writer: Arc::new(Mutex::new(())),
+            parsed_sources: Arc::new(std::sync::Mutex::new(VecDeque::new())),
         }
+    }
+
+    fn parse_source(&self, source: &str) -> Result<Composition> {
+        let cached = self
+            .parsed_sources
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .iter()
+            .find(|(bytes, _)| bytes == source)
+            .map(|(_, document)| document.clone());
+        if let Some(document) = cached {
+            // Only the exact Rust syntax is memoized. Semantic validation may
+            // depend on the caller's current capabilities and always runs again.
+            self.validator.validate(&document)?;
+            return Ok(document);
+        }
+        let document = flow_source::parse(source, self.validator.as_ref())?;
+        let mut cached = self
+            .parsed_sources
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        // Retain at most 64 documents and 8 MiB of source per store. Files and
+        // package closures are still captured afresh on every catalogue read.
+        const MAX_BYTES: usize = 8 * 1024 * 1024;
+        let mut bytes: usize = cached.iter().map(|(source, _)| source.len()).sum();
+        while cached.len() >= 64 || bytes.saturating_add(source.len()) > MAX_BYTES {
+            let Some((removed, _)) = cached.pop_front() else {
+                return Ok(document);
+            };
+            bytes -= removed.len();
+        }
+        cached.push_back((source.to_owned(), document.clone()));
+        Ok(document)
     }
 
     fn roots(&self, workspace: &Workspace) -> [(PathBuf, &'static str); 4] {
@@ -101,17 +136,49 @@ impl FlowStore {
     }
 
     pub async fn list(&self, workspace: &Workspace) -> Result<Vec<FlowFile>> {
+        let mut flows = self.capture_catalog(workspace).await?;
+        // List responses expose revisions and diagnostics, never source bodies.
+        for flow in &mut flows {
+            flow.package = None;
+            flow.source = None;
+        }
+        Ok(flows)
+    }
+
+    /// Acquire the hydrated catalogue once, including invalid entries and identity
+    /// diagnostics. Captures are request-local, not atomic against external edits;
+    /// admission must recheck the captured preconditions and package revisions.
+    pub async fn capture_catalog(&self, workspace: &Workspace) -> Result<Vec<FlowFile>> {
+        self.capture_catalog_mode(workspace, true).await
+    }
+
+    /// Offline import inspection rejects pending publications without recovering them.
+    pub(crate) async fn inspect_catalog(&self, workspace: &Workspace) -> Result<Vec<FlowFile>> {
+        self.capture_catalog_mode(workspace, false).await
+    }
+
+    async fn capture_catalog_mode(
+        &self,
+        workspace: &Workspace,
+        recover: bool,
+    ) -> Result<Vec<FlowFile>> {
         let mut roots = vec![workspace.path.clone(), self.home.clone()];
         roots.sort();
         roots.dedup();
         // Coordinated recovery takes all participant locks. Do it before this
         // read holds any root, never from a nested reader-lock acquisition.
-        for root in &roots {
-            crate::flow_packages::recover_lifecycle(root.clone()).await?;
+        if recover {
+            for root in &roots {
+                crate::flow_packages::recover_lifecycle(root.clone()).await?;
+            }
         }
         let mut _catalog_guards = Vec::new();
         for root in roots {
-            _catalog_guards.push(crate::context_store::reader_lock(root).await?);
+            _catalog_guards.push(if recover {
+                crate::context_store::reader_lock(root).await?
+            } else {
+                crate::context_store::clean_reader_lock(root).await?
+            });
         }
         let mut flows = Vec::new();
         let mut seen = HashSet::new();
@@ -169,7 +236,7 @@ impl FlowStore {
                                 path: path.clone(),
                                 hash: flow.source_hash.clone(),
                             }];
-                            match flow_source::parse(&source, self.validator.as_ref()) {
+                            match self.parse_source(&source) {
                                 Ok(doc) => {
                                     flow.file_version = Some(doc.format_version);
                                     flow.id = doc.id.clone();
@@ -178,6 +245,7 @@ impl FlowStore {
                                 }
                                 Err(error) => flow.diagnostics.push(format!("{error:#}")),
                             }
+                            flow.source = Some(source);
                         }
                         Err(error) => flow
                             .diagnostics
@@ -211,13 +279,10 @@ impl FlowStore {
                 if !seen.insert(path.clone()) {
                     continue;
                 }
-                let mut file = self.read_package(&path, scope, workspace).await;
+                let file = self.read_package(&path, scope, workspace).await;
                 if file.package.is_some() {
                     package_keys.insert(file.key.clone());
                 }
-                // List responses expose revisions and diagnostics, never the closure's contents.
-                file.package = None;
-                file.source = None;
                 flows.push(file);
             }
         }
@@ -280,7 +345,7 @@ impl FlowStore {
                 hash: flow.source_hash.clone(),
             }];
             // Parse the same bytes returned and later frozen by callers.
-            flow.composition = flow_source::parse(&source, self.validator.as_ref()).ok();
+            flow.composition = self.parse_source(&source).ok();
             flow.file_version = flow.composition.as_ref().map(|doc| doc.format_version);
             if let Some(doc) = &flow.composition {
                 flow.id = doc.id.clone();
@@ -303,7 +368,7 @@ impl FlowStore {
             let captured = crate::flow_packages::capture_with_preconditions(path).await?;
             let manifest = captured.snapshot.root_manifest()?;
             let source = captured.snapshot.root_node()?.entry_source()?.to_owned();
-            let doc = flow_source::parse(&source, self.validator.as_ref());
+            let doc = self.parse_source(&source);
             // Capture remains inspectable even when the visual projection is unsupported.
             flow.id = manifest.id.as_str().to_owned();
             flow.name.clone_from(&manifest.name);

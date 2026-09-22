@@ -271,6 +271,8 @@ fn isolated_output(
         .arg(project.join("Cargo.toml"))
         .args(["--", "--workspace"])
         .arg(workspace)
+        .arg("--home")
+        .arg(workspace.join(".fixture-home"))
         .arg("--data")
         .arg(data)
         .args(["--run-id", "portable", "--input", input])

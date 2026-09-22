@@ -117,7 +117,7 @@ export function useZedflow() {
 
   function openDesign(file:FlowFile){if(!file.composition){error.value=file.diagnostics.join('\n')||'Ce fichier ne peut pas être chargé dans le canvas.';return}let editable:Composition;try{editable=editableComposition(file.composition)}catch(cause){error.value=`Ce flow ne peut pas être interprété par les éditeurs : ${cause instanceof Error?cause.message:String(cause)}`;return}designIntent++;designFile.value=clone(file);doc.value=editable;designWorkspaceId.value=workspaceId.value;baseline.value=documentText(doc.value);mode.value='design'}
   function createFlow(kind:'harness'|'tools'|'interactive'|'autonomous'='harness'){designIntent++;doc.value=kind==='harness'?harnessTemplate():kind==='tools'?toolTemplate():template(kind==='interactive');designFile.value=null;designWorkspaceId.value=workspaceId.value;baseline.value='';mode.value='design'}
-  async function persistDesign(scope:'workspace'|'global'='workspace',duplicate=false,name=doc.value.name){
+  async function writeDesign(scope:'workspace'|'global'='workspace',duplicate=false,name=doc.value.name){
     const intent=designIntent, initialText=documentText(doc.value), initialName=doc.value.name
     const composition=clone(documentValue(doc.value))
     const targetWorkspace=duplicate?workspaceId.value:designWorkspaceId.value||workspaceId.value
@@ -131,6 +131,10 @@ export function useZedflow() {
       // was in flight remain a dirty draft against the new on-disk hash.
       doc.value=unchanged?saved:{...doc.value,id:saved.id,revision:saved.revision,...(doc.value.name===initialName?{name:saved.name}:{})}
     }
+    return file
+  }
+  async function persistDesign(scope:'workspace'|'global'='workspace',duplicate=false,name=doc.value.name){
+    const file=await writeDesign(scope,duplicate,name)
     await refresh();notice.value='Flow enregistré';return file
   }
   async function save(scope:'workspace'|'global'='workspace',duplicate=false,name=doc.value.name){return task('Enregistrement',()=>persistDesign(scope,duplicate,name))}
@@ -138,7 +142,41 @@ export function useZedflow() {
   async function duplicateFlow(file:FlowFile,scope:'workspace'|'global',name:string){if(!file.composition)return;await task('Copie du flow',async()=>{const composition={...clone(file.composition!),id:crypto.randomUUID(),revision:0,name};const value=await client.flows.save({workspaceId:workspaceId.value,scope,composition});await refresh();openDesign(value)})}
   async function renameFlow(file:FlowFile,name:string){if(!file.composition)return;await task('Renommage',async()=>{const value=await client.flows.save({workspaceId:workspaceId.value,key:file.key,expectedHash:file.hash,composition:{...clone(file.composition!),name}});await refresh();if(designFile.value?.key===file.key&&!dirty.value)openDesign(value)})}
   function chooseFlow(file:FlowFile){if(!file.composition)return;resetRun();executionFlow.value=file;mode.value='execution'}
-  async function launchDesign(){await task('Préparation de la session',async()=>{const file=dirty.value||!designFile.value?await persistDesign():designFile.value;await selectWorkspace(designWorkspaceId.value||workspaceId.value);chooseFlow(file)})}
+  async function launchDesign(){await task('Préparation de la session',async()=>{
+    const intent=designIntent, version=taskVersion, targetWorkspace=designWorkspaceId.value||workspaceId.value
+    let workspaceVersion=workspaceIntent, sessionVersion=sessionIntent, selectedWorkspace=workspaceId.value
+    let acknowledged=false, refreshing=false
+    const relevant=()=>intent===designIntent&&version===taskVersion&&workspaceVersion===workspaceIntent&&sessionVersion===sessionIntent&&selectedWorkspace===workspaceId.value&&mode.value==='design'
+    // This confirms the submitted revision, never edits made while the ACK/catalogue was in flight.
+    const confirm=()=>{if(acknowledged)notice.value='Version envoyée du flow enregistrée'}
+    try{
+      let file=designFile.value
+      if(dirty.value||!file){file=await writeDesign();acknowledged=true}
+      if(!relevant())return
+      // Only this path folds persistence's refresh into the workspace barrier.
+      // Save/generate still use persistDesign, including its own refresh.
+      const selection=selectWorkspace(targetWorkspace)
+      workspaceVersion=workspaceIntent;sessionVersion=sessionIntent;selectedWorkspace=targetWorkspace
+      const catalogueVersion=refreshVersion, capabilityVersion=capabilitiesVersion
+      refreshing=true
+      await selection
+      if(!relevant())return
+      confirm()
+      if(catalogueVersion!==refreshVersion||capabilityVersion!==capabilitiesVersion){
+        error.value='Préparation interrompue par une actualisation plus récente. Réessayez.';return
+      }
+      const latest=flows.value.find(candidate=>candidate.key===file.key&&candidate.composition?.id===file.composition?.id)
+      if(!latest?.composition){
+        error.value=acknowledged?'Flow enregistré, mais indisponible dans le catalogue actualisé.':'Flow indisponible dans le catalogue actualisé.';return
+      }
+      if(latest.diagnostics.length){error.value=latest.diagnostics.join('\n');return}
+      chooseFlow(latest)
+    }catch(cause){
+      if(!relevant())return
+      confirm()
+      error.value=`${refreshing?'Échec de l’actualisation du catalogue : ':''}${cause instanceof Error?cause.message:String(cause)}`
+    }
+  })}
   async function testDraft(input:Record<string,JsonValue>,modelBindings:Record<string,ModelSelection>){
     const intent=++sessionIntent,targetWorkspace=designWorkspaceId.value||workspaceId.value,composition=clone(documentValue(doc.value))
     const acknowledgement=await client.runs.preview({workspaceId:targetWorkspace,composition,input,modelBindings:clone(modelBindings)})

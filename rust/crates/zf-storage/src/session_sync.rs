@@ -270,7 +270,12 @@ pub fn timeline_page(timeline: &[Value]) -> (Vec<Value>, bool, Option<i64>) {
 
 fn context_summary(mut context: Value) -> Value {
     for collection in ["instructions", "loadedSkills"] {
-        for source in context[collection].as_array_mut().into_iter().flatten() {
+        for source in context
+            .get_mut(collection)
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
             if let Some(object) = source.as_object_mut() {
                 object.remove("content");
                 object.remove("body");
@@ -278,4 +283,37 @@ fn context_summary(mut context: Value) -> Value {
         }
     }
     context
+}
+
+#[cfg(test)]
+mod context_summary_tests {
+    use super::context_summary;
+    use serde_json::json;
+
+    #[test]
+    fn context_summary_preserves_absence_and_empty_collections() {
+        let absent = json!({"future":{"value":42}});
+        assert_eq!(context_summary(absent.clone()), absent);
+        let empty = json!({"instructions":[],"loadedSkills":[],"future":null});
+        assert_eq!(context_summary(empty.clone()), empty);
+    }
+
+    #[test]
+    fn context_summary_removes_bodies_without_mutating_persisted_context() {
+        let persisted = json!({
+            "instructions":[{"path":"AGENTS.md","hash":"exact","content":"private instructions","extension":42}],
+            "loadedSkills":[{"name":"fixture","path":"SKILL.md","hash":"loaded","sourceHash":"source","body":"skill body","content":"skill content","truncated":true}],
+            "future":{"body":"not a captured source"}
+        });
+        let original = persisted.clone();
+        assert_eq!(
+            context_summary(persisted.clone()),
+            json!({
+                "instructions":[{"path":"AGENTS.md","hash":"exact","extension":42}],
+                "loadedSkills":[{"name":"fixture","path":"SKILL.md","hash":"loaded","sourceHash":"source","truncated":true}],
+                "future":{"body":"not a captured source"}
+            })
+        );
+        assert_eq!(persisted, original);
+    }
 }

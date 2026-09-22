@@ -1,21 +1,75 @@
-name: ADK lab
+name: Zedflow product
 
 on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: 2
+  CARGO_TARGET_DIR: /tmp/zedflow-adk-target
+  PLAYWRIGHT_SKIP_BROWSER_GC: '1'
 
 jobs:
-  lab:
+  product:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --global pnpm@11.5.1
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.96.1 --profile minimal --component rustfmt,clippy
-      - run: cargo fmt --all --check
-      - run: cargo check --locked --workspace --all-targets --all-features
-      - run: cargo test --locked --workspace --all-targets
-      - run: cargo test --locked --workspace --all-targets --features web
-      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
-      - run: cargo clippy --locked --workspace --all-targets --features web -- -D warnings
+      - name: Install web and independent browser suite
+        run: |
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web build
+          pnpm --dir web --filter @zedflow/desktop exec node node_modules/electron/install.js
+          pnpm --dir e2e install --frozen-lockfile
+          pnpm --dir e2e exec playwright install --with-deps chromium
+      - name: SDK outside-workspace consumers, Vue and client tests
+        run: |
+          pnpm --dir web typecheck
+          pnpm --dir web test
+      - name: Rust formatting
+        working-directory: rust
+        run: cargo fmt --all --check
+      - name: Rust default graph
+        working-directory: rust
+        run: cargo check --locked --workspace --all-targets
+      - name: Rust fixtures and relocated locked Cargo exports
+        working-directory: rust
+        env:
+          ZEDFLOW_TEST_CODEGEN: '1'
+        run: cargo test --locked --workspace --all-targets
+      - name: Rust lint
+        working-directory: rust
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: Full ADK catalog including CPU inference
+        working-directory: rust
+        run: cargo check --locked --workspace --all-targets --all-features
+      - name: Release supervisor
+        run: pnpm --dir tooling/releases test
+      - name: Static browser suite
+        env:
+          ZEDFLOW_E2E_STATIC: '1'
+        run: pnpm --dir e2e test
+      - name: Electron with isolated static daemon
+        run: |
+          fixture="$(mktemp -d /tmp/zedflow-electron.XXXXXX)"
+          ZEDFLOW_E2E_ROOT="$fixture" ZEDFLOW_E2E_DAEMON_PORT=3167 node e2e/support/daemon.mjs > "$fixture/daemon.log" 2>&1 &
+          daemon=$!
+          trap 'kill -TERM "$daemon"; wait "$daemon" || true' EXIT
+          ready=0
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:3167/api/health > /dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          test "$ready" = 1 || { cat "$fixture/daemon.log"; exit 1; }
+          ZEDFLOW_CLIENT_URL=http://127.0.0.1:3167 xvfb-run --auto-servernum pnpm --dir web --filter @zedflow/desktop test:smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: product-test-evidence
+          path: .agents/output/
+          include-hidden-files: true
+          if-no-files-found: ignore

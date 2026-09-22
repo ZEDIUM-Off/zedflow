@@ -338,3 +338,129 @@ async fn conversion_proposal_refuses_same_identity_even_when_legacy_bytes_match(
     assert_eq!(std::fs::read_to_string(global).unwrap(), original);
     assert!(!workspace.path.join(".zedflow/flow").exists());
 }
+
+#[tokio::test]
+async fn hydrated_catalog_matches_get_and_list_including_invalid_and_duplicate_entries() {
+    let temp = tempfile::tempdir().unwrap();
+    let (workspace, home, store) = setup(temp.path());
+    package(&workspace.path, "same");
+    package(&home, "global");
+    let legacy = workspace.path.join(".agents/flows");
+    std::fs::create_dir_all(&legacy).unwrap();
+    std::fs::write(legacy.join("same.rs"), source("same")).unwrap();
+    std::fs::write(legacy.join("valid.rs"), source("valid")).unwrap();
+    std::fs::write(legacy.join("broken.rs"), "malformed Rust").unwrap();
+    let unsupported = package(&workspace.path, "unsupported");
+    std::fs::write(unsupported.join("flow.rs"), "unsupported Rust").unwrap();
+    let malformed = workspace.path.join(".zedflow/flow/malformed");
+    std::fs::create_dir_all(&malformed).unwrap();
+    std::fs::write(malformed.join("flow.json"), "malformed JSON").unwrap();
+
+    let captured = store.capture_catalog(&workspace).await.unwrap();
+    let listed = store.list(&workspace).await.unwrap();
+    assert_eq!(captured.len(), 7);
+    assert_eq!(listed.len(), captured.len());
+    assert_eq!(
+        captured
+            .iter()
+            .filter(|f| !f.diagnostics.is_empty())
+            .count(),
+        5
+    );
+    for (file, summary) in captured.iter().zip(&listed) {
+        let loaded = store.get(&workspace, &file.key).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(file).unwrap(),
+            serde_json::to_value(&loaded).unwrap()
+        );
+        assert_eq!(
+            file.preconditions
+                .iter()
+                .map(|p| (&p.path, &p.hash))
+                .collect::<Vec<_>>(),
+            loaded
+                .preconditions
+                .iter()
+                .map(|p| (&p.path, &p.hash))
+                .collect::<Vec<_>>()
+        );
+        let mut light = file.clone();
+        light.source = None;
+        light.package = None;
+        assert_eq!(
+            serde_json::to_value(light).unwrap(),
+            serde_json::to_value(summary).unwrap()
+        );
+    }
+    assert!(
+        captured
+            .iter()
+            .filter(|f| f.id == "same")
+            .all(|f| f.diagnostics.iter().any(|d| d.contains("concurrente")))
+    );
+}
+
+#[tokio::test]
+async fn repeated_sources_revalidate_capabilities_and_external_bytes() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    let temp = tempfile::tempdir().unwrap();
+    let (workspace, home, _) = setup(temp.path());
+    let allowed = Arc::new(AtomicBool::new(true));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let store = FlowStore::new(
+        home,
+        Arc::new({
+            let allowed = allowed.clone();
+            let calls = calls.clone();
+            move |_: &Composition| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                anyhow::ensure!(allowed.load(Ordering::SeqCst), "fixture capability revoked");
+                Ok(())
+            }
+        }),
+    );
+    let package = package(&workspace.path, "sample");
+    assert!(
+        store.list(&workspace).await.unwrap()[0]
+            .diagnostics
+            .is_empty()
+    );
+    let warmed = calls.load(Ordering::SeqCst);
+    assert!(
+        store.list(&workspace).await.unwrap()[0]
+            .diagnostics
+            .is_empty()
+    );
+    assert!(calls.load(Ordering::SeqCst) > warmed);
+    allowed.store(false, Ordering::SeqCst);
+    let rejected = store.list(&workspace).await.unwrap();
+    assert!(
+        rejected[0]
+            .diagnostics
+            .iter()
+            .any(|d| d.contains("fixture capability revoked"))
+    );
+    allowed.store(true, Ordering::SeqCst);
+    assert!(
+        store.list(&workspace).await.unwrap()[0]
+            .diagnostics
+            .is_empty()
+    );
+    // Same path and identity, changed unsupported Rust: a warmed source must
+    // never mask a new body. Package capture itself remains inspectable.
+    std::fs::write(
+        package.join("flow.rs"),
+        format!("{}\nfn hidden_effect() {{}}", source("sample")),
+    )
+    .unwrap();
+    let changed = store.capture_catalog(&workspace).await.unwrap();
+    assert!(!changed[0].diagnostics.is_empty());
+    assert!(changed[0].composition.is_none());
+    assert!(changed[0].package.is_some());
+    std::fs::write(package.join("flow.rs"), source("sample")).unwrap();
+    assert!(
+        store.list(&workspace).await.unwrap()[0]
+            .diagnostics
+            .is_empty()
+    );
+}

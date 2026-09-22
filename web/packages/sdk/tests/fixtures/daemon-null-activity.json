@@ -1,0 +1,44 @@
+{
+  "durationMs": 355,
+  "endedAt": 1789588406095,
+  "endedSeq": 756,
+  "flowRevision": {
+    "definitionRef": "sha256:c2326c8f0584355f7f34ad0da762d5445325cc5691b1ff9eccc79b4d8729b8c0",
+    "definitionRevision": "2e0356ea1daf2a73bd19732c72d0663c97e98fa1c27b0d8597d625b4533ce830",
+    "diagnostic": null,
+    "graphRef": null,
+    "hash": "2ece4f7e5c6acaa073f55185bd0267b76ca9f02e1216e4c0f303e4702823a243",
+    "instance": "",
+    "key": "5f78879e5bc4e92b83fcb122ee56694cf00496c3683a9a531fb60df551bf21ac",
+    "packageRevision": "6b66de04fba8a827d520ea68bf279954a55c8bf13f7d3436ee84ea8ab17c51af",
+    "scope": "",
+    "sourceRef": "sha256:7f26d242c0738be62505dc933261d7939b47d8fdaf50e267416938d3cd890f90",
+    "step": 0,
+    "threadId": "bc096305-b95d-4edd-8a3e-32be38d4eb31"
+  },
+  "input": {
+    "input": "Observer le workspace"
+  },
+  "kind": "context",
+  "label": "Préparer le contexte",
+  "node": "context",
+  "nodePath": "context",
+  "occurrenceId": "4a2e90d1-5152-4b48-ac60-d6454a3a48d6",
+  "output": {
+    "__zedflow:prepared:context": "85c8dc24-4b85-41b7-a12d-4852bd1a3271",
+    "contextNeeds": null
+  },
+  "path": "context",
+  "phase": "executing",
+  "startedAt": 1789588405740,
+  "startedSeq": 753,
+  "state": {
+    "input": "Observer le workspace"
+  },
+  "status": "completed",
+  "step": 0,
+  "thread": "bc096305-b95d-4edd-8a3e-32be38d4eb31",
+  "tool": null,
+  "type": "node_activity",
+  "ui": null
+}

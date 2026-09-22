@@ -543,3 +543,65 @@ async fn inspection_preserves_graph_catalogue_when_one_of_two_instances_keeps_ol
         new.hash
     );
 }
+
+#[tokio::test]
+async fn restart_revalidates_a_previously_cached_persisted_definition_before_execution() {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    let store = ContentStore::new(pool.clone()).await.unwrap();
+    let old = definition("old");
+    let new = definition("new");
+    let runtime = RevisionRuntime::new(
+        store.clone(),
+        "run",
+        BTreeMap::from([("".into(), old.clone())]),
+    )
+    .await
+    .unwrap();
+    runtime.publish("", new.clone()).await.unwrap();
+    let pins = Arc::new(Mutex::new(Vec::new()));
+    let node = wrapped(&runtime, &pins);
+    node.execute(&context("thread", 0, false)).await.unwrap();
+    let reference = pins.lock().unwrap()[0].1["definitionRef"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        pins.lock().unwrap()[0].1["definitionRevision"],
+        new.revision()
+    );
+    drop(node);
+    drop(runtime);
+    // Simulate persisted corruption after the first controller was released.
+    // The second controller must not inherit trusted content from its cache.
+    sqlx::query("UPDATE zf_content SET body=? WHERE reference=?")
+        .bind(json!({"kind":"scalar","value":"corrupt"}).to_string())
+        .bind(reference)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let reopened = RevisionRuntime::new(
+        ContentStore::from_pool(pool),
+        "run",
+        BTreeMap::from([("".into(), old)]),
+    )
+    .await
+    .unwrap();
+    let error = wrapped(&reopened, &pins)
+        .execute(&context("thread", 0, false))
+        .await
+        .err()
+        .expect("corrupt replay must fail");
+    assert!(
+        error.to_string().contains("content hash mismatch"),
+        "{error}"
+    );
+    assert_eq!(
+        pins.lock().unwrap().len(),
+        1,
+        "corrupt replay cannot execute"
+    );
+}

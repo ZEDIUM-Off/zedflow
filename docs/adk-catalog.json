@@ -51,5 +51,7 @@
   ],
   "excluded_workspace_maintenance": [
     "xtask"
-  ]
+  ],
+  "manifest": "rust/crates/zf-runtime/Cargo.toml",
+  "lockfile": "rust/Cargo.lock"
 }

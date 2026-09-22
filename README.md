@@ -1,100 +1,61 @@
-# Zedflow — ADK-Rust lab
+# Zedflow
 
-Un laboratoire Rust pour expérimenter des agents et des graphes composables avec
-ADK-Rust. Cette branche repart sur ADK-Rust : le port Pi et le runtime LangGraph
-ne font plus partie de son architecture ni de ses critères de validation.
+Composer, exécuter et inspecter des flows ADK-Rust, avec un daemon Rust, un client
+Vue et un SDK TypeScript par domaines. ADK 2.2.0 conserve l'exécution des graphes ;
+Zedflow possède la compilation de composition, l'admission et la continuité locale.
+Le laboratoire ADK, son ancien web et ADK Studio ne sont plus des applications du dépôt.
 
-L'intention produit reste un **harness dont les comportements, la composition et
-l'évolution s'expriment en graphes**. Pour l'instant, le code explore directement
-les primitives ADK. Les contrats et le registre propres à Zedflow restent à concevoir
-à partir des expériences, sans les implémenter prématurément.
+## Essayer sans credentials
 
-## Démarrer
-
-Rust 1.96.1 est fixé dans `rust-toolchain.toml`. Le catalogue complet des 42 crates
-de bibliothèque ADK-Rust est fixé à 2.2.0 et résolu dans `Cargo.lock`.
+Prérequis : Node 24, pnpm 11.5.1, Rust 1.96.1. Depuis la racine du dépôt :
 
 ```sh
+pnpm --dir web install --frozen-lockfile
+pnpm --dir web build
 export CARGO_TARGET_DIR=/tmp/zedflow-adk-target
-cargo fetch --locked
-cargo run --locked -- list
-cargo run --locked -- research
-cargo run --locked -- agent
-cargo run --locked -- memory
+REPO="$(pwd -P)"
+FIXTURE="$(mktemp -d /tmp/zedflow-demo.XXXXXX)"
+mkdir -p "$FIXTURE/workspace" "$FIXTURE/home"
+(cd rust && cargo run --locked -p zf-serve --bin zedflow-daemon -- \
+  --listen 127.0.0.1:3158 --web "$REPO/web/apps/client/dist" \
+  --workspace "$FIXTURE/workspace" --data "$FIXTURE/data" \
+  --flow-home "$FIXTURE/home" --context-home "$FIXTURE/home")
 ```
 
-Ces commandes utilisent des données et un modèle de test locaux. Les événements
-ADK sortent en JSONL sur stdout, avec le résultat final dans l'événement `done`.
-La recherche travaille sur des fixtures clairement identifiées ; elle ne fait
-aucune recherche web réelle.
+Ouvrir <http://127.0.0.1:3158>, choisir le fournisseur **Fixture**. Aucun compte ni
+modèle réel n'est nécessaire. Les outils exécutent leurs effets avec les droits du
+daemon : le workspace temporaire n'est pas un sandbox. Arrêter avec Ctrl-C.
+Les options home ci-dessus ne déplacent ni HOME, ni CODEX_HOME, ni les credentials.
 
-Pour vérifier une pause et une reprise dans deux processus :
+Cargo doit partir de `rust/` : `--manifest-path rust/Cargo.toml` seul depuis la
+racine sélectionne le toolchain par défaut de la machine, pas le pin imbriqué.
+Les flags des gates restent les mêmes ; voir [validation](docs/validation.md).
 
-```sh
-cargo run --locked -- checkpoint start --database 'sqlite:///tmp/zedflow-checkpoints.db?mode=rwc'
-cargo run --locked -- checkpoint resume --database 'sqlite:///tmp/zedflow-checkpoints.db?mode=rwc'
-```
+## Organisation
 
-Le premier lancement prépare une valeur et s'arrête avant `deliver`. Le second
-reprend `deliver` avec l'état sauvegardé. Pour une nouvelle expérience dans la même
-base, choisir un autre `--thread`.
+- `rust/crates/` : [bibliothèques et services](docs/architecture/crates.md), CLI `zf`
+  et binaire public `zedflow-daemon`.
+- `web/packages/sdk/` : [SDK Zod](docs/development/sdk.md), transports injectables,
+  erreurs, synchronisation, cache et octets raw ; `web/packages/vue/` : lifecycle Vue.
+- `web/apps/client/`, `web/apps/desktop/` : client web et shell Electron.
+- `e2e/` : Playwright indépendant, fixtures locales et daemon dédié.
+- `tooling/dev/`, `tooling/releases/` : outils Node autonomes, hors workspace web.
+- `examples/working-system/` : [package déterministe](examples/working-system/README.md).
 
-Un modèle Gemini réel peut remplacer le modèle fixture dans la même boucle :
+Les nouveaux flows sont des [packages](docs/development/flow-packages.md) dans
+`.zedflow/flow/<id>/`. Les anciens fichiers restent lisibles et leur conversion
+est explicite ; les sources historiques des runs restent exactes.
 
-```sh
-# Fournir GOOGLE_API_KEY dans l'environnement, puis choisir un modèle du compte.
-cargo run --locked -- agent --live --model '<model-id>' 'Comment composer ces graphes ?'
-```
+## Guides
 
-Ce mode contacte le fournisseur et peut être facturé. Le sous-graphe de recherche
-reste sur les fixtures ; cette commande teste l'intégration du modèle à la composition.
+- [Intention et vocabulaire](CONTEXT.md), [produit](PRODUCT.md), [design](DESIGN.md)
+- [Application](docs/app.md), [versions locales](docs/app-versioning.md)
+- [Composition](docs/composition.md), [ressources](docs/resources.md),
+  [interaction](docs/interaction.md), [évolution](docs/evolution.md)
+- [Formats Rust](docs/flow-format.md), [contexte](docs/context-engine.md),
+  [API de contexte](docs/context-api.md)
+- [Catalogue ADK](docs/adk.md), [provenances tierces](THIRD_PARTY_NOTICES.md)
+- [Gates de validation](docs/validation.md), [candidat 0.2.0](docs/releases/0.2.0.md)
 
-## Explorer
-
-L'interface visuelle du lab est **ADK Studio**, installé séparément :
-
-```sh
-./scripts/studio.sh
-```
-
-Ouvrir [Studio local](http://127.0.0.1:3000), puis **Zedflow Studio Recherche**.
-Cette expérience native permet de modifier les nœuds, compiler le graphe, tester
-une entrée et examiner les traces depuis le canvas upstream. Sa définition JSON
-est versionnée dans `.adk-studio/projects/`.
-
-Studio 1.0.1 génère des projets ADK 1.x ; les expériences Rust ci-dessous restent
-en ADK 2.2.0. Studio ne les importe pas automatiquement. Voir le
-[guide Studio](docs/studio.md) pour l'installation, l'accès depuis Zed et les limites.
-
-| Fichier | Responsabilité |
-|---|---|
-| `flows/research.rs` | Valider une requête, récupérer les fixtures, retourner des éléments de réponse |
-| `flows/agent_loop.rs` | Boucler entre une décision d'agent et le sous-graphe de recherche |
-| `flows/shared_memory.rs` | Partager un service mémoire entre graphes tout en isolant les projets |
-| `flows/checkpoint.rs` | Préparer, suspendre et reprendre avec un checkpoint SQLite |
-| `src/main.rs` | Choisir une expérience et afficher ses événements |
-| `tests/flows.rs` | Vérifier les frontières et les résultats des expériences |
-
-Le manifeste rend toutes les crates disponibles, avec deux groupes additionnels :
-
-```sh
-cargo check --locked --all-targets --features adk-platform
-cargo check --locked --all-targets --features all-adk
-```
-
-`adk-platform` active les bibliothèques de plateforme et le profil `full` ADK.
-`all-adk` ajoute `adk-mistralrs` pour l'inférence locale sur CPU. Cela ne signifie
-pas activer simultanément tous les backends CUDA, Metal, audio, cloud ou bases de
-données. Voir [le catalogue et l'installation des outils](docs/adk.md).
-
-## Contexte de conception
-
-- [Vision et périmètre](CONTEXT.md)
-- [Composition, registre et partage de graphes](docs/composition.md)
-- [Contextes, state, stores et ressources](docs/resources.md)
-- [Évolution et capitalisation](docs/evolution.md)
-- [Méthode des expériences](flows/README.md)
-- [Validation du reboot](docs/validation.md)
-
-ADK-Rust est le projet indépendant de Zavora. Le choix de cette base ne suppose
-ni maintenance par Google ni équivalence avec les SDK Google ADK.
+Aucune publication npm/crates.io ni installation multiplateforme n'est promise.
+L'accès distant passe par un tunnel privé ; le daemon n'est pas un service public.

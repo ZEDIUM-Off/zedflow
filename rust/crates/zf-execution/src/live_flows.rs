@@ -46,11 +46,10 @@ pub async fn accept(
     for workspace in workspaces {
         live_files::recover(db, &workspace.path).await?;
         let files = flows.list(&workspace).await?;
-        let affected: Vec<_> = live_files::run_definitions(db, &workspace.id)
-            .await?
-            .into_iter()
-            .filter(|run| run.definition.key == flow_key)
-            .collect();
+        let affected = {
+            let snapshots = zf_storage::live_files::snapshots(db, &workspace.id).await?;
+            live_files::flow_definitions_from_snapshots(&snapshots, &flow_key)?
+        };
         validate_dependents(
             &workspace,
             &files,

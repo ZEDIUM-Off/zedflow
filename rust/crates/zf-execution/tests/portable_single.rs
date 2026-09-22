@@ -46,6 +46,7 @@ fn package(source: &str, readme: &str) -> PackageSnapshot {
 fn options(root: &Path, input: Value) -> RunOptions {
     RunOptions {
         workspace: root.join("workspace"),
+        home: Some(root.join("home")),
         data: root.join("data"),
         run_id: "portable".into(),
         input: serde_json::from_value::<State>(input).unwrap(),
@@ -246,4 +247,52 @@ async fn native_panic_keeps_cleanup_inside_the_data_ownership_boundary() {
         std::fs::read_to_string(temp.path().join("workspace/effects")).unwrap(),
         "x"
     );
+}
+
+#[tokio::test]
+async fn explicit_export_home_is_used_for_initial_and_scoped_instruction_discovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(home.join(".pi/agent")).unwrap();
+    std::fs::create_dir_all(temp.path().join("workspace/child")).unwrap();
+    std::fs::write(
+        home.join(".pi/agent/AGENTS.md"),
+        "isolated-export-instructions",
+    )
+    .unwrap();
+    std::fs::create_dir_all(home.join(".agents/skills/export-fixture")).unwrap();
+    std::fs::write(
+        home.join(".agents/skills/export-fixture/SKILL.md"),
+        "---\nname: export-fixture\ndescription: Isolated fixture\n---\nOnly this fixture skill\n",
+    )
+    .unwrap();
+    let def = definition();
+    let composition = def.composition.clone();
+    let selected_home = home.clone();
+    let native: NativeFactory = Arc::new(move |services, checkpoint, scope| {
+        let scoped = services.for_working_directory(Some("child"))?;
+        for context in [&services.context, &scoped.context] {
+            assert_eq!(context.instructions.len(), 1);
+            assert_eq!(
+                context.instructions[0].content,
+                "isolated-export-instructions"
+            );
+            assert!(context.instructions[0].path.starts_with(&selected_home));
+            assert_eq!(context.skills.len(), 1);
+            assert_eq!(context.skills[0].name, "export-fixture");
+        }
+        zf_runtime::materialize::build_scope(
+            &composition,
+            None,
+            scope,
+            Some(services),
+            Some(checkpoint),
+        )
+    });
+    let process_home = std::env::var_os("HOME");
+    let output = run_single(def, native, options(temp.path(), json!({})))
+        .await
+        .unwrap();
+    assert_eq!(output["status"], "waiting");
+    assert_eq!(std::env::var_os("HOME"), process_home);
 }

@@ -25,6 +25,7 @@ tokio-util.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+futures.workspace = true
 tempfile.workspace = true
 
 [lints]

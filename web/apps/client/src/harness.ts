@@ -5,7 +5,7 @@ import type { Composition, FlowNode, ModelEntry, ModelSelection, WorkspaceContex
 export type { ModelSelection } from '@zedflow/sdk'
 
 export type SkillEntry = WorkspaceContext['skills'][number]
-export interface ModelNode { path: string; group: string; node: FlowNode; runtime: boolean; context?: FlowNode; contextPath?: string }
+export interface ModelNode { path: string; group: string; node: FlowNode; runtime: boolean; context?: FlowNode; contextPath?: string | null }
 
 export function modelNodes(composition: Composition, prefix = '', group = ''): ModelNode[] {
   return composition.nodes.flatMap(node => {

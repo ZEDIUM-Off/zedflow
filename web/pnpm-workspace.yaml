@@ -3,3 +3,5 @@ packages:
   - 'apps/*'
 allowBuilds:
   esbuild: true
+  electron: false # Installed explicitly for the desktop smoke test.
+  vue-demi: false # 0.14.10 ships the Vue 3 bindings used by this workspace.

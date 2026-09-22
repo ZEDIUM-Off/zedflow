@@ -1,0 +1,219 @@
+{
+  "formatVersion": 3,
+  "id": "parallel-join",
+  "name": "Jointure préservée · contexte séparé",
+  "revision": 0,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow",
+      "position": {
+        "x": 60,
+        "y": 175
+      },
+      "data": {
+        "label": "Début",
+        "kind": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "context",
+      "type": "flow",
+      "position": {
+        "x": 300,
+        "y": -252
+      },
+      "data": {
+        "kind": "context",
+        "label": "Préparer le contexte",
+        "config": {
+          "modelNode": "model",
+          "fanIn": "all",
+          "attachments": {
+            "instructions": {
+              "items": [
+                {
+                  "id": "instructions",
+                  "source": {
+                    "kind": "text",
+                    "text": "Réponds de manière concise en français."
+                  },
+                  "mode": "literal",
+                  "activation": "always"
+                }
+              ]
+            }
+          },
+          "contextStrategy": "conversation-default",
+          "contextBindings": {
+            "input": {
+              "kind": "state",
+              "field": "input"
+            },
+            "instructions": {
+              "kind": "attachments",
+              "slot": "instructions"
+            },
+            "skills": {
+              "kind": "attachments",
+              "slot": "skills"
+            },
+            "files": {
+              "kind": "attachments",
+              "slot": "files"
+            },
+            "history": {
+              "kind": "conversation",
+              "historyField": "messages",
+              "inputField": "input"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "model",
+      "type": "flow",
+      "position": {
+        "x": 300,
+        "y": 100
+      },
+      "data": {
+        "label": "Modèle",
+        "kind": "model",
+        "config": {
+          "provider": "fixture",
+          "inputField": "input",
+          "field": "output",
+          "contextNode": "context",
+          "historyField": "messages"
+        }
+      }
+    },
+    {
+      "id": "response",
+      "type": "flow",
+      "position": {
+        "x": 750,
+        "y": 165
+      },
+      "data": {
+        "label": "Réponse",
+        "kind": "output",
+        "config": {
+          "text": "{{output}}"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "flow",
+      "position": {
+        "x": 750,
+        "y": 410
+      },
+      "data": {
+        "label": "Fin",
+        "kind": "end",
+        "config": {}
+      }
+    },
+    {
+      "id": "fast",
+      "type": "flow",
+      "position": {
+        "x": 200,
+        "y": 0
+      },
+      "data": {
+        "label": "Première branche",
+        "kind": "set",
+        "config": {
+          "field": "fast",
+          "value": "ready"
+        }
+      }
+    },
+    {
+      "id": "delay",
+      "type": "flow",
+      "position": {
+        "x": 200,
+        "y": 250
+      },
+      "data": {
+        "label": "Branche retardée",
+        "kind": "tool",
+        "config": {
+          "tool": "delay",
+          "arguments": {
+            "milliseconds": 250
+          },
+          "field": "delayResult"
+        }
+      }
+    },
+    {
+      "id": "slow",
+      "type": "flow",
+      "position": {
+        "x": 450,
+        "y": 250
+      },
+      "data": {
+        "label": "Deuxième branche",
+        "kind": "set",
+        "config": {
+          "field": "slow",
+          "value": "ready"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e2",
+      "source": "model",
+      "target": "response"
+    },
+    {
+      "id": "e3",
+      "source": "response",
+      "target": "end"
+    },
+    {
+      "id": "start-fast",
+      "source": "start",
+      "target": "fast"
+    },
+    {
+      "id": "start-delay",
+      "source": "start",
+      "target": "delay"
+    },
+    {
+      "id": "delay-slow",
+      "source": "delay",
+      "target": "slow"
+    },
+    {
+      "id": "fast-model",
+      "source": "fast",
+      "target": "context"
+    },
+    {
+      "id": "slow-model",
+      "source": "slow",
+      "target": "context"
+    },
+    {
+      "id": "context-model",
+      "source": "context",
+      "target": "model"
+    }
+  ],
+  "settings": {
+    "maxConcurrency": 4
+  }
+}

@@ -9,7 +9,6 @@ fn zf(root: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_zf"))
         .current_dir(root)
         .args(args)
-        .env("HOME", root.join("home"))
         .output()
         .expect("CLI process")
 }
@@ -127,7 +126,19 @@ fn standalone_requires_data_and_rejects_a_second_owner() {
         .open(root.path().join("data/execution.lock"))
         .unwrap();
     owner.try_lock().unwrap();
-    let failed = zf(root.path(), &["sessions", "--standalone", "--data", "data"]);
+    let failed = zf(
+        root.path(),
+        &[
+            "sessions",
+            "--standalone",
+            "--data",
+            "data",
+            "--flow-home",
+            "home",
+            "--context-home",
+            "home",
+        ],
+    );
     assert!(!failed.status.success());
     assert!(String::from_utf8_lossy(&failed.stderr).contains("already owned"));
     assert!(!root.path().join("data/zedflow.db").exists());
@@ -378,6 +389,10 @@ fn package_entry_run_refuses_to_drop_package_identity_and_dependencies() {
             "--standalone",
             "--data",
             "data",
+            "--flow-home",
+            "home",
+            "--context-home",
+            "home",
         ],
     );
     assert!(!failed.status.success());

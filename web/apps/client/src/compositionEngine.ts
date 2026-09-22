@@ -1,5 +1,5 @@
 import { isNodeConfig } from './graph/contracts'
-import { jsonObjectSchema, flowExportsReadSchema } from '@zedflow/sdk'
+import { jsonObjectSchema, flowExportsReadSchema, flowPackageSnapshotSchema } from '@zedflow/sdk'
 
 import type { RuntimeGraphSummary } from '@zedflow/sdk'
 
@@ -54,6 +54,13 @@ import type { ModelNode } from './harness'
 import type { ModelSelection } from '@zedflow/sdk'
 
 export interface RuntimePreparation { workspaceId:string;selection:RuntimeSelection;overview:RuntimeGraphSummary;models:ModelNode[];bindings:Record<string,ModelSelection>;inputField:string;inputType:ContextType }
+/** Catalogue admission pins differ from the exact Rust hashes retained in history. */
+export function preparedFlowHashes(definitions: PreparedRuntime['definitions']): Record<string, string> {
+  const packages = jsonObjectSchema.parse(definitions.flowPackages ?? {})
+  return Object.fromEntries(Object.entries(definitions.flowHashes).map(([key, sourceHash]) => [
+    key, packages[key] === undefined ? sourceHash : flowPackageSnapshotSchema.parse(packages[key]).root,
+  ]))
+}
 export function runtimeModelNodes(overview:RuntimeGraphSummary):ModelNode[]{return Object.entries(overview.inferences).map(([path,item])=>({path,group:overview.instances[item.instance]?.name||item.instance,runtime:item.config.modelBinding==='runtime',contextPath:item.contextPath,context:item.context?{id:item.context.node,type:'flow',position:{x:0,y:0},data:{kind:'context',label:item.context.label,config:item.context.config}}:undefined,node:{id:item.node,type:'flow',position:{x:0,y:0},data:{kind:item.config.contextNode?'model':'agent',label:item.label,config:item.config}}}))}
 /** Explicit public contracts govern interaction; legacy flows expose input/inbox. */
 export function flowIsInteractive(doc?:Composition):boolean{

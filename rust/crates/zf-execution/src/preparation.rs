@@ -59,25 +59,13 @@ pub async fn prepare(
     let mut definitions = BTreeMap::new();
     let mut discovery_hashes = BTreeMap::new();
 
-    // list() intentionally omits bytes. Retain every valid public definition:
+    // Retain every valid public definition from one hydrated acquisition:
     // unselected flows can contribute shared types used by the selected graph.
     // Program catalogues, however, are acquired only after instance resolution.
-    for listed in flows.list(workspace).await? {
-        if !listed.diagnostics.is_empty() {
+    for file in flows.capture_catalog(workspace).await? {
+        if !file.diagnostics.is_empty() {
             continue;
         }
-        let Some(doc) = &listed.composition else {
-            continue;
-        };
-        if flow_contract::validate(doc)?.is_none() {
-            continue;
-        }
-        let file = flows.get(workspace, &listed.key).await?;
-        ensure!(
-            file.diagnostics.is_empty(),
-            "Flow capture contains diagnostics: {:?}",
-            file.diagnostics
-        );
         let Some(doc) = file.composition else {
             continue;
         };
@@ -103,15 +91,11 @@ pub async fn prepare(
                 );
             }
         }
-        ensure!(
-            listed.hash == file.hash,
-            Conflict("Flow changed while resolving composition")
-        );
         if let Some(package) = file.package {
             package_roots.insert(file.path.clone(), package.root.clone());
             snapshot.packages.insert(file.key.clone(), package);
         }
-        discovery_hashes.insert(file.key.clone(), listed.hash);
+        discovery_hashes.insert(file.key.clone(), file.hash);
         catalog.flows.insert(file.key.clone(), exports.contract);
         definitions.insert(file.key.clone(), doc);
         snapshot.flows.insert(file.key, captured);

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "working-system-harness",
+  "name": "Harness \u00b7 Working System",
+  "entry": "flow.rs",
+  "files": [
+    "flow.rs",
+    "bridge.rs",
+    "context.rs",
+    "conversation-context.rs",
+    "README.md"
+  ],
+  "dependencies": {
+    "documentation": {
+      "path": "worker"
+    }
+  }
+}

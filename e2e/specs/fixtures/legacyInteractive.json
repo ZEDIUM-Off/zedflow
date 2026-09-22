@@ -1,0 +1,108 @@
+{
+  "formatVersion": 2,
+  "id": "legacyInteractive",
+  "name": "Assistant de workspace",
+  "revision": 0,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow",
+      "position": {
+        "x": 60,
+        "y": 175
+      },
+      "data": {
+        "kind": "start",
+        "label": "Début",
+        "config": {}
+      }
+    },
+    {
+      "id": "model",
+      "type": "flow",
+      "position": {
+        "x": 300,
+        "y": 100
+      },
+      "data": {
+        "kind": "agent",
+        "label": "Appel modèle",
+        "config": {
+          "fanIn": "any",
+          "provider": "fixture",
+          "inputField": "input",
+          "field": "output",
+          "attachments": {
+            "instructions": {
+              "items": [
+                {
+                  "id": "instructions",
+                  "source": {
+                    "kind": "text",
+                    "text": "Réponds de manière concise en français."
+                  },
+                  "mode": "literal",
+                  "activation": "always"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "response",
+      "type": "flow",
+      "position": {
+        "x": 750,
+        "y": 165
+      },
+      "data": {
+        "kind": "output",
+        "label": "Réponse",
+        "config": {
+          "text": "{{output}}"
+        }
+      }
+    },
+    {
+      "id": "input",
+      "type": "flow",
+      "position": {
+        "x": 750,
+        "y": 410
+      },
+      "data": {
+        "kind": "input",
+        "label": "Attendre une réponse",
+        "config": {
+          "field": "input",
+          "prompt": "Sur quoi continuer ?",
+          "responseType": "text"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "start",
+      "target": "model"
+    },
+    {
+      "id": "e2",
+      "source": "model",
+      "target": "response"
+    },
+    {
+      "id": "e3",
+      "source": "response",
+      "target": "input"
+    },
+    {
+      "id": "e4",
+      "source": "input",
+      "target": "model"
+    }
+  ]
+}

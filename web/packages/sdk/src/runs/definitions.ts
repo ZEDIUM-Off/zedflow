@@ -16,11 +16,11 @@ export class ExecutedDefinitions {
     const captured = structuredClone(request), key = identity(captured);
     const promise = this.cache.load(key, async signal => {
       const value = await this.runs.definition(captured.runId, { ...captured.query, workspaceId: captured.workspaceId }, signal);
-      if (value.runId !== captured.runId || value.exact && (captured.query?.nodePath !== undefined && value.nodePath !== captured.query.nodePath || captured.query?.occurrenceId !== undefined && value.occurrenceId !== captured.query.occurrenceId || captured.query?.hash !== undefined && value.hash !== captured.query.hash)) throw new SyncProtocolError('Incorrect executed definition identity');
+      if (value.runId !== captured.runId || value.exact && (captured.query?.nodePath !== undefined && value.nodePath !== captured.query.nodePath || captured.query?.occurrenceId !== undefined && value.occurrenceId !== captured.query.occurrenceId || captured.query?.hash !== undefined && (value.definitionRevision ?? value.hash) !== captured.query.hash)) throw new SyncProtocolError('Incorrect executed definition identity');
       return value;
     });
-    // Diagnostic/latest reads may change; only an exact pinned occurrence/hash/revision is reusable.
-    void promise.then(value => { if (!value.exact || !(captured.query?.occurrenceId || captured.query?.hash || captured.revision !== undefined)) this.cache.invalidate(key); }, () => {});
+    // Node-latest reads are never reusable. Whole-run admission reads require an explicit cache identity.
+    void promise.then(value => { if (!value.exact || !(captured.query?.occurrenceId || captured.query?.hash || !captured.query?.nodePath && captured.revision !== undefined)) this.cache.invalidate(key); }, () => {});
     return promise;
   }
   invalidate(request: DefinitionRequest): void { this.cache.invalidate(identity(request)); }

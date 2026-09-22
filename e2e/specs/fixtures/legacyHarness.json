@@ -1,0 +1,275 @@
+{
+  "formatVersion": 2,
+  "id": "legacyHarness",
+  "name": "Harness de workspace",
+  "revision": 0,
+  "settings": {
+    "maxConcurrency": 1,
+    "recursionLimit": 10000
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow",
+      "position": {
+        "x": 30,
+        "y": 175
+      },
+      "data": {
+        "kind": "start",
+        "label": "Début",
+        "config": {}
+      }
+    },
+    {
+      "id": "steering",
+      "type": "flow",
+      "position": {
+        "x": 240,
+        "y": 165
+      },
+      "data": {
+        "kind": "steering",
+        "label": "Réorientations",
+        "config": {
+          "fanIn": "any",
+          "field": "input",
+          "historyField": "messages"
+        }
+      }
+    },
+    {
+      "id": "model",
+      "type": "flow",
+      "position": {
+        "x": 540,
+        "y": 100
+      },
+      "data": {
+        "kind": "agent",
+        "label": "Agent du workspace",
+        "config": {
+          "fanIn": "any",
+          "inputField": "input",
+          "field": "output",
+          "attachments": {
+            "instructions": {
+              "items": [
+                {
+                  "id": "workspace-instructions",
+                  "source": {
+                    "kind": "workspace"
+                  },
+                  "activation": "always"
+                },
+                {
+                  "id": "agent-instructions",
+                  "source": {
+                    "kind": "text",
+                    "text": "Aide l’utilisateur dans son workspace. Utilise les outils pour lire, modifier et vérifier le travail. Respecte les instructions attachées et charge les skills pertinents. Décris le résultat et les vérifications effectuées."
+                  },
+                  "mode": "literal",
+                  "activation": "always"
+                }
+              ]
+            },
+            "skills": {
+              "items": [
+                {
+                  "id": "workspace-skills",
+                  "source": {
+                    "kind": "workspace"
+                  },
+                  "activation": "explicit"
+                }
+              ]
+            },
+            "tools": {
+              "items": [
+                {
+                  "id": "tool-read",
+                  "name": "read"
+                },
+                {
+                  "id": "tool-write",
+                  "name": "write"
+                },
+                {
+                  "id": "tool-edit",
+                  "name": "edit"
+                },
+                {
+                  "id": "tool-exec",
+                  "name": "exec"
+                }
+              ]
+            }
+          },
+          "modelBinding": "runtime",
+          "historyField": "messages",
+          "toolCallsField": "toolCalls"
+        }
+      }
+    },
+    {
+      "id": "route",
+      "type": "flow",
+      "position": {
+        "x": 990,
+        "y": 125
+      },
+      "data": {
+        "kind": "condition",
+        "label": "Appels demandés ?",
+        "config": {
+          "predicate": {
+            "kind": "compare",
+            "field": "hasToolCalls",
+            "operator": "eq",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "id": "tools",
+      "type": "flow",
+      "position": {
+        "x": 990,
+        "y": 440
+      },
+      "data": {
+        "kind": "tool",
+        "label": "Exécuter un outil",
+        "config": {
+          "tool": "execute_next_call",
+          "arguments": {
+            "value": {
+              "status": "ok"
+            }
+          },
+          "field": "output",
+          "ui": {
+            "renderer": "json",
+            "title": "Outil du workspace"
+          },
+          "fanIn": "any",
+          "historyField": "messages",
+          "toolCallsField": "toolCalls",
+          "retry": {
+            "maxAttempts": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "remaining",
+      "type": "flow",
+      "position": {
+        "x": 600,
+        "y": 400
+      },
+      "data": {
+        "kind": "condition",
+        "label": "Appels restants ?",
+        "config": {
+          "predicate": {
+            "kind": "compare",
+            "field": "hasToolCalls",
+            "operator": "eq",
+            "value": true
+          }
+        }
+      }
+    },
+    {
+      "id": "response",
+      "type": "flow",
+      "position": {
+        "x": 1310,
+        "y": 165
+      },
+      "data": {
+        "kind": "output",
+        "label": "Réponse",
+        "config": {
+          "text": "{{output}}"
+        }
+      }
+    },
+    {
+      "id": "inbox",
+      "type": "flow",
+      "position": {
+        "x": 1310,
+        "y": 440
+      },
+      "data": {
+        "kind": "inbox",
+        "label": "Suite du travail",
+        "config": {
+          "field": "input",
+          "prompt": "Sur quoi continuer ?",
+          "responseType": "text",
+          "historyField": "messages"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "start-steering",
+      "source": "start",
+      "target": "steering"
+    },
+    {
+      "id": "steering-model",
+      "source": "steering",
+      "target": "model"
+    },
+    {
+      "id": "model-route",
+      "source": "model",
+      "target": "route"
+    },
+    {
+      "id": "route-tools",
+      "source": "route",
+      "target": "tools",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "route-response",
+      "source": "route",
+      "target": "response",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "tools-remaining",
+      "source": "tools",
+      "target": "remaining"
+    },
+    {
+      "id": "remaining-tools",
+      "source": "remaining",
+      "target": "tools",
+      "sourceHandle": "true"
+    },
+    {
+      "id": "remaining-steering",
+      "source": "remaining",
+      "target": "steering",
+      "sourceHandle": "false"
+    },
+    {
+      "id": "response-inbox",
+      "source": "response",
+      "target": "inbox"
+    },
+    {
+      "id": "inbox-steering",
+      "source": "inbox",
+      "target": "steering"
+    }
+  ]
+}

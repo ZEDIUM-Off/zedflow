@@ -1,0 +1,16 @@
+{
+  "name": "zedflow-e2e",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.1",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "dependencies": {
+    "@zedflow/sdk": "file:../web/packages/sdk",
+    "fflate": "0.8.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.0"
+  }
+}

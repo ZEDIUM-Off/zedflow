@@ -15,6 +15,7 @@ export interface ContextDraft {
   types: Record<string, ContextType>; typesFile?:ContextTypesFile; library: ContextLibrary; libraryFile?: ContextLibraryFile; resources: Record<string, JsonValue>; grants: string[]
   bindings?:Record<string,ResourceBinding>; preview?: ContextPreview; previewSignature?: string; selectedBlock: string; selectedPreviewItem?: string
   diagnostics: ContextDiagnostic[]; error: string; notice: string; pending: string; conflict: boolean
+  noticeSignature?: string
   previewPending?: boolean; previewAttempt?: string; fixtureName?: string
   previewProfile?: ContextPreviewForm
   fixtures?: { id: string; name: string; resources: Record<string, JsonValue> }[]
@@ -139,6 +140,12 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
   }, { deep: true, flush: 'sync' })
   const dirty = computed(() => JSON.stringify(current.value.strategy) !== current.value.saved)
   const signature = (draft: ContextDraft) => JSON.stringify({ strategy: draft.strategy, types: draft.types, library: draft.library, resources: draft.resources, grants: draft.grants,profile:draft.previewProfile })
+  watch(() => [workspaceId.value, current.value, navigationIntent.value, signature(current.value)] as const, (_, previous) => {
+    const draft = previous?.[1]
+    if (draft?.noticeSignature && (draft !== current.value || previous[0] !== workspaceId.value || previous[2] !== navigationIntent.value || draft.noticeSignature !== signature(draft))) {
+      draft.notice = ''; draft.noticeSignature = undefined
+    }
+  }, { flush: 'sync' })
   async function refresh() {
     const id = workspaceId.value; if (!id) return
     const state = workspaceState(id); if (state.loading) return
@@ -220,6 +227,7 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
     try{const result=await client.context.convert({workspaceId:id,strategy:cloneContext(draft.strategy),bindings:draft.bindings,formats})
       if(!result.valid||!result.strategy){draft.diagnostics=result.diagnostics;draft.error='Précisez la représentation des fragments signalés avant de créer la copie.';return false}
       const copy=newDraft(result.strategy);copy.types=cloneContext(draft.types);copy.typesFile=draft.typesFile;copy.library=cloneContext(draft.library);copy.libraryFile=draft.libraryFile;copy.resources=cloneContext(draft.resources);copy.grants=[...draft.grants];copy.bindings=cloneContext(draft.bindings||{});copy.notice='Copie v2 créée. Enregistrez-la puis sélectionnez-la explicitement sur le nœud.'
+      copy.noticeSignature=signature(copy)
       const key=`draft:${contextId('converted')}`;state.drafts[key]=copy;if(workspaceId.value===id&&state.selected===slot)state.selected=key
       return true
     }catch(cause){draft.error=cause instanceof Error?cause.message:String(cause);return false}finally{draft.pending=''}
@@ -238,23 +246,26 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
     } catch (error) { draft.error = error instanceof Error ? error.message : String(error) }
     finally { draft.pending = '' }
   }
-  async function run(action: 'save' | 'preview' | 'source') {
-    const id = workspaceId.value, state = session.value, key = state.selected, draft = current.value
+  async function run(action: 'save' | 'preview' | 'source', automatic = false) {
+    const id = workspaceId.value, state = session.value, key = state.selected, draft = current.value, intent = navigationIntent.value
     if (!id || draft.pending || (draft.file && !draft.file.strategy)) return
     if (draft.previewPending) {
       if (action === 'preview') return
       await new Promise<void>(resolve => { const stop = watch(() => draft.previewPending, pending => { if (!pending) { stop(); resolve() } }) })
-      if (draft.pending || state.drafts[key] !== draft) return
+      if (draft.pending || state.drafts[key] !== draft || workspaceId.value !== id || navigationIntent.value !== intent) return
     }
     if (action === 'preview') draft.previewPending = true
     else draft.pending = action === 'save' ? 'Enregistrement' : 'Génération Rust'
-    draft.error = ''; draft.notice = ''; draft.diagnostics = []; draft.conflict = false
+    draft.error = ''; draft.diagnostics = []; draft.conflict = false
+    if (!automatic || draft.noticeSignature !== signature(draft)) { draft.notice = ''; draft.noticeSignature = undefined }
     const strategy = cloneContext(draft.strategy), captured = JSON.stringify(strategy), snapshot = signature(draft)
     try {
       if (action === 'save') {
         const result = await client.context.save({ workspaceId: id, strategy, types: cloneContext(draft.types), library: cloneContext(draft.library), ...(draft.file ? { expectedHash: draft.file.hash } : {}) })
         draft.file = result; draft.saved = captured; draft.source = result.source || ''; draft.sourceSignature = captured
-        draft.notice = 'Stratégie enregistrée en Rust'
+        if (signature(draft) === snapshot && workspaceId.value === id && navigationIntent.value === intent && current.value === draft) {
+          draft.notice = 'Stratégie enregistrée en Rust'; draft.noticeSignature = snapshot
+        }
         state.files = [...state.files.filter(file => file.key !== result.key), result].sort((a, b) => (a.strategy?.name || a.key).localeCompare(b.strategy?.name || b.key))
         if (key !== result.key) { state.drafts[result.key] = draft; if (state.selected === key) state.selected = result.key; delete state.drafts[key] }
       } else {
@@ -265,10 +276,12 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
           draft.source = result.selection.source; draft.sourceSignature = captured
           draft.preview = result; draft.previewSignature = snapshot
           draft.diagnostics = result.evaluation.diagnostics
+          if (draft.diagnostics.length) { draft.notice = ''; draft.noticeSignature = undefined }
         }
       }
     } catch (error) {
       if (action !== 'preview' || signature(draft) === snapshot) {
+        draft.notice = ''; draft.noticeSignature = undefined
         draft.error = error instanceof Error ? error.message : String(error)
         if (error instanceof HttpError) { draft.diagnostics = httpDiagnostics(error); draft.conflict = error.status === 409 }
       }
@@ -282,7 +295,7 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
     clearTimeout(previewTimer)
     const draft = current.value
     if (!active.value || draft.pending || draft.previewPending || (!draft.strategy.program.length && !draft.preview) || draft.previewAttempt === signature(draft)) return
-    previewTimer = setTimeout(() => { void run('preview') }, 450)
+    previewTimer = setTimeout(() => { void run('preview', true) }, 450)
   })
   const focus = () => { if (active.value) void refresh() }
   watch([workspaceId, active], ([id, enabled]) => { if (id && enabled) void refresh() }, { immediate: true })

@@ -1,0 +1,479 @@
+{
+  "strategy": {
+    "version": 2,
+    "id": "example",
+    "name": "Conversation, outils et documents",
+    "types": {
+      "Instructions": {
+        "kind": "record",
+        "fields": {
+          "content": {
+            "kind": "text"
+          },
+          "origin": {
+            "kind": "text"
+          }
+        }
+      },
+      "UserMessage": {
+        "kind": "record",
+        "fields": {
+          "content": {
+            "kind": "text"
+          }
+        }
+      },
+      "ModelOutput": {
+        "kind": "record",
+        "fields": {
+          "content": {
+            "kind": "text"
+          },
+          "model": {
+            "kind": "text"
+          },
+          "usage": {
+            "kind": "record",
+            "fields": {}
+          }
+        }
+      },
+      "ToolCall": {
+        "kind": "record",
+        "fields": {
+          "id": {
+            "kind": "text"
+          },
+          "name": {
+            "kind": "text"
+          },
+          "arguments": {
+            "kind": "record",
+            "fields": {}
+          }
+        }
+      },
+      "ToolResult": {
+        "kind": "record",
+        "fields": {
+          "callId": {
+            "kind": "text"
+          },
+          "status": {
+            "kind": "text"
+          },
+          "content": {
+            "kind": "text"
+          }
+        }
+      },
+      "Document": {
+        "kind": "record",
+        "fields": {
+          "title": {
+            "kind": "text"
+          },
+          "content": {
+            "kind": "text"
+          },
+          "path": {
+            "kind": "text"
+          }
+        }
+      }
+    },
+    "requirements": {
+      "instructions": {
+        "kind": "named",
+        "name": "Instructions"
+      },
+      "userMessage": {
+        "kind": "named",
+        "name": "UserMessage"
+      },
+      "modelOutput": {
+        "kind": "named",
+        "name": "ModelOutput"
+      },
+      "toolCall": {
+        "kind": "named",
+        "name": "ToolCall"
+      },
+      "toolResult": {
+        "kind": "named",
+        "name": "ToolResult"
+      },
+      "documents": {
+        "kind": "list",
+        "item": {
+          "kind": "named",
+          "name": "Document"
+        }
+      }
+    },
+    "capabilities": [],
+    "program": [
+      {
+        "kind": "emit",
+        "id": "instructions",
+        "role": "instruction",
+        "format": "text",
+        "value": {
+          "kind": "field",
+          "value": {
+            "kind": "resource",
+            "name": "instructions"
+          },
+          "field": "content"
+        }
+      },
+      {
+        "kind": "group",
+        "id": "conversation",
+        "label": "Conversation",
+        "items": [
+          {
+            "kind": "emit",
+            "id": "user-message",
+            "role": "data",
+            "format": "adkMessages",
+            "value": {
+              "kind": "list",
+              "itemType": {
+                "kind": "record",
+                "fields": {}
+              },
+              "items": [
+                {
+                  "kind": "record",
+                  "fields": {
+                    "role": {
+                      "kind": "literal",
+                      "dataType": {
+                        "kind": "text"
+                      },
+                      "value": "user"
+                    },
+                    "parts": {
+                      "kind": "list",
+                      "itemType": {
+                        "kind": "record",
+                        "fields": {}
+                      },
+                      "items": [
+                        {
+                          "kind": "record",
+                          "fields": {
+                            "text": {
+                              "kind": "field",
+                              "value": {
+                                "kind": "resource",
+                                "name": "userMessage"
+                              },
+                              "field": "content"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "emit",
+            "id": "model-output",
+            "role": "data",
+            "format": "adkMessages",
+            "value": {
+              "kind": "list",
+              "itemType": {
+                "kind": "record",
+                "fields": {}
+              },
+              "items": [
+                {
+                  "kind": "record",
+                  "fields": {
+                    "role": {
+                      "kind": "literal",
+                      "dataType": {
+                        "kind": "text"
+                      },
+                      "value": "model"
+                    },
+                    "parts": {
+                      "kind": "list",
+                      "itemType": {
+                        "kind": "record",
+                        "fields": {}
+                      },
+                      "items": [
+                        {
+                          "kind": "record",
+                          "fields": {
+                            "text": {
+                              "kind": "field",
+                              "value": {
+                                "kind": "resource",
+                                "name": "modelOutput"
+                              },
+                              "field": "content"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "kind": "if",
+        "id": "tool-status",
+        "condition": {
+          "kind": "eq",
+          "left": {
+            "kind": "field",
+            "value": {
+              "kind": "resource",
+              "name": "toolResult"
+            },
+            "field": "status"
+          },
+          "right": {
+            "kind": "literal",
+            "dataType": {
+              "kind": "text"
+            },
+            "value": "erreur"
+          }
+        },
+        "then": [
+          {
+            "kind": "emit",
+            "id": "tool-exchange",
+            "role": "data",
+            "format": "adkMessages",
+            "value": {
+              "kind": "list",
+              "itemType": {
+                "kind": "record",
+                "fields": {}
+              },
+              "items": [
+                {
+                  "kind": "record",
+                  "fields": {
+                    "role": {
+                      "kind": "literal",
+                      "dataType": {
+                        "kind": "text"
+                      },
+                      "value": "model"
+                    },
+                    "parts": {
+                      "kind": "list",
+                      "itemType": {
+                        "kind": "record",
+                        "fields": {}
+                      },
+                      "items": [
+                        {
+                          "kind": "record",
+                          "fields": {
+                            "name": {
+                              "kind": "field",
+                              "value": {
+                                "kind": "resource",
+                                "name": "toolCall"
+                              },
+                              "field": "name"
+                            },
+                            "id": {
+                              "kind": "field",
+                              "value": {
+                                "kind": "resource",
+                                "name": "toolCall"
+                              },
+                              "field": "id"
+                            },
+                            "args": {
+                              "kind": "field",
+                              "value": {
+                                "kind": "resource",
+                                "name": "toolCall"
+                              },
+                              "field": "arguments"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "kind": "record",
+                  "fields": {
+                    "role": {
+                      "kind": "literal",
+                      "dataType": {
+                        "kind": "text"
+                      },
+                      "value": "function"
+                    },
+                    "parts": {
+                      "kind": "list",
+                      "itemType": {
+                        "kind": "record",
+                        "fields": {}
+                      },
+                      "items": [
+                        {
+                          "kind": "record",
+                          "fields": {
+                            "id": {
+                              "kind": "field",
+                              "value": {
+                                "kind": "resource",
+                                "name": "toolResult"
+                              },
+                              "field": "callId"
+                            },
+                            "functionResponse": {
+                              "kind": "record",
+                              "fields": {
+                                "name": {
+                                  "kind": "field",
+                                  "value": {
+                                    "kind": "resource",
+                                    "name": "toolCall"
+                                  },
+                                  "field": "name"
+                                },
+                                "response": {
+                                  "kind": "record",
+                                  "fields": {
+                                    "content": {
+                                      "kind": "field",
+                                      "value": {
+                                        "kind": "resource",
+                                        "name": "toolResult"
+                                      },
+                                      "field": "content"
+                                    },
+                                    "status": {
+                                      "kind": "field",
+                                      "value": {
+                                        "kind": "resource",
+                                        "name": "toolResult"
+                                      },
+                                      "field": "status"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "else": []
+      },
+      {
+        "kind": "forEach",
+        "id": "documents-loop",
+        "value": {
+          "kind": "resource",
+          "name": "documents"
+        },
+        "item": "document",
+        "items": [
+          {
+            "kind": "emit",
+            "id": "document-excerpt",
+            "role": "data",
+            "format": "text",
+            "value": {
+              "kind": "template",
+              "template": "{{title}}\n{{content}}\nSource : {{path}}",
+              "values": {
+                "title": {
+                  "kind": "field",
+                  "value": {
+                    "kind": "variable",
+                    "name": "document"
+                  },
+                  "field": "title"
+                },
+                "content": {
+                  "kind": "truncate",
+                  "value": {
+                    "kind": "field",
+                    "value": {
+                      "kind": "variable",
+                      "name": "document"
+                    },
+                    "field": "content"
+                  },
+                  "count": 1200
+                },
+                "path": {
+                  "kind": "field",
+                  "value": {
+                    "kind": "variable",
+                    "name": "document"
+                  },
+                  "field": "path"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "resources": {
+    "instructions": {
+      "content": "Répondez en français. Distinguez les informations fournies des données manquantes et conservez les références des documents.",
+      "origin": "Données d’essai de l’exemple"
+    },
+    "userMessage": {
+      "content": "Peux-tu lire le fichier de termes et expliquer comment les flows se composent ?"
+    },
+    "modelOutput": {
+      "content": "Je vais consulter le document demandé.",
+      "model": "fixture",
+      "usage": {}
+    },
+    "toolCall": {
+      "id": "17",
+      "name": "read",
+      "arguments": {
+        "path": "docs/terms.md"
+      }
+    },
+    "toolResult": {
+      "callId": "17",
+      "status": "erreur",
+      "content": "Fichier indisponible : docs/terms.md"
+    },
+    "documents": [
+      {
+        "title": "Working System · Documentation d’exemple",
+        "path": "docs/composition-example.md",
+        "content": "Un flow décrit un comportement indépendant, ses points d’entrée et les données qu’il expose. Ses nœuds peuvent préparer un contexte, appeler un modèle, exécuter un outil ou attendre une entrée. La définition reste distincte de ses passages exécutés.\n\nUn bridge compose les points exposés par plusieurs flows. Il choisit les routes disponibles, les données partagées et les droits de leurs destinataires. Une route peut appeler un autre flow et attendre son résultat, le lancer en parallèle ou lui passer la main.\n\nUne stratégie de contexte déclare les types de ressources qu’elle attend. Le flow fournit leurs valeurs par des bindings explicites. Le programme sélectionne les champs, applique ses conditions et produit les fragments transmis au modèle. Déclarer un document ne signifie pas envoyer tout son contenu.\n\nLes sources de cet exemple sont des données d’essai. Le résultat de lecture en erreur est conservé avec son identifiant d’appel, sans exécuter de commande. Les documents fournis séparément restent utilisables ; cette distinction permet de montrer une erreur d’outil sans produire une erreur du moteur de contexte.\n\nChaque document est traité par le bloc Pour chaque. Le titre et le chemin sont conservés, tandis que le contenu est limité à 1 200 caractères Unicode. Modifier cette limite ou ajouter un second document permet d’observer les fragments et leurs occurrences dans l’aperçu."
+      }
+    ]
+  }
+}

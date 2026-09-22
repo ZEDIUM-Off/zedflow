@@ -1,7 +1,8 @@
 # Composition et partage
 
-Statut : intention de conception. Les types Zedflow décrits ici ne sont pas
-implémentés. Les expériences utilisent directement `adk_graph`.
+Statut : concepts de composition. Le [plan du context engine](context-engine.md)
+précise les décisions de septembre 2026, leurs raccords à l’exécution `adk_graph`
+et les limites structurelles de l’adoption de révisions.
 
 ## Unités de composition
 
@@ -113,6 +114,11 @@ Un Flow Run est une exécution concrète. La session est la continuité présent
 l'utilisateur ; elle peut référencer plusieurs runs ou forks. La relation entre
 messages, runs, événements et checkpoints doit rester traçable sans contrainte
 de compatibilité avec une session Pi.
+
+La continuité ne dépend pas de l'interface ouverte. Les règles d'accès simultané,
+d'attente de réponse et de suivi sont définies dans
+[sessions et interfaces](interaction.md). La relation exacte entre sessions,
+exécutions autonomes et exécutions enfants reste à préciser dans cette conception.
 
 Resume continue une exécution sauvegardée. Fork crée une nouvelle continuation
 depuis un point antérieur en préservant l'histoire. Un chemin attaché reste dans

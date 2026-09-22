@@ -106,6 +106,8 @@ pub fn assemble(
 #[derive(Debug)]
 pub struct RunOptions {
     pub workspace: PathBuf,
+    /// Instruction/skill source home for the first context capture; not process HOME.
+    pub home: Option<PathBuf>,
     pub data: PathBuf,
     pub run_id: String,
     pub input: State,
@@ -116,6 +118,7 @@ impl RunOptions {
     pub async fn from_args() -> Result<Self> {
         let mut result = Self {
             workspace: std::env::current_dir()?,
+            home: None,
             data: std::env::temp_dir().join("zedflow-composed"),
             run_id: uuid::Uuid::new_v4().to_string(),
             input: State::new(),
@@ -129,6 +132,7 @@ impl RunOptions {
                 .with_context(|| format!("{arg} requires a value"))?;
             match arg.as_str() {
                 "--workspace" => result.workspace = value.into(),
+                "--home" => result.home = Some(value.into()),
                 "--data" => result.data = value.into(),
                 "--run-id" => result.run_id = value,
                 "--input" => {
@@ -318,7 +322,8 @@ async fn run_owned(mut export: ExportRun, options: RunOptions) -> Result<Value> 
     let context = if let Some(value) = read_optional(&context_file).await? {
         serde_json::from_value(value)?
     } else {
-        let value = ContextSnapshot::load(&workspace, &[]).await?;
+        let value =
+            ContextSnapshot::load_with_home(&workspace, &[], options.home.as_deref()).await?;
         tokio::fs::write(context_file, serde_json::to_vec_pretty(&value)?).await?;
         value
     };
@@ -365,6 +370,13 @@ async fn run_owned(mut export: ExportRun, options: RunOptions) -> Result<Value> 
         models,
         vec![],
     )?;
+    services.set_context_sources(
+        vec![],
+        options
+            .home
+            .clone()
+            .or_else(|| std::env::var_os("HOME").map(PathBuf::from)),
+    );
     services.set_content_store(content.clone());
     services.set_data_registry(
         DataRegistry::new(content.pool().clone(), content.clone(), &options.run_id).await?,

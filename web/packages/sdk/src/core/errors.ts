@@ -24,7 +24,8 @@ export class HttpError extends ZedflowError {
   readonly rawBody: string;
   readonly body: unknown;
   constructor(operation: string, status: number, rawBody: string, body: unknown) {
-    super('http', operation, `HTTP ${status} during ${operation}`);
+    const detail = body !== null && typeof body === 'object' && 'error' in body && typeof body.error === 'string' && body.error.trim() ? `: ${body.error}` : '';
+    super('http', operation, `HTTP ${status} during ${operation}${detail}`);
     this.status = status;
     this.rawBody = rawBody;
     this.body = body;

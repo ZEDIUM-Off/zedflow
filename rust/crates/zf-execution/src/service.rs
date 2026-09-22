@@ -159,6 +159,7 @@ impl ExecutionService {
             .max_connections(4)
             .connect_with(sqlite)
             .await?;
+        zf_storage::legacy_compositions::require_imported(&db, &data).await?;
         let content = ContentStore::new(writer_db.clone()).await?;
         sqlx::query("CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, document TEXT NOT NULL)")
             .execute(&writer_db)
@@ -215,6 +216,52 @@ impl ExecutionService {
         let ids:Vec<String>=sqlx::query_scalar("SELECT id FROM runs WHERE json_extract(document,'$.status')='running' OR json_extract(document,'$.runtimeActive')=1").fetch_all(&self.state.db).await?;
         for id in ids {
             let mut run = zf_storage::session_store::load_projection(&self.state.db, &id).await?;
+            // ADK commits before its observation is published. Recover only
+            // durable checkpoints belonging to this run and its child threads.
+            let checkpoints = zf_runtime::stored_checkpointer::StoredCheckpointer::new(
+                zf_storage::contracts::CheckpointStore::new(self.state.content.clone()).await?,
+            );
+            let headers = checkpoints.storage().list_run_headers(&id).await?;
+            let mut latest = std::collections::BTreeMap::new();
+            // Storage orders by created_at, then its monotone commit sequence.
+            for header in &headers {
+                latest.insert(header.thread_id.clone(), header);
+            }
+            for header in latest.values() {
+                // Validate immutable content/header integrity before publishing
+                // its references; a damaged checkpoint must not become a frontier.
+                checkpoints.storage().hydrate(header).await?;
+                let mut event = serde_json::to_value(header)?;
+                event["type"] = json!("checkpoint_committed");
+                if header.thread_id == id {
+                    run.as_object_mut()
+                        .context("Run projection is not an object")?
+                        .remove("state");
+                }
+                apply_activity(&mut run, &event);
+            }
+            if let Some(resume) = run["resumeCheckpoint"].as_str()
+                && let Some(frontier) = latest.get(&id)
+                && resume != frontier.checkpoint_id
+            {
+                anyhow::ensure!(
+                    headers
+                        .iter()
+                        .any(|header| header.thread_id == id && header.checkpoint_id == resume),
+                    "Resume checkpoint absent from the recovered run"
+                );
+                run["resumeInput"] = Value::Null;
+                run["resumeCheckpoint"] = Value::Null;
+            }
+            let consumed = run["consumedMessages"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            for message in run["queue"].as_array_mut().into_iter().flatten() {
+                if message["status"] == "pending" && consumed.contains(&message["id"]) {
+                    message["status"] = json!("consumed");
+                }
+            }
             if run["status"] == "running" {
                 run["status"] = json!("interrupted");
             }
@@ -288,6 +335,32 @@ impl ExecutionService {
             .unwrap_or_else(|p| p.into_inner())
             .contains_key(id)
     }
+    /// Resource-scope preflight for artifact capture, after actor admission.
+    /// A foreign and an absent run have the same externally visible identity.
+    pub(crate) async fn require_run_scope(&self, actor: &Actor, id: &str) -> Result<()> {
+        match self.state.sync.head(id).await {
+            Ok((workspace, _)) if workspace.as_str() == Some(actor.workspace_id.as_str()) => Ok(()),
+            Ok(_) => Err(commands::ExecutionError::NotFound(
+                "Session absente de ce workspace".into(),
+            )
+            .into()),
+            Err(error)
+                if error.chain().any(|cause| {
+                    matches!(
+                        cause.downcast_ref::<sqlx::Error>(),
+                        Some(sqlx::Error::RowNotFound)
+                    )
+                }) =>
+            {
+                Err(
+                    commands::ExecutionError::NotFound("Session absente de ce workspace".into())
+                        .into(),
+                )
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     pub(crate) async fn admit(
         &self,
         actor: &Actor,

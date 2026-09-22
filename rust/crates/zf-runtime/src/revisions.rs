@@ -164,6 +164,8 @@ pub struct RevisionRuntime {
     run_id: String,
     bases: BTreeMap<String, Arc<RevisionDefinition>>,
     selection: AsyncMutex<()>,
+    definitions: Mutex<BTreeMap<String, Arc<RevisionDefinition>>>,
+    graph: Mutex<Option<RuntimeGraphSnapshot>>,
 }
 impl RevisionRuntime {
     pub async fn new(
@@ -204,6 +206,8 @@ impl RevisionRuntime {
             run_id,
             bases,
             selection: AsyncMutex::new(()),
+            definitions: Mutex::new(BTreeMap::new()),
+            graph: Mutex::new(None),
         }))
     }
     /// A native executor may rebuild only after a verified sequential boundary.
@@ -286,9 +290,26 @@ impl RevisionRuntime {
             .context("Node scope has no published definition")
     }
     async fn definition(&self, reference: &str) -> Result<Arc<RevisionDefinition>> {
+        if let Some(definition) = self
+            .definitions
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(reference)
+            .cloned()
+        {
+            return Ok(definition);
+        }
         let definition = serde_json::from_value(self.store.resolve(reference).await?)?;
         validate_definition(&definition)?;
-        Ok(Arc::new(definition))
+        let definition = Arc::new(definition);
+        let mut cache = self.definitions.lock().unwrap_or_else(|p| p.into_inner());
+        // Immutable CAS references are safe to reuse within this controller.
+        // Bound retained revisions; eviction changes only read cost.
+        if cache.len() >= 32 {
+            cache.clear();
+        }
+        cache.insert(reference.to_owned(), definition.clone());
+        Ok(definition)
     }
     async fn select(&self, scope: &str, node_id: &str, ctx: &NodeContext) -> Result<Selection> {
         let _guard = self.selection.lock().await;
@@ -310,8 +331,14 @@ impl RevisionRuntime {
                 metadata: pin,
             });
         }
-        let graph_pin =
-            pin_runtime_graph(&self.store, &self.run_id, &ctx.config.thread_id, ctx.step).await?;
+        let graph_pin = pin_runtime_graph(
+            &self.store,
+            &self.run_id,
+            &ctx.config.thread_id,
+            ctx.step,
+            &self.graph,
+        )
+        .await?;
         let active_key = key(&format!("{}\0{scope}", ctx.config.thread_id));
         let active = self
             .store
@@ -1033,12 +1060,44 @@ pub async fn latest_runtime_graph(
     store: &ContentStore,
     run_id: &str,
 ) -> Result<Option<PreparedRuntime>> {
-    let heads: Vec<(String, String)> = sqlx::query_as("SELECT kind,value_ref FROM zf_records WHERE scope=? AND kind IN ('runtime-graph-heads','revision-heads') ORDER BY kind,key")
+    latest_runtime_graph_cached(store, run_id, &Mutex::new(None)).await
+}
+
+struct RuntimeGraphSnapshot {
+    heads: Vec<(String, String, String)>,
+    plan: Option<PreparedRuntime>,
+}
+
+async fn latest_runtime_graph_cached(
+    store: &ContentStore,
+    run_id: &str,
+    cache: &Mutex<Option<RuntimeGraphSnapshot>>,
+) -> Result<Option<PreparedRuntime>> {
+    // Always sample all mutable heads together. Cached content is reusable only
+    // when every immutable reference matches this new database snapshot.
+    let heads: Vec<(String, String, String)> = sqlx::query_as("SELECT kind,key,value_ref FROM zf_records WHERE scope=? AND kind IN ('runtime-graph-heads','revision-heads') ORDER BY kind,key")
         .bind(run_id).fetch_all(store.pool()).await?;
+    if let Some(snapshot) = cache.lock().unwrap_or_else(|p| p.into_inner()).as_ref()
+        && snapshot.heads == heads
+    {
+        return Ok(snapshot.plan.clone());
+    }
+    let plan = resolve_runtime_graph_heads(store, &heads).await?;
+    *cache.lock().unwrap_or_else(|p| p.into_inner()) = Some(RuntimeGraphSnapshot {
+        heads,
+        plan: plan.clone(),
+    });
+    Ok(plan)
+}
+
+async fn resolve_runtime_graph_heads(
+    store: &ContentStore,
+    heads: &[(String, String, String)],
+) -> Result<Option<PreparedRuntime>> {
     let mut plan = None;
     let mut definitions = Vec::new();
-    for (kind, reference) in heads {
-        let value = store.resolve(&reference).await?;
+    for (kind, _, reference) in heads {
+        let value = store.resolve(reference).await?;
         if kind == "runtime-graph-heads" {
             plan = Some(serde_json::from_value::<PreparedRuntime>(
                 store
@@ -1085,6 +1144,7 @@ async fn pin_runtime_graph(
     run_id: &str,
     thread_id: &str,
     step: usize,
+    cache: &Mutex<Option<RuntimeGraphSnapshot>>,
 ) -> Result<Option<(String, PreparedRuntime)>> {
     let pin_key = key(&format!("{thread_id}\0{step}"));
     if let Some(pin) = store
@@ -1100,7 +1160,7 @@ async fn pin_runtime_graph(
             serde_json::from_value(store.resolve(&reference).await?)?,
         )));
     }
-    let Some(plan) = latest_runtime_graph(store, run_id).await? else {
+    let Some(plan) = latest_runtime_graph_cached(store, run_id, cache).await? else {
         return Ok(None);
     };
     let value = json!(plan);
@@ -1120,12 +1180,16 @@ async fn pin_runtime_graph(
         .record(run_id, "runtime-graph-steps", &pin_key)
         .await?
         .context("Graph step claim absent")?;
-    let reference = pin["graphRef"]
+    let claimed_reference = pin["graphRef"]
         .as_str()
         .context("Graph step reference missing")?
         .to_owned();
-    Ok(Some((
-        reference.clone(),
-        serde_json::from_value(store.resolve(&reference).await?)?,
-    )))
+    // A concurrent scope may have won the claim. Reuse our validated plan only
+    // when the durable winner has the same content identity.
+    let plan = if claimed_reference == reference {
+        plan
+    } else {
+        serde_json::from_value(store.resolve(&claimed_reference).await?)?
+    };
+    Ok(Some((claimed_reference, plan)))
 }

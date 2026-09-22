@@ -1,0 +1,146 @@
+{
+  "formatVersion": 3,
+  "id": "autonomous",
+  "name": "Analyse autonome",
+  "revision": 0,
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow",
+      "position": {
+        "x": 60,
+        "y": 175
+      },
+      "data": {
+        "label": "Début",
+        "kind": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "context",
+      "type": "flow",
+      "position": {
+        "x": 280,
+        "y": 160
+      },
+      "data": {
+        "kind": "context",
+        "label": "Préparer le contexte",
+        "config": {
+          "modelNode": "model",
+          "fanIn": "any",
+          "attachments": {
+            "instructions": {
+              "items": [
+                {
+                  "id": "instructions",
+                  "source": {
+                    "kind": "text",
+                    "text": "Réponds de manière concise en français."
+                  },
+                  "mode": "literal",
+                  "activation": "always"
+                }
+              ]
+            }
+          },
+          "contextStrategy": "conversation-default",
+          "contextBindings": {
+            "input": {
+              "kind": "state",
+              "field": "input"
+            },
+            "instructions": {
+              "kind": "attachments",
+              "slot": "instructions"
+            },
+            "skills": {
+              "kind": "attachments",
+              "slot": "skills"
+            },
+            "files": {
+              "kind": "attachments",
+              "slot": "files"
+            },
+            "history": {
+              "kind": "conversation",
+              "historyField": "messages",
+              "inputField": "input"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "model",
+      "type": "flow",
+      "position": {
+        "x": 590,
+        "y": 160
+      },
+      "data": {
+        "label": "Modèle",
+        "kind": "model",
+        "config": {
+          "fanIn": "any",
+          "provider": "fixture",
+          "inputField": "input",
+          "field": "output",
+          "contextNode": "context",
+          "historyField": "messages"
+        }
+      }
+    },
+    {
+      "id": "response",
+      "type": "flow",
+      "position": {
+        "x": 910,
+        "y": 160
+      },
+      "data": {
+        "label": "Réponse",
+        "kind": "output",
+        "config": {
+          "text": "{{output}}"
+        }
+      }
+    },
+    {
+      "id": "end",
+      "type": "flow",
+      "position": {
+        "x": 910,
+        "y": 410
+      },
+      "data": {
+        "label": "Fin",
+        "kind": "end",
+        "config": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "start",
+      "target": "context"
+    },
+    {
+      "id": "e2",
+      "source": "model",
+      "target": "response"
+    },
+    {
+      "id": "e3",
+      "source": "response",
+      "target": "end"
+    },
+    {
+      "id": "context-model",
+      "source": "context",
+      "target": "model"
+    }
+  ]
+}

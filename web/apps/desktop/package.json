@@ -1,1 +1,13 @@
-{"name":"@zedflow/desktop","private":true,"type":"module","main":"main.mjs","scripts":{"start":"electron ."},"devDependencies":{"electron":"^41.0.0"}}
+{
+  "name": "@zedflow/desktop",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test:smoke": "node scripts/smoke.mjs"
+  },
+  "devDependencies": {
+    "electron": "^41.0.0"
+  }
+}

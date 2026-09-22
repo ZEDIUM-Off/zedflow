@@ -233,13 +233,16 @@ impl ExecutionService {
             let _writer = b.writer.lock().await;
             let workspace = workspaces::get(&b.db, &b.actor.workspace_id).await?;
             for id in &ids {
+                service.require_run_scope(&b.actor, id).await?;
+            }
+            for id in &ids {
                 let _admitted = service
                     .admit(&b.actor, CommandKind::ExportSessions, Some(id))
                     .await?;
                 let (run, _) = b.sync.latest(id).await?;
                 ensure!(
                     run["status"] != "running" && !service.has_active_run(id),
-                    ExecutionError::Busy("Attendez un point d’arrêt avant l’export".into())
+                    ExecutionError::Conflict("Attendez un point d’arrêt avant l’export".into())
                 );
             }
             let services: Vec<_> = {
@@ -302,7 +305,18 @@ impl ExecutionService {
     pub async fn download_sessions(&self, actor: &Actor, archive_id: &str) -> Result<Vec<u8>> {
         let b = self.admit(actor, CommandKind::Read, None).await?;
         let workspace = workspaces::get(&b.db, &b.actor.workspace_id).await?;
-        session_archive::download(&b.data, archive_id, &workspace).await
+        session_archive::download(&b.data, archive_id, &workspace)
+            .await
+            .map_err(|error| {
+                if error
+                    .chain()
+                    .any(|cause| cause.is::<session_archive::ExportNotFound>())
+                {
+                    ExecutionError::NotFound("Export absent de ce workspace".into()).into()
+                } else {
+                    error
+                }
+            })
     }
     pub async fn open_workspace(&self, actor: &Actor, path: &Path) -> Result<Workspace> {
         let b = self.admit(actor, CommandKind::OpenWorkspace, None).await?;

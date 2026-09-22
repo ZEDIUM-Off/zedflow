@@ -1,6 +1,6 @@
 # Capitalisation et méta-harness
 
-Statut : intention produit. Le reboot n'implémente ni optimiseur ni évaluateur.
+Statut : intention produit. La migration produit n'implémente ni optimiseur ni évaluateur.
 
 ## L'unité d'amélioration
 

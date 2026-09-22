@@ -557,10 +557,16 @@ async fn archive_commands_do_not_interrupt_or_wait_ahead_of_active_work() {
     .await
     .unwrap()
     .unwrap_err();
-    assert!(matches!(
-        error.downcast_ref::<ExecutionError>(),
-        Some(ExecutionError::Busy(_))
-    ));
+    // A selected active run conflicts with export (HTTP 409). Whole-service
+    // maintenance remains Busy (HTTP 503), checked independently below.
+    assert!(
+        matches!(
+            error.downcast_ref::<ExecutionError>(),
+            Some(ExecutionError::Conflict(_))
+        ),
+        "unexpected archive admission error: {error:?}; typed={:?}",
+        error.downcast_ref::<ExecutionError>()
+    );
     let error = tokio::time::timeout(
         Duration::from_secs(2),
         service.import_sessions(&actor, &root.path().join("missing")),
@@ -568,10 +574,14 @@ async fn archive_commands_do_not_interrupt_or_wait_ahead_of_active_work() {
     .await
     .unwrap()
     .unwrap_err();
-    assert!(matches!(
-        error.downcast_ref::<ExecutionError>(),
-        Some(ExecutionError::Busy(_))
-    ));
+    assert!(
+        matches!(
+            error.downcast_ref::<ExecutionError>(),
+            Some(ExecutionError::Busy(_))
+        ),
+        "unexpected archive admission error: {error:?}; typed={:?}",
+        error.downcast_ref::<ExecutionError>()
+    );
     assert!(!root.path().join("workspace/done").exists());
     assert_eq!(
         service.read(&actor, &id).await.unwrap()["status"],
