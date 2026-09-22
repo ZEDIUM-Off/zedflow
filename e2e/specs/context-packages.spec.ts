@@ -110,3 +110,102 @@ test('a delayed default catalogue preserves the active type editor and its draft
     await expect(editor.getByLabel('Identifiant du catalogue de types',{exact:true})).toHaveValue(key)
   }finally{release()}
 })
+
+for (const catalogue of [
+  { endpoint: 'context-types', label: 'Catalogue de types', property: 'contextTypesRef', selector: '.ctx-types-selection', definition: { types: { Document: { kind: 'text' } } } },
+  { endpoint: 'context-libraries', label: 'Bibliothèque de fonctions', property: 'contextLibraryRef', selector: '.ctx-library-selection', definition: { library: { projections: {}, subprograms: {} } } },
+]) {
+  test(`${catalogue.label} pins the visible snapshot before a delayed read and preserves a newer choice`, async ({ page, request }) => {
+    const workspaceId = (await (await request.get('/api/health')).json()).defaultWorkspaceId
+    const files = []
+    for (const suffix of ['first', 'second']) {
+      const response = await request.post(`/api/${catalogue.endpoint}`, { data: { workspaceId, key: `pending-${suffix}-${crypto.randomUUID().slice(0, 8)}`, ...catalogue.definition } })
+      expect(response.ok(), await response.text()).toBeTruthy()
+      files.push(await response.json())
+    }
+    const [first, second] = files
+    const flow = await saveFlow(request, template(false), workspaceId)
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Conception', exact: true }).click()
+    await page.locator(`[data-flow-key="${flow.key}"] .flow-file-open`).click()
+    await page.locator('.design-space .flow-card.context').click()
+    const editor = page.locator('.ctx-binding-editor')
+    const select = editor.getByLabel(catalogue.label, { exact: true })
+    let release!: () => void, arrived!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const requested = new Promise<void>(resolve => { arrived = resolve })
+    await page.route(`**/api/${catalogue.endpoint}/${first.key}?*`, async route => {
+      const response = await route.fetch()
+      arrived()
+      await gate
+      await route.fulfill({ response })
+    })
+    const firstReadRequest = page.waitForRequest(request => new URL(request.url()).pathname === `/api/${catalogue.endpoint}/${first.key}`)
+    async function persist() {
+      const saving = page.waitForResponse(response => new URL(response.url()).pathname === '/api/flows' && response.request().method() === 'POST')
+      await page.getByRole('button', { name: 'Enregistrer', exact: true }).click()
+      const response = await saving
+      expect(response.ok(), await response.text()).toBeTruthy()
+      await expect(page.locator('.banner.notice')).toContainText('Flow enregistré')
+      const stored = await (await request.get(`/api/flows/${flow.key}?workspaceId=${workspaceId}`)).json()
+      return { sent: response.request().postDataJSON().composition.nodes.find((node: any) => node.id === 'context'), stored: stored.composition.nodes.find((node: any) => node.id === 'context') }
+    }
+    try {
+      await select.selectOption(first.key)
+      await requested
+      const firstRequest = await firstReadRequest
+      const read = page.waitForResponse(response => response.request() === firstRequest)
+      // Saving while the read is held must include the choice already visible to the user.
+      const initial = await persist()
+      expect(initial.sent.data.config[catalogue.property]).toEqual({ key: first.key, hash: first.hash })
+      expect(initial.stored.data.config[catalogue.property]).toEqual({ key: first.key, hash: first.hash })
+      await select.selectOption(second.key)
+      await expect(editor.locator(`${catalogue.selector} small`)).toContainText(second.hash.slice(0, 10))
+      // Replacing an already resolved selection must stay visible during its reread.
+      const revisiting = page.waitForRequest(request => new URL(request.url()).pathname === `/api/${catalogue.endpoint}/${first.key}`)
+      await select.selectOption(first.key)
+      const revisitedRequest = await revisiting
+      const revisitedResponse = page.waitForResponse(response => response.request() === revisitedRequest)
+      await expect(select).toHaveValue(first.key)
+      await select.selectOption(second.key)
+      await page.getByLabel('Nom du nœud', { exact: true }).fill('Choix plus récent')
+      release()
+      await (await read).finished()
+      await (await revisitedResponse).finished()
+      const replacement = await persist()
+      expect(replacement.stored.data.config[catalogue.property]).toEqual({ key: second.key, hash: second.hash })
+      expect(replacement.stored.data.label).toBe('Choix plus récent')
+      await expect(select).toHaveValue(second.key)
+      await select.selectOption('')
+      const cleared = await persist()
+      expect(cleared.stored.data.config[catalogue.property]).toBeUndefined()
+    } finally {
+      release()
+    }
+  })
+}
+
+test('a failed library catalogue in another workspace cannot offer the previous workspace snapshot', async ({ page, request }) => {
+  const workspaceId = (await (await request.get('/api/health')).json()).defaultWorkspaceId
+  const target = await (await request.post('/api/workspaces', { data: { path: fixturePath('workspace-b') } })).json()
+  const key = `workspace-library-${crypto.randomUUID().slice(0, 8)}`
+  const saved = await request.post('/api/context-libraries', { data: { workspaceId, key, library: { projections: {}, subprograms: {} } } })
+  expect(saved.ok(), await saved.text()).toBeTruthy()
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Conception', exact: true }).click()
+  await page.getByRole('navigation', { name: 'Espace de conception' }).getByRole('button', { name: 'Contexte', exact: true }).click()
+  await page.getByRole('button', { name: 'Créer une stratégie', exact: true }).click()
+  const panel = page.locator('.context-studio:not(.bridge-studio)')
+  await panel.locator('.ctx-studio-dependencies').locator('summary').click()
+  const selection = panel.locator('.ctx-library-selection')
+  await selection.getByLabel('Bibliothèque de fonctions', { exact: true }).selectOption(key)
+  await page.route('**/api/context-libraries?*', async route => {
+    if (new URL(route.request().url()).searchParams.get('workspaceId') === target.id) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Catalogue B indisponible' }) })
+    } else await route.continue()
+  })
+  await page.getByLabel('Workspace des stratégies', { exact: true }).selectOption(target.id)
+  await expect(selection.locator('.ctx-error')).toContainText('Catalogue B indisponible')
+  await expect(selection.locator(`option[value="${key}"]`)).toHaveCount(0)
+  await expect(selection.getByLabel('Bibliothèque de fonctions', { exact: true })).toHaveValue('')
+})

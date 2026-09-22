@@ -145,6 +145,46 @@ test('context studio preserves dirty workspace drafts and reports a real externa
   await expect(panel.getByLabel('Nom de la stratégie', { exact: true })).toHaveValue('Brouillon du workspace B')
 })
 
+for (const editing of [false, true]) test(`context catalogue arrival ${editing ? 'preserves an ongoing name replacement' : 'opens the default when untouched'}`, async ({ page, request }) => {
+  const health = await (await request.get('/api/health')).json()
+  const workspaceB = await (await request.post('/api/workspaces', { data: { path: fixturePath('workspace-b') } })).json()
+  const panel = await studio(page)
+  let release!: () => void, received!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const arrived = new Promise<void>(resolve => { received = resolve })
+  await page.route(url => url.pathname === '/api/context-strategies' && url.searchParams.get('workspaceId') === workspaceB.id, async route => {
+    const response = await route.fetch()
+    received()
+    await gate
+    await route.fulfill({ response })
+  })
+  try {
+    await page.getByLabel('Workspace des stratégies', { exact: true }).selectOption(workspaceB.id)
+    await arrived
+    await expect(panel).toHaveAttribute('data-context-workspace', workspaceB.id)
+    const name = panel.getByLabel('Nom de la stratégie', { exact: true })
+    await expect(name).toHaveValue('Nouvelle stratégie')
+    if (editing) {
+      await expect(name).toBeEditable()
+      await name.focus()
+      await page.keyboard.press('Control+a')
+    }
+    release()
+    await expect(page.getByRole('button', { name: 'Actualiser les stratégies', exact: true })).toBeEnabled()
+    if (editing) {
+      await page.keyboard.insertText('Brouillon du workspace B')
+      await expect(name).toHaveValue('Brouillon du workspace B')
+      await page.getByLabel('Workspace des stratégies', { exact: true }).selectOption(health.defaultWorkspaceId)
+      await expect(panel).toHaveAttribute('data-context-workspace', health.defaultWorkspaceId)
+      await page.getByLabel('Workspace des stratégies', { exact: true }).selectOption(workspaceB.id)
+      await expect(name).toHaveValue('Brouillon du workspace B')
+      // Explicit navigation still opens the catalogue definition after an edit.
+      await page.locator('[data-context-key="workspace-default"]').click()
+    }
+    await expect(name).toHaveValue('Assistant de workspace')
+  } finally { release() }
+})
+
 test('context preview distinguishes inactive branches, structured needs and typed errors on narrow screens', async ({ page, request }) => {
   const health = await (await request.get('/api/health')).json()
   const strategy: ContextStrategy = { version: 1, id: `context-conditional-${Date.now()}`, name: 'Contexte conditionnel', requirements: { optional: { kind: 'text' } }, capabilities: [], program: [{ kind: 'if', id: 'choice', condition: { kind: 'present', value: { kind: 'resource', name: 'optional' } }, then: [{ kind: 'emit', id: 'provided', role: 'data', format: 'text', value: { kind: 'resource', name: 'optional' } }], else: [{ kind: 'emit', id: 'fallback', role: 'instruction', format: 'text', value: literal('Continuer sans option') }] }] }

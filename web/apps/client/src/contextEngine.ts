@@ -121,6 +121,7 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
   // Catalog arrival chooses data; only an explicit user action switches editor tabs.
   const navigationIntent = ref(0)
   const states = reactive<Record<string, ContextWorkspaceState>>({})
+  const editingDrafts = new WeakSet<ContextDraft>()
   useReloadDrafts('context-drafts',states)
   function workspaceState(id = workspaceId.value) {
     if (!states[id]) {
@@ -131,6 +132,8 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
   }
   const session = computed(() => workspaceState())
   const current = computed(() => session.value.drafts[session.value.selected])
+  // Focus/selection already belongs to this document, before the first input event.
+  function beginEditing() { editingDrafts.add(current.value) }
   // The schema used by the editor travels with the strategy. A catalog selection
   // copies definitions; it never makes the saved strategy depend on an open tab.
   watch(() => current.value.types, types => {
@@ -153,7 +156,7 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
     try {
       state.files = await client.context.list({workspaceId:id})
       const initial = state.drafts.new
-      const untouched = state.selected === 'new' && initial && JSON.stringify(initial) === state.pristineDraft
+      const untouched = state.selected === 'new' && initial && !editingDrafts.has(initial) && JSON.stringify(initial) === state.pristineDraft
       const defaultFile = state.files.find(file => file.key === 'workspace-default' && file.strategy)
       if (!state.initialized && untouched && defaultFile) {
         // The list response already includes the parsed definition. Do not open a file
@@ -303,6 +306,6 @@ export function useContextStudio(workspaceId: Ref<string>, active: Ref<boolean>)
   const beforeUnload = (event: BeforeUnloadEvent) => { if (!managedReload && Object.values(states).some(state => Object.values(state.drafts).some(draft => JSON.stringify(draft.strategy) !== draft.saved && (draft.file || draft.strategy.program.length || Object.keys(draft.strategy.requirements).length)))) event.preventDefault() }
   window.addEventListener('beforeunload', beforeUnload)
   onUnmounted(() => { clearTimeout(previewTimer); window.removeEventListener('focus', focus); window.removeEventListener('beforeunload', beforeUnload) })
-  return reactive({ session, current, dirty, workspaceId, navigationIntent, select, refresh, create, createExample, fromFrozen, convert, open, save: () => run('save'), preview: () => run('preview'), source: () => run('source'), get previewStale() { return !!current.value.preview && current.value.previewSignature !== signature(current.value) } })
+  return reactive({ session, current, dirty, workspaceId, navigationIntent, beginEditing, select, refresh, create, createExample, fromFrozen, convert, open, save: () => run('save'), preview: () => run('preview'), source: () => run('source'), get previewStale() { return !!current.value.preview && current.value.previewSignature !== signature(current.value) } })
 }
 export type ContextStudioController = ReturnType<typeof useContextStudio>
