@@ -184,6 +184,85 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    async fn repository_ignore_policy_is_unchanged_and_keeps_only_explicit_artifacts_versionable() {
+        let directory = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .args(["-c", "core.excludesFile="])
+                .arg("-C")
+                .arg(directory.path())
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        assert!(git(&["init", "-q"]).status.success());
+        std::fs::create_dir(directory.path().join(".zedflow")).unwrap();
+        let policy = include_bytes!("../../../../.zedflow/.gitignore");
+        let policy_path = directory.path().join(".zedflow/.gitignore");
+        std::fs::write(&policy_path, policy).unwrap();
+        std::fs::write(
+            directory.path().join(".gitignore"),
+            include_bytes!("../../../../.gitignore"),
+        )
+        .unwrap();
+
+        for attempt in 1..=2 {
+            ensure_metadata(directory.path()).await.unwrap();
+            assert_eq!(
+                std::fs::read(&policy_path).unwrap(),
+                policy,
+                "Opening the repository must preserve its policy on attempt {attempt}"
+            );
+        }
+
+        for path in [
+            ".zedflow/.gitignore",
+            ".zedflow/flow/review/src/lib.rs",
+            ".zedflow/flows/review.rs",
+            ".zedflow/context/review.rs",
+            ".zedflow/context/libraries/terms.rs",
+            ".zedflow/types/terms.rs",
+            ".zedflow/examples/review.rs",
+            ".zedflow/bridges/docs.rs",
+            ".zedflow/sessions/shared/journal.jsonl",
+        ] {
+            assert_eq!(
+                git(&["check-ignore", "--no-index", path]).status.code(),
+                Some(1),
+                "Chosen artifact must remain versionable: {path}"
+            );
+        }
+        for path in [
+            ".zedflow/private-note",
+            ".zedflow/local.db",
+            ".zedflow/local.db-wal",
+            ".zedflow/runs/run.json",
+            ".zedflow/builds/run/output",
+            ".zedflow/session-downloads/export.zip",
+            ".zedflow/.session-imports/draft/journal.jsonl",
+            ".zedflow/sessions/.export-draft/journal.jsonl",
+            ".zedflow/sessions/.previous-draft/journal.jsonl",
+            ".zedflow/.sources.lock",
+            ".zedflow/.source-import.json",
+            ".zedflow/.source-import-draft/0.rs",
+            ".zedflow/.source-journal-draft.tmp",
+            ".zedflow/.source-acceptance.json",
+            ".zedflow/source-history/lineage.json",
+            ".zedflow/previews/id/workspace/file",
+            ".zedflow/context/.catalog.lock",
+            ".zedflow/context/.context-draft.tmp",
+            ".zedflow/flow/review/.catalog.lock",
+            ".zedflow/flow/review/.zedflow-draft.tmp",
+            ".zedflow/types/.accepted-draft.tmp",
+        ] {
+            assert!(
+                git(&["check-ignore", "--no-index", path]).status.success(),
+                "Runtime and temporary files must stay local: {path}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn source_metadata_ignores_transactions_but_keeps_explicit_artifacts_versionable() {
         let directory = tempfile::tempdir().unwrap();
         let git = |args: &[&str]| {

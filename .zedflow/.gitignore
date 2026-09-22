@@ -12,3 +12,25 @@
 **/.zedflow-*.tmp
 **/.context-*.tmp
 **/.accepted-*.tmp
+# Zedflow local runtime
+/*.db
+/*.db-*
+/runs/
+/builds/
+/session-downloads/
+/.session-imports/
+/sessions/.export-*/
+/sessions/.previous-*/
+# Zedflow context authoring
+/context/.catalog.lock
+/context/.context-*.tmp
+# Zedflow source transactions
+/.sources.lock
+/.source-import.json
+/.source-import-*/
+/.source-journal-*.tmp
+/.source-acceptance.json
+/source-history/
+/previews/
+**/.accepted-*.tmp
+**/.zedflow-*.tmp
