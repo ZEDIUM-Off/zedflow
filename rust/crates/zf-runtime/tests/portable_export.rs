@@ -283,10 +283,15 @@ fn isolated_output(
 }
 
 // Landlock is inherited by Cargo, rustc, build scripts and the executed binary.
-// Allow ordinary system files, toolchain caches and /tmp; deny both checkouts.
-// Unlike an audit grep, a failed open below proves the process cannot read them.
+// Allow ordinary system files, toolchain caches and /tmp; deny the actual checkout.
+// Verify its canaries are accessible first, then require read and write denial.
 const LANDLOCK: &str = r#"
 import ctypes, os, sys
+canaries=[os.path.join(sys.argv[1],'rust',name) for name in ['Cargo.toml','Cargo.lock']]
+for path in canaries:
+    for mode in [os.O_RDONLY, os.O_WRONLY]:
+        probe=os.open(path,mode)
+        os.close(probe)
 libc=ctypes.CDLL(None, use_errno=True)
 def checked(value):
     if value < 0: raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
@@ -310,7 +315,7 @@ for path in allowed:
     checked(libc.syscall(445,fd,1,ctypes.byref(rule),0)); os.close(pfd)
 checked(libc.prctl(38,1,0,0,0))
 checked(libc.syscall(446,fd,0));os.close(fd)
-for path in [os.path.join(sys.argv[1],'rust/Cargo.toml'),os.path.join(home,'workspaces/zedflow/Cargo.toml')]:
+for path in canaries:
     for mode in [os.O_RDONLY, os.O_WRONLY]:
         try:
             probe=os.open(path,mode)
