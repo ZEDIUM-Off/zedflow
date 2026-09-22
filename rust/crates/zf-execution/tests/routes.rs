@@ -736,7 +736,9 @@ async fn nested_launches_retain_a_durable_runtime_depth_budget() {
         .invoke_branch(f.invocation("depth-root"))
         .await
         .unwrap();
-    let error = tokio::time::timeout(std::time::Duration::from_secs(5), f.runtime.drain())
+    // This bounds a hanging test, not graph latency: durable nested visits and
+    // real subprocesses can exceed five seconds under CPU contention.
+    let error = tokio::time::timeout(std::time::Duration::from_secs(30), f.runtime.drain())
         .await
         .expect("launch cycles must stop")
         .unwrap_err();
