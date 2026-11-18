@@ -1,0 +1,11 @@
+/design/
+/.artifacts/
+/.worktrees/
+/.agents/output/
+/.scratch/
+/tmp/
+.env
+.env.*
+*.key
+*.pem
+credentials.json

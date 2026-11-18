@@ -1,0 +1,31 @@
+[gitflow]
+	version = 1.0
+	initialized = true
+[gitflow "branch.reboot/xstate"]
+	type = base
+	upstreamStrategy = none
+	downstreamStrategy = none
+	autoUpdate = false
+	tag = false
+[gitflow "branch.mission"]
+	type = topic
+	parent = reboot/xstate
+	startPoint = reboot/xstate
+	prefix = mission/
+	upstreamStrategy = merge
+	downstreamStrategy = merge
+	autoUpdate = false
+	tag = false
+	worktree = true
+[gitflow "mission.start"]
+	fetch = false
+[gitflow "mission.finish"]
+	fetch = false
+	push = false
+	keep = true
+[gitflow "contrib.start"]
+	fetch = false
+[gitflow "contrib.finish"]
+	fetch = false
+	push = false
+	keep = true
