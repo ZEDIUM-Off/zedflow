@@ -1,0 +1,981 @@
+{
+  "purpose": "Qualification test catalogue, not a runtime definition format.",
+  "source_catalogue": "observed.yaml",
+  "evidence_policy": "Attach executed test identifiers and durable observations; source reading alone is not a pass.",
+  "cases": [
+    {
+      "id": "loop-01",
+      "milestone": "agent-loop",
+      "title": "Text turn lifecycle",
+      "sources": [
+        "pi-core-loop",
+        "pi-core-agent"
+      ],
+      "assertions": [
+        "A user message precedes one assistant response and one turn end.",
+        "The completion event follows the finalized assistant message.",
+        "Awaited observers finish before the public run promise settles."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-01:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/loop-parity.test.ts",
+          "selector": "loop-01:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-02",
+      "milestone": "agent-loop",
+      "title": "Tool round trip",
+      "sources": [
+        "pi-core-loop"
+      ],
+      "assertions": [
+        "Each call has one correlated result before the next model request.",
+        "A final text response stops natural continuation.",
+        "Tools execute only after the requesting assistant message is finalized."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/loop-parity.test.ts",
+          "selector": "loop-02:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-03",
+      "milestone": "agent-loop",
+      "title": "Streaming protocol",
+      "sources": [
+        "pi-core-loop",
+        "pi-ai-types"
+      ],
+      "assertions": [
+        "Text, thinking and tool-call deltas remain observable without executing partial calls.",
+        "The terminal message replaces partial content instead of duplicating it.",
+        "A response without start events still produces one finalized message."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/loop-parity.test.ts",
+          "selector": "loop-03:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-04",
+      "milestone": "agent-loop",
+      "title": "Parallel and sequential tools",
+      "sources": [
+        "pi-core-loop"
+      ],
+      "assertions": [
+        "Parallel preflight follows call order; admitted tools can overlap.",
+        "Completion events reflect completion order; persisted results retain call order.",
+        "One sequential-only tool makes the entire batch sequential."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-04:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-05",
+      "milestone": "agent-loop",
+      "title": "Tool admission and failures",
+      "sources": [
+        "pi-core-loop"
+      ],
+      "assertions": [
+        "Argument preparation precedes schema validation and admission.",
+        "Unknown, malformed, denied and throwing tools become error results without unintended effects.",
+        "Nested tool access crosses the same validation and authorization boundary."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/host-controls.test.ts",
+          "selector": "loop-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-06",
+      "milestone": "agent-loop",
+      "title": "Truncated tool calls",
+      "sources": [
+        "pi-core-loop"
+      ],
+      "assertions": [
+        "A length-limited assistant message executes none of its tool calls.",
+        "Synthetic failures retain call associations and permit a later corrected request."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-06:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-07",
+      "milestone": "agent-loop",
+      "title": "Cancellation",
+      "sources": [
+        "pi-core-loop",
+        "pi-core-agent"
+      ],
+      "assertions": [
+        "Cancellation reaches model and active tool actors through AbortSignal.",
+        "Unstarted sequential calls do not execute after cancellation.",
+        "Late events cannot restart the completed run or corrupt its next invocation."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-07:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/host-controls.test.ts",
+          "selector": "loop-07:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-08",
+      "milestone": "agent-loop",
+      "title": "Steering and follow-up queues",
+      "sources": [
+        "pi-core-loop",
+        "pi-core-agent",
+        "pi-sdk"
+      ],
+      "assertions": [
+        "Steering enters at the next turn boundary, not between tools in a batch.",
+        "Follow-up input waits until natural work settles.",
+        "One-at-a-time and all-message delivery preserve queue order.",
+        "An input arriving during turn preparation is not lost or delivered twice."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-08:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/host-controls.test.ts",
+          "selector": "loop-08:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-09",
+      "milestone": "agent-loop",
+      "title": "Turn finalization decisions",
+      "sources": [
+        "pi-core-loop"
+      ],
+      "assertions": [
+        "End stops before polling queues.",
+        "Continue causes exactly one next request unless natural continuation already supplies it.",
+        "Error and aborted responses remain hard exits.",
+        "All finalized tool results must request termination to suppress automatic tool continuation."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-09:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-10",
+      "milestone": "agent-loop",
+      "title": "Continue existing context",
+      "sources": [
+        "pi-core-agent"
+      ],
+      "assertions": [
+        "Empty and system-only contexts reject without consuming queues.",
+        "A non-assistant tail retries existing context before follow-ups.",
+        "An assistant tail selects steering before follow-up instead of sending an invalid tail."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-10:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/host-controls.test.ts",
+          "selector": "loop-10:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "loop-11",
+      "milestone": "agent-loop",
+      "title": "Lifecycle ownership and budgets",
+      "sources": [
+        "product-runs",
+        "xstate-actors"
+      ],
+      "assertions": [
+        "Visible native machine states own continuation, cancellation and termination.",
+        "Model and tool actors perform bounded operations, not hidden agent loops.",
+        "A configured turn budget returns explicit control rather than looping indefinitely."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/architecture.test.ts",
+          "selector": "loop-11:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/control-parity.test.ts",
+          "selector": "loop-11:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-01",
+      "milestone": "context-extensions",
+      "title": "Model projection boundary",
+      "sources": [
+        "pi-core-loop",
+        "pi-ai-types",
+        "product-resources",
+        "pi-transcript"
+      ],
+      "assertions": [
+        "Request preparation precedes transformContext and conversion to model messages.",
+        "Projection preserves roles, tool associations and compatible media.",
+        "Custom host messages can be omitted without deleting durable history."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/context-boundary.test.ts",
+          "selector": "context-01:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-02",
+      "milestone": "context-extensions",
+      "title": "Dynamic tools and model selection",
+      "sources": [
+        "pi-core-loop",
+        "pi-session",
+        "pi-transcript"
+      ],
+      "assertions": [
+        "Tool declarations match the executable set after additions and removals.",
+        "Per-request model and reasoning selection affect the next request without corrupting prior turns.",
+        "A removed capability cannot be invoked through stale model context."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/context-boundary.test.ts",
+          "selector": "context-02:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-03",
+      "milestone": "context-extensions",
+      "title": "Compaction threshold and cut",
+      "sources": [
+        "pi-compaction",
+        "pi-compaction-code"
+      ],
+      "assertions": [
+        "Compaction triggers only above the configured threshold.",
+        "The kept suffix does not orphan tool results from calls.",
+        "A split user-message span retains a coherent recent suffix."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/compaction.test.ts",
+          "selector": "context-03:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-04",
+      "milestone": "context-extensions",
+      "title": "Compaction continuity",
+      "sources": [
+        "pi-compaction",
+        "pi-session",
+        "pi-compaction-code",
+        "pi-transcript"
+      ],
+      "assertions": [
+        "Repeated compaction includes the previous summary and newly summarized retained history.",
+        "The summary plus retained suffix becomes the next request context.",
+        "Raw history remains inspectable after compaction.",
+        "Compaction cancellation or failure does not install an incomplete summary."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/compaction.test.ts",
+          "selector": "context-04:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-05",
+      "milestone": "context-extensions",
+      "title": "Extension lifecycle",
+      "sources": [
+        "pi-extensions",
+        "pi-session",
+        "pi-extension-runner"
+      ],
+      "assertions": [
+        "Input interception can handle or transform input before the run.",
+        "Before-run and context hooks affect the intended request in declared order.",
+        "Tool admission and result hooks can deny or replace results.",
+        "A failed hook has an explicit failure path; stale extension contexts cannot affect a replaced session."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/context-boundary.test.ts",
+          "selector": "context-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        },
+        {
+          "path": "experiments/stately-native/test/lifecycle.test.ts",
+          "selector": "context-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-06",
+      "milestone": "context-extensions",
+      "title": "Resource ownership",
+      "sources": [
+        "product-resources"
+      ],
+      "assertions": [
+        "Two instances isolate local stores and deliberately share only declared services.",
+        "Lifetime boundaries dispose owned resources without disposing shared resources.",
+        "Resource access does not automatically expose resource data to the model."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/resources.test.ts",
+          "selector": "context-06:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-07",
+      "milestone": "context-extensions",
+      "title": "Context provenance and data states",
+      "sources": [
+        "product-resources"
+      ],
+      "assertions": [
+        "Prepared context records source identities, ordering and transformations.",
+        "Missing, empty, stale and failed data remain distinguishable.",
+        "Inspection reports the exact sent context without leaking undeclared resources."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/resources.test.ts",
+          "selector": "context-07:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "context-08",
+      "milestone": "context-extensions",
+      "title": "Provider hooks and observations",
+      "sources": [
+        "pi-extensions",
+        "pi-core-loop",
+        "pi-ai-types"
+      ],
+      "assertions": [
+        "Provider request and stream adapters expose controlled transformation and observation seams.",
+        "A request transformation does not silently mutate durable messages.",
+        "Usage, tool associations and terminal outcomes survive observation hooks."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/context-boundary.test.ts",
+          "selector": "context-08:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "composition-01",
+      "milestone": "composition",
+      "title": "Independent child machines",
+      "sources": [
+        "product-composition",
+        "xstate-actors",
+        "xstate-invoke"
+      ],
+      "assertions": [
+        "A root invokes two instances with distinct inputs and observes both outputs.",
+        "Advancing one instance leaves the other state and input unchanged."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/composition.test.ts",
+          "selector": "composition-01:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "composition-02",
+      "milestone": "composition",
+      "title": "Cycles, nesting and parallel work",
+      "sources": [
+        "product-composition",
+        "xstate-actors",
+        "xstate-parallel",
+        "xstate-promise-implementation"
+      ],
+      "assertions": [
+        "Native transitions execute a bounded cycle and guarded branch.",
+        "Nested and parallel child completion obey the parent machine contract.",
+        "Parent cancellation and child failure have explicit propagation rules."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/composition.test.ts",
+          "selector": "composition-02:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "composition-03",
+      "milestone": "composition",
+      "title": "External structural insertion",
+      "sources": [
+        "composition-assignment"
+      ],
+      "assertions": [
+        "The derived definition waits for approval before the simulated tool.",
+        "The original remains unchanged and completes without approval.",
+        "Derivation occurs before actor instantiation, not by patching live state."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/composition.test.ts",
+          "selector": "composition-03:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "composition-04",
+      "milestone": "composition",
+      "title": "Incompatible targets and conflicts",
+      "sources": [
+        "composition-assignment",
+        "graph-core"
+      ],
+      "assertions": [
+        "Unknown and unsupported targets fail before execution.",
+        "Competing insertions fail in either input order instead of silently overwriting."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/composition.test.ts",
+          "selector": "composition-04:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "composition-05",
+      "milestone": "composition",
+      "title": "Identity and provenance",
+      "sources": [
+        "product-composition",
+        "composition-assignment"
+      ],
+      "assertions": [
+        "Each occurrence identifies its definition revision and instance.",
+        "Added states and connections identify their extension source.",
+        "Inspection distinguishes authored definition, resolved definition and actual execution."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/composition.test.ts",
+          "selector": "composition-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-01",
+      "milestone": "continuity",
+      "title": "Targeted human waits",
+      "sources": [
+        "product-runs",
+        "agent2-interactions"
+      ],
+      "assertions": [
+        "A wait carries a stable request identity and declared response shape.",
+        "Wrong-target, invalid and duplicate responses do not advance another wait.",
+        "A human wait differs from a control pause, error and terminal completion."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/wait-tree.test.ts",
+          "selector": "continuity-01:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-02",
+      "milestone": "continuity",
+      "title": "Machine tree restoration",
+      "sources": [
+        "xstate-persistence",
+        "product-runs"
+      ],
+      "assertions": [
+        "A serialized snapshot restores parent and child state in new actors.",
+        "Restored waits accept the intended response without rerunning completed actions.",
+        "Restoration validates the definition revision before execution."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/wait-tree.test.ts",
+          "selector": "continuity-02:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-03",
+      "milestone": "continuity",
+      "title": "Effect uncertainty",
+      "sources": [
+        "xstate-persistence",
+        "agent2-persistence",
+        "codemode"
+      ],
+      "assertions": [
+        "Fault injection covers before effect, after effect and before result persistence.",
+        "Idempotency keys suppress duplicate effects where supported.",
+        "Uncertain non-idempotent outcomes require explicit reconciliation, not a success claim."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/effect-recovery.test.ts",
+          "selector": "continuity-03:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-04",
+      "milestone": "continuity",
+      "title": "Session recovery and settlement",
+      "sources": [
+        "pi-session",
+        "pi-sdk",
+        "pi-compaction",
+        "pi-retry-policy",
+        "pi-overflow-policy"
+      ],
+      "assertions": [
+        "Transient failures retry within a bounded policy; cancellation aborts retry delay.",
+        "Overflow or early final length recovery preserves the failed attempt before repairing model context.",
+        "Recovery and queued work finish before the settled event.",
+        "Failed recovery does not schedule an unintended internal retry."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/session-recovery.test.ts",
+          "selector": "continuity-04:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-05",
+      "milestone": "continuity",
+      "title": "Fork and branch continuity",
+      "sources": [
+        "pi-sessions",
+        "pi-compaction",
+        "pi-session-projection"
+      ],
+      "assertions": [
+        "Forked history preserves the original branch.",
+        "The selected lineage alone supplies projected context.",
+        "An optional branch summary carries abandoned work without importing unrelated raw entries."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/lineage.test.ts",
+          "selector": "continuity-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-06",
+      "milestone": "continuity",
+      "title": "Interface-independent inspection",
+      "sources": [
+        "product-runs"
+      ],
+      "assertions": [
+        "A fresh observer can inspect and respond to a persisted run.",
+        "Historical observations differ from current external data.",
+        "Parent and child traces retain occurrence and input-output provenance."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/wait-tree.test.ts",
+          "selector": "continuity-06:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "packages-01",
+      "milestone": "package-comparison",
+      "title": "Stable Agent comparison",
+      "sources": [
+        "agent1-readme",
+        "agent-stable-runtime"
+      ],
+      "assertions": [
+        "A common simulated scenario compares XState-only orchestration with stable Agent.",
+        "Required adapters and behavioral gaps are recorded rather than assumed equivalent."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-agent-stable/test/workflow.test.ts",
+          "selector": "packages-01:",
+          "command": "npm run check --prefix experiments/stately-agent-stable"
+        }
+      ]
+    },
+    {
+      "id": "packages-02",
+      "milestone": "package-comparison",
+      "title": "Current Agent comparison",
+      "sources": [
+        "agent2-loop",
+        "agent2-hosts",
+        "agent-current-text-contract",
+        "agent-current-machine-docs",
+        "agent-current-human-waits"
+      ],
+      "assertions": [
+        "An isolated compatible XState lane runs the same model-tool scenario.",
+        "A custom Pi-compatible executor does not embed another scheduling loop.",
+        "Decision, interaction and recovery affordances are evaluated against the common contract."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-agent-current/test/workflow.test.ts",
+          "selector": "packages-02:",
+          "command": "npm run check --prefix experiments/stately-agent-current"
+        }
+      ]
+    },
+    {
+      "id": "packages-03",
+      "milestone": "package-comparison",
+      "title": "Graph operations",
+      "sources": [
+        "graph-core",
+        "composition-assignment",
+        "graph-operations-runtime"
+      ],
+      "assertions": [
+        "Union, difference, patching, hierarchy and ports are exercised on the composition fixture.",
+        "Identifier collisions and transition identity loss are detected before adoption.",
+        "Structural correctness is not treated as behavioral equivalence."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/graph.test.ts",
+          "selector": "packages-03:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "packages-04",
+      "milestone": "package-comparison",
+      "title": "Bounded behavior exploration",
+      "sources": [
+        "graph-xstate",
+        "xstate-actors",
+        "graph-exploration-runtime"
+      ],
+      "assertions": [
+        "Exploration uses finite event samples and explicit bounds.",
+        "Reachable snapshots are distinguished from definition nodes and observed traces.",
+        "An unbounded or incomplete exploration produces an explicit limitation."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/graph.test.ts",
+          "selector": "packages-04:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "packages-05",
+      "milestone": "package-comparison",
+      "title": "Code Mode capabilities",
+      "sources": [
+        "codemode",
+        "product-resources",
+        "codemode-types"
+      ],
+      "assertions": [
+        "Injected tools validate arguments and authorize every call.",
+        "Code executes only against fixture capabilities under declared limits.",
+        "Cancellation and failures leave the host in a defined state."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/codemode.test.ts",
+          "selector": "packages-05:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "packages-06",
+      "milestone": "package-comparison",
+      "title": "Code Mode replay",
+      "sources": [
+        "codemode",
+        "product-runs",
+        "codemode-types"
+      ],
+      "assertions": [
+        "Fixed seed and time plus an ordered host-call journal reproduce the bounded fixture.",
+        "A machine snapshot is not treated as a snapshot of an active VM.",
+        "Mismatched fingerprints or journal entries reject unsafe replay."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/codemode.test.ts",
+          "selector": "packages-06:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "real-01",
+      "milestone": "real-smoke",
+      "title": "Authorized Pi AI smoke",
+      "sources": [
+        "pi-ai-readme",
+        "pi-openai-subscription",
+        "pi-openai-transport"
+      ],
+      "assertions": [
+        "An explicit approval records provider, credential access, sent data and call limits.",
+        "One real model-tool-model round trip uses only fixture tools.",
+        "The report records actual usage and differences from simulated behavior without secrets."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/real-smoke.test.ts",
+          "selector": "real-01:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ],
+      "execution": {
+        "path": "experiments/stately-native/test/real-smoke-runner.ts",
+        "command": "ZEDFLOW_AUTHORIZED_SMOKE=subscription-luna-four-requests node experiments/stately-native/test/real-smoke-runner.ts",
+        "observation": "observed.yaml#qualification_real_smoke",
+        "requires_authorization": true
+      }
+    },
+    {
+      "id": "real-02",
+      "milestone": "real-smoke",
+      "title": "Real cancellation and control",
+      "sources": [
+        "pi-ai-readme",
+        "product-runs",
+        "pi-openai-subscription",
+        "pi-openai-transport"
+      ],
+      "assertions": [
+        "A bounded real request responds to cancellation or the agreed control scenario.",
+        "Only observed provider behavior is reported as validated; unsupported behavior remains explicit."
+      ],
+      "status": "passed",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/real-smoke.test.ts",
+          "selector": "real-02:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ],
+      "execution": {
+        "path": "experiments/stately-native/test/real-smoke-runner.ts",
+        "command": "ZEDFLOW_AUTHORIZED_SMOKE=subscription-luna-four-requests node experiments/stately-native/test/real-smoke-runner.ts",
+        "observation": "observed.yaml#qualification_real_smoke",
+        "requires_authorization": true
+      }
+    },
+    {
+      "id": "context-09",
+      "milestone": "context-extensions",
+      "title": "Summary transport retry parity gap",
+      "sources": [
+        "pi-session",
+        "pi-session-projection",
+        "pi-retry-policy",
+        "pi-compaction-code"
+      ],
+      "assertions": [
+        "The pinned summary helper retries a simulated transient transport error within its configured budget.",
+        "The native compaction actor fails after its first failed summary attempt; record a negative parity verdict.",
+        "Reference quota failure and cancellation during retry backoff do not issue another request."
+      ],
+      "status": "passed",
+      "verdict": "negative-native-parity",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/compaction-gaps.test.ts",
+          "selector": "context-09:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-07",
+      "milestone": "continuity",
+      "title": "Automatic post-success compaction parity gap",
+      "sources": [
+        "pi-session",
+        "pi-session-projection",
+        "pi-retry-policy",
+        "pi-compaction-code"
+      ],
+      "assertions": [
+        "The pinned session policy compacts successful responses at threshold or overflow without retrying or omitting the completed answer.",
+        "The native recovery parent performs no equivalent post-success compaction; record a negative parity verdict.",
+        "The strict threshold boundary is checked as a non-triggering control."
+      ],
+      "status": "passed",
+      "verdict": "negative-native-parity",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/compaction-gaps.test.ts",
+          "selector": "continuity-07:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    },
+    {
+      "id": "continuity-08",
+      "milestone": "continuity",
+      "title": "Edited context and stale compaction policy gap",
+      "sources": [
+        "pi-session",
+        "pi-session-projection",
+        "pi-retry-policy",
+        "pi-compaction-code"
+      ],
+      "assertions": [
+        "The pinned session policy suppresses recovery for a removed response or stale compaction boundary.",
+        "The native recovery input lacks equivalent edit and boundary metadata; demonstrate its ungated recovery and record a negative parity verdict.",
+        "A post-response edit invalidates the reference usage estimate and prevents the tested false compaction."
+      ],
+      "status": "passed",
+      "verdict": "negative-native-parity",
+      "evidence": [
+        {
+          "path": "experiments/stately-native/test/compaction-gaps.test.ts",
+          "selector": "continuity-08:",
+          "command": "npm run check --prefix experiments/stately-native"
+        }
+      ]
+    }
+  ]
+}

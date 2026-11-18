@@ -1,0 +1,24 @@
+{
+  "upstream": {
+    "repository": "https://github.com/earendil-works/pi",
+    "revision": "b4afdddf44e059c67ccf5097e5317d913521b470",
+    "version": "1.5.2",
+    "license": "MIT",
+    "licenseFile": "LICENSE"
+  },
+  "sourceMap": {
+    "test/virtual-terminal.ts": [
+      {
+        "path": "packages/tui/test/virtual-terminal.ts",
+        "sha256": "8ab8cf042a2157ac17717763bf7bf78a3147c8b14149a357a4b9081f322b8c31",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/tui/test/virtual-terminal.ts"
+      }
+    ]
+  },
+  "adaptations": [
+    "test/virtual-terminal.ts: repository style; records raw writes, window titles and lifecycle counts; screen() settles the renderer before reading rows."
+  ],
+  "dependencyReferences": [
+    "src/auth-panel.ts, src/secret-input.ts and src/tui-auth-interaction.ts follow the prompt and secret-entry contracts of packages/coding-agent/src/cli/auth-login.ts and auth-terminal.ts (not copied)."
+  ]
+}

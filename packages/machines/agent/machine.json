@@ -1,0 +1,42 @@
+{
+  "name": "agent",
+  "schemaVersion": 1,
+  "description": "Native Pi model and supplied-tool conversation, scheduled by XState.",
+  "entry": "machine.ts",
+  "defaults": {
+    "maxModelCalls": 4,
+    "maxToolCalls": 100,
+    "model": { "provider": "openai", "id": "gpt-6.1-sol" }
+  },
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "maxModelCalls": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "description": "Maximum model requests per prompt, including the final response. A tool batch requires room for a follow-up model request."
+      },
+      "maxToolCalls": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "Maximum top-level tool calls per prompt. An over-budget batch is rejected before executing any of its tools. Code Mode has its own nested-call limits."
+      },
+      "model": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "minLength": 1 },
+          "id": { "type": "string", "minLength": 1 }
+        },
+        "required": ["provider", "id"],
+        "additionalProperties": false,
+        "description": "Optional native Pi catalog selector. A CLI-selected model binding takes precedence."
+      },
+      "systemPrompt": {
+        "type": "string",
+        "description": "Agent instructions; the caller's working directory is appended."
+      }
+    }
+  }
+}

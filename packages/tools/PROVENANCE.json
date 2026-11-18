@@ -1,0 +1,162 @@
+{
+  "upstream": {
+    "repository": "https://github.com/earendil-works/pi",
+    "revision": "b4afdddf44e059c67ccf5097e5317d913521b470",
+    "version": "1.5.2",
+    "license": "MIT",
+    "licenseFile": "LICENSE"
+  },
+  "sourceMap": {
+    "src/definition.ts": [
+      {
+        "path": "packages/coding-agent/src/core/tools/tool-definition-wrapper.ts",
+        "sha256": "dcc1e90f646f4feff9dea53b5b22fe05f898a379b5b494b23a338a74c5247519",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/tool-definition-wrapper.ts"
+      }
+    ],
+    "src/output-files.ts": [
+      {
+        "path": "packages/coding-agent/src/utils/output-files.ts",
+        "sha256": "a7ad819c4087b6f3ac79147d5e052718e181b105efc112be16a779a78a333620",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/utils/output-files.ts"
+      }
+    ],
+    "src/text-slice.ts": [
+      {
+        "path": "packages/coding-agent/src/core/tools/truncate.ts",
+        "sha256": "a373ab54eb718a97f5757fe27f4750502e78e216aced34f56d1291bda9c08488",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/truncate.ts"
+      }
+    ],
+    "src/codemode.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/tool.ts",
+        "sha256": "c620518cbcd75b4f1d6a0bbb3602da30e8add5243f47eff70d9e6c5b385316c5",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/tool.ts"
+      },
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/codemode-execution.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/builtin-tool.ts": [
+      {
+        "path": "packages/coding-agent/src/core/tools/tool-definition-wrapper.ts",
+        "sha256": "dcc1e90f646f4feff9dea53b5b22fe05f898a379b5b494b23a338a74c5247519",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/tool-definition-wrapper.ts"
+      }
+    ],
+    "src/builtin-execution.ts": [
+      {
+        "path": "packages/coding-agent/src/core/tools/tool-definition-wrapper.ts",
+        "sha256": "dcc1e90f646f4feff9dea53b5b22fe05f898a379b5b494b23a338a74c5247519",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/tool-definition-wrapper.ts"
+      }
+    ],
+    "src/codemode-run.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/tool.ts",
+        "sha256": "c620518cbcd75b4f1d6a0bbb3602da30e8add5243f47eff70d9e6c5b385316c5",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/tool.ts"
+      },
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/codemode-output.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/tool.ts",
+        "sha256": "c620518cbcd75b4f1d6a0bbb3602da30e8add5243f47eff70d9e6c5b385316c5",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/tool.ts"
+      },
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/codemode-images.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/codemode-worker.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/script-value.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ],
+    "src/codemode-tool-call.ts": [
+      {
+        "path": "packages/coding-agent/src/extensions/codemode/execute.ts",
+        "sha256": "20d74d239dffe46e696ba2d4c2e73fffe400770290ef3ae71d3b11b64b7a53df",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/execute.ts"
+      }
+    ]
+  },
+  "adaptations": [
+    "The eight built-in tools (read, write, edit, bash, grep, find, ls, powershell) are not copied. Each src/<name>.ts imports create<Name>ToolDefinition from the public root of @earendil-works/pi-coding-agent 1.5.2 and adapts it with src/pi-tool.ts. No Pi subpath is imported. File streaming, truncation, image handling, multi-edit, mutation queues, shell cancellation, ripgrep parsing, fd globbing and directory listing are Pi's own code.",
+    "src/pi-tool.ts maps a Pi ToolDefinition onto the local definition adapter. It forwards the declaration fields, prepareArguments, outputSchema, constrainedSampling, streaming updates, the native tool call ID and Pi structuredContent. The original Zedflow read factory at 95136df accepted an explicit options.model, observed during native image processing for both the non-vision note and model resize precedence over resizeOptions. src/read.ts preserves that contract through a live, caller-options-backed model getter. At the single foreign-ABI call boundary, src/pi-tool.ts asserts this typed model-only subset (or undefined for other built-ins) as Pi's required ExtensionToolContext: pinned createReadToolDefinition execution reads only optional ctx.cwd/model, and omitted cwd preserves the factory cwd. Other built-ins still receive undefined, so bash/PowerShell's sessionManager and thinkingLevel environment-injection branch remains inactive. No complete session is constructed; the public root read wrapper provides no context injection. The historical autoResizeImages/resizeOptions options still accept explicit undefined, omitted in the native options mapping without snapshotting the model. Re-audit native context accesses when upgrading Pi.",
+    "Factories return @zf/core ExecutableTool using native Pi AI declarations and ToolResultMessage. The local definition adapter validates/coerces with Pi AI, retains argument repair for edit, wraps failures and streaming updates, and keeps Pi structuredContent in an ephemeral weak-keyed result channel for Code Mode only, never in serializable native result details. Argument repair operates on a cloned call and runs before validation in both direct and nested built-in execution.",
+    "Pure helpers use arrows and state-owning classes use hard-private fields and prototype methods under unchanged strict Zedflow lint/TypeScript settings. Built-in and Code Mode factories return concrete ExecutableTool instances with one readonly declaration. Internal execution takes one options object rather than extension/session positional arguments.",
+    "Pi terminal renderers, extension contexts and session environment injection are not used: the adapter keeps only the model-facing declaration and execution.",
+    "Pi saves truncated bash and powershell output in the OS temporary directory, with owner-only mode and exclusive creation. Code Mode output files use an explicit artifact directory, exclusive creation and owner-only mode instead.",
+    "PowerShell behavior is Pi's. Built-in selection includes it on Windows only.",
+    "Native grep and find delegate binary selection and execution to the public Pi root. Each native search runs in a fresh worker with PI_OFFLINE=1 and the caller's remaining environment unchanged, including PATH and configured Pi directory. Pi selects its installed binary or PATH command and reports native missing/unusable errors without Zedflow probing, retrying another binary, downloading, private bin directories or temporary links. Worker isolation keeps offline settings out of the parent and waits for actual worker exit, including native child handles. Grep isDirectory calls cross back to the captured operations object, invoking its live method with its original receiver and async settlement. The default stat-based directory operation runs in the worker. A post-directory abort guard prevents pinned Pi grep from starting rg after a late callback; grep still waits for callback settlement before reporting the caller's original abort reason. Genuine custom find operations stay in the caller realm with native early-abort settlement; src/search/custom-find-execution.ts intercepts Pi's first falsy live glob observation inside its abort window and routes native fallback through the offline worker. No global environment mutation, cache write, dependency patch, private Pi import, duplicated selection/search implementation, pool or shutdown hook is used. The fixed data-URL worker entry preserves inherited input-type flags, NODE_OPTIONS and import preloads. Linux execution and cancellation are tested; Windows is not natively qualified.",
+    "Code Mode uses the installed Pi CodemodeSandbox worker/QuickJS WASM runtime, source option parser and declaration renderer. The host validates selected executable tools and preserves actual script values and explicit text/image output. Native ToolResultMessage.nestedCalls contains metadata only: at most 100 records, 1024 argument bytes per record, 16 KiB aggregate argument bytes and 500-character errors. Arguments outside those bounds report argumentsBytes and complete:false; nested text/image result bodies are never retained in the ledger.",
+    "Code Mode copies/adapts output formatting, returned-value output, structured-result handling, failure call summaries, surrogate-safe truncation and image saving. Structured error results such as bash exit_code resolve for scripts to inspect; other tool errors reject. Progress uses bounded single-call native metadata deltas (upsert by id), with at most one streaming notification per call and no updates after cancellation/finalization. Final metadata is a bounded snapshot; calls without an observed pre-finalization outcome stay unfinished/complete:false, even if abort-ignoring tools later complete. Host limits still bound deadlines, VM memory, output text, call counts and concurrent VM executions; VM admission remains occupied until worker exit.",
+    "Code Mode store/load is execution-local. Session persistence, model catalog/provider calls, extension hooks/permissions, BM25 discovery helpers, namespaces/deferred loadouts, AgentSession, agent-core LOOP and terminal renderers are not included. ALL_TOOLS is supplied by the Pi runtime. This package does not claim full Pi harness parity.",
+    "Direct-plus-Code-Mode default exposure and only-mode selection belong to the parent integration; this factory exposes only the supplied nested tools and excludes codemode itself.",
+    "Worker admission uses the native acquireWorker callback to reject late starts after settlement and release reservations only on actual worker exit. Cold-process timeout tests cover asynchronous WASM loading.",
+    "The shared authored src/error-text.ts renders unknown errors once to plain text in their owning realm, with a stable fallback on failed access or conversion; search callback errors cross worker boundaries only as text. The local adapter is split into src/definition.ts (native result conversion), src/builtin-tool.ts (tool declaration and preparation), src/builtin-execution.ts (one call and its update window) and authored src/script-results.ts (opaque weak-keyed values). Code Mode host adaptation ancestry is retained for src/codemode-run.ts, src/codemode-worker.ts, src/codemode-output.ts, src/codemode-images.ts, src/codemode-tool-call.ts and src/script-value.ts. The extracted src/codemode-ledger.ts, src/codemode-admission.ts and src/codemode-limits.ts own Zedflow-authored metadata bounds, worker reservation counts and host option ceilings; these are local extensions, not copied Pi tool implementations. Source-map hashes identify unchanged upstream sources, not hashes of the adapted local files."
+  ],
+  "dependencyPolicy": "Exact versions in package.json match Pi 1.5.2. The built-in tools come from the public root of @earendil-works/pi-coding-agent 1.5.2, which the CLI loads only when it builds tools. quickjs-wasi 3.6.2 is pinned by pi-codemode 1.5.2. @zf/core is a workspace dependency.",
+  "securityBoundary": "The VM has no Node/network/filesystem globals. Selected tools retain host filesystem/process authority; cwd is not a security sandbox. Cancellation is cooperative: completed mutations are not undone and abort-ignoring tools may have unfinished/uncertain effects after the script/VM ends. Late results do not revise finalized metadata or publish updates.",
+  "authoredFiles": [
+    "src/index.ts",
+    "src/names.ts",
+    "src/builtin-tools.ts",
+    "src/pi-tool.ts",
+    "src/read.ts",
+    "src/write.ts",
+    "src/edit.ts",
+    "src/bash.ts",
+    "src/grep.ts",
+    "src/find.ts",
+    "src/ls.ts",
+    "src/powershell.ts",
+    "src/required.ts",
+    "src/error-text.ts",
+    "src/script-results.ts",
+    "src/codemode-ledger.ts",
+    "src/codemode-admission.ts",
+    "src/codemode-limits.ts",
+    "src/search/protocol.ts",
+    "src/search/directory-bridge.ts",
+    "src/search/execution.ts",
+    "src/search/worker-session.ts",
+    "src/search/worker.ts",
+    "src/search/custom-find-execution.ts"
+  ],
+  "verification": ["../../test/tools/", "../../test/codemode/"]
+}

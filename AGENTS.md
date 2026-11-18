@@ -8,4 +8,5 @@ Read the [workspace writing rules](/home/zedium/workspaces/docs/domains/governan
 - Do not edit or track `design/`. It contains local design references.
 - Do not change `LICENSE`. It preserves the project license.
 - Keep credentials and transient evidence out of Git.
+- Use pnpm for package management and script execution.
 - Use Git history when you need earlier product decisions.

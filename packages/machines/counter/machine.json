@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "name": "counter",
+  "description": "Native non-conversational counter for generic state views.",
+  "entry": "machine.ts"
+}

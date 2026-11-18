@@ -1,0 +1,26 @@
+{
+  "upstream": "https://github.com/earendil-works/pi",
+  "revision": "b4afdddf44e059c67ccf5097e5317d913521b470",
+  "version": "1.5.2",
+  "license": "MIT",
+  "files": [
+    {
+      "path": "packages/coding-agent/src/cli/auth-terminal.ts",
+      "sha256": "e8092100ad2b91fd85346957c100d1299f32fc2223d889212d8a121fe6eac0ad"
+    },
+    {
+      "path": "packages/coding-agent/src/cli/auth-login.ts",
+      "sha256": "38abc8c6ba203e31da21abd9a332e8b53447e1afc1eed5dd5ef8e96a8b06b378"
+    },
+    {
+      "path": "packages/coding-agent/src/utils/terminal-question.ts",
+      "sha256": "39527cd06175e25ce76ee4e4586ddd763c869b17ce70200f8629cf37ccb332d4"
+    }
+  ],
+  "adaptations": [
+    "Composed class-based native AuthInteraction and process lifecycle; no model-runtime/AgentSession dependency.",
+    "Manual OAuth codes are masked like API keys; no browser/clipboard side effects.",
+    "Restore prior raw/flow state, handle EOF/abort, bound input and preserve split UTF-8/grapheme deletion.",
+    "Authentication failures use fixed diagnostics; native Pi Models owns login, storage orchestration and refresh."
+  ]
+}

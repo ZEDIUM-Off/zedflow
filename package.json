@@ -1,0 +1,42 @@
+{
+  "name": "zedflow",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "bootstrap": "bash scripts/install.sh",
+    "test": "vp test run",
+    "format": "vp fmt",
+    "lint": "vp check --deny-warnings",
+    "typecheck": "tsc --noEmit",
+    "check": "vp check --deny-warnings && tsc --noEmit && vp test run",
+    "zf": "node packages/cli/bin/zf.ts"
+  },
+  "dependencies": {
+    "@zf/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "1.5.2",
+    "@statelyai/sdk": "0.48.0",
+    "@types/node": "24.10.1",
+    "@types/proper-lockfile": "4.1.4",
+    "@zf/capabilities": "workspace:*",
+    "@zf/core": "workspace:*",
+    "@zf/machines": "workspace:*",
+    "@zf/run": "workspace:*",
+    "@zf/storage": "workspace:*",
+    "@zf/xstate": "workspace:*",
+    "proper-lockfile": "4.1.2",
+    "typescript": "5.9.3",
+    "vite-plus": "1.6.0",
+    "xstate": "6.0.0-beta.0"
+  },
+  "engines": {
+    "node": ">=24.16.0",
+    "pnpm": ">=12.18.0"
+  },
+  "packageManager": "pnpm@12.18.0"
+}

@@ -1,0 +1,12 @@
+[submodule "references/pi"]
+	path = references/pi
+	url = https://github.com/earendil-works/pi.git
+[submodule "references/xstate"]
+	path = references/xstate
+	url = https://github.com/statelyai/xstate.git
+[submodule "references/stately-agent"]
+	path = references/stately-agent
+	url = https://github.com/statelyai/agent.git
+[submodule "references/stately-graph"]
+	path = references/stately-graph
+	url = https://github.com/statelyai/graph.git

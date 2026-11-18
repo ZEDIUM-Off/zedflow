@@ -1,0 +1,3691 @@
+{
+  "qualification_reference": {
+    "recorded_at": "2026-11-16T13:06:39.467848+00:00",
+    "evidence_level": "registry-and-source-inspection-not-runtime-validation",
+    "pi_release_revision": "b4afdddf44e059c67ccf5097e5317d913521b470",
+    "pi_release_revision_source": "https://api.github.com/repos/earendil-works/pi/git/ref/tags/v1.5.2",
+    "packages": {
+      "xstate-latest": {
+        "name": "xstate",
+        "version": "5.33.4",
+        "tarball": "https://registry.npmjs.org/xstate/-/xstate-5.33.4.tgz",
+        "integrity": "sha512-eGNMu3BNqU0Z85P+ouYG5OCZqIABU+QsW6vUieFt9p9gOGs3C+BL10Exg7XdRPSXPQKlP6XoYpYf93r9VmW8mQ==",
+        "dependencies": {},
+        "peer_dependencies": {},
+        "optional_peers": {},
+        "engines": {}
+      },
+      "agent-latest": {
+        "name": "@statelyai/agent",
+        "version": "1.1.6",
+        "tarball": "https://registry.npmjs.org/@statelyai/agent/-/agent-1.1.6.tgz",
+        "integrity": "sha512-vVohR8+d9kkVuKMn5wqgfZRqn+rA6yIRDwSKb+lyirObZU3SsiRhUHDLPK1Aa1bSvZuTblf7igAxAE1gIqlJEQ==",
+        "dependencies": {
+          "ai": "^3.4.6",
+          "xstate": "^5.18.2",
+          "object-hash": "^3.0.0",
+          "@xstate/graph": "^2.0.1",
+          "@ai-sdk/openai": "^0.0.40"
+        },
+        "peer_dependencies": {},
+        "optional_peers": {},
+        "engines": {}
+      },
+      "agent-alpha": {
+        "name": "@statelyai/agent",
+        "version": "2.0.0-alpha.38",
+        "tarball": "https://registry.npmjs.org/@statelyai/agent/-/agent-2.0.0-alpha.38.tgz",
+        "integrity": "sha512-baDHc1+8x99ALTDS4G7OytowuNBXa+UosXHzkadL+zdxm8Owihb6IHW+WEz1vxrEoqp2GbEQuamUgYCMKWxl9A==",
+        "dependencies": {
+          "acorn": "^8.19.0"
+        },
+        "peer_dependencies": {
+          "ai": "*",
+          "ajv": "*",
+          "openai": "*",
+          "xstate": "6.0.0-beta.0",
+          "@tanstack/ai": "*",
+          "@opentelemetry/api": "^1"
+        },
+        "optional_peers": {
+          "ai": {
+            "optional": true
+          },
+          "ajv": {
+            "optional": true
+          },
+          "openai": {
+            "optional": true
+          },
+          "@tanstack/ai": {
+            "optional": true
+          },
+          "@opentelemetry/api": {
+            "optional": true
+          }
+        },
+        "engines": {
+          "node": ">=22"
+        }
+      },
+      "graph-latest": {
+        "name": "@statelyai/graph",
+        "version": "2.6.0",
+        "tarball": "https://registry.npmjs.org/@statelyai/graph/-/graph-2.6.0.tgz",
+        "integrity": "sha512-0TotB7OIQDnmKIWrBR5hDgv85IwoLSfYbDhdYd/Yd5N9qePBNApR9tcR8agICBSX16Fb2Q5FM52CpVoFmHHbxg==",
+        "dependencies": {},
+        "peer_dependencies": {
+          "zod": "^4.0.0",
+          "elkjs": "^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0",
+          "fflate": "0.8.3",
+          "xstate": "^5.19.0",
+          "webcola": "^3.4.0",
+          "d3-force": "^3.0.0",
+          "cytoscape": "^3.0.0",
+          "dotparser": "^1.0.0",
+          "graphology": "^0.26.0",
+          "d3-hierarchy": "^3.0.0",
+          "@dagrejs/dagre": "^3.0.0 || ^4.0.0",
+          "fast-xml-parser": "^5.0.0",
+          "@hpcc-js/wasm-graphviz": "^1.0.0",
+          "graphology-layout-forceatlas2": "^0.10.0"
+        },
+        "optional_peers": {
+          "zod": {
+            "optional": true
+          },
+          "elkjs": {
+            "optional": true
+          },
+          "fflate": {
+            "optional": true
+          },
+          "xstate": {
+            "optional": true
+          },
+          "webcola": {
+            "optional": true
+          },
+          "d3-force": {
+            "optional": true
+          },
+          "cytoscape": {
+            "optional": true
+          },
+          "dotparser": {
+            "optional": true
+          },
+          "graphology": {
+            "optional": true
+          },
+          "d3-hierarchy": {
+            "optional": true
+          },
+          "@dagrejs/dagre": {
+            "optional": true
+          },
+          "fast-xml-parser": {
+            "optional": true
+          },
+          "@hpcc-js/wasm-graphviz": {
+            "optional": true
+          },
+          "graphology-layout-forceatlas2": {
+            "optional": true
+          }
+        },
+        "engines": {}
+      },
+      "pi-ai-latest": {
+        "name": "@earendil-works/pi-ai",
+        "version": "1.5.2",
+        "tarball": "https://registry.npmjs.org/@earendil-works/pi-ai/-/pi-ai-1.5.2.tgz",
+        "integrity": "sha512-2tWPSnV3qzfiDIY3aWluBag3vC++Vs+VsXt/UquSU5onPMohPih72FUhIhaqmDdMYubOgB3Byl9uF4Vk40JLvQ==",
+        "dependencies": {
+          "openai": "7.19.0",
+          "partial-json": "0.1.7",
+          "@google/genai": "2.21.0",
+          "http-proxy-agent": "9.1.0",
+          "@anthropic-ai/sdk": "0.129.0",
+          "https-proxy-agent": "9.1.0",
+          "@earendil-works/pi-schema": "1.5.2",
+          "@smithy/node-http-handler": "4.12.1",
+          "@earendil-works/pi-telemetry": "1.5.2",
+          "@aws-sdk/client-bedrock-runtime": "3.1127.0"
+        },
+        "peer_dependencies": {},
+        "optional_peers": {},
+        "engines": {
+          "node": ">=22.19.0"
+        }
+      },
+      "pi-agent-core-latest": {
+        "name": "@earendil-works/pi-agent-core",
+        "version": "1.5.2",
+        "tarball": "https://registry.npmjs.org/@earendil-works/pi-agent-core/-/pi-agent-core-1.5.2.tgz",
+        "integrity": "sha512-ie5mejS7mGfXt//9As7i3LfxVXdktZvF1JP4EQsUXTp4mU437h23MNGx7wXZ5VYs3YiG/Qnj3e7OZ2HC069OMw==",
+        "dependencies": {
+          "@earendil-works/pi-ai": "1.5.2",
+          "@earendil-works/pi-schema": "1.5.2"
+        },
+        "peer_dependencies": {},
+        "optional_peers": {},
+        "engines": {
+          "node": ">=22.19.0"
+        }
+      },
+      "pi-coding-agent-latest": {
+        "name": "@earendil-works/pi-coding-agent",
+        "version": "1.5.2",
+        "tarball": "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-1.5.2.tgz",
+        "integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
+        "dependencies": {
+          "diff": "8.0.4",
+          "jiti": "2.7.0",
+          "yaml": "2.9.0",
+          "chalk": "6.0.0",
+          "ignore": "7.0.8",
+          "semver": "7.8.5",
+          "undici": "8.12.3",
+          "typebox": "1.3.27",
+          "minimatch": "11.0.3",
+          "cross-spawn": "7.0.6",
+          "highlight.js": "10.7.3",
+          "quickjs-wasi": "3.6.2",
+          "lovely-mermaid": "0.3.3",
+          "brace-expansion": "5.0.12",
+          "hosted-git-info": "9.0.3",
+          "proper-lockfile": "4.1.2",
+          "@earendil-works/pi-ai": "1.5.2",
+          "@earendil-works/pi-mcp": "1.5.2",
+          "@earendil-works/pi-tui": "1.5.2",
+          "@silvia-odwyer/photon-node": "0.3.4",
+          "@earendil-works/pi-codemode": "1.5.2",
+          "@earendil-works/pi-agent-core": "1.5.2"
+        },
+        "peer_dependencies": {},
+        "optional_peers": {},
+        "engines": {
+          "node": ">=22.19.0"
+        }
+      },
+      "pi-codemode-latest": {
+        "name": "@earendil-works/pi-codemode",
+        "version": "1.5.2",
+        "tarball": "https://registry.npmjs.org/@earendil-works/pi-codemode/-/pi-codemode-1.5.2.tgz",
+        "integrity": "sha512-HoZQ40a9RgdZ1VgmrX6x8887cNXedaRJT1l+Ie5YRIMK4gY7v0EpsiNqf6dmixrKylZlTgUSyR+vE8xhjfkr+w==",
+        "dependencies": {
+          "quickjs-wasi": "3.6.2"
+        },
+        "peer_dependencies": {},
+        "optional_peers": {},
+        "engines": {
+          "node": ">=22.19.0"
+        }
+      },
+      "xstate-agent2": {
+        "name": "xstate",
+        "version": "6.0.0-beta.0",
+        "tarball": "https://registry.npmjs.org/xstate/-/xstate-6.0.0-beta.0.tgz",
+        "integrity": "sha512-u4pOGtFwkuoFCBUUWwUK3xbjLk/S8u/Ftxg2Ky0stk7Bo7D0z8ypw5fcBtIuzGPTjDGYNEchfItPOQyy9W54xg=="
+      }
+    }
+  },
+  "qualification_sources": {
+    "pi-core-loop": {
+      "kind": "published-package-reference",
+      "package": "pi-agent-core-latest",
+      "path": "dist/agent-loop.js",
+      "url": "https://unpkg.com/@earendil-works/pi-agent-core@1.5.2/dist/agent-loop.js",
+      "sha256": "22ee81f9977e211044c1ad41a763876c793ca7fc1c5b39b9fa7f76f3cb281129"
+    },
+    "pi-core-agent": {
+      "kind": "published-package-reference",
+      "package": "pi-agent-core-latest",
+      "path": "dist/agent.js",
+      "url": "https://unpkg.com/@earendil-works/pi-agent-core@1.5.2/dist/agent.js",
+      "sha256": "f45ae001e2b14fced8ae151f0a00303b5fbdb5fc4b25418d45de6a5546f48a8c"
+    },
+    "pi-ai-types": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "dist/types.d.ts",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/dist/types.d.ts",
+      "sha256": "c0ecd26c0170c7d6016c734ec38b551c7d8c7d8e6573f82f7f6a3818df84acd8"
+    },
+    "pi-ai-readme": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "README.md",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/README.md",
+      "sha256": "faf1d2f1bba125be44eb4468b9bd9cb09fe2e9d5f3f059fd13d05f87dde17aea"
+    },
+    "pi-sdk": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "docs/sdk.md",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/docs/sdk.md",
+      "sha256": "d9034ccbf2219a58712d8dd4fcdf47e687d77131e71dd5d119d8a71e9bd2a2e8"
+    },
+    "pi-session": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "dist/core/agent-session.js",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/dist/core/agent-session.js",
+      "sha256": "ee756f6f74afe9f8930ebf216c95334605d913a275a0eec2c9702f101baef3c3"
+    },
+    "pi-sessions": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "docs/sessions.md",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/docs/sessions.md",
+      "sha256": "187baefd3dbf6279d493b2ded5fec5cd3b479779e10c0935a3920b40019df87d"
+    },
+    "pi-compaction": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "docs/compaction.md",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/docs/compaction.md",
+      "sha256": "b5b23d10bb86d8ab32b67f80a7e57febd953222c6da6fd422ae91d232ef28faf"
+    },
+    "pi-extensions": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "docs/extensions.md",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/docs/extensions.md",
+      "sha256": "d59f4ded8e49275120c8379dbeabb847267efd36e15fc21f6189026d0fbf8f22"
+    },
+    "agent1-readme": {
+      "kind": "published-package-reference",
+      "package": "agent-latest",
+      "path": "readme.md",
+      "url": "https://unpkg.com/@statelyai/agent@1.1.6/readme.md",
+      "sha256": "83dbec11374055c62d2e367151a70c0ec860c94039030cdeb19a8d0c20cc7823"
+    },
+    "agent2-loop": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "docs/from-a-loop.md",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/docs/from-a-loop.md",
+      "sha256": "bd4b183ec2a84abcc80f314177a3ddc7da37127f9bf188a6ebd235129fa2d50c"
+    },
+    "agent2-hosts": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "docs/hosts.md",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/docs/hosts.md",
+      "sha256": "8eebedeaaa82dc97cb53dfa66936059594d8b97e8f9fd56e506319ff36295463"
+    },
+    "agent2-persistence": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "docs/persistence.md",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/docs/persistence.md",
+      "sha256": "9e9c60f3182bec52e07f1d87b9cbf5e1827b68e85faa1e65302a16760f903581"
+    },
+    "agent2-interactions": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "docs/human-in-the-loop.md",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/docs/human-in-the-loop.md",
+      "sha256": "4d1732b48d1c9924d9c3317e027261ab4162d988625e3463ee9c9e009e079699"
+    },
+    "graph-core": {
+      "kind": "published-package-reference",
+      "package": "graph-latest",
+      "path": "dist/index.mjs",
+      "url": "https://unpkg.com/@statelyai/graph@2.6.0/dist/index.mjs",
+      "sha256": "1298079caf0788c9100af0ed08fdcff69974acc9e5900929fe2dd1dd08b3b1e1"
+    },
+    "graph-xstate": {
+      "kind": "published-package-reference",
+      "package": "graph-latest",
+      "path": "dist/xstate/index.mjs",
+      "url": "https://unpkg.com/@statelyai/graph@2.6.0/dist/xstate/index.mjs",
+      "sha256": "37277718ab275cf1f9bef5585992a95aeb6ac5eae17770890ea2591f6dd8529f"
+    },
+    "codemode": {
+      "kind": "published-package-reference",
+      "package": "pi-codemode-latest",
+      "path": "README.md",
+      "url": "https://unpkg.com/@earendil-works/pi-codemode@1.5.2/README.md",
+      "sha256": "760e3a88f04a96e549631de0d103a6f6cc29e7014dbe3d50056e0fe1b9f97423"
+    },
+    "xstate-actors": {
+      "kind": "official-documentation",
+      "url": "https://stately.ai/docs/actors"
+    },
+    "xstate-persistence": {
+      "kind": "official-documentation",
+      "url": "https://stately.ai/docs/persistence"
+    },
+    "product-composition": {
+      "kind": "requirement",
+      "path": "../product/intent.md#composition"
+    },
+    "product-resources": {
+      "kind": "requirement",
+      "path": "../product/intent.md#resources-and-model-context"
+    },
+    "product-runs": {
+      "kind": "requirement",
+      "path": "../product/intent.md#runs-and-human-interaction"
+    },
+    "composition-assignment": {
+      "kind": "requirement",
+      "path": "composition-proof.md#acceptance"
+    },
+    "pi-compaction-code": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "dist/core/compaction/compaction.js",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/dist/core/compaction/compaction.js",
+      "sha256": "f51e78ef1da66b5803fc91e185f07b968f8f989ab9326b7744958416aad3f6f6"
+    },
+    "pi-extension-runner": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "dist/core/extensions/runner.js",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/dist/core/extensions/runner.js",
+      "sha256": "dc7fc776198ec315feecbc8fd5d471453271a3dbf4b1a6a41df342253759a191"
+    },
+    "pi-transcript": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "dist/utils/transcript.js",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/dist/utils/transcript.js",
+      "sha256": "f01f0d0350ad47b6b91ce5ff788a3321deb40f3a7ac657cce360a91e1590f74d"
+    },
+    "xstate-invoke": {
+      "kind": "official-documentation",
+      "url": "https://stately.ai/docs/xstate/v5/invoke"
+    },
+    "xstate-parallel": {
+      "kind": "official-documentation",
+      "url": "https://stately.ai/docs/xstate/v5/parallel-states"
+    },
+    "xstate-promise-implementation": {
+      "kind": "published-package-reference",
+      "package": "xstate-latest",
+      "path": "dist/xstate-actors.esm.js",
+      "url": "https://unpkg.com/xstate@5.33.4/dist/xstate-actors.esm.js",
+      "sha256": "479ffeb4eaed281570adcf91914225f75a795b07994ec5e6aa168dabd175a504"
+    },
+    "pi-session-projection": {
+      "kind": "published-package-reference",
+      "package": "pi-coding-agent-latest",
+      "path": "dist/core/session-manager.js",
+      "url": "https://unpkg.com/@earendil-works/pi-coding-agent@1.5.2/dist/core/session-manager.js",
+      "sha256": "7e24f1c857c9f0e7be6485e9be12ba528fad9eea3423abf2c96fc27585a88b61"
+    },
+    "pi-retry-policy": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "dist/utils/retry.js",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/dist/utils/retry.js",
+      "sha256": "facb92a9f5f7688467f9ce25feab125055ea606c72a37eda36dfe27d1596c466"
+    },
+    "pi-overflow-policy": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "dist/utils/overflow.js",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/dist/utils/overflow.js",
+      "sha256": "bc0b743fdbf33fe3dd2bb69b1838166ac0b6957f74051213fcaf336c11d041a3"
+    },
+    "agent-stable-runtime": {
+      "kind": "published-package-reference",
+      "package": "agent-latest",
+      "path": "dist/index.mjs",
+      "url": "https://unpkg.com/@statelyai/agent@1.1.6/dist/index.mjs",
+      "sha256": "244404629808b766e6f8a5e815e8cc7f8cc32a4c10e955465594bf558235c2b5"
+    },
+    "agent-current-text-contract": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "dist/text-logic-BqxalgMr.d.mts",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/dist/text-logic-BqxalgMr.d.mts",
+      "sha256": "c461afc9359fb2dd77762c5a61aaa61e749be2a647f4b165027cf54824bb5f8e"
+    },
+    "agent-current-machine-docs": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "docs/machines.md",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/docs/machines.md",
+      "sha256": "6c3ab7a81ec411639520b640a9586f286630bff663a159d468381299c7d55419"
+    },
+    "agent-current-human-waits": {
+      "kind": "published-package-reference",
+      "package": "agent-alpha",
+      "path": "docs/human-in-the-loop.md",
+      "url": "https://unpkg.com/@statelyai/agent@2.0.0-alpha.38/docs/human-in-the-loop.md",
+      "sha256": "4d1732b48d1c9924d9c3317e027261ab4162d988625e3463ee9c9e009e079699"
+    },
+    "graph-operations-runtime": {
+      "kind": "published-package-reference",
+      "package": "graph-latest",
+      "path": "dist/index.mjs",
+      "url": "https://unpkg.com/@statelyai/graph@2.6.0/dist/index.mjs",
+      "sha256": "1298079caf0788c9100af0ed08fdcff69974acc9e5900929fe2dd1dd08b3b1e1"
+    },
+    "graph-exploration-runtime": {
+      "kind": "published-package-reference",
+      "package": "graph-latest",
+      "path": "dist/xstate/index.mjs",
+      "url": "https://unpkg.com/@statelyai/graph@2.6.0/dist/xstate/index.mjs",
+      "sha256": "37277718ab275cf1f9bef5585992a95aeb6ac5eae17770890ea2591f6dd8529f"
+    },
+    "codemode-types": {
+      "kind": "published-package-reference",
+      "package": "pi-codemode-latest",
+      "path": "dist/types.d.ts",
+      "url": "https://unpkg.com/@earendil-works/pi-codemode@1.5.2/dist/types.d.ts",
+      "sha256": "988afeebcfd64ed6815c102dbd4e50ffe1d1c08dd32f80ba334701ff0403edc7"
+    },
+    "pi-openai-subscription": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "dist/auth/oauth/openai-chatgpt.js",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/dist/auth/oauth/openai-chatgpt.js",
+      "sha256": "4cf9fc758a07ffe4ee022326404b5dcc86767ee4154945c0417c7f95eaecdcc2"
+    },
+    "pi-openai-transport": {
+      "kind": "published-package-reference",
+      "package": "pi-ai-latest",
+      "path": "dist/api/openai-responses.js",
+      "url": "https://unpkg.com/@earendil-works/pi-ai@1.5.2/dist/api/openai-responses.js",
+      "sha256": "c35b80b2eb7f84b0ea1d939784943038956aefec7b624ed7862ebe2fd9d40c4b"
+    }
+  },
+  "qualification_mission": {
+    "goal_id": "mwj9mxpg-kqtowg",
+    "branch": "mission/stately-qualification",
+    "parent": "reboot/xstate",
+    "starting_commit": "10e9821ce6cd246031af1e0cd3a75c6af36f58fc",
+    "owner": "The session executing the confirmed goal",
+    "return_route": "The operator in the originating conversation"
+  },
+  "qualification_lanes": {
+    "native": [
+      "xstate-latest",
+      "graph-latest",
+      "pi-ai-latest",
+      "pi-codemode-latest"
+    ],
+    "stable-agent": [
+      "xstate-latest",
+      "agent-latest"
+    ],
+    "current-agent": [
+      "xstate-agent2",
+      "agent-alpha"
+    ],
+    "oracle_only": [
+      "pi-agent-core-latest",
+      "pi-coding-agent-latest"
+    ]
+  },
+  "qualification_setup": {
+    "recorded_at": "2026-11-16T13:18:31.528858+00:00",
+    "evidence_level": "installation-smoke-not-behavioral-qualification",
+    "packages": {
+      "native": {
+        "path": "experiments/stately-native",
+        "tests_passed": 2,
+        "typecheck": "pass"
+      },
+      "stable-agent": {
+        "path": "experiments/stately-agent-stable",
+        "tests_passed": 1,
+        "typecheck": "pass"
+      },
+      "current-agent": {
+        "path": "experiments/stately-agent-current",
+        "tests_passed": 2,
+        "typecheck": "pass-with-explicit-configuration-limit"
+      }
+    },
+    "typing_limit": {
+      "lane": "current-agent",
+      "failure": "TS2322: Zod optional StandardSchema types permit undefined; Agent StandardSchema types do not under exactOptionalPropertyTypes.",
+      "reproduction": "npm run typecheck --prefix experiments/stately-agent-current -- --exactOptionalPropertyTypes true",
+      "expected_exit": 2,
+      "runtime_smoke": "passes with the deterministic executor",
+      "configuration": "strict remains enabled; exactOptionalPropertyTypes is disabled only in this lane",
+      "regression_test": "experiments/stately-agent-current/test/compatibility.test.ts",
+      "dependency_patches_or_casts": false
+    }
+  },
+  "qualification_loop": {
+    "recorded_at": "2026-11-16T13:39:13.192346+00:00",
+    "evidence_level": "deterministic-integration-tests",
+    "command": "npm run check --prefix experiments/stately-native",
+    "tests_passed": 43,
+    "tests_failed": 0,
+    "typecheck": "pass",
+    "qualified_cases": [
+      "loop-01",
+      "loop-02",
+      "loop-03",
+      "loop-04",
+      "loop-05",
+      "loop-06",
+      "loop-07",
+      "loop-08",
+      "loop-09",
+      "loop-10",
+      "loop-11"
+    ],
+    "verdict": "suitable-under-conditions-for-the-tested-in-memory-loop",
+    "reference": "qualification_reference.packages.pi-agent-core-latest",
+    "comparison": [
+      "final messages",
+      "normalized provider request contexts",
+      "lifecycle event order and payloads",
+      "tool effects"
+    ],
+    "normalized_fields": [
+      "timestamp",
+      "durationMs"
+    ],
+    "runtime_source_lines": {
+      "experiments/stately-native/src/loop.ts": 177,
+      "experiments/stately-native/src/model-turn.ts": 61,
+      "experiments/stately-native/src/tool-batch.ts": 109
+    },
+    "extra_host_policy": "A positive finite turn budget raises an actor error when exhausted; this is not a Pi parity claim.",
+    "remaining_limits": [
+      "No real provider calls or provider transport options have been validated.",
+      "No durable session recovery, compaction or resource lifetime qualification is claimed.",
+      "Runtime input callbacks and AbortController remain live resources, not a portable persisted snapshot.",
+      "The finite tool-batch actor contains effect fan-out; this is not yet per-tool statechart visualization.",
+      "Pi core supplies development-only type contracts and test oracles, never runtime loop execution."
+    ]
+  },
+  "qualification_context": {
+    "recorded_at": "2026-11-16T14:06:15.203662+00:00",
+    "evidence_level": "deterministic-integration-tests-with-bounded-reference-comparisons",
+    "command": "npm run check --prefix experiments/stately-native",
+    "tests_passed": 74,
+    "tests_failed": 0,
+    "typecheck": "pass",
+    "qualified_cases": [
+      "context-01",
+      "context-02",
+      "context-03",
+      "context-04",
+      "context-05",
+      "context-06",
+      "context-07",
+      "context-08"
+    ],
+    "verdict": "suitable-under-conditions-for-in-memory-context-and-lifecycle-composition",
+    "comparisons": {
+      "context-01": "Differential Pi loop requests and messages: preparation order, custom-message omission, roles, media and tool associations.",
+      "context-02": "Differential Pi loop traces and requests: tool replacement, stale-call denial and next-turn model/reasoning changes.",
+      "context-03": "Direct pinned pure-function comparisons: threshold combinations, finite cut-point fixtures and token estimates including media.",
+      "context-04": "Native integration tests derived from the inspected compaction contract; no Pi AgentSession compaction execution.",
+      "context-05": "Differential Pi loop tool admission/result replacement; native lifecycle tests use source-derived runner ordering, error and stale-context expectations.",
+      "context-06": "Native capability and lifetime tests against product requirements, not Pi SDK compatibility.",
+      "context-07": "Native projection provenance tests against product requirements; exact provider request assertions also reside in context-06.",
+      "context-08": "Differential Pi loop hook forwarding with a simulated provider adapter; usage, round-trip tool association and terminal outcomes checked."
+    },
+    "implementation": {
+      "compaction": "XState owns checking, planning, before hook, summarizing and checkpoint installation transitions.",
+      "lifecycle": "XState invokes the native loop after finite input and before-run hook chains.",
+      "resources": "Explicit store and service bindings distinguish owned versus borrowed lifetimes, write rights and model exposure.",
+      "projection": "Source snapshots retain identity, revision, data status, transformation identity and projected message indexes.",
+      "raw_history": "Append-only in-memory message entries remain inspectable after checkpoint installation; this is not disk persistence."
+    },
+    "host_policies": [
+      "Custom messages require an explicit model conversion; default conversion rejects unknown roles.",
+      "Provider-facing message values are copied before normalization to protect source history from provider-side mutation.",
+      "Only non-empty stop-terminated, tool-free model summaries install; complete hook overrides bypass the summary call.",
+      "A concurrent transcript revision rejects checkpoint installation rather than losing new history.",
+      "Scope replacement aborts the invoked loop, suppresses its late lifecycle events and rejects late scoped service results.",
+      "Input and before-run hook failures are collected and processing continues, following the inspected Pi runner policy."
+    ],
+    "oracle_dependency": {
+      "manifest": "experiments/stately-native/package.json",
+      "package": "pi-coding-agent-latest",
+      "usage": "Development-only private pure compaction module; no SDK session factory.",
+      "layout_risk": "The private module URL is tied to the pinned package layout; the test asserts required functions exist."
+    },
+    "runtime_source_lines": {
+      "experiments/stately-native/src/compaction.ts": 74,
+      "experiments/stately-native/src/lifecycle.ts": 89,
+      "experiments/stately-native/src/loop.ts": 177,
+      "experiments/stately-native/src/model-turn.ts": 69,
+      "experiments/stately-native/src/resources.ts": 87,
+      "experiments/stately-native/src/tool-batch.ts": 109,
+      "experiments/stately-native/src/transcript.ts": 95
+    },
+    "remaining_limits": [
+      "All provider and summary outputs are simulated; live transport, billing and semantic summary quality remain unverified.",
+      "The summary adapter receives prior summary, history and split-turn prefix together; Pi prompt wording, separate split-turn calls and file-operation summaries are not reproduced.",
+      "Overflow-triggered retry, summarization transport retry and final recovery settlement are not established by these fixtures; these are qualification gaps, not excluded behaviors.",
+      "The transcript uses local in-memory entry IDs and a summary checkpoint, not Pi session serialization or a durable Zedflow session format.",
+      "Compaction is explicitly invoked through a host hook; the experiment is not a complete automatic AgentSession compaction implementation.",
+      "Lifecycle hooks are typed callback seams, not a plugin loader or compatibility layer. Input and before-run expectations are source-derived rather than a differential ExtensionRunner execution.",
+      "Scoped capability checks protect API access and lifetime, not arbitrary side effects performed by trusted callbacks outside that API.",
+      "Prepared-context provenance precedes provider wire encoding; a provider-specific payload transformation needs its own inspection record.",
+      "Live callbacks, resources and AbortController instances still require rebinding for durable recovery."
+    ],
+    "gotchas": [
+      "Pi AI TranscriptContext has a nominal type brand: clone message values before normalizeContext rather than erasing the normalized type.",
+      "Pi system content is additive; named sections provide replacement. The initial latest-content-only test expectation was corrected after inspecting pi-transcript."
+    ]
+  },
+  "qualification_composition": {
+    "recorded_at": "2026-11-16T14:21:11.562628+00:00",
+    "evidence_level": "deterministic-native-integration-tests",
+    "command": "npm run check --prefix experiments/stately-native",
+    "tests_passed": 87,
+    "tests_failed": 0,
+    "typecheck": "pass",
+    "qualified_cases": [
+      "composition-01",
+      "composition-02",
+      "composition-03",
+      "composition-04",
+      "composition-05"
+    ],
+    "implementation_approaches": 1,
+    "verdict": "suitable-under-conditions-for-native-actor-composition-and-bounded-structural-insertion",
+    "package": "experiments/stately-native",
+    "package_choice": "The confirmed programme reuses its isolated native lane rather than creating another package for the earlier standalone assignment.",
+    "execution": {
+      "parent": "Parallel regions invoke two instances of the same flow; explicit sendTo routing and invoke.onDone collect results.",
+      "child": "Nested states perform a guarded, event-driven cycle followed by one promise effect.",
+      "budget": "The fixture requires a safe integer step budget from 1 to 32.",
+      "failure_policy": "A child error transitions the parent to failed and stops active siblings.",
+      "cancellation_policy": "Parent cancellation exits the parallel state, aborts active child promises and ignores their late completion."
+    },
+    "structural_insertion": {
+      "input": "Native XState definition plus a local function parameter identifying target, extension and derived revision; no persisted definition language.",
+      "supported_target": "Top-level atomic state with the fixture effect invocation and one absolute success edge; relative outgoing edges, error transitions and other shapes are rejected.",
+      "operation": "Copy the definition and state map, replace the target with an approval compound state, then retain the original state under execute.",
+      "immutability": "The test deeply freezes the source object tree and executes the original independently after derivation.",
+      "conflicts": "Duplicate target claims fail during preflight in either input order.",
+      "provenance": "Added states and connections record extension identity/revision and source/derived definition revisions; the relocated effect retains definition origin."
+    },
+    "inspection": {
+      "authored": "The original native definition remains available.",
+      "resolved": "The derived native definition and element provenance show the inserted approval boundary.",
+      "execution": "Native state entry actions record caller-supplied run/instance IDs, definition revision, visit ordinal and origin; snapshot observers capture resolved state values."
+    },
+    "graph_assessment": {
+      "executed_operation": "getGraphUnion with conflicting entity IDs in both orders, followed by getGraphIssues.",
+      "result": "The right entity wins; both unions are structurally valid. This does not implement reject-on-conflict extension policy.",
+      "decision": "Keep the bounded native-config insertion independent of Graph; generic topology merging would still need statechart-specific rewriting and provenance policy.",
+      "next": "The package-comparison lot still evaluates Graph structure operations and bounded reachable-snapshot inspection."
+    },
+    "runtime_source_lines": {
+      "experiments/stately-native/src/composition.ts": 95,
+      "experiments/stately-native/src/approval-insertion.ts": 51
+    },
+    "remaining_adapter_work": [
+      "Define supported structural target shapes and rewrite semantics before expanding beyond this insertion primitive.",
+      "Maintain explicit conflict ownership and provenance rules rather than relying on Graph union overwrite behavior.",
+      "Supply unique run and instance identities and preserve them through durable recovery.",
+      "Bind real scoped capabilities and enforce their cancellation/settlement contracts separately from actor control state."
+    ],
+    "remaining_limits": [
+      "The experiment uses one fixture and one insertion primitive; it is not a general statechart rewriting or validation library.",
+      "Untouched native configuration objects and callback references are shared; definitions must be treated as immutable after construction.",
+      "Stopping an actor discards completion but does not roll back an external effect or force non-cooperative work to stop.",
+      "The trace covers the tested native entries and snapshots, not a complete graphical inspector or universal state-space proof.",
+      "No real provider, credentials, persistence or cross-process actor transport is involved."
+    ],
+    "gotchas": [
+      "The initial failure-path test expected every promise signal to abort. The rejected promise has already settled; only still-active sibling work is cancelled. The assertion now matches the pinned promise implementation."
+    ]
+  },
+  "qualification_continuity": {
+    "recorded_at": "2026-11-16T14:51:19.655743+00:00",
+    "evidence_level": "deterministic-integration-tests-with-file-backed-fixtures",
+    "command": "npm run check --prefix experiments/stately-native",
+    "tests_passed": 123,
+    "tests_failed": 0,
+    "typecheck": "pass",
+    "qualified_cases": [
+      "continuity-01",
+      "continuity-02",
+      "continuity-03",
+      "continuity-04",
+      "continuity-05",
+      "continuity-06"
+    ],
+    "verdict": "suitable-under-conditions-for-explicit-restoration-and-recovery-policies",
+    "comparisons": {
+      "continuity-01": "Native confirmation-wait fixture against product targeting and state-distinction requirements.",
+      "continuity-02": "Native persisted actor-tree restoration; fresh actor identities, file-backed JSON checkpoint, rebound observer and definition revision rejection.",
+      "continuity-03": "Native actor-stop fault injection with separate file-backed journal and simulated external capability; no Pi or Agent runtime oracle.",
+      "continuity-04": "Source-derived AgentSession post-run expectations; Pi AI retry/overflow helpers are reused directly. No differential AgentSession execution.",
+      "continuity-05": "Direct pinned buildSessionProjection comparison for selected source entries and ordinary messages; summary text/fromId compared separately from native wrapper.",
+      "continuity-06": "Fresh observer over restored actors; historical resource observations, current external fixture values and parent/child provenance compared explicitly."
+    },
+    "human_waits": {
+      "response_shape": "Boolean confirmation declared by JSON schema metadata and checked by the native guard.",
+      "identity": "Run ID, child destination, logical request ID and generation must match; pause/error invalidates the previous generation.",
+      "states": [
+        "waiting",
+        "paused",
+        "failed",
+        "done"
+      ],
+      "restoration": "The parent and active child are restored in new actors; completed child output remains recorded without recreating that invocation.",
+      "binding": "Observer functions are provided to the new machine logic, not serialized into context.",
+      "version_policy": "The checkpoint format and root/human definition revisions are rejected before actor creation when incompatible.",
+      "trust_boundary": "The gate validates trusted stored native snapshots, not the complete structure/security of arbitrary uploaded state."
+    },
+    "effect_recovery": {
+      "journal_phases": [
+        "intent",
+        "dispatched",
+        "complete"
+      ],
+      "fault_points": [
+        "before-effect",
+        "after-effect",
+        "before-result-persist"
+      ],
+      "idempotent_case": "A repeated request under the same external key returns the recorded receipt and applies one simulated effect.",
+      "non_idempotent_case": "A dispatched request without a recorded result remains uncertain; automatic retry is refused and explicit receipt reconciliation is required.",
+      "completed_case": "An older actor snapshot consults the completed journal and does not repeat the external call.",
+      "request_binding": "Changed request data cannot reuse an existing journal key.",
+      "negative_control": "Direct repeated non-idempotent calls apply repeated effects; distinct keys remain distinct even with deduplication.",
+      "storage_scope": "Synchronous fixture file writes plus rename; actor stops model interruption. OS crashes, concurrent writers and power-loss durability are not tested."
+    },
+    "session_recovery": {
+      "execution": "Native parent states invoke the native agent loop; XState delayed transitions own retry backoff.",
+      "raw_history": "Failed attempts remain in raw in-memory history; recovery removes only their projected copies and correlated tool results.",
+      "repair": "Overflow and early-length fixtures invoke the existing compaction machine before one recovery continuation.",
+      "limits": "The host applies a finite outer-loop budget and retains queued input it cannot start.",
+      "settlement": "Agent-end queued work and awaited before-settle work complete before one settled event; the public result awaits its observer.",
+      "cancellation": "Cancellation removes the native retry timer or stops the compaction actor; late repaired context is ignored.",
+      "failure": "Failed, empty or repeated overflow recovery does not schedule an unintended internal retry."
+    },
+    "lineage": {
+      "structure": "An immutable parent-linked data fixture selects one lineage while retaining abandoned raw entries for inspection.",
+      "summary": "An explicit summary references the abandoned source and carries selected text without importing that source path into model context.",
+      "wrapper_difference": "The native fixture projects a user summary message; Pi uses its branchSummary host message. This is not wrapper-format parity."
+    },
+    "runtime_source_lines": {
+      "experiments/stately-native/src/wait-tree.ts": 117,
+      "experiments/stately-native/src/effect-recovery.ts": 79,
+      "experiments/stately-native/src/session-recovery.ts": 151,
+      "experiments/stately-native/src/lineage.ts": 45
+    },
+    "remaining_adapter_work": [
+      "Provide durable storage transactions, concurrent-run ownership and authorization for externally submitted events.",
+      "Validate the full saved actor-tree structure and version/resource manifest before accepting untrusted state; define migrations separately.",
+      "Implement response contracts beyond the tested boolean confirmation and bind them to versioned validation schemas.",
+      "Integrate history, compaction, branch selection, resources and the full agent loop into one durable host; the fixtures do not establish that integrated product.",
+      "Provide a reconciliation path for confirmed non-application, not only a confirmed applied receipt, and handle external audit uncertainty.",
+      "Qualify summarization transport retries, provider-specific usage accounting and live summary quality before claiming full AgentSession recovery fidelity."
+    ],
+    "remaining_limits": [
+      "There is no exactly-once guarantee, rollback guarantee or proof that a non-cooperative external operation stops when its actor stops.",
+      "Only the wait tree is restored as a complete parent/child snapshot; session-recovery context still contains live callbacks and an AbortController.",
+      "The effect fixture is one journal record with one writing owner, not a distributed transaction coordinator.",
+      "The dispatched-before-call ambiguity remains conservatively uncertain; the tested explicit reconciliation confirms an applied receipt.",
+      "Automatic threshold accounting after successful responses, full context-edit/compaction-age checks and virtual-model resolution are not reproduced by the recovery fixture.",
+      "Session notices are a bounded native subset, not byte-for-byte AgentSession event compatibility.",
+      "Lineage is an in-memory persistent data structure; it does not define a durable Zedflow or Pi session file format.",
+      "No provider credentials or real model calls are used."
+    ],
+    "gotchas": [
+      "The pinned XState actor type requires input even when restoring this input-bearing machine; the restore gate supplies the validated original input from snapshot context.",
+      "Cancellation while an event observer was awaited could emit a late retry-success notice; a post-await cancellation check and regression test prevent it."
+    ]
+  },
+  "qualification_packages": {
+    "recorded_at": "2026-11-16T15:20:20.562055+00:00",
+    "evidence_level": "deterministic-integration-tests-and-local-QuickJS-workers",
+    "qualified_cases": [
+      "packages-01",
+      "packages-02",
+      "packages-03",
+      "packages-04",
+      "packages-05",
+      "packages-06"
+    ],
+    "checks": {
+      "stately-native": {
+        "command": "npm run check --prefix experiments/stately-native",
+        "tests_passed": 138,
+        "tests_failed": 0,
+        "typecheck": "pass"
+      },
+      "stately-agent-stable": {
+        "command": "npm run check --prefix experiments/stately-agent-stable",
+        "tests_passed": 5,
+        "tests_failed": 0,
+        "typecheck": "pass"
+      },
+      "stately-agent-current": {
+        "command": "npm run check --prefix experiments/stately-agent-current",
+        "tests_passed": 7,
+        "tests_failed": 0,
+        "typecheck": "pass"
+      }
+    },
+    "direct_dependencies": {
+      "stately-native": {
+        "xstate": "5.33.4",
+        "@statelyai/graph": "2.6.0",
+        "@earendil-works/pi-ai": "1.5.2",
+        "@earendil-works/pi-codemode": "1.5.2"
+      },
+      "stately-agent-stable": {
+        "xstate": "5.33.4",
+        "@statelyai/agent": "1.1.6"
+      },
+      "stately-agent-current": {
+        "xstate": "6.0.0-beta.0",
+        "@statelyai/agent": "2.0.0-alpha.38",
+        "zod": "4.6.7",
+        "@earendil-works/pi-ai": "1.5.2"
+      }
+    },
+    "lockfiles": {
+      "stately-native": "c0eabdb4448a038116140c03a163e65aa9e51a95260c43422c4ee92e759a5c8e",
+      "stately-agent-stable": "e47a06e1a800c0ff621e48f3f3091dec5e76db800271c592ea4dc0e2190e81d6",
+      "stately-agent-current": "8174986a4b942a3ebd1ee3916855f995de69f441db1d5b89444bcc8d34d999d6"
+    },
+    "common_scenario": {
+      "fixture": "experiments/agent-scenario.json",
+      "method": "XState-only and Agent 1.1.6 run the same native XState 5 workflow with alternate request actors. Agent 2 uses the equivalent XState 6 workflow and the same expected semantic trace.",
+      "scope": "A text request proposes one named fixture lookup as JSON text, a human approves, one explicit actor executes the tool, and a second model request reads its result and answers.",
+      "no_nested_loops": "Stable SDK retries are disabled; each request returns one text response. The current Pi AI executor consumes exactly one stream and refuses tools, tool-bearing replies and multi-step requests.",
+      "protocol_limit": "This is semantic workflow parity, not Pi tool-call wire/event parity. The native loop qualification separately covers Pi streaming and tool protocol fidelity."
+    },
+    "stable_agent": {
+      "verdict": "optional-request-and-memory-helper-with-explicit-adaptation",
+      "positive": "The common workflow, human rejection and model failure match the XState-only semantic trace and effect counts.",
+      "gap": "fromText does not forward its actor signal to the provider. A late answer still enters Agent memory after its parent is cancelled; the parent state ignores the answer.",
+      "dependency": "The published runtime wraps AI SDK 3 and also retains its own message/observation memory.",
+      "adapter_work": "Bridge Pi AI to its AI SDK-shaped provider or adapter contract; explicitly own cancellation and decide which memory is authoritative.",
+      "not_qualified": "Stable planning/decision algorithms, persistence and full provider protocol equivalence are not established by the request-helper comparison."
+    },
+    "current_agent": {
+      "verdict": "promising-optional-layer-on-an-isolated-XState-6-alpha-lane",
+      "positive": "The common workflow survives a data-only human-wait snapshot with new machine bindings; decision guards reject then retry once or exhaust; runtime cancellation reaches Pi AI.",
+      "pi_adapter": "A narrow text-only executor creates a normalized Pi context, consumes one supplied Pi stream, forwards cancellation/chunks, rejects incomplete or tool-bearing responses and returns normalized usage.",
+      "boundary": "The fixture uses supplied simulated streams, not provider SDK transport. The executor is not a complete Pi adapter for structured output, media, tools or provider options.",
+      "recovery": "A failed text request follows onError without automatic retry; decision retries are a separate bounded policy.",
+      "compatibility": "The exact-optional-properties limitation remains isolated to this lane. Its negative compiler test now targets the original installation fixture, not unrelated expanding sources.",
+      "adapter_work": "Preserve provider messages and richer options explicitly; qualify event-log recovery and external effects independently of the human-wait snapshot."
+    },
+    "graph": {
+      "verdict": "suitable-for-explicit-structural-views-and-bounded-exploration-with-loss-checks",
+      "structure": "An explicit view of the approval-insertion fixture exercises hierarchy, ports, union, difference and patches; it is not a general statechart converter.",
+      "union": "The right entity wins collisions; disjoint union with explicit namespacing preserves both instances and rewrites references.",
+      "difference": "Difference removes matching edge IDs; it does not describe changed values on a shared edge ID. Patches recover the tested changed structure.",
+      "identity_loss": "Flattening keeps one edge per endpoint pair, dropping another differently labelled transition. Graph validity does not detect semantic identity loss.",
+      "exploration": "Finite payload samples create reachable snapshot nodes, not authored state nodes or one observed trace. Explicit limits reject unbounded context growth.",
+      "incomplete": "A stop boundary retains active snapshots without exploring successors. The composition exploration stops before its invoked effect; no external effect runs."
+    },
+    "codemode": {
+      "verdict": "suitable-as-a-bounded-capability-actor-with-host-validation-and-replay-journals",
+      "limits": {
+        "timeout_ms": 2000,
+        "memory_bytes": 16777216,
+        "capability_calls": 4,
+        "authorized_keys": [
+          "fixture:a",
+          "fixture:b"
+        ]
+      },
+      "validation": "Host code validates shape and authorization per call; declaration schemas alone do not validate arguments.",
+      "execution": "Native XState invokes the VM as a bounded actor. Tests exercise failures, failed store writes, cancellation, unawaited calls, timeouts and memory exhaustion.",
+      "workers": "Result settlement and actual worker exit are distinct; the fixture separately awaits an observed worker lifetime.",
+      "replay": "Fresh VMs use fixed time and seed plus a saved ordered call/result journal. Results that completed out of call order reproduce their original values without executing capabilities again.",
+      "effect_binding": "A separate file-backed effect journal is reused by a fresh effect-recovery actor; it suppresses a previously completed fixture effect independently of the VM journal.",
+      "rejection": "Changed script, fingerprint, call data, sequence, unused entries and incomplete journals reject replay before unsafe live execution.",
+      "limits_of_proof": "Only successful complete trusted journals replay. No partial-journal resumption, active VM snapshot, process crash, storage transaction or exactly-once guarantee is established."
+    },
+    "source_lines": {
+      "experiments/stately-native/src/codemode.ts": 88,
+      "experiments/stately-agent-current/src/pi-executor.ts": 22,
+      "experiments/stately-agent-current/src/workflow.ts": 31
+    },
+    "remaining_adapter_work": [
+      "Keep provider execution single-turn when XState must expose every tool or approval step; packaged SDK executors may otherwise hide a tool loop.",
+      "Add explicit conflict/provenance rules and a loss-aware definition view instead of treating Graph union or flattening as a compiler.",
+      "Provide durable and authorized event ingress, revision policy and idempotent effects before using Agent persistence as a product guarantee.",
+      "Add durable ordered Code Mode journal storage, request fingerprints for effects and an explicit policy for partial runs before resuming interrupted programs."
+    ],
+    "gotchas": [
+      "An empty stable Agent events literal infers never and is incompatible with fromText; an explicitly typed empty registry preserves strict compilation.",
+      "Direct side effects inside XState 6 reducer-style entry functions duplicated trace entries; enqueued emit effects with host handlers produce the intended trace.",
+      "A successful VM return can leave an issued host call unfinished. The journal is complete only when every issued call has a recorded result."
+    ],
+    "authorization": "All provider responses are simulated. No credentials, paid provider service, push or integration is used."
+  },
+  "qualification_real_smoke": {
+    "recorded_at": "2026-11-16T15:55:06.874181+00:00",
+    "authorization": {
+      "source": "Operator selected GPT-Luna with the existing Pi subscription connection, then accepted bounded trials without a hard output-token ceiling.",
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "credential_type": "oauth",
+      "credential_access": "Existing Pi credential store only, with normal serialized OAuth refresh if necessary; no displayed or copied credentials.",
+      "data": "Synthetic prompts, fixture tool declaration, synthetic tool result and conversation generated by those fixtures; no repository contents.",
+      "max_requests": 4,
+      "timeout_ms_per_request": 60000,
+      "automatic_retries": 0,
+      "output_token_ceiling": null,
+      "reasoning": "none",
+      "inspectable_evidence": {
+        "session_id": "01a1e3d1-fad0-71ba-a6e3-f5cf3734aa99",
+        "source_jsonl": "/home/zedium/.pi/agent/sessions/--home-zedium-workspaces-projects-zedflow--/2026-11-16T10-05-51-696Z_01a1e3d1-fad0-71ba-a6e3-f5cf3734aa99.jsonl",
+        "excerpts": [
+          {
+            "role": "user",
+            "entry_id": "ceeca9d0",
+            "timestamp": "2026-11-16T15:24:12.087Z",
+            "line": 1058,
+            "entry_sha256": "ea42859315cffa49d47e6da2d08a6ff0c2a01e35bcabc280055c0865e76501fb",
+            "verbatim": "Pour les tests fournisseurs, je veux tester avec gpt-luna avec ma subscription"
+          },
+          {
+            "role": "user",
+            "entry_id": "a94bd4bf",
+            "timestamp": "2026-11-16T15:26:43.500Z",
+            "line": 1065,
+            "entry_sha256": "625c623dc03a5a49a84888c4fc8d68c48074ca8aad33b34a74c97e7d3ee15e20",
+            "verbatim": "Utilises mes connection Pi existante qui devrait etre compatible avec pi/ai"
+          },
+          {
+            "role": "user",
+            "entry_id": "b95f8f4f",
+            "timestamp": "2026-11-16T15:50:37.584Z",
+            "line": 1138,
+            "entry_sha256": "83ba4d4205c4d19959d9ee1342e0971cfc144617b8c51997775c0c9ae7699bad",
+            "verbatim": "Oui en soit il suffit de limiter les essais meme si on ne peut pas verifier le nombre d'output token."
+          },
+          {
+            "role": "assistant",
+            "entry_id": "166a8d1a",
+            "timestamp": "2026-11-16T15:50:47.010Z",
+            "line": 1139,
+            "entry_sha256": "44aafe19fb389d52e597a45398fb6a767248e111d6123e89a011b938edb9f953",
+            "verbatim": "D\u2019accord. **Le plafond de tokens n\u2019est plus une condition bloquante.** Les essais restent born\u00e9s \u00e0 :\n\n- **4 requ\u00eates mod\u00e8le maximum**, sans relance automatique ;\n- **60 secondes par requ\u00eate** ;\n- GPT\u20116 Luna via **ta connexion Pi existante et ton abonnement** ;\n- donn\u00e9es synth\u00e9tiques, outils fixtures et r\u00e9ponses courtes, raisonnement d\u00e9sactiv\u00e9 ;\n- usage r\u00e9el enregistr\u00e9 lorsqu\u2019il est fourni, sans pr\u00e9tendre garantir un plafond de tokens.\n\nLance **`/goal-resume`** pour lever la pause et d\u00e9marrer les essais."
+          }
+        ],
+        "verification": "Read the original source line, verify its SHA-256 and role, then compare its text. Excerpts contain no credentials."
+      }
+    },
+    "live_command": "ZEDFLOW_AUTHORIZED_SMOKE=subscription-luna-four-requests node experiments/stately-native/test/real-smoke-runner.ts",
+    "reexecution": "Requires fresh operator authorization and review of the existing attempt ledger; normal checks never run the live runner.",
+    "ledger_sha256": "5b21c3186ae740914df479c98ef51a5d71981c8f24178aef824ead0f8eaef999",
+    "requests": 3,
+    "http_statuses": [
+      200,
+      200,
+      200
+    ],
+    "round_trip": {
+      "passed": true,
+      "model_calls": 2,
+      "tool_effects": 1,
+      "actor_status": "done",
+      "stop_reasons": [
+        "toolUse",
+        "stop"
+      ],
+      "answer": "SYNTHETIC_VALUE_42",
+      "usage": [
+        {
+          "input": 165,
+          "output": 18,
+          "reasoning": 0,
+          "total_tokens": 183
+        },
+        {
+          "input": 202,
+          "output": 12,
+          "reasoning": 0,
+          "total_tokens": 214
+        }
+      ],
+      "event_types": [
+        "agent_start",
+        "turn_start",
+        "message_start",
+        "message_end",
+        "message_start",
+        "message_end",
+        "message_start",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_end",
+        "tool_execution_start",
+        "tool_execution_end",
+        "message_start",
+        "message_end",
+        "turn_end",
+        "turn_start",
+        "message_start",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_update",
+        "message_end",
+        "turn_end",
+        "agent_end"
+      ]
+    },
+    "cancellation": {
+      "passed": true,
+      "model_calls": 1,
+      "received_text_before_abort": true,
+      "actor_status": "done",
+      "stop_reason": "aborted",
+      "elapsed_ms": 1472,
+      "abort_to_local_settlement_ms": 3,
+      "retained_text": "1 ",
+      "final_usage": null
+    },
+    "limits": [
+      "A single authorized provider/model connection is tested, not general provider interoperability.",
+      "The cancelled response has no final usage; zero-initialized counters are not measured zero consumption.",
+      "Pi cost estimates use API catalog prices and do not establish subscription billing or quota consumption.",
+      "Local cancellation and actor settlement do not prove the server stopped generation at the same instant.",
+      "The subscription route omits max_output_tokens; the operator explicitly accepted request/time limits instead.",
+      "Live compaction quality, transport recovery and every simulated control path are not established by these two bounded scenarios."
+    ],
+    "offline_checks": "real-smoke.test.ts checks the recorded observation, not a new provider execution.",
+    "gotchas": [
+      "Importing the full coding-agent type entry augments AgentMessage globally; the runner imports only the pinned credential store module dynamically.",
+      "SimpleStreamOptions does not type reasoning off; this model maps omitted reasoning to none, verified on each outgoing payload."
+    ]
+  },
+  "qualification_summary": {
+    "verdict": "Qualification complete with explicit negative findings: the native execution foundation is suitable under conditions, but three tested session-compaction capabilities lack Pi parity.",
+    "qualified_cases": 41,
+    "planned_cases": 0,
+    "latest_checks": {
+      "stately-native": 148,
+      "stately-agent-stable": 5,
+      "stately-agent-current": 7
+    },
+    "package_verdicts": {
+      "xstate": "Suitable as the execution authority. The current host remains inadequate as-is for summary transport retries, automatic post-success compaction and edited/stale projection recovery; see the explicit negative cases.",
+      "pi-ai": "Suitable under conditions for provider execution; native loop remains authoritative. Existing subscription auth and live cancellation were exercised.",
+      "agent-stable": "Optional helper, not the recommended orchestration foundation. Its request helper does not forward actor cancellation and can mutate memory late.",
+      "agent-current": "Promising optional layer, not an adoption decision: isolated XState 6 beta/Agent alpha lane and a narrow Pi executor; full adapter and persistence review remain.",
+      "graph": "Suitable for explicit inspection views and bounded exploration. Not a conflict policy, semantic-preserving flattening guarantee or statechart compiler.",
+      "codemode": "Suitable under conditions as a bounded capability actor. Complete-journal replay is qualified; interrupted-VM persistence and partial replay remain unproven."
+    },
+    "recommendation": "Use native XState 5 and Pi AI as the experimental baseline. Keep Graph as an inspection/transformation aid with explicit loss checks. Keep Code Mode capability-scoped. Evaluate Agent current independently without merging XState generations.",
+    "evidence_methods": [
+      "Differential low-level Pi loop traces with deterministic models and fixture tools.",
+      "Pinned pure helpers as oracles for selected compaction and lineage semantics.",
+      "Source-derived lifecycle/recovery contracts with native fixtures.",
+      "Fresh-actor/file-backed restoration and simulated external effects.",
+      "Package API comparisons and actual local QuickJS workers.",
+      "Authorized live GPT-6 Luna round-trip and cancellation."
+    ],
+    "remaining_product_work": [
+      "Close the three demonstrated compaction/recovery parity gaps before claiming those Pi session behaviors; they are behavioral gaps, not merely production hardening.",
+      "Integrate loop, context, resources, lineage and persistence into one versioned durable host.",
+      "Implement production storage transactions, concurrent-run ownership, untrusted-state validation and migrations.",
+      "Provide external effect idempotency/reconciliation and authenticated human-event ingress.",
+      "Extend provider/Agent adapters to media, structured outputs, provider options and complete message preservation.",
+      "Implement loss-aware definition inspection and broader structural derivation only with explicit contracts.",
+      "Qualify compaction summary quality, provider-specific usage/recovery and partial Code Mode replay separately."
+    ],
+    "no_universal_claims": [
+      "No exactly-once or rollback guarantee.",
+      "No OS-crash, power-loss or distributed-writer durability proof.",
+      "No complete AgentSession/plugin/TUI compatibility claim.",
+      "No bidirectional editor or universal behavioral equivalence proof."
+    ],
+    "mission_commits_before_final": [
+      "36241cdab1e59712761be382dddabe7d20cd6c9e docs: define Stately qualification contract",
+      "771338222ffdffb6c036d0deac107edf154d7da8 test: prepare isolated Stately qualification packages",
+      "983d3f28281612c35396495e7c9b620929e913f7 test: qualify native XState loop against Pi",
+      "2ce55b36b6ca09f16ac3c03cb3539727949f521d test: qualify native context and lifecycle boundaries",
+      "224e977083a30afc6f93039e25186e82f4ca63e6 test: qualify native actor and structural composition",
+      "cc41b8941341dee923d5f97b92162386744dd9b5 test: qualify native continuity and recovery boundaries",
+      "bc679cafc0eb1a68ca04fe2723934a9eb4272269 test: qualify Agent variants Graph and Code Mode"
+    ],
+    "delivery": "Local mission commits only. Parent, main, history, LICENSE and local design remain protected; no push or integration.",
+    "negative_native_parity_cases": 3
+  },
+  "qualification_audit_followup": {
+    "recorded_at": "2026-11-16T16:03:51.085392+00:00",
+    "qualified_cases": [
+      "context-09",
+      "continuity-07",
+      "continuity-08"
+    ],
+    "verdict": "The current native host is not behaviorally equivalent to Pi for these three explicitly tested capabilities. This is a negative qualification, not an approved exclusion or an implemented fix.",
+    "method": "Test-only dynamic import of pinned completeSummarization and AgentSession.prototype._checkCompaction. The latter runs against explicit in-memory collaborators, not a constructed AgentSession or live provider.",
+    "native_comparison": "The existing compaction and recovery actors run against the same simulated failures/usage. Assertions retain the observed divergences instead of pretending parity.",
+    "cases": {
+      "context-09": {
+        "reference": "A terminated summary response retries once and succeeds; quota errors and cancellation stop retry.",
+        "native": "One failed summary response ends compaction without retry or checkpoint installation.",
+        "verdict": "inadequate-as-is-for-summary-transport-retry-parity",
+        "required_adapter": "Add machine-owned bounded summarization retry, cancellable delays and retry notices around the existing single summary attempt."
+      },
+      "continuity-07": {
+        "reference": "Successful usage above threshold or window invokes compaction with willRetry=false and preserves the completed response.",
+        "native": "A successful answer settles without invoking the configured recovery compactor.",
+        "verdict": "inadequate-as-is-for-post-success-auto-compaction-parity",
+        "required_adapter": "Add a post-success compaction decision and non-continuing commit path before final settlement."
+      },
+      "continuity-08": {
+        "reference": "A compaction boundary at or after the response, removed attempts and edited projections invalidate the corresponding recovery/usage triggers.",
+        "native": "No equivalent edit/boundary manifest exists at the recovery input; an unchanged stale/removed overflow message still triggers native repair.",
+        "verdict": "inadequate-as-is-for-edited-or-stale-context-recovery-parity",
+        "required_adapter": "Pass a versioned projection/edit/boundary view into recovery and evaluate freshness before usage, overflow and length decisions."
+      }
+    },
+    "tests_added": 8,
+    "native_tests_passed": 148,
+    "authorization_evidence": "qualification_real_smoke.authorization.inspectable_evidence points to original role-labelled session entries with line hashes and exact user text.",
+    "limitations": [
+      "The session-policy oracle isolates collaborators; it is not an end-to-end AgentSession execution.",
+      "The three negative capabilities remain unimplemented in the native host and block any claim of complete Pi session equivalence.",
+      "No new provider call or credential access was needed."
+    ]
+  },
+  "mvp_kit_analysis": {
+    "status": "Research findings and recommendations; no MVP implementation or complete product decision.",
+    "recorded_at": "2026-11-16T19:06:53.849687+00:00",
+    "operator_constraints": [
+      "User machines use native XState syntax without a wrapper machine or a Zedflow DSL.",
+      "XState and Pi AI capabilities are inherited rather than rebuilt.",
+      "Zedflow organizes run traces and offers reusable LLM/tool primitives.",
+      "Users may replace the root loop or make machines available to it.",
+      "Every run uses a declared event socket; clients own interaction semantics.",
+      "Specialized workflows, software-factory policies and a visual editor are uses, not kernel requirements."
+    ],
+    "reference_repositories": {
+      "pi": {
+        "path": "references/pi",
+        "url": "https://github.com/earendil-works/pi.git",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470"
+      },
+      "xstate": {
+        "path": "references/xstate",
+        "url": "https://github.com/statelyai/xstate.git",
+        "commit": "bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1"
+      },
+      "stately-agent": {
+        "path": "references/stately-agent",
+        "url": "https://github.com/statelyai/agent.git",
+        "commit": "b2d8926c66723d8161a930cdf3295f9d06f0c48d"
+      },
+      "stately-graph": {
+        "path": "references/stately-graph",
+        "url": "https://github.com/statelyai/graph.git",
+        "commit": "5141455804c9925103e7da6029a0689b2523b873"
+      }
+    },
+    "additional_source_revisions": {
+      "xstate-beta": {
+        "repository": "xstate",
+        "revision": "xstate@6.0.0-beta.0",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30"
+      },
+      "agent-stable": {
+        "repository": "stately-agent",
+        "revision": "v1.1.6",
+        "commit": "05fba0d3044c349e645e0daa9df258baa654ad3b"
+      }
+    },
+    "submodule_exception": "The operator explicitly requested populated references in this mission. Child working trees remain unmodified. Later mission cleanup must account for initialized submodules; do not use force removal implicitly.",
+    "method": "Mechanism-oriented reading of coding-agent architecture, SDK/service construction, runtime replacement, session storage/projection, loop boundaries, recovery, extension registration/dispatch, tools, resources, auth and interface contracts. Selective source blocks were read; this is not an exhaustive line-by-line audit of every UI, provider or test file.",
+    "context7_caution": "Discovery returned moving-main APIs including XState 6. Claims use pinned source revisions and explicit v5/v6 separation, not the unversioned search snippets.",
+    "sources": {
+      "pi-philosophy": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/README.md",
+        "anchor": "Pi is a minimal",
+        "line": 15,
+        "sha256": "fbc7abec7d0829ac8bc4b217e950794e1ba4d8d1b3e0850f970da318ad72e863",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/README.md#L15"
+      },
+      "pi-architecture": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/how-pi-works.md",
+        "anchor": "## Agent loop",
+        "line": 7,
+        "sha256": "7d43ab8e2b886cd1047dcee503588a1c828b92333dd4f177526b89e6db8aaa8b",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/how-pi-works.md#L7"
+      },
+      "pi-session": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session.ts",
+        "anchor": "export class AgentSession",
+        "line": 409,
+        "sha256": "dea73f4df16b15c927a4cb6b35ad7a3f9738232acb2d48473f0497f360fda6fe",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session.ts#L409"
+      },
+      "pi-loop-control": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session.ts",
+        "anchor": "private async _startRun",
+        "line": 1943,
+        "sha256": "dea73f4df16b15c927a4cb6b35ad7a3f9738232acb2d48473f0497f360fda6fe",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session.ts#L1943"
+      },
+      "pi-session-storage": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/session-manager.ts",
+        "anchor": "export class SessionManager",
+        "line": 988,
+        "sha256": "444650a737052f0d710c19f9e50e115c24b49107130059d5bef458eacf3927c7",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/session-manager.ts#L988"
+      },
+      "pi-session-format": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/session-format.md",
+        "anchor": "## Entry Types",
+        "line": 62,
+        "sha256": "4f8fc42179b332bcf71fe4c85cc95d914853ff7486d68742954a45316b512a4a",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/session-format.md#L62"
+      },
+      "pi-projection": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/session-manager.ts",
+        "anchor": "export function buildSessionProjection",
+        "line": 544,
+        "sha256": "444650a737052f0d710c19f9e50e115c24b49107130059d5bef458eacf3927c7",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/session-manager.ts#L544"
+      },
+      "pi-compaction": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/compaction/compaction.ts",
+        "anchor": "export async function compact",
+        "line": 952,
+        "sha256": "32714966eb644da31cd84e8eb172965256160626b3d26ae9752c3894300f2b0b",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/compaction/compaction.ts#L952"
+      },
+      "pi-recovery": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session.ts",
+        "anchor": "private async _checkCompaction",
+        "line": 3106,
+        "sha256": "dea73f4df16b15c927a4cb6b35ad7a3f9738232acb2d48473f0497f360fda6fe",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session.ts#L3106"
+      },
+      "pi-retry": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session.ts",
+        "anchor": "private async _prepareRetry",
+        "line": 3924,
+        "sha256": "dea73f4df16b15c927a4cb6b35ad7a3f9738232acb2d48473f0497f360fda6fe",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session.ts#L3924"
+      },
+      "pi-runtime": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session-runtime.ts",
+        "anchor": "export class AgentSessionRuntime",
+        "line": 74,
+        "sha256": "c00359bc246aca8ae265c4a29e89af098391a086ba2ef6b0425425b149f557e2",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session-runtime.ts#L74"
+      },
+      "pi-sdk": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/sdk.ts",
+        "anchor": "export async function createAgentSession",
+        "line": 191,
+        "sha256": "f0f6f2b14a61c5c3ebb31d40c97b3f73296a2f0334d582072383302d693714c8",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/sdk.ts#L191"
+      },
+      "pi-services": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session-services.ts",
+        "anchor": "export async function createAgentSessionServices",
+        "line": 135,
+        "sha256": "c69826f519aa21b2dc04768eb63b0d10e88be071195beaf43bb1292dec187d01",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session-services.ts#L135"
+      },
+      "pi-model-runtime": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/model-runtime.ts",
+        "anchor": "export class ModelRuntime",
+        "line": 174,
+        "sha256": "e47685a8b91ad1fc07bf85a93522d88d89d4181d97f2df6fcef11d1e581de1b1",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/model-runtime.ts#L174"
+      },
+      "pi-auth": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/auth-storage.ts",
+        "anchor": "export class AuthStorage",
+        "line": 329,
+        "sha256": "31d78283dc5c2a1ce456d9940c34fca1f4f8050c481f3da645aeb8309df6cd45",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/auth-storage.ts#L329"
+      },
+      "pi-extensions": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/extensions/loader.ts",
+        "anchor": "function createExtensionAPI",
+        "line": 253,
+        "sha256": "dbaf48552f1f0463ea1c4143cd31781c7b023735d71e62130dd71672e2e59d5d",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/extensions/loader.ts#L253"
+      },
+      "pi-extension-handlers": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/extensions/runner.ts",
+        "anchor": "async emitBoundary",
+        "line": 1043,
+        "sha256": "6e305286a99c0364f58dfc89008b5d858363b3f38eb8c93686c3de5bd6b42475",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/extensions/runner.ts#L1043"
+      },
+      "pi-extension-contract": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/extensions.md",
+        "anchor": "## State Management",
+        "line": 2140,
+        "sha256": "d59f4ded8e49275120c8379dbeabb847267efd36e15fc21f6189026d0fbf8f22",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/extensions.md#L2140"
+      },
+      "pi-resources": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/resource-loader.ts",
+        "anchor": "export interface ResourceLoader",
+        "line": 55,
+        "sha256": "933346d5752b71c52859c22c61adfe9dd50e8813e19db021d0bf8fca02f8463a",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/resource-loader.ts#L55"
+      },
+      "pi-tools": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/tools/index.ts",
+        "anchor": "export function createCodingTools",
+        "line": 195,
+        "sha256": "3c66ea1e03530fb85436ee639f35add8bf72718ac6e76b738a1f41be58a2b472",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/index.ts#L195"
+      },
+      "pi-shell": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/tools/bash.ts",
+        "anchor": "export interface BashOperations",
+        "line": 74,
+        "sha256": "dc97c3fa2a23e13981920bea85e6b135fc627610682bfadcdae6888b4ef1778e",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/bash.ts#L74"
+      },
+      "pi-file-queue": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/tools/file-mutation-queue.ts",
+        "anchor": "export async function withFileMutationQueue",
+        "line": 32,
+        "sha256": "33cb06ac9bcdf32c8b84d9d12e33be44c503a7670f668e003a3262cd34294d11",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/file-mutation-queue.ts#L32"
+      },
+      "pi-tool-wrapper": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/tools/tool-definition-wrapper.ts",
+        "anchor": "export function wrapToolDefinition",
+        "line": 27,
+        "sha256": "dcc1e90f646f4feff9dea53b5b22fe05f898a379b5b494b23a338a74c5247519",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/tools/tool-definition-wrapper.ts#L27"
+      },
+      "pi-security": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/security.md",
+        "anchor": "## Understand project trust",
+        "line": 27,
+        "sha256": "3b1e40a8d28b17c9eb7e496a7ba88fbe04665e3e6ae02873a58b943e325ad504",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/security.md#L27"
+      },
+      "pi-skills": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/skills.md",
+        "anchor": "## Understand how skills load",
+        "line": 41,
+        "sha256": "5b9805525b194474ef1fe5455a0917ef15ed7f710aa9bec2eee11879556469e5",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/skills.md#L41"
+      },
+      "pi-prompts": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/prompt-templates.md",
+        "anchor": "## Use a template",
+        "line": 27,
+        "sha256": "3ca3033678cd7f762d8bf4fff40e52e6c7fce3e5c6f24716105fa7fcbca60267",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/prompt-templates.md#L27"
+      },
+      "pi-packages": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/packages.md",
+        "anchor": "## Create a package",
+        "line": 46,
+        "sha256": "f03ce96224985c1b0daac643cb6edc97a58701c492243c8eda16a7d1633e9dac",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/packages.md#L46"
+      },
+      "pi-rpc": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/rpc.md",
+        "anchor": "RPC",
+        "line": 1,
+        "sha256": "54e29df00e080c962df4fbb516dc441a9ce6805287bea61d45f3c99f92078446",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/rpc.md#L1"
+      },
+      "pi-virtual-models": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/docs/virtual-models.md",
+        "anchor": "## Selection and dispatch",
+        "line": 7,
+        "sha256": "5ab04dee3b3712b317522bb0784e28a3fef2e6b7fe1aeb1c1ca27778685a38f7",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/docs/virtual-models.md#L7"
+      },
+      "pi-codemode": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/extensions/codemode/index.ts",
+        "anchor": "export function createCodemodeExtension",
+        "line": 32,
+        "sha256": "7684b16067a29ea1c83170afdce35437c54afdd679b250c7465a668624aff70f",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/codemode/index.ts#L32"
+      },
+      "pi-mcp": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/extensions/mcp/index.ts",
+        "anchor": "export function createMcpExtension",
+        "line": 280,
+        "sha256": "0bc71aa23fabfdb42f2e3fa52bdd3ea89d13776060f12ce4b8e7ff1d65d673d8",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/mcp/index.ts#L280"
+      },
+      "pi-search": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/extensions/tool-search/index.ts",
+        "anchor": "export function createToolSearchExtension",
+        "line": 12,
+        "sha256": "212528d795f06a7b935670534efa35371277e31b074a6ecd7ff144bce09ee7b6",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/extensions/tool-search/index.ts#L12"
+      },
+      "pi-bus": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/event-bus.ts",
+        "anchor": "export function createEventBus",
+        "line": 12,
+        "sha256": "fe5c39a57081fb9674c5bdc8c4bc6779bb8524c8895afc337af5ea517bdc71a2",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/event-bus.ts#L12"
+      },
+      "pi-usage": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/usage-totals.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "9295795b1320f73c7778296a788a9216185439dec117d5e3c7d83ab17f86a361",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/usage-totals.ts#L1"
+      },
+      "pi-system-prompt": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/system-prompt.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "eef891d637974d09a6611d33e52d66d5f2a93d6e9512259ba45f593c42143617",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/system-prompt.ts#L1"
+      },
+      "pi-export": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/session-export.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "8ec53e13bd4bc9097e4f7640e2fd2e58ffbbdcadce6df5efdf5cb5622f98d285",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/session-export.ts#L1"
+      },
+      "pi-cache": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/cache-warmer.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "1fd419dee1a2d7ec1904c33461702c5b605292524d971eb2960c6202f99b6936",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/cache-warmer.ts#L1"
+      },
+      "pi-settings": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/settings-manager.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "7b21f0900b96b8b11751c046cc009bdbd62b2a6f579a96e9727c737d0dd5e62d",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/settings-manager.ts#L1"
+      },
+      "pi-provider-hooks": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/sdk.ts",
+        "anchor": "const transformProviderPayload",
+        "line": 374,
+        "sha256": "f0f6f2b14a61c5c3ebb31d40c97b3f73296a2f0334d582072383302d693714c8",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/sdk.ts#L374"
+      },
+      "pi-lifecycle": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session.ts",
+        "anchor": "dispose(): void",
+        "line": 1477,
+        "sha256": "dea73f4df16b15c927a4cb6b35ad7a3f9738232acb2d48473f0497f360fda6fe",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/coding-agent/src/core/agent-session.ts#L1477"
+      },
+      "pi-agent-loop": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/agent/src/agent-loop.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "9d7589b5071ea3b8b3e3c624f9cfc09a976ebf7436024a58213837de4645167d",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/agent/src/agent-loop.ts#L1"
+      },
+      "pi-ai": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/ai/src/index.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "43ba4f250fd67350327203eed501b7affbe6c55b719837b98c9353fa0d2d501e",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/ai/src/index.ts#L1"
+      },
+      "pi-ai-auth": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/ai/src/auth/credential-store.ts",
+        "anchor": "export class InMemoryCredentialStore",
+        "line": 9,
+        "sha256": "50ebde56b80b5862025e031719006ea303edd9aa80fec780fbc64319bb9e2847",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/ai/src/auth/credential-store.ts#L9"
+      },
+      "pi-ai-retry": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/ai/src/utils/retry.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "589ede374013a26a1d3e3db3550585b714870c1dc68a5e1df233e2335845c374",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/ai/src/utils/retry.ts#L1"
+      },
+      "pi-ai-transcript": {
+        "repository": "pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/ai/src/utils/transcript.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "1a99597907e03b3716de601e3beff5b97698f8b1d5ba67f71f37eeea57b92218",
+        "url": "https://github.com/earendil-works/pi/blob/b4afdddf44e059c67ccf5097e5317d913521b470/packages/ai/src/utils/transcript.ts#L1"
+      },
+      "x5-inspection": {
+        "repository": "xstate",
+        "commit": "bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1",
+        "path": "packages/core/src/inspection.ts",
+        "anchor": null,
+        "line": 1,
+        "sha256": "abc2c40df39679ae834bf98c845c359252a817958c6337ffadf1d7aa14d86aea",
+        "url": "https://github.com/statelyai/xstate/blob/bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1/packages/core/src/inspection.ts#L1"
+      },
+      "x5-system": {
+        "repository": "xstate",
+        "commit": "bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1",
+        "path": "packages/core/src/system.ts",
+        "anchor": "export function createSystem",
+        "line": 91,
+        "sha256": "482399f026af7afce34031a5cceb8b366929017a923b6ce3266ba3ab2912c2ea",
+        "url": "https://github.com/statelyai/xstate/blob/bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1/packages/core/src/system.ts#L91"
+      },
+      "x5-emission": {
+        "repository": "xstate",
+        "commit": "bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1",
+        "path": "packages/core/src/createActor.ts",
+        "anchor": "emit: (emittedEvent)",
+        "line": 196,
+        "sha256": "0f6672017899c1b84cee863819269ea503a1b9efc93581ae08b2d169faccbad5",
+        "url": "https://github.com/statelyai/xstate/blob/bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1/packages/core/src/createActor.ts#L196"
+      },
+      "x5-restore": {
+        "repository": "xstate",
+        "commit": "bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1",
+        "path": "packages/core/src/StateMachine.ts",
+        "anchor": "restoreSnapshot(",
+        "line": 566,
+        "sha256": "854d1761355e6add70deefaceda3a2f6162dd094026e60d02faec5a36741834e",
+        "url": "https://github.com/statelyai/xstate/blob/bd77717b8d33c49af1c8ee4a7e22cebb936cc8b1/packages/core/src/StateMachine.ts#L566"
+      },
+      "x6-inspection": {
+        "repository": "xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/inspection.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "07f2cd4a8a42620d9e864174080de2648453b753d5c0c3a360ffceb3bce874c5",
+        "url": "https://github.com/statelyai/xstate/blob/4829a7bd4f01dc4045ee616cc8352da82bffbe30/docs/inspection.md#L1"
+      },
+      "x6-persistence": {
+        "repository": "xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/persistence.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "59f0b8436daf0ffdb005e67f50ff85e18be5cbe1092b74e2bc1ab28bdc95c59e",
+        "url": "https://github.com/statelyai/xstate/blob/4829a7bd4f01dc4045ee616cc8352da82bffbe30/docs/persistence.md#L1"
+      },
+      "x6-durable": {
+        "repository": "xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/durable-execution.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "e4050a3e17e73cd24650eac451f7ac7943e98eb729f6ddf0790e0236d7666466",
+        "url": "https://github.com/statelyai/xstate/blob/4829a7bd4f01dc4045ee616cc8352da82bffbe30/docs/durable-execution.md#L1"
+      },
+      "x6-logic": {
+        "repository": "xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/actor-logic.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "358e0b1ea41d80f813ef6ee3d1280d65bc087714417640b7421641455a3dca34",
+        "url": "https://github.com/statelyai/xstate/blob/4829a7bd4f01dc4045ee616cc8352da82bffbe30/docs/actor-logic.md#L1"
+      },
+      "agent-log": {
+        "repository": "stately-agent",
+        "commit": "b2d8926c66723d8161a930cdf3295f9d06f0c48d",
+        "path": "docs/event-log.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "dc0abc96b635ba05e399aeb2003d5d41b9b6fe3ce939af026a849c9e3983ed2c",
+        "url": "https://github.com/statelyai/agent/blob/b2d8926c66723d8161a930cdf3295f9d06f0c48d/docs/event-log.md#L1"
+      },
+      "agent-recorder": {
+        "repository": "stately-agent",
+        "commit": "b2d8926c66723d8161a930cdf3295f9d06f0c48d",
+        "path": "src/event-log.ts",
+        "anchor": "export function recordLog",
+        "line": 1467,
+        "sha256": "ab7b9cf1aae1b825f36451891f2f87f47dce684029438759bfd61037ca594bed",
+        "url": "https://github.com/statelyai/agent/blob/b2d8926c66723d8161a930cdf3295f9d06f0c48d/src/event-log.ts#L1467"
+      },
+      "agent-hosts": {
+        "repository": "stately-agent",
+        "commit": "b2d8926c66723d8161a930cdf3295f9d06f0c48d",
+        "path": "docs/hosts.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "8eebedeaaa82dc97cb53dfa66936059594d8b97e8f9fd56e506319ff36295463",
+        "url": "https://github.com/statelyai/agent/blob/b2d8926c66723d8161a930cdf3295f9d06f0c48d/docs/hosts.md#L1"
+      },
+      "agent-observability": {
+        "repository": "stately-agent",
+        "commit": "b2d8926c66723d8161a930cdf3295f9d06f0c48d",
+        "path": "docs/observability.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "05ba06aff0a48a45f86ce43b645dd759c25026aff9602a69bed8e9f2f10ed568",
+        "url": "https://github.com/statelyai/agent/blob/b2d8926c66723d8161a930cdf3295f9d06f0c48d/docs/observability.md#L1"
+      },
+      "graph": {
+        "repository": "stately-graph",
+        "commit": "5141455804c9925103e7da6029a0689b2523b873",
+        "path": "README.md",
+        "anchor": null,
+        "line": 1,
+        "sha256": "842247fd515690e15593928187357eb37b481cf3af20a72962e08a90afe88d3f",
+        "url": "https://github.com/statelyai/graph/blob/5141455804c9925103e7da6029a0689b2523b873/README.md#L1"
+      },
+      "sdk-inspector": {
+        "kind": "published-package-file",
+        "package": "@statelyai/sdk",
+        "version": "0.48.0",
+        "path": "dist/inspect-CxpvtiCB.mjs",
+        "artifact_path": ".artifacts/mvp-kit/stately-sdk-0.48.0/package/dist/inspect-CxpvtiCB.mjs",
+        "url": "https://unpkg.com/@statelyai/sdk@0.48.0/dist/inspect-CxpvtiCB.mjs",
+        "sha256": "73117e65d083b70a84e3a7588cc3e3562c929465d026718ccccda8d81ac48ea4",
+        "anchor": "function createInspector(",
+        "line": 177
+      },
+      "sdk-inspector-types": {
+        "kind": "published-package-file",
+        "package": "@statelyai/sdk",
+        "version": "0.48.0",
+        "path": "dist/inspect-Nkz07AKe.d.mts",
+        "artifact_path": ".artifacts/mvp-kit/stately-sdk-0.48.0/package/dist/inspect-Nkz07AKe.d.mts",
+        "url": "https://unpkg.com/@statelyai/sdk@0.48.0/dist/inspect-Nkz07AKe.d.mts",
+        "sha256": "91d65d84be9c8a30c9ca84b7f7e49cf194f5bf2e09dfe14c2bba534711875375",
+        "anchor": "serializeSnapshot?:",
+        "line": 379
+      }
+    },
+    "features": [
+      {
+        "id": "engine",
+        "capability": "Execution and control flow",
+        "pi_mechanism": "AgentSession wraps Agent.prompt/continue with recovery and settlement loops.",
+        "xstate_coverage": "native-control",
+        "pi_ai_coverage": "not-a-loop",
+        "proposed_placement": "xstate",
+        "mvp": "inherited",
+        "rationale": "Use the user machine as the authority. Do not import AgentSession or Agent as a hidden scheduler.",
+        "sources": [
+          "pi-loop-control",
+          "pi-agent-loop",
+          "x6-durable"
+        ]
+      },
+      {
+        "id": "conversation",
+        "capability": "Conversation and turn semantics",
+        "pi_mechanism": "Agent messages, steering/follow-up queues, and agent_settled define Pi interaction.",
+        "xstate_coverage": "mechanisms-only",
+        "pi_ai_coverage": "message-types-and-transcript",
+        "proposed_placement": "flow",
+        "mvp": "replaceable-example",
+        "rationale": "Ship a useful ordinary XState conversation machine, not a mandatory host protocol. User interactions may use entirely different events.",
+        "sources": [
+          "pi-session",
+          "pi-sdk",
+          "pi-ai-transcript"
+        ]
+      },
+      {
+        "id": "queues",
+        "capability": "Steering and follow-up placement",
+        "pi_mechanism": "Separate input queues are consumed at defined turn boundaries.",
+        "xstate_coverage": "mailbox-not-Pi-policy",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "flow",
+        "mvp": "replaceable-example",
+        "rationale": "A mailbox delivers events; the machine decides when they influence model context. Do not confuse native delivery with Pi queue policy.",
+        "sources": [
+          "pi-session",
+          "pi-agent-loop",
+          "x5-system"
+        ]
+      },
+      {
+        "id": "composition",
+        "capability": "Child flows, parallel work and waits",
+        "pi_mechanism": "SDK/custom extensions can start other agents; Pi does not prescribe sub-agents.",
+        "xstate_coverage": "native-actors-and-statecharts",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "xstate",
+        "mvp": "inherited",
+        "rationale": "Use invoke, spawn, events and machine composition. No Zedflow process graph or generic override compiler is required.",
+        "sources": [
+          "pi-philosophy",
+          "x6-durable"
+        ]
+      },
+      {
+        "id": "cancellation",
+        "capability": "Cancellation and cleanup",
+        "pi_mechanism": "Abort controllers, session invalidation and disposal prevent stale extension activity.",
+        "xstate_coverage": "actor-lifecycle",
+        "pi_ai_coverage": "abort-signals",
+        "proposed_placement": "kit",
+        "mvp": "small-adapter",
+        "rationale": "Connect native cancellation to Pi AI and tool resources. Neither stopping an actor nor aborting HTTP reverses an external effect.",
+        "sources": [
+          "pi-lifecycle",
+          "pi-runtime",
+          "pi-ai",
+          "x6-logic"
+        ]
+      },
+      {
+        "id": "settlement",
+        "capability": "Distinguish waiting, done, failure and intermediate response completion",
+        "pi_mechanism": "agent_end may be followed by recovery; agent_settled reports final Pi idleness.",
+        "xstate_coverage": "native-status-and-explicit-states",
+        "pi_ai_coverage": "terminal-response-status",
+        "proposed_placement": "flow",
+        "mvp": "replaceable-example",
+        "rationale": "Publish native lifecycle. A flow defines business waiting and settlement; the host does not infer it from assistant text.",
+        "sources": [
+          "pi-sdk",
+          "pi-session",
+          "x6-inspection"
+        ]
+      },
+      {
+        "id": "provider",
+        "capability": "Model calls, streaming and provider compatibility",
+        "pi_mechanism": "ModelRuntime delegates model operations to Pi AI.",
+        "xstate_coverage": "invocation-only",
+        "pi_ai_coverage": "native",
+        "proposed_placement": "pi-ai",
+        "mvp": "inherited",
+        "rationale": "Expose Pi AI without inventing a Zedflow model API. An optional native actor adapter forwards signal, chunks, terminal output and usage for one call.",
+        "sources": [
+          "pi-model-runtime",
+          "pi-ai",
+          "pi-sdk"
+        ]
+      },
+      {
+        "id": "llm-binding",
+        "capability": "One model request as an observable actor",
+        "pi_mechanism": "Provider callbacks feed Agent events and session consumers.",
+        "xstate_coverage": "native-actor-logic",
+        "pi_ai_coverage": "stream-and-response-events",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Use ordinary XState actor logic. Capture request/result references and stream events explicitly; never run a hidden model/tool loop inside the adapter.",
+        "sources": [
+          "pi-provider-hooks",
+          "x5-emission",
+          "pi-ai",
+          "agent-hosts"
+        ]
+      },
+      {
+        "id": "credentials",
+        "capability": "Persistent OAuth and credential access",
+        "pi_mechanism": "AuthStorage implements CredentialStore; ModelRuntime resolves providers and auth.",
+        "xstate_coverage": "none",
+        "pi_ai_coverage": "auth-orchestration-and-store-interface",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Reuse credential contracts and provider implementations; a persistent store and shutdown flush remain app plumbing. Secrets stay outside traces and sockets.",
+        "sources": [
+          "pi-auth",
+          "pi-model-runtime",
+          "pi-ai-auth",
+          "pi-runtime"
+        ]
+      },
+      {
+        "id": "model-choice",
+        "capability": "Model selection, reasoning and routed models",
+        "pi_mechanism": "Physical and virtual selections are distinct; routing state is persisted on the branch.",
+        "xstate_coverage": "state-and-decisions",
+        "pi_ai_coverage": "provider-model-options",
+        "proposed_placement": "flow",
+        "mvp": "optional",
+        "rationale": "Model routing is a machine strategy. Preserve actual dispatched model in request evidence; no universal virtual-model framework is necessary.",
+        "sources": [
+          "pi-virtual-models",
+          "pi-model-runtime",
+          "pi-ai"
+        ]
+      },
+      {
+        "id": "provider-hooks",
+        "capability": "Payload, headers, response and stream hooks",
+        "pi_mechanism": "SDK attaches extension transforms and observers to provider calls.",
+        "xstate_coverage": "no-provider-semantics",
+        "pi_ai_coverage": "native-hooks",
+        "proposed_placement": "pi-ai",
+        "mvp": "inherited",
+        "rationale": "Expose existing hooks. Do not build a second interception bus. Redact authorization data before recording evidence.",
+        "sources": [
+          "pi-provider-hooks",
+          "pi-ai"
+        ]
+      },
+      {
+        "id": "tools",
+        "capability": "Read, edit, write, shell and search",
+        "pi_mechanism": "Tool factories supply executable implementations and overridable operations.",
+        "xstate_coverage": "invocation-only",
+        "pi_ai_coverage": "declarations-not-implementations",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Offer reusable tool functions/actors. These are not supplied by XState or Pi AI and must not be mistaken for inherited filesystem operations.",
+        "sources": [
+          "pi-tools",
+          "pi-shell",
+          "pi-tool-wrapper"
+        ]
+      },
+      {
+        "id": "tool-dispatch",
+        "capability": "Model-selected tool validation and execution",
+        "pi_mechanism": "Agent core resolves tools, validates arguments, applies hooks, then runs calls.",
+        "xstate_coverage": "control-not-tool-protocol",
+        "pi_ai_coverage": "schema-utilities",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Reuse or adapt narrow utilities; do not reuse the Agent scheduler. The flow chooses sequential/parallel dispatch and admission states.",
+        "sources": [
+          "pi-agent-loop",
+          "pi-tool-wrapper",
+          "pi-session",
+          "pi-ai"
+        ]
+      },
+      {
+        "id": "tool-output",
+        "capability": "Truncation, structured output, images and oversized artifacts",
+        "pi_mechanism": "Tool implementations normalize and bound outputs; model-facing content differs from programmatic output.",
+        "xstate_coverage": "none",
+        "pi_ai_coverage": "content-types",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Reuse tool behavior where practical. Trace links may point to artifacts; copying an entire artifact into every snapshot is not required.",
+        "sources": [
+          "pi-shell",
+          "pi-tools",
+          "pi-session"
+        ]
+      },
+      {
+        "id": "mutation-order",
+        "capability": "Serialize conflicting file changes",
+        "pi_mechanism": "withFileMutationQueue serializes changes by canonicalized file path.",
+        "xstate_coverage": "actor-order-is-not-a-file-lock",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "Reuse tool-local locking when needed. XState event ordering does not automatically serialize effects across actors or runs.",
+        "sources": [
+          "pi-file-queue",
+          "x6-durable"
+        ]
+      },
+      {
+        "id": "admission",
+        "capability": "Approvals and domain permission rules",
+        "pi_mechanism": "Tool-call extensions can block execution; project trust gates loading code.",
+        "xstate_coverage": "guards-and-waits-not-sandbox",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "flow",
+        "mvp": "optional",
+        "rationale": "Users write approval machines or admission functions. The host must not advertise these as isolation for arbitrary trusted code.",
+        "sources": [
+          "pi-security",
+          "pi-extension-handlers",
+          "pi-session"
+        ]
+      },
+      {
+        "id": "context",
+        "capability": "Build the model-visible context",
+        "pi_mechanism": "SessionManager projects the active branch; extension transforms run before requests.",
+        "xstate_coverage": "stores-data-not-LLM-selection",
+        "pi_ai_coverage": "transcript-normalization",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Offer pure context projection helpers. The machine selects data; a generic run has no compulsory conversation projection.",
+        "sources": [
+          "pi-projection",
+          "pi-extension-handlers",
+          "pi-ai-transcript"
+        ]
+      },
+      {
+        "id": "context-edits",
+        "capability": "Keep raw evidence while changing future model context",
+        "pi_mechanism": "Append-only context_edit entries change selected contributions without rewriting history.",
+        "xstate_coverage": "data-model-not-native-policy",
+        "pi_ai_coverage": "message-structures",
+        "proposed_placement": "flow",
+        "mvp": "optional",
+        "rationale": "An optional projection strategy records edits as domain events. Do not rewrite the observation log or turn all traces into model input.",
+        "sources": [
+          "pi-projection",
+          "pi-session-format"
+        ]
+      },
+      {
+        "id": "compaction",
+        "capability": "Summary generation and compaction policy",
+        "pi_mechanism": "Compaction plans preserve boundaries and tool pairing; AgentSession chooses triggers and commit.",
+        "xstate_coverage": "control-only",
+        "pi_ai_coverage": "LLM-and-token-utilities",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "Supply functions or reusable machines. The selected loop owns thresholds, retries and summary installation; a non-LLM flow needs none.",
+        "sources": [
+          "pi-compaction",
+          "pi-recovery",
+          "pi-ai-retry"
+        ]
+      },
+      {
+        "id": "recovery",
+        "capability": "Retry, overflow and early-length recovery",
+        "pi_mechanism": "Session retry omits failed attempts from projection; compaction recovery checks model, edits and boundary age.",
+        "xstate_coverage": "timers-guards-not-Pi-policy",
+        "pi_ai_coverage": "classification-and-retry-utilities",
+        "proposed_placement": "flow",
+        "mvp": "replaceable-example",
+        "rationale": "Encode the policy in the default machine if desired. The earlier negative parity cases remain gaps, not new mandatory kernel features.",
+        "sources": [
+          "pi-retry",
+          "pi-recovery",
+          "pi-ai-retry"
+        ]
+      },
+      {
+        "id": "prompt",
+        "capability": "System prompt construction and tool loadout patches",
+        "pi_mechanism": "Prompt sections and tool declarations persist as system-message patches.",
+        "xstate_coverage": "none",
+        "pi_ai_coverage": "native-system-transcript",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "Reuse transcript primitives; keep prompt composition in the machine or its imported helpers.",
+        "sources": [
+          "pi-system-prompt",
+          "pi-session-format",
+          "pi-ai-transcript"
+        ]
+      },
+      {
+        "id": "skills",
+        "capability": "AGENTS files, skills and prompt templates",
+        "pi_mechanism": "Resource discovery and user commands select instructions for the model.",
+        "xstate_coverage": "none",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "These are useful conversation-machine inputs, not mandatory run semantics. Avoid automatic project code loading in a minimal launcher.",
+        "sources": [
+          "pi-skills",
+          "pi-prompts",
+          "pi-resources",
+          "pi-security"
+        ]
+      },
+      {
+        "id": "resources",
+        "capability": "Project/global resource discovery and provenance",
+        "pi_mechanism": "ResourceLoader resolves packages, paths, overrides, source metadata and collision diagnostics.",
+        "xstate_coverage": "actor-scope-only",
+        "pi_ai_coverage": "provider-session-resources",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "Start with explicit imports and injected services. Do not port the entire Pi discovery hierarchy to launch a machine.",
+        "sources": [
+          "pi-resources",
+          "pi-services",
+          "pi-ai"
+        ]
+      },
+      {
+        "id": "extension-format",
+        "capability": "Replace or extend executable behavior",
+        "pi_mechanism": "Extension factories register hooks, tools, commands, providers and renderers through a Pi-specific interface.",
+        "xstate_coverage": "provide-invoke-spawn-and-code",
+        "pi_ai_coverage": "provider-interfaces",
+        "proposed_placement": "flow",
+        "mvp": "plain-modules",
+        "rationale": "Users export ordinary machines and import the kit. Providing actors/actions changes implementations; it does not generically rewrite topology. No mandatory Zedflow extension object or Pi ABI.",
+        "sources": [
+          "pi-extensions",
+          "pi-extension-contract",
+          "x6-logic"
+        ]
+      },
+      {
+        "id": "hook-order",
+        "capability": "Ordered hook composition and boundary drafts",
+        "pi_mechanism": "ExtensionRunner folds handlers and validates projected boundary drafts before commit.",
+        "xstate_coverage": "expressible-not-Pi-hook-ABI",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "flow",
+        "mvp": "optional",
+        "rationale": "Make needed ordering explicit in transitions or imported functions. Observation subscribers are not a control hook that can veto committed transitions.",
+        "sources": [
+          "pi-extension-handlers",
+          "x6-inspection"
+        ]
+      },
+      {
+        "id": "packages",
+        "capability": "Package install, autoload and reload",
+        "pi_mechanism": "Pi packages bundle extensions, skills, prompts and themes; loaders handle aliases and lifetimes.",
+        "xstate_coverage": "none",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "deferred",
+        "mvp": "not-required",
+        "rationale": "Use normal TypeScript/JavaScript modules and dependency management first. Restart on a new revision rather than promising hot swap.",
+        "sources": [
+          "pi-packages",
+          "pi-extensions",
+          "pi-runtime"
+        ]
+      },
+      {
+        "id": "run-identity",
+        "capability": "Durable run identity tied to selected flow",
+        "pi_mechanism": "Pi headers group conversation entries by session and cwd, not by executable machine revision.",
+        "xstate_coverage": "v6-machine-id-version-addresses",
+        "pi_ai_coverage": "request-session-identifiers",
+        "proposed_placement": "host",
+        "mvp": "proposed-core",
+        "rationale": "Add only the missing association: durable run id, selected module revision/dependency identity, input reference and local runtime incarnation. Native actor sessionId is not the durable run id.",
+        "sources": [
+          "pi-session-storage",
+          "x5-system",
+          "x6-persistence",
+          "x6-durable"
+        ]
+      },
+      {
+        "id": "launch",
+        "capability": "Load and launch a selected machine",
+        "pi_mechanism": "createAgentSession constructs a fixed Agent stack and default services.",
+        "xstate_coverage": "native-create-and-restore",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "host",
+        "mvp": "proposed-core",
+        "rationale": "Resolve a native machine module and bind host services without changing its states, event vocabulary or execution semantics. No wrapper machine or alternate scheduler.",
+        "sources": [
+          "pi-sdk",
+          "pi-services",
+          "x6-persistence"
+        ]
+      },
+      {
+        "id": "trace",
+        "capability": "Observe the full local actor system",
+        "pi_mechanism": "Pi session listeners record domain events; JSON mode streams a separate event surface.",
+        "xstate_coverage": "native-inspection",
+        "pi_ai_coverage": "provider-events",
+        "proposed_placement": "host",
+        "mvp": "proposed-core",
+        "rationale": "Subscribe before startup and organize native observations by run. Retain engine version and original event family; do not invent a universal statechart language.",
+        "sources": [
+          "pi-session",
+          "pi-rpc",
+          "x5-inspection",
+          "x6-inspection"
+        ]
+      },
+      {
+        "id": "trace-storage",
+        "capability": "Archive, order and query run evidence",
+        "pi_mechanism": "Pi uses a session header and an append-only entry tree; messages trigger the first durable file.",
+        "xstate_coverage": "no-storage-backend",
+        "pi_ai_coverage": "no-run-store",
+        "proposed_placement": "host",
+        "mvp": "proposed-core",
+        "rationale": "Supply a local append-only sink, cursor/sequence, artifact references and explicit write failure behavior. Record runs even when they contain no conversation.",
+        "sources": [
+          "pi-session-storage",
+          "pi-session-format",
+          "x6-inspection",
+          "agent-log"
+        ]
+      },
+      {
+        "id": "trace-codec",
+        "capability": "Portable actor/event records",
+        "pi_mechanism": "Pi entries are domain JSON rather than live actor objects.",
+        "xstate_coverage": "live-references-and-persistence-serialization",
+        "pi_ai_coverage": "typed-model-payloads",
+        "proposed_placement": "host",
+        "mvp": "proposed-core",
+        "rationale": "Encode native identity and JSON payloads; capture emitted domain events separately. Define unsupported-payload and secret policies. An inspector is not a lossless recorder of arbitrary JavaScript. Evaluate the existing Stately SDK inspection transport before adding equivalent adapter code.",
+        "sources": [
+          "x5-inspection",
+          "x5-emission",
+          "x6-inspection",
+          "x6-persistence",
+          "pi-session-format",
+          "sdk-inspector",
+          "sdk-inspector-types"
+        ]
+      },
+      {
+        "id": "checkpoint",
+        "capability": "Save and reopen execution state",
+        "pi_mechanism": "Pi reconstructs conversation/context and replaces AgentSession; it does not persist a generic statechart.",
+        "xstate_coverage": "native-snapshot-restore-and-v6-migration",
+        "pi_ai_coverage": "no-workflow-checkpoint",
+        "proposed_placement": "host",
+        "mvp": "proposed-core-conditional",
+        "rationale": "Store native checkpoints for compatible serializable machines. Keep live services outside context. Report unsupported/uncertain recovery; do not recreate XState serialization or promise arbitrary-effect resume.",
+        "sources": [
+          "pi-runtime",
+          "pi-sdk",
+          "x6-persistence",
+          "x5-restore"
+        ]
+      },
+      {
+        "id": "replay",
+        "capability": "Reconstruct past state without repeating external work",
+        "pi_mechanism": "Pi reconstructs a conversational projection; prior tool effects are represented by stored results.",
+        "xstate_coverage": "pure-transitions-and-v6-durable-hooks",
+        "pi_ai_coverage": "no-general-effect-journal",
+        "proposed_placement": "deferred",
+        "mvp": "evaluate-existing",
+        "rationale": "Agent log primitives work with plain machines but recordLog is root-only. Prefer native checkpoint restore for the initial profile; qualify any stronger child/effect journal before adopting it.",
+        "sources": [
+          "pi-projection",
+          "agent-log",
+          "agent-recorder",
+          "x6-durable"
+        ]
+      },
+      {
+        "id": "fork",
+        "capability": "Branch/fork conversation or execution history",
+        "pi_mechanism": "Pi stores parent-linked entries and reconstructs the active branch.",
+        "xstate_coverage": "statecharts-are-not-history-branches",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "deferred",
+        "mvp": "not-required",
+        "rationale": "An optional run-fork utility can preserve lineage; no branching session tree is necessary to launch and inspect a machine.",
+        "sources": [
+          "pi-session-format",
+          "pi-runtime",
+          "agent-log"
+        ]
+      },
+      {
+        "id": "socket",
+        "capability": "Declared event socket for each run",
+        "pi_mechanism": "Pi RPC maps JSONL commands to AgentSession and extension UI; its event bus is in-process.",
+        "xstate_coverage": "actor-send-emit-and-v6-routing-hooks",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "host",
+        "mvp": "proposed-core",
+        "rationale": "Bind the declared endpoint to the run and native events. Clients own interaction semantics. Framing, endpoint permissions, validation and disconnect/backpressure policy remain transport duties, not a conversation protocol. Evaluate the existing Stately SDK inspection transport before adding equivalent adapter code.",
+        "sources": [
+          "pi-rpc",
+          "pi-bus",
+          "x5-emission",
+          "x6-durable",
+          "sdk-inspector",
+          "sdk-inspector-types"
+        ]
+      },
+      {
+        "id": "interaction",
+        "capability": "Custom questions, inputs, confirmations and human waits",
+        "pi_mechanism": "Pi extension UI and RPC expose predefined interaction helpers.",
+        "xstate_coverage": "native-events-and-waiting-states",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "flow",
+        "mvp": "user-authored",
+        "rationale": "Authors define states and event contracts; any socket client can implement them. Zedflow does not require ASK/APPROVE or a special human-wait state.",
+        "sources": [
+          "pi-extension-contract",
+          "pi-rpc",
+          "x6-inspection"
+        ]
+      },
+      {
+        "id": "ui",
+        "capability": "Terminal, editor, themes, shortcuts and renderers",
+        "pi_mechanism": "Interactive mode and extensions implement presentation using Pi TUI.",
+        "xstate_coverage": "not-a-UI",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "client",
+        "mvp": "outside-core",
+        "rationale": "Pi TUI may build a first client. Terminal ownership, prompts, rendering and notification policy stay outside the run host.",
+        "sources": [
+          "pi-philosophy",
+          "pi-rpc",
+          "pi-extension-contract"
+        ]
+      },
+      {
+        "id": "integration",
+        "capability": "Headless, print, JSON, RPC and SDK modes",
+        "pi_mechanism": "All Pi modes share AgentSession.",
+        "xstate_coverage": "ordinary-native-actor-API",
+        "pi_ai_coverage": "ordinary-library-API",
+        "proposed_placement": "client",
+        "mvp": "outside-core",
+        "rationale": "One event endpoint replaces a menu of kernel interaction modes. A CLI launches the selected module; other clients are consumers.",
+        "sources": [
+          "pi-sdk",
+          "pi-rpc",
+          "pi-architecture"
+        ]
+      },
+      {
+        "id": "usage",
+        "capability": "Usage and cost attribution",
+        "pi_mechanism": "Pi accounts for assistant, summary, tool and background usage.",
+        "xstate_coverage": "no-provider-metering",
+        "pi_ai_coverage": "native-usage-when-reported",
+        "proposed_placement": "kit",
+        "mvp": "proposed-kit",
+        "rationale": "Preserve reported usage with request/run correlation. Unknown or aborted usage remains unknown; aggregation and hard budgets are machine policy.",
+        "sources": [
+          "pi-usage",
+          "pi-session-format",
+          "pi-ai",
+          "agent-log"
+        ]
+      },
+      {
+        "id": "cache",
+        "capability": "Provider cache warming",
+        "pi_mechanism": "Pi repeats eligible requests and records non-conversational usage.",
+        "xstate_coverage": "none",
+        "pi_ai_coverage": "cache-warming-primitives",
+        "proposed_placement": "flow",
+        "mvp": "optional",
+        "rationale": "An optimization with real provider cost, not a prerequisite or a background host action.",
+        "sources": [
+          "pi-cache",
+          "pi-ai",
+          "pi-session-format"
+        ]
+      },
+      {
+        "id": "codemode",
+        "capability": "Programmatic tool composition in a VM",
+        "pi_mechanism": "Built-in replaceable extension binds Pi Code Mode to registered tools.",
+        "xstate_coverage": "not-a-VM",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "Offer the existing dependency as an optional actor/capability integration. VM persistence and tool effects remain separate.",
+        "sources": [
+          "pi-codemode",
+          "pi-sdk"
+        ]
+      },
+      {
+        "id": "mcp",
+        "capability": "MCP connections and deferred tool discovery",
+        "pi_mechanism": "Replaceable extensions connect servers, register tools and expose search.",
+        "xstate_coverage": "actor-lifecycle-not-MCP",
+        "pi_ai_coverage": "tool-schemas-not-MCP",
+        "proposed_placement": "kit",
+        "mvp": "optional",
+        "rationale": "Reuse Pi MCP if needed; the launcher does not require every machine to expose model tools.",
+        "sources": [
+          "pi-mcp",
+          "pi-search",
+          "pi-sdk"
+        ]
+      },
+      {
+        "id": "security",
+        "capability": "Trusted code loading and execution isolation",
+        "pi_mechanism": "Pi trust gates discovery, but extensions and tools run with process permissions.",
+        "xstate_coverage": "no-sandbox",
+        "pi_ai_coverage": "no-sandbox",
+        "proposed_placement": "host",
+        "mvp": "minimal-boundary",
+        "rationale": "Load explicitly selected trusted modules; protect the local event socket and credential store. OS/container isolation is separate, not a claim derived from guards.",
+        "sources": [
+          "pi-security",
+          "pi-extensions"
+        ]
+      },
+      {
+        "id": "exports",
+        "capability": "Search, export, bug reports and rich session browsing",
+        "pi_mechanism": "Pi exports conversational history and renders it for users.",
+        "xstate_coverage": "inspection-input-only",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "client",
+        "mvp": "optional",
+        "rationale": "Consumers build views over run traces and domain events. Do not impose conversational summaries on all runs.",
+        "sources": [
+          "pi-export",
+          "pi-session",
+          "pi-session-format"
+        ]
+      },
+      {
+        "id": "factory",
+        "capability": "Software factory, task plans and autonomy levels",
+        "pi_mechanism": "Pi intentionally leaves sub-agents and plan mode to customization.",
+        "xstate_coverage": "expressible-statecharts",
+        "pi_ai_coverage": "LLM-calls",
+        "proposed_placement": "flow",
+        "mvp": "user-authored",
+        "rationale": "These are ways to use the kit. They do not add mandatory run states or a task-manager data model.",
+        "sources": [
+          "pi-philosophy",
+          "x6-durable"
+        ]
+      },
+      {
+        "id": "stately-agent",
+        "capability": "Stately request, log and memory conveniences",
+        "pi_mechanism": "No Pi equivalent is a required dependency of XState.",
+        "xstate_coverage": "native-machines-remain-valid",
+        "pi_ai_coverage": "custom-executor-possible",
+        "proposed_placement": "kit",
+        "mvp": "optional-evaluate",
+        "rationale": "Do not require setupAgent or createAgentRuntime. Evaluate log-only reuse separately; existing host executors may contain tool loops the selected machine should own.",
+        "sources": [
+          "agent-log",
+          "agent-recorder",
+          "agent-hosts"
+        ]
+      },
+      {
+        "id": "graph",
+        "capability": "Graph conversion, editing and exploration",
+        "pi_mechanism": "Pi does not require a graph editing surface.",
+        "xstate_coverage": "native-machine-structure",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "deferred",
+        "mvp": "not-required",
+        "rationale": "Keep Graph available as an optional dependency. It is neither the execution authority nor a prerequisite to launching user machines.",
+        "sources": [
+          "graph",
+          "x6-inspection"
+        ]
+      },
+      {
+        "id": "inspector-transport",
+        "capability": "Existing inspection codec and bidirectional transport",
+        "pi_mechanism": "Pi RPC is conversation-specific; Stately SDK supplies a separate generic inspection transport.",
+        "xstate_coverage": "inspection-events",
+        "pi_ai_coverage": "none",
+        "proposed_placement": "kit",
+        "mvp": "evaluate-existing",
+        "rationale": "Evaluate @statelyai/sdk/inspect with an injected local transport before writing a codec/control bridge. It handles v5/v6 observations and opt-in event sending. Default snapshot serialization keeps value/status, not full recoverable context; the default relay is hosted. Neither default is a local durable run store.",
+        "sources": [
+          "sdk-inspector",
+          "sdk-inspector-types"
+        ]
+      }
+    ],
+    "session_model": {
+      "proposal": "Session is the durable identity and stored record of a logical run, not a required conversation object.",
+      "record": "Run metadata associates the selected native machine and reproducible module/dependency revision with native inspection records, domain emissions and optional native checkpoints.",
+      "identity": "Use one durable run id. Native sessionId identifies a runtime actor incarnation; record it rather than equating it with the durable run. XState 6 already supplies logical actor addresses and machine id/version.",
+      "payload": "Interaction payloads belong to the machine event schemas. A client can derive a conversation view when the machine defines one.",
+      "recovery": "An observation archive supports browsing. Resume requires compatible snapshots or a qualified replay journal; recording raw inspector callbacks alone supplies neither universal durable replay nor exactly-once effects."
+    },
+    "trace_findings": [
+      {
+        "claim": "XState 5 inspection carries live actor references and native event/snapshot/microstep/action families; it does not allocate a durable run directory or append-only store.",
+        "sources": [
+          "x5-inspection",
+          "x5-system"
+        ],
+        "probe": "v5 inspection observes a non-conversational machine"
+      },
+      {
+        "claim": "Promise-actor emit output can be absent from inspection. Recording inspection alone is not a complete model-stream or domain-output archive.",
+        "sources": [
+          "x5-emission"
+        ],
+        "probe": "v5 promise emissions are separate from inspection"
+      },
+      {
+        "claim": "Restoring an active promise invocation starts its body again; entry actions in the restored state are not rerun.",
+        "sources": [
+          "x5-restore",
+          "x6-persistence"
+        ],
+        "probe": "v5 a persisted active invocation restarts its body"
+      },
+      {
+        "claim": "XState 6 consolidates inspection into actor/transition records and already includes machine identity, logical addresses, version migration and durable host integration hooks. Those hooks are not a storage backend.",
+        "sources": [
+          "x6-inspection",
+          "x6-persistence",
+          "x6-durable"
+        ],
+        "probe": "v6 inspection consolidates transition facets"
+      },
+      {
+        "claim": "Stately Agent log utilities can record/replay a plain XState 6 machine without setupAgent; the tested completed effect is not rerun.",
+        "sources": [
+          "agent-log",
+          "agent-recorder"
+        ],
+        "probe": "Agent log records a plain v6 machine"
+      },
+      {
+        "claim": "The standalone recordLog observes only root transitions; the tested live child advances but the replayed child remains at its initial state. Full runtime journaling has different constraints.",
+        "sources": [
+          "agent-log",
+          "agent-recorder"
+        ],
+        "probe": "Agent recordLog only records the root"
+      },
+      {
+        "claim": "The published Stately SDK inspector accepts an injected transport, optional bidirectional actor event sending and custom snapshot serialization. Defaults use a hosted relay and a value/status snapshot view. This is reusable inspection infrastructure, not automatic local execution persistence.",
+        "sources": [
+          "sdk-inspector",
+          "sdk-inspector-types"
+        ],
+        "verification": "Published code/type review only; no SDK connection or execution."
+      }
+    ],
+    "probe_evidence": {
+      "path": "experiments/trace-probes/inspection.test.mjs",
+      "command": "node --test experiments/trace-probes/inspection.test.mjs",
+      "passed": 6,
+      "network_calls": 0,
+      "credential_access": false,
+      "log": ".artifacts/mvp-kit/trace-probes.txt",
+      "limitations": [
+        "No production socket or run store was implemented.",
+        "No crash, filesystem durability or multi-writer guarantee was tested.",
+        "XState 6 durable host adapters and migrations were source-reviewed, not newly qualified end to end.",
+        "Agent log probes use memory and do not qualify arbitrary child machines or arbitrary callback/async effects."
+      ]
+    },
+    "proposed_mvp_kernel": [
+      "Load the selected native machine and bind explicitly configured resources.",
+      "Associate a durable run record with the selected machine/revision and local actor identities.",
+      "Encode and archive native inspection and declared domain emissions with ordering and explicit recording errors.",
+      "Connect the declared run socket to native event input/output without defining business interaction commands.",
+      "Store and restore native checkpoints for a documented serializable-machine profile; refuse unsupported recovery."
+    ],
+    "proposed_kit": [
+      "Pi AI directly, plus optional one-request native actor logic for cancellation, streaming and usage evidence.",
+      "Persistent credential integration and selected tool implementations, without constructing AgentSession.",
+      "Optional context projection, summary and tool-dispatch functions or machines.",
+      "An ordinary replaceable conversation machine as a useful starting example, not a privileged execution path."
+    ],
+    "open_decisions": [
+      "Choose the engine generation explicitly: v5 is the broad existing qualification baseline; v6 has more inherited facilities but beta/experimental contracts. No dependency upgrade was made.",
+      "Choose native checkpoint restoration versus a specifically qualified existing replay journal for each supported persistence profile.",
+      "Specify the minimum socket framing, endpoint access, public-event validation and backlog/disconnect behavior; user event semantics remain outside the host.",
+      "Decide how plain modules declare optional emissions/serialization support without forcing a machine wrapper or a new extension ABI.",
+      "Assess whether importing Pi tool/auth exports pulls unwanted coding-agent globals; package exposure is not proof of safe extraction.",
+      "Qualify SDK inspection with a local injected transport and an explicit payload policy before deciding whether Zedflow needs its own observation codec or event bridge."
+    ],
+    "elimination_rules": [
+      "Native XState control is not a second Zedflow scheduler.",
+      "An inherited mechanism does not implement its domain policy: mailboxes are not steering queues and guards are not sandboxing.",
+      "A supplemental mechanism can be an optional kit primitive; it need not become a mandatory host service.",
+      "The observational journal and any replay journal may share storage, but they are different contracts.",
+      "A feature made possible by a dependency is not automatically qualified for Zedflow production."
+    ],
+    "published_references": {
+      "stately-sdk": {
+        "version": "0.48.0",
+        "tarball": "https://registry.npmjs.org/@statelyai/sdk/-/sdk-0.48.0.tgz",
+        "integrity": "sha512-/sKMnOAm9ebMTWwHFMvA6J9m5wSuE+83GakZ5pPD3YRks2Ish35N+hhCNgvqPChY4fkYxiFKQNuA8/RW9S8smg==",
+        "metadata": ".artifacts/mvp-kit/stately-sdk-metadata.json",
+        "reason": "The published SDK names no repository. The attempted https://github.com/statelyai/sdk.git URL was unavailable; no verified public Git source was identified, so no guessed submodule was added. The integrity-verified published files were read without installing or executing the SDK."
+      }
+    },
+    "validation": {
+      "existing_suites": {
+        "native": 148,
+        "agent_stable": 5,
+        "agent_current": 7
+      },
+      "additional_offline_probes": 6,
+      "source_hashes_and_anchors": "verified",
+      "repository_protections": "Parent checkout, historical branches, LICENSE and design match the qualification protection baseline.",
+      "documentation": "Workspace checker passes, with only the existing README collection exception.",
+      "provider_calls_during_this_analysis": 0
+    }
+  },
+  "coordinator_prototype": {
+    "status": "offline-experiment-not-product-implementation",
+    "operator_direction": [
+      "Load TypeScript directly, inspired by Pi; explore reload of run machines.",
+      "Use strict TypeScript and Vite+ tests, lint and formatting.",
+      "Keep filesystem storage available; evaluate transport separately and avoid a broad CLI.",
+      "Provide built-in tools and discover additional declarations under .zedflow/tools/.",
+      "Use coordinator rather than host; provide an explicit core entrypoint.",
+      "Name modules by implementation responsibility and isolate XState-specific integration."
+    ],
+    "path": "experiments/stately-coordinator-prototype",
+    "dependencies": {
+      "jiti": "2.7.0",
+      "xstate": "6.0.0-beta.0"
+    },
+    "dev_dependencies": {
+      "@types/node": "24.10.1",
+      "typescript": "5.9.3",
+      "vite-plus": "1.6.0"
+    },
+    "lockfile_sha256": "f98ea09466b34983bc50c8e59c9162cd6833d046d61a49e04ba5138bf18e303b",
+    "architecture": {
+      "core": "Composition root and machine resolution; program entrypoint importable by an editor integration.",
+      "coordinator": "Run identity, explicit origin, generation and lifecycle command exclusion; no machine definition DSL or independent transition scheduler.",
+      "xstate-adapter": "Only program module importing XState; owns native class identity, creation, inspection projection and checkpoint restoration.",
+      "module-loader": "Jiti loads native default-exported TS machines; local imports reload without caches; adapter-provided virtual modules retain engine identity.",
+      "fs-store": "One-writer JSONL append/read implementation with sequence checks and explicit rejection of incomplete tails.",
+      "tool-registry": "Built-in declaration plus global/project declaration discovery; no program execution during discovery.",
+      "contracts": "Small internal integration interfaces with opaque native definitions and JSON data; not a portable workflow language."
+    },
+    "findings": [
+      {
+        "id": "typescript-direct",
+        "result": "passed",
+        "evidence": "Direct Node subprocess loads the TS entrypoint, launches a TS machine, changes an imported TS helper, reloads and continues."
+      },
+      {
+        "id": "reload-transitive",
+        "result": "passed",
+        "evidence": "A helper changes the increment from 1 to 10; a retained run changes count from 1 to 11 without repeating its entry action. A new launch sees new code while an unreloaded run retains old behavior."
+      },
+      {
+        "id": "native-runtime-identity",
+        "result": "passed-after-correction",
+        "evidence": "An isolated Jiti copy of XState failed restore recognition because restoreLogicSnapshot uses instanceof StateMachine. Sharing adapter modules fixes restoration; a negative test rejects machines from another copy. Initial failure: TypeError: nextSnapshot.machine.getTransitionData is not a function."
+      },
+      {
+        "id": "replacement-validation",
+        "result": "passed",
+        "evidence": "Malformed code, invalid exports, changed native version and removed active state reject replacement while the old execution remains usable. Active children/timers reject replacement before importing new code."
+      },
+      {
+        "id": "command-exclusion",
+        "result": "passed",
+        "evidence": "An engine-independent coordinator test holds module loading pending and verifies that send, stop and concurrent reload reject during replacement."
+      },
+      {
+        "id": "records",
+        "result": "passed",
+        "evidence": "Initialization is observed before external input; FS records reopen with stable sequence and explicit origin; root domain emissions are separate records; traversal and incomplete tails reject."
+      },
+      {
+        "id": "tool-discovery",
+        "result": "passed",
+        "evidence": "The built-in echo declaration exists without configuration. Project declarations override global declarations without executing their commands."
+      },
+      {
+        "id": "type-safety",
+        "result": "bounded",
+        "evidence": "Prototype code passes Vite+ type-aware checks and TypeScript strict/exactOptionalPropertyTypes/noUncheckedIndexedAccess. A negative fixture proves runtime TS transpilation still accepts a type error diagnosed by TypeScript."
+      },
+      {
+        "id": "adapter-isolation",
+        "result": "passed",
+        "evidence": "Program import checks confine XState imports to the adapter. The coordinator can be exercised against a fixture engine without XState. Author machines remain native and version-dependent."
+      }
+    ],
+    "validation": {
+      "command": "npm run check --prefix experiments/stately-coordinator-prototype",
+      "checks": [
+        "vp check (format, type-aware lint, typecheck)",
+        "tsc --noEmit",
+        "vp test run"
+      ],
+      "test_count": 18,
+      "provider_calls": 0,
+      "sockets_opened": 0,
+      "evidence": ".artifacts/coordinator-prototype/check.txt",
+      "clean_install": "Passed via experiments/install.sh with npm ci, ignored scripts and artifact-confined dependencies.",
+      "regression_counts": {
+        "stately_native": 148,
+        "stately_agent_stable": 5,
+        "stately_agent_current": 7,
+        "trace_probes": 6
+      },
+      "total_tests_with_regressions": 184,
+      "documentation": "16 Markdown documents pass the workspace checker; existing README collection exception remains."
+    },
+    "sources": [
+      {
+        "repository": "references/pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/extensions/loader.ts",
+        "anchor": "const jiti = createJitiImpl",
+        "line": 588,
+        "sha256": "dbaf48552f1f0463ea1c4143cd31781c7b023735d71e62130dd71672e2e59d5d"
+      },
+      {
+        "repository": "references/pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/coding-agent/src/core/agent-session.ts",
+        "anchor": "async reload(options?",
+        "line": 3815,
+        "sha256": "dea73f4df16b15c927a4cb6b35ad7a3f9738232acb2d48473f0497f360fda6fe"
+      },
+      {
+        "repository": "references/xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "packages/core/src/persist/index.ts",
+        "anchor": "logic instanceof StateMachine",
+        "line": 107,
+        "sha256": "f405a7dda50707c2205d4ead9ab6df86204a2570183150211067c73e899c8246"
+      },
+      {
+        "repository": "references/xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/persistence.md",
+        "anchor": "Restore the actor with",
+        "line": 17,
+        "sha256": "59f0b8436daf0ffdb005e67f50ff85e18be5cbe1092b74e2bc1ab28bdc95c59e"
+      },
+      {
+        "repository": "references/xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/inspection.md",
+        "anchor": "Experimental:",
+        "line": 8,
+        "sha256": "07f2cd4a8a42620d9e864174080de2648453b753d5c0c3a360ffceb3bce874c5"
+      }
+    ],
+    "toolchain_sources": [
+      "https://github.com/voidzero-dev/vite-plus/blob/main/docs/guide/test.md",
+      "https://github.com/voidzero-dev/vite-plus/blob/main/docs/guide/check.md",
+      "https://registry.npmjs.org/vite-plus/1.6.0"
+    ],
+    "limits": [
+      "Trusted modules only: importing user code can have irreversible top-level effects. The loader is not a sandbox.",
+      "No automatic static validation gate for dynamically loaded machines; runtime transpilation is not type checking.",
+      "Reload supports active child-free, timer-free snapshots with unchanged native id/version. It does not prove arbitrary user effects quiescent, migrate schemas, or recover from a process crash.",
+      "FS storage is synchronous, one-writer and bounded; append scans existing records. No fsync, interprocess locking, crash repair, transaction around replacement or scalable index.",
+      "The local directory revision excludes node_modules and external imports; it is not a complete reproducible dependency closure. Engine modules deliberately share the pinned runtime version.",
+      "JSON payloads only; unsupported values can fail serialization. Records are trusted local data, not encrypted or automatically redacted.",
+      "Inspection is a selected serializable projection, not the full native inspection protocol or a replay journal. Root emissions are collected; opaque external work is not automatically instrumented.",
+      "Origins are explicit for separately launched runs; automatic registration/routing of invoked submachines as independent runs is not implemented.",
+      "Tools are declaration/discovery fixtures only; no external tool runner, Rust tool suite, full JSON Schema validation or model invocation is implemented.",
+      "Transport selection, Studio/editor integration, Stately Agent journal, context primitives and post-restart resumption remain unqualified in this slice."
+    ],
+    "recommendations": [
+      "Keep core as the composition root and coordinator as lifecycle integration, with native machine definitions unchanged.",
+      "Share the engine module instance across direct TS imports; keep this decision in the adapter/loader wiring.",
+      "Use explicit replacement at supported checkpoints rather than silently replacing arbitrary live runs.",
+      "Add machine validation and evaluate inspector transport and native journal integration before broadening the runtime contract."
+    ],
+    "historical_commit": "a6d1d94acc99f96341cf3135a88b4bac9cbb728f",
+    "superseded_by": "workspace_loop"
+  },
+  "workspace_loop": {
+    "status": "offline-workspace-experiment-not-production-runtime",
+    "path": "experiments/stately-coordinator-prototype",
+    "operator_direction": [
+      "Use pnpm exclusively.",
+      "Confirm Oxlint, Oxfmt and Vitest; enforce explicit formatting and function/type conventions.",
+      "Research Stately Studio/editor and keep development integration out of the runtime dependencies.",
+      "Ship a minimal native model/tool loop.",
+      "Create a pnpm workspace with packages separating architecture and XState integration."
+    ],
+    "package_manager": "pnpm@12.18.0",
+    "packages": {
+      "architecture": {
+        "name": "@zf/architecture",
+        "version": "0.0.0",
+        "private": true,
+        "type": "module",
+        "exports": {
+          ".": "./src/index.ts"
+        },
+        "dependencies": {}
+      },
+      "xstate": {
+        "name": "@zf/xstate",
+        "version": "0.0.0",
+        "private": true,
+        "type": "module",
+        "exports": {
+          ".": "./src/index.ts"
+        },
+        "dependencies": {
+          "@zf/architecture": "workspace:*",
+          "xstate": "6.0.0-beta.0"
+        }
+      },
+      "core": {
+        "name": "@zf/core",
+        "version": "0.0.0",
+        "private": true,
+        "type": "module",
+        "exports": {
+          ".": "./src/index.ts"
+        },
+        "dependencies": {
+          "@zf/architecture": "workspace:*",
+          "@zf/loop": "workspace:*",
+          "@zf/xstate": "workspace:*",
+          "jiti": "2.7.0"
+        }
+      },
+      "loop": {
+        "name": "@zf/loop",
+        "version": "0.0.0",
+        "private": true,
+        "type": "module",
+        "exports": {
+          ".": "./src/index.ts"
+        },
+        "dependencies": {
+          "@earendil-works/pi-ai": "1.5.2",
+          "xstate": "6.0.0-beta.0"
+        }
+      }
+    },
+    "lockfile": {
+      "path": "experiments/stately-coordinator-prototype/pnpm-lock.yaml",
+      "sha256": "afaf0323a183d2d5fa3af7bb50ad2045f1ca5f0ff30159765c18fb9b7e6e5b29"
+    },
+    "toolchain": {
+      "vite_plus": "1.6.0",
+      "oxlint": "1.93.0",
+      "oxfmt": "0.78.0",
+      "vitest": "5.1.0",
+      "typescript": "5.9.3",
+      "verified_by": "pnpm exec vp --version",
+      "evidence": ".artifacts/workspace-loop/toolchain.txt"
+    },
+    "type_policy": {
+      "target": "ES2023",
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext",
+      "strict": true,
+      "noUncheckedIndexedAccess": true,
+      "exactOptionalPropertyTypes": true,
+      "verbatimModuleSyntax": true,
+      "allowImportingTsExtensions": true,
+      "noEmit": true,
+      "skipLibCheck": true,
+      "types": [
+        "node"
+      ],
+      "noImplicitOverride": true,
+      "noFallthroughCasesInSwitch": true,
+      "noUnusedLocals": true,
+      "noUnusedParameters": true,
+      "noPropertyAccessFromIndexSignature": true,
+      "useUnknownInCatchVariables": true,
+      "forceConsistentCasingInFileNames": true,
+      "noUncheckedSideEffectImports": true
+    },
+    "lint_policy": {
+      "source": "experiments/stately-coordinator-prototype/vite.config.ts",
+      "max_parameters": 3,
+      "function_style": "Const-bound arrows; native lint plus a typed Oxlint JS plugin reject function expressions and mutable arrow bindings.",
+      "types": "No explicit any, unsafe any operations, non-null assertions, floating or misused promises. Type-only imports, object interfaces, property-form function signatures, explicit return contracts with contextual callback inference.",
+      "formatting": "Oxfmt: two spaces, 100 columns, single quotes, semicolons, trailing commas, LF.",
+      "exceptions": "The explicit-return-type lint rule is relaxed for test helpers, not production code. Dependency declarations use skipLibCheck; program code stays strict."
+    },
+    "findings": [
+      {
+        "id": "workspace-split",
+        "result": "passed",
+        "evidence": "Four private source-TS packages use workspace:* links. Architecture imports no XState. Core assembles architecture, adapter and loop. Dependency tests exclude the inspector SDK from all runtime packages."
+      },
+      {
+        "id": "default-loop",
+        "result": "passed",
+        "evidence": "Core resolves builtin:conversation through the ordinary coordinator after project/global lookup. createLoop supplies native XState actor implementations to minimalLoop, with no extra agent runtime."
+      },
+      {
+        "id": "loop-behavior",
+        "result": "passed",
+        "evidence": "Model-tool-model transcript ordering, multiple sequential calls, schema rejection and unknown tools, call budget, model failure/reset, cancellation during model/tool work and ignored late completion are tested offline."
+      },
+      {
+        "id": "pi-request",
+        "result": "passed",
+        "evidence": "A single injected Pi AI stream receives a cloned normalized request with selected tools and the AbortSignal. Already-aborted requests do not call the stream. No provider or credential access occurs in the tests."
+      },
+      {
+        "id": "builtin-tool",
+        "result": "passed",
+        "evidence": "An executable echo tool supplies the shared declaration used by the catalog and loop. External manifests remain discovery-only; handlers are bound explicitly."
+      },
+      {
+        "id": "quality-enforcement",
+        "result": "passed",
+        "evidence": "Subprocess tests submit invalid files to pnpm exec vp check. They require diagnostics for declaration style, >3 parameters, missing returns, any, unsafe member access, arrow policy, floating promises and non-null assertions. A valid fixture passes. A malformed-format fixture fails Oxfmt."
+      },
+      {
+        "id": "development-inspection",
+        "result": "passed-with-bounds",
+        "evidence": "@statelyai/sdk@0.48.0 is a root devDependency only. dev/inspector.ts connects its inspect callback to @zf/xstate through an injected in-memory transport. Tests observe a native v6 actor and send an event back. No relay URL or inspector URL is created. The caller owns the injected transport and closes it separately."
+      },
+      {
+        "id": "dependency-policy",
+        "result": "passed-after-fresh-resolution",
+        "evidence": "Removing an initially permissive release-age setting exposed two recent transitive versions. A fresh isolated installation selected policy-compliant dependencies without disabling release-age checks. Frozen-lockfile installation passes. A scoped vite version allowance accommodates the official Vite+ alias; pnpm peers check reports no issues."
+      }
+    ],
+    "studio_research": {
+      "studio": "External web application for authoring/design/simulation; not a runtime library to bundle.",
+      "vscode": "Separate editor extension. No IDE installation or configuration was changed.",
+      "legacy_inspector_docs": "The public inspector page describes @statelyai/inspect and older inspection event shapes; that page alone does not establish v6 compatibility.",
+      "selected_dev_integration": "Published @statelyai/sdk/inspect with cross-version envelopes; v6 observation and event forwarding verified locally.",
+      "not_qualified": "Visual Studio/editor behavior, code round-trip for beta syntax, real WebSocket transport and hosted authorization."
+    },
+    "validation": {
+      "command": "pnpm --dir experiments/stately-coordinator-prototype check",
+      "workspace_tests": 32,
+      "regression_counts": {
+        "native": 148,
+        "agent_stable": 5,
+        "agent_current": 7,
+        "trace_probes": 6
+      },
+      "total": 198,
+      "format_lint_types": "passed with warnings denied",
+      "frozen_install": "passed; install scripts disabled",
+      "peers": "No peer dependency issues found",
+      "live_provider_calls": 0,
+      "network_inspector_connections": 0,
+      "evidence": ".artifacts/workspace-loop/"
+    },
+    "sources": [
+      {
+        "url": "https://stately.ai/docs/studio",
+        "purpose": "Distinguish external authoring/editor from runtime inspection."
+      },
+      {
+        "url": "https://stately.ai/docs/xstate-vscode-extension",
+        "purpose": "External IDE extension and visual editor."
+      },
+      {
+        "url": "https://stately.ai/docs/inspector",
+        "purpose": "Legacy documented inspection package and event model."
+      },
+      {
+        "url": "https://viteplus.dev/config/lint",
+        "purpose": "Root configuration and typed checks."
+      },
+      {
+        "url": "https://github.com/voidzero-dev/vite-plus/blob/main/docs/config/fmt.md",
+        "purpose": "Oxfmt settings in the fmt block."
+      },
+      {
+        "url": "https://oxc.rs/docs/guide/usage/linter/rules/eslint/func-style",
+        "purpose": "Function-expression rule does not alone require arrow expressions."
+      },
+      {
+        "url": "https://oxc.rs/docs/guide/usage/linter/rules/eslint/max-params",
+        "purpose": "Configurable argument limit."
+      },
+      {
+        "repository": "references/xstate",
+        "commit": "4829a7bd4f01dc4045ee616cc8352da82bffbe30",
+        "path": "docs/typescript.md",
+        "anchor": "events:",
+        "line": 17,
+        "sha256": "16463a24af60eabfe8ef672ea4dd5af656fd68fbf5b503d568749c7758817aee"
+      },
+      {
+        "repository": "references/pi",
+        "commit": "b4afdddf44e059c67ccf5097e5317d913521b470",
+        "path": "packages/ai/src/utils/validation.ts",
+        "anchor": "export function validateToolCall",
+        "line": 37,
+        "sha256": "78675918c09c649aba19b6d268cc07aacb25629351ae2950d18d5b3d282867ad"
+      },
+      {
+        "published_package": "@statelyai/sdk@0.48.0",
+        "artifact_path": ".artifacts/mvp-kit/stately-sdk-0.48.0/package/dist/inspect-CxpvtiCB.mjs",
+        "sha256": "73117e65d083b70a84e3a7588cc3e3562c929465d026718ccccda8d81ac48ea4",
+        "url": "https://unpkg.com/@statelyai/sdk@0.48.0/dist/inspect-CxpvtiCB.mjs"
+      }
+    ],
+    "limits": [
+      "Runtime transpilation still does not type-check dynamically loaded user machines. Strict checks apply to the workspace sources; machine admission validation remains separate.",
+      "The default loop is deliberately small: no compaction, steering/follow-up queue, branch UX, retry policy, partial streaming UI or coding-tool suite.",
+      "The loop uses deterministic placeholder timestamps for synthetic prompt/tool messages in this experiment; wall-clock provenance is not qualified.",
+      "Pi integration uses injected model/stream bindings; no credential discovery, subscription request or live provider smoke was performed.",
+      "JSON Schema validation of model calls reuses Pi validation, including its coercion behavior. External command execution and Rust tools are not implemented.",
+      "FS storage and reload retain the previous bounded profile: one writer, no power-loss durability or arbitrary-effect replay, no automatic schema migration.",
+      "Automatic child-machine registration as independent runs and Stately Agent journal integration are still separate work.",
+      "Studio/Editor is external. Only the development SDK inspection bridge was exercised, not a complete graphical authoring or network transport integration.",
+      "The workspace remains inside the experiment directory. Existing historical qualification lanes and their lockfiles are preserved; no integration into the parent branch occurred."
+    ],
+    "historical_commit": "fada7564685bf2dd181cbbcc3dea09df4675ee62",
+    "superseded_by": "oop_refactor"
+  },
+  "oop_refactor": {
+    "status": "root-development-workspace-with-bounded-runtime-profile",
+    "operator_direction": [
+      "Move the active workspace to the worktree root and experiments under .artifacts/.",
+      "Split storage into @zf/storage and coordination into @zf/run; move contracts to @zf/core.",
+      "Move module/tool loading and new skills into @zf/capabilities.",
+      "Replace closure-based service factories with composed OOP implementations.",
+      "Use @zf/machines for built-in machine definitions instead of @zf/loop."
+    ],
+    "layout": {
+      "application": "src/application.ts",
+      "entrypoint": "src/index.ts",
+      "packages": {
+        "capabilities": {
+          "name": "@zf/capabilities",
+          "version": "0.0.0",
+          "private": true,
+          "type": "module",
+          "exports": {
+            ".": "./src/index.ts"
+          },
+          "dependencies": {
+            "@earendil-works/pi-ai": "1.5.2",
+            "@zf/core": "workspace:*",
+            "jiti": "2.7.0",
+            "yaml": "2.8.1"
+          }
+        },
+        "core": {
+          "name": "@zf/core",
+          "version": "0.0.0",
+          "private": true,
+          "type": "module",
+          "exports": {
+            ".": "./src/index.ts"
+          },
+          "dependencies": {}
+        },
+        "machines": {
+          "name": "@zf/machines",
+          "version": "0.0.0",
+          "private": true,
+          "type": "module",
+          "exports": {
+            ".": "./src/index.ts"
+          },
+          "dependencies": {
+            "@earendil-works/pi-ai": "1.5.2",
+            "@zf/capabilities": "workspace:*",
+            "xstate": "6.0.0-beta.0"
+          }
+        },
+        "run": {
+          "name": "@zf/run",
+          "version": "0.0.0",
+          "private": true,
+          "type": "module",
+          "exports": {
+            ".": "./src/index.ts"
+          },
+          "dependencies": {
+            "@zf/core": "workspace:*"
+          }
+        },
+        "storage": {
+          "name": "@zf/storage",
+          "version": "0.0.0",
+          "private": true,
+          "type": "module",
+          "exports": {
+            ".": "./src/index.ts"
+          },
+          "dependencies": {
+            "@zf/core": "workspace:*"
+          }
+        },
+        "xstate": {
+          "name": "@zf/xstate",
+          "version": "0.0.0",
+          "private": true,
+          "type": "module",
+          "exports": {
+            ".": "./src/index.ts"
+          },
+          "dependencies": {
+            "@zf/core": "workspace:*",
+            "xstate": "6.0.0-beta.0"
+          }
+        }
+      },
+      "tests": "test",
+      "development_inspector": "dev/inspector.ts",
+      "archive": ".artifacts/experiments/"
+    },
+    "archive": {
+      "source_commit": "fada7564685bf2dd181cbbcc3dea09df4675ee62",
+      "tracked_files_preserved": 89,
+      "verification": "Every previously tracked experiment file matches the archived copy byte-for-byte. Files remain retrievable from Git history after removal from the active tree.",
+      "manifest": ".artifacts/oop-refactor/archive-manifest.json",
+      "compatibility": "The ignored .artifacts/docs link points to ../docs inside this worktree so historical recorded-smoke tests retain their relative read path. No archived source was patched."
+    },
+    "dependency_direction": "Root Zedflow assembles implementations. run/storage/capabilities/xstate depend on core contracts. machines uses capabilities and native XState. Core imports no implementations. SDK inspection remains dev-only.",
+    "classes": {
+      "Zedflow": "Root composition and named machine launching; exposes runs, tools and skills.",
+      "RunCoordinator": "Owns run identities, lifecycle exclusion, explicit origins and checkpoint replacement.",
+      "ObservationBuffer": "Stages candidate observations until admission succeeds.",
+      "JsonlRunStore": "Owns bounded one-writer JSONL read/append validation.",
+      "XStateEngine": "Owns native engine identity, shared runtime modules and execution preparation.",
+      "XStateExecution": "Owns one native actor, its observations, emissions and compatible checkpoints.",
+      "TypeScriptModuleLoader": "Owns shared-module injection and cache-free local TS loading/revision checks.",
+      "ModuleCatalog": "Resolves project/global definitions and explicitly registered built-ins.",
+      "ToolCatalog": "Discovers declarations without executing commands and isolates returned built-in views.",
+      "SkillCatalog": "Lists validated skill metadata and reads explicitly selected content.",
+      "PiModelClient": "Owns injected model/stream/tool configuration for a single request.",
+      "ToolExecutor": "Owns selected executable tools and validates invocations through Pi before executing.",
+      "EchoTool": "Minimal built-in executable tool; its declaration is reused by the catalog.",
+      "DevelopmentInspector": "Development-only composition; disposal retains caller ownership of its transport."
+    },
+    "design_choices": [
+      "Stateful implementations use classes with hard-private fields, readonly stable collaborators and explicit public methods.",
+      "Public contracts remain interfaces and data types; no marker interfaces or empty classes.",
+      "No production inheritance hierarchy or abstract service superclass was added.",
+      "Standalone pure functions remain functions; XState machines remain native definitions.",
+      "Machine factories return native XState definitions; they do not wrap machine topology in application classes.",
+      "Constructor parameter properties are avoided to retain direct Node TypeScript execution with erasableSyntaxOnly."
+    ],
+    "skills": {
+      "discovery": "globalDirectory/skills/<name>/SKILL.md and project/.zedflow/skills/<name>/SKILL.md; project wins.",
+      "metadata": "YAML name and description; directory/name agreement; lowercase slug up to 64 characters, description up to 1024.",
+      "content": "Explicit SkillCatalog.read; no automatic model exposure, script execution or instruction adoption.",
+      "guards": "Regular files only, at most 64 KiB, YAML aliases disabled, duplicate keys rejected, invalid metadata fails explicitly.",
+      "compatibility": "A deliberately narrow frontmatter/discovery profile, not full Pi skill/package compatibility or a filesystem sandbox."
+    },
+    "quality": {
+      "config": "vite.config.ts",
+      "compiler": "tsconfig.json",
+      "class_methods": "Allowed as prototype methods; standalone functions retain const-arrow policy.",
+      "rules_added": [
+        "explicit-member-accessibility",
+        "no-empty-object-type",
+        "no-extraneous-class",
+        "prefer-readonly"
+      ],
+      "compiler_added": [
+        "strictPropertyInitialization",
+        "erasableSyntaxOnly",
+        "useDefineForClassFields",
+        "isolatedModules",
+        "moduleDetection: force"
+      ],
+      "negative_checks": "Actual lint accepts a useful class and rejects empty abstractions and implicit visibility. TypeScript diagnostics 4114/2564/18013/2540/2420 verify override, initialization, hard-private access, readonly and implements. Existing arrow/argument/type/format checks remain."
+    },
+    "validation": {
+      "command": "pnpm check",
+      "bootstrap": "pnpm bootstrap with frozen pnpm lock and disabled install scripts",
+      "root_tests": 42,
+      "archived_regressions": {
+        "native": 148,
+        "agent_stable": 5,
+        "agent_current": 7,
+        "trace_probes": 6
+      },
+      "total_tests": 208,
+      "lint_format_types": "passed with warnings denied",
+      "documentation": "17 Markdown documents pass; historical README collection exception retained.",
+      "provider_calls": 0,
+      "hosted_inspector_connections": 0,
+      "evidence": ".artifacts/oop-refactor/"
+    },
+    "lockfile": {
+      "path": "pnpm-lock.yaml",
+      "sha256": "fca177f4f4a76915c88f6c6af515ad1713c193b6b9dd94143d6e3586ced300e1"
+    },
+    "references": [
+      {
+        "url": "https://www.typescriptlang.org/docs/handbook/2/classes.html",
+        "used_for": "Visibility, readonly, implements, hard-private fields and class initialization."
+      },
+      {
+        "url": "https://www.typescriptlang.org/tsconfig/noImplicitOverride.html",
+        "used_for": "Explicit overrides and protection against base-class changes."
+      },
+      {
+        "url": "https://www.typescriptlang.org/docs/handbook/type-compatibility.html",
+        "used_for": "Structural typing and limits of empty structural contracts."
+      },
+      {
+        "url": "https://www.totaltypescript.com/tsconfig-cheat-sheet",
+        "used_for": "Strict configuration context; stricter local rules remain explicit choices."
+      },
+      {
+        "url": "https://github.com/microsoft/TypeScript-Website/blob/v2/packages/documentation/copy/en/handbook-v2/Classes.md",
+        "used_for": "Context7 corroboration of readonly/private fields and empty-class structural compatibility."
+      }
+    ],
+    "remaining_limits": [
+      "The move and OOP refactor do not establish production durability, effect-safe replay or arbitrary checkpoint migration.",
+      "Dynamically imported user machines are trusted executable code; runtime transpilation does not automatically statically validate them.",
+      "Module revision hashing remains local-directory scoped; external dependency closure is not captured.",
+      "The conversation machine remains minimal; no compaction, branch UX, full streaming interface or complete coding-tool suite.",
+      "External tool manifests remain discovery-only; callable implementations are explicitly supplied.",
+      "Automatic nested-run registration, Stately Agent journal integration and real inspector transport remain separate work.",
+      "FS append remains synchronous and rescans records; no multi-writer locking, fsync or crash repair.",
+      "Skills are data resources, not automatic prompt instructions or a permissions sandbox.",
+      "The root workspace remains private and on the mission branch; no parent-branch integration or publication occurred."
+    ],
+    "superseded_by": "cli_kit"
+  },
+  "cli_kit": {
+    "recorded_at": "2026-11-17T05:03:25.039103+00:00",
+    "evidence_level": "offline-native-runtime-process-terminal-and-fixture-qualification-not-live-provider-login",
+    "source_commit": "4fa7cf920472774d55a533e434a2f826a1fc1354",
+    "branch": "mission/stately-qualification",
+    "parent_branch": "reboot/xstate",
+    "parent_commit": "10e9821ce6cd246031af1e0cd3a75c6af36f58fc",
+    "runtime": {
+      "engine": "xstate@6.0.0-beta.0",
+      "pi": "1.5.2",
+      "node": "24.16.0",
+      "pnpm": "12.18.0",
+      "application": "@zf/cli",
+      "executable": "zf",
+      "builtin_agent": "packages/machines/agent/machine.ts",
+      "generic_example": "packages/machines/counter/machine.ts",
+      "root": "src/index.ts is a facade; src/application.ts and the legacy conversation/model-client/tool-executor are retired"
+    },
+    "ownership": {
+      "core": "Data and lifecycle contracts; native Pi resource types",
+      "run": "Run coordination, observation and compatible replacement",
+      "xstate": "Native execution adapter",
+      "storage": "JSONL records and guarded native credential store",
+      "capabilities": "Discovery, loading, skills, native OpenAI runtime and command adapter",
+      "config": "Layered settings, provenance and scoped mutations",
+      "manager": "Local/Git/registry managed installation and frozen restore",
+      "tools": "Adapted Pi tools and real Code Mode VM",
+      "machines": "Ordinary native built-ins",
+      "tui": "Pi rendering, interaction and reusable state views",
+      "cli": "Composition, command parsing and process lifecycle"
+    },
+    "verification": {
+      "strict_tests": 369,
+      "test_files": 16,
+      "frozen_offline_bootstrap": true,
+      "strict_peer_environment": true,
+      "archived_tests": 166,
+      "archived_breakdown": {
+        "native": 148,
+        "current_agent": 7,
+        "stable_agent": 5,
+        "trace_probes": 6
+      },
+      "historical_archive_files_unchanged": 89,
+      "legacy_baseline_files_unchanged": 15,
+      "published_source_anchors_verified": 41,
+      "markdown_files_checked": 18,
+      "installed_executable": "actual node_modules/.bin/zf help and counter event under isolated HOME/project",
+      "terminal": "real CLI PTYs for masked login/cancel, TUI API-key login and generic counter input/reload/quit; virtual terminal with actual agent, native Models and actual Code Mode/tools",
+      "provider": "native OpenAI catalog plus injected native provider/auth transports; no new live provider request"
+    },
+    "requirements": {
+      "cli_and_agent": [
+        "test/cli.test.ts",
+        "test/conversation.test.ts",
+        "test/agent.test.ts",
+        "test/quality.test.ts"
+      ],
+      "discovery": [
+        "test/discovery.test.ts",
+        "test/coordinator.test.ts"
+      ],
+      "configuration": [
+        "test/config.test.ts",
+        "test/credentials.test.ts"
+      ],
+      "provider_auth": [
+        "test/providers.test.ts",
+        "test/credentials.test.ts",
+        "test/cli.test.ts",
+        "test/tui.test.ts",
+        "test/cli-pty.py"
+      ],
+      "tools": [
+        "test/tools.test.ts",
+        "packages/tools/PROVENANCE.json",
+        "packages/tools/LICENSE"
+      ],
+      "codemode": [
+        "test/codemode.test.ts",
+        "test/cli.test.ts"
+      ],
+      "manager": [
+        "test/manager.test.ts",
+        "test/cli.test.ts"
+      ],
+      "tui": [
+        "test/tui.test.ts",
+        "test/cli.test.ts",
+        "test/cli-pty.py"
+      ],
+      "reload": [
+        "test/reload.test.ts",
+        "test/cli.test.ts",
+        "test/tui.test.ts",
+        "test/coordinator.test.ts"
+      ],
+      "decisions": [
+        ".artifacts/cli-goal/execution-contract.json",
+        ".artifacts/cli-goal/decisions/"
+      ]
+    },
+    "independent_reviews": {
+      "config": "0ac821ac",
+      "tools": "d6620bb1",
+      "manager": "24cb47b6",
+      "agent": "7bd7772c",
+      "run_and_loader": "ba916dbf",
+      "tui": "ac584dc3",
+      "legacy": "7335ce93",
+      "cli_and_final_corrections": "d085e260",
+      "final_verdict": "No blockers or new findings at4fa7cf92; reviews were static, runtime gates run by parent"
+    },
+    "limits": [
+      "No live OAuth/network qualification or additional authorized provider smoke.",
+      "Windows PowerShell execution remains unqualified on Linux.",
+      "Trusted native code and host tools are not a security sandbox; command processes inherit ambient environment.",
+      "Ordinary reloadable local imports are TypeScript/CTS; local JS/CJS/MJS/JSON imports are refused. Installed in-place dependencies and post-preparation imports are not complete source closure.",
+      "Command declarations are fingerprinted; executable script bytes can change between invocations.",
+      "Caller-owned signals cancel reload preparation; trusted module side effects and completed tool mutations cannot be undone.",
+      "No arbitrary hot migration, crash-effect recovery, full Pi UI parity or exactly-once guarantees.",
+      "Manager rollback covers ordinary failure, not multi-directory crash durability.",
+      "Archived coordinator formatting cannot run unchanged under ignored archive paths; source bytes are verified and current replacement regressions pass.",
+      "The pre-existing root README collection gap is retained."
+    ],
+    "execution_deviation": {
+      "kind": "unexpected archived pnpm exec auto-install into global package cache",
+      "containment": "Direct existing Node/TypeScript entrypoints; isolated HOME/cache/TMPDIR; auto-verification disabled; no global cache cleanup",
+      "disclosure": "Global package cache was changed; no claim of an untouched global cache. Source archives and protected project state verified unchanged."
+    },
+    "evidence_directory": ".artifacts/cli-goal",
+    "evidence_files": [
+      "final-frozen-bootstrap.txt",
+      "final-check.txt",
+      "installed-binary-check.txt",
+      "delivery-protection-check.txt",
+      "archived-stately-native.txt",
+      "archived-stately-agent-current.txt",
+      "archived-stately-agent-stable.txt",
+      "archived-trace-probes.txt"
+    ],
+    "disposition": "Local mission delivery only. Parent integration, publication, push and worktree cleanup are not performed."
+  },
+  "effect_research": {
+    "recorded_at": "2026-11-17T15:16:34.993754+00:00",
+    "status": "research-complete-candidate-not-admitted-to-product",
+    "baseline_commit": "95136df233d8989286035c9380303660888ab2b5",
+    "versions": {
+      "effect": "4.1.4",
+      "platform_node": "4.1.4",
+      "sql_sqlite_node": "4.1.4",
+      "xstate": "6.0.0-beta.0",
+      "node": "24.16.0",
+      "pnpm": "12.18.0",
+      "platform": "Linux ARM64"
+    },
+    "sources": {
+      "registry": "https://registry.npmjs.org/effect/4.1.4",
+      "tag": "https://github.com/Effect-TS/effect/tree/effect%404.1.4",
+      "inspected_main_commit": "f12fefb2a8b268d746b04e2989ad21585ac3c827",
+      "qualification_source": "Installed pinned release source; main is background only.",
+      "source_hashes": [
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/Effect.ts",
+          "sha256": "8a32355d3c59534d6a9f56a614274f0616a2d3e82b678847adc374e9f6a0b545"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/Entity.ts",
+          "sha256": "084e871c6cfcbb97b7e973e1abb6be930d8d6a791764ec478ca0f4dbc51c434e"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/SingleRunner.ts",
+          "sha256": "a2131bd086390bafde91b8bc47d319de4778003fce0a8fbbf15d282b758c4852"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/ClusterSchema.ts",
+          "sha256": "4b1fca2c04f753b093be067ad2881ab285864d5e9b263bee5cf7592cd68738ee"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/SqlMessageStorage.ts",
+          "sha256": "1a4e22c7e1d298b7d4109881f6f7fbd8eacc3202931b26ec8c2ae4b922c8dc0b"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/ShardingConfig.ts",
+          "sha256": "3c3a80888f017edb69ab89ec4155809562b79c1a593e769fbcf354347ad5bfa3"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/EntityResource.ts",
+          "sha256": "308611b42bfc071fb1b9447466b9f6e7cd3d4d666f83187d25adf48f8f15ecaa"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/internal/entityReaper.ts",
+          "sha256": "8432c5e8a3c2342af389e3e71c502fcf8392c8607b35a845f6b6654c370e4a8c"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/cluster/internal/entityManager.ts",
+          "sha256": "e1a240a002406e3bf8df381df77217f236afae57cb5d51a21c4db649407741a1"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/workflow/Workflow.ts",
+          "sha256": "b0a5bcf8f9e66ca081de03ab2b376582d190647ef8282e551451d098db3a1836"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/effect/src/workflow/Activity.ts",
+          "sha256": "9f449c549ba39393cd30268c8e606f6c4556587bd9c3bc369b69fefcaae9887b"
+        },
+        {
+          "installed_path": ".artifacts/effect-research/node_modules/@effect/sql-sqlite-node/src/SqliteClient.ts",
+          "sha256": "554c4d4f70ccbd73442be056ca0c5f450157f4e06153b21277c81abdd270058f"
+        }
+      ]
+    },
+    "dependency_scope": {
+      "directory": ".artifacts/effect-research",
+      "runtime_dependencies_added_to_product": false,
+      "installation_scripts": false,
+      "frozen_offline_reinstall": "passed",
+      "homes_caches_and_temporary_files": "isolated inside research directory"
+    },
+    "proofs": [
+      {
+        "id": "E01",
+        "result": "passed",
+        "claim": "Entity scopes release native actors and leave no active actor handles at final scope closure.",
+        "evidence": "observed-cluster.json"
+      },
+      {
+        "id": "E02",
+        "result": "passed",
+        "claim": "Repeating a persisted request primary key reuses its reply without another native transition.",
+        "evidence": "observed-cluster.json"
+      },
+      {
+        "id": "E03",
+        "result": "passed",
+        "claim": "Idle entities release and a simultaneous burst reactivates one entity under serialized handling.",
+        "evidence": "observed-cluster.json"
+      },
+      {
+        "id": "E04",
+        "result": "passed",
+        "claim": "An active RPC survives idle reaping; explicit keepAlive protects detached native work.",
+        "evidence": "observed-cluster.json"
+      },
+      {
+        "id": "E05",
+        "result": "negative-case-reproduced",
+        "claim": "Without keepAlive, an RPC that already returned leaves native async work vulnerable to entity eviction and abort.",
+        "evidence": "observed-cluster.json"
+      },
+      {
+        "id": "E06",
+        "result": "negative-case-reproduced",
+        "claim": "SQL rollback preserves stored checkpoint but does not rewind the in-memory actor.",
+        "evidence": "observed-cluster.json"
+      },
+      {
+        "id": "E07",
+        "result": "passed",
+        "claim": "A separate process restores the checkpoint and persisted reply, then processes only the new transition.",
+        "evidence": "observed-restart.json"
+      },
+      {
+        "id": "E08",
+        "result": "negative-case-reproduced",
+        "claim": "SIGKILL after an external effect and before commit results in repeated external effect on persisted-request redelivery.",
+        "evidence": "observed-restart.json"
+      },
+      {
+        "id": "E09",
+        "result": "passed",
+        "claim": "One Effect process supervises20 actual Node/XState workers; idle release leaves0 workers and the router process resident.",
+        "evidence": "observed-processes.json"
+      },
+      {
+        "id": "E10",
+        "result": "passed",
+        "claim": "A20-message burst after worker release starts1 new worker, restores count1, reaches21 and does not repeat the initial entry.",
+        "evidence": "observed-processes.json"
+      },
+      {
+        "id": "E11",
+        "result": "mixed-policy-qualified",
+        "claim": "Client scope exit cancels default RPC; server-only policy restarts its handler; combined client/server policy avoids that interruption in the bounded example.",
+        "evidence": "observed-cancellation.json"
+      },
+      {
+        "id": "E12",
+        "result": "diagnostic-sample",
+        "claim": "Idle CPU/RSS measured separately for Node, Core and default/aggressive-poll SingleRunner. Not a production benchmark.",
+        "evidence": "observed-idle.json"
+      }
+    ],
+    "selected_measurements": {
+      "processes": {
+        "initial": {
+          "workers": 20,
+          "startupMs": 880.436087,
+          "workerRssSum": 1076772864,
+          "routerRss": 120446976
+        },
+        "sleeping": {
+          "workers": 0,
+          "elapsedMs": 6000.529701,
+          "routerRss": 123559936
+        },
+        "wake": {
+          "workersCreated": 1,
+          "elapsedMs": 218.5315099999998,
+          "restoredCount": 1,
+          "finalCount": 21,
+          "pid": 2252779,
+          "entryReplayed": false
+        },
+        "finalWorkers": 0
+      },
+      "idle": [
+        {
+          "mode": "node",
+          "wallMs": 6006.291604,
+          "cpuMicros": {
+            "user": 393,
+            "system": 117
+          },
+          "rssBytes": 49266688,
+          "heapUsedBytes": 5045224
+        },
+        {
+          "mode": "core",
+          "wallMs": 6006.747849,
+          "cpuMicros": {
+            "user": 597,
+            "system": 147
+          },
+          "rssBytes": 67600384,
+          "heapUsedBytes": 11004360
+        },
+        {
+          "mode": "default-runner",
+          "wallMs": 6002.3622780000005,
+          "cpuMicros": {
+            "user": 3409,
+            "system": 0
+          },
+          "rssBytes": 115617792,
+          "heapUsedBytes": 27032296
+        },
+        {
+          "mode": "fast-poll-runner",
+          "wallMs": 6000.7204409999995,
+          "cpuMicros": {
+            "user": 92856,
+            "system": 4801
+          },
+          "rssBytes": 118632448,
+          "heapUsedBytes": 26868384
+        }
+      ]
+    },
+    "measurement_caveats": [
+      "One Linux ARM64 diagnostic sample per idle configuration.",
+      "Worker RSS is summed RSS, not unique physical memory; shared pages may be counted repeatedly.",
+      "Workers execute synthetic native machines, not Pi models, full agent transcripts or Code Mode.",
+      "Wake elapsed time includes an entire20-message burst and its persistence, not a single-message latency.",
+      "The entity timeout target is100ms, but the pinned native reaper checks no faster than5000ms."
+    ],
+    "stability": {
+      "core": "The upstream repository describes4.x as LTS.",
+      "integration_modules": "The inspected Cluster, Workflow, Digest and SQLite client APIs carry unstable annotations."
+    },
+    "recommendation": {
+      "core": "Use as the infrastructure candidate for scopes and resource ownership.",
+      "cluster": "Prefer evaluating SingleRunner+Entity+SQL before hand-writing mailboxes and idle lifecycle. Admission remains conditional on Zedflow-specific safety gates.",
+      "xstate": "Retain native definitions, business transitions, state identity and checkpoints.",
+      "pi": "Retain provider/auth/model/tool contracts; do not introduce Effect AI.",
+      "workflow": "Do not add a second business workflow model in the initial implementation. Source-reviewed, not execution-qualified here."
+    },
+    "admission_gates": [
+      "Private external CLI/TUI IPC and process singleton acquisition with fencing.",
+      "Atomic checkpoint/cursor/reply publication across physical worker boundaries.",
+      "Explicit uncertain outcome policy instead of blindly retrying model/tool effects after crash.",
+      "Client disconnect and explicit stop must remain different operations, tested with real separate clients.",
+      "Busy-state eligibility, timers, child completion, resource-version mismatch and partial shutdown races.",
+      "Bounded mailboxes, saturation, slow clients and realistic histories/media workloads.",
+      "Strict TypeScript/product API integration and regression gates; prototypes are runtime-asserted JavaScript, not a typed product implementation.",
+      "Serve historical/state observation outside the run entity activation path; qualify that a live UI stream neither wakes nor pins a sleeping worker."
+    ],
+    "scope_limits": [
+      "No actual TUI, provider login, model request or existing credential store used.",
+      "SingleRunner in the probes uses in-memory runner ownership plus SQL mailboxes; cross-process exclusive ownership is not qualified.",
+      "No external client transport is exercised; Node IPC is used between the router probe and its spawned workers.",
+      "The physical-worker prototype uses checkpoint files separately from SQL reply storage; it does not establish their crash atomicity.",
+      "No claim of exactly-once external effects, generic crash recovery or Windows support."
+    ],
+    "evidence_directory": ".artifacts/effect-research",
+    "reproduction": [
+      "bash .artifacts/effect-research/run.sh bootstrap",
+      "bash .artifacts/effect-research/run.sh probe",
+      "bash .artifacts/effect-research/run.sh measure"
+    ],
+    "final_validation": "All four functional probe programs passed on a final repeated run; offline frozen installation passed; no probe worker remained.",
+    "product_regression": {
+      "strict_tests": 369,
+      "files": 16,
+      "result": "passed",
+      "code_or_runtime_dependency_changes": false
+    },
+    "protected_state": {
+      "historical_archive_files": 89,
+      "legacy_archive_files": 15,
+      "source_anchors": 41,
+      "markdown_files": 19,
+      "result": "passed",
+      "known_root_readme_collection_gap": "retained"
+    }
+  }
+}

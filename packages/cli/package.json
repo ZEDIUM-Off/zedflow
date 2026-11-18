@@ -1,0 +1,26 @@
+{
+  "name": "@zf/cli",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "zf": "./bin/zf.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-schema": "1.5.2",
+    "@zf/capabilities": "workspace:*",
+    "@zf/config": "workspace:*",
+    "@zf/core": "workspace:*",
+    "@zf/machines": "workspace:*",
+    "@zf/manager": "workspace:*",
+    "@zf/run": "workspace:*",
+    "@zf/storage": "workspace:*",
+    "@zf/tools": "workspace:*",
+    "@zf/tui": "workspace:*",
+    "@zf/xstate": "workspace:*"
+  }
+}

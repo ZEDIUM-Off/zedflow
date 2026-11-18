@@ -1,0 +1,9 @@
+packages:
+  - packages/*
+
+verifyDepsBeforeRun: false
+
+# Vite+ aliases vite to its core package, whose package version follows the toolchain.
+peerDependencyRules:
+  allowedVersions:
+    vite: '1.6.0'

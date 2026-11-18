@@ -9,3 +9,12 @@
 *.key
 *.pem
 credentials.json
+
+node_modules
+
+/.pi/
+
+# Run transcripts and optional project-local credential storage are never product sources.
+/.zedflow/runs/
+/.zedflow/auth.json
+/.zedflow/device-id
